@@ -1,0 +1,14 @@
+# Compile File
+*.dll
+bin/
+obj/
+build/
+
+# Library
+packages/
+
+# Local Environment
+.env
+
+# MacOS Finder Cache
+.DS_Store

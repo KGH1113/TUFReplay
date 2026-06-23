@@ -1,0 +1,8 @@
+{
+  "AssemblyPath": "TUFReplay.dll",
+  "ClassName": "TUFReplay.Main",
+  "AssemblyRequireModPath": true,
+  "DependencyPath": "dependency",
+  "DependencyRequireModPath": true,
+  "BootstrapVersion": 2
+}

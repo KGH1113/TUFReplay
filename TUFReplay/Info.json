@@ -1,0 +1,8 @@
+{
+  "Id": "TUFReplay",
+  "DisplayName": "TUFReplay",
+  "Author": "impl",
+  "Version": "0.1.0",
+  "AssemblyName": "JAMod.Bootstrap.dll",
+  "EntryMethod": "JAMod.Bootstrap.Bootstrap.Setup"
+}
