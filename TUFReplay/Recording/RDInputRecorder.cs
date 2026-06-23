@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using SkyHook;
-using TUFReplay.Replay;
 using UnityEngine;
 
 namespace TUFReplay.Recording;
@@ -111,7 +110,6 @@ public static class RDInputRecorder
   private static bool ShouldCapture(RecordingSession session)
   {
     if (session == null || !session.IsRecording) return false;
-    if (global::TUFReplay.Replay.Replay.Instance?.Session.IsPlaying == true) return false;
     return true;
   }
 

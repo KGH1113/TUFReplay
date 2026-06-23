@@ -1,6 +1,5 @@
 using System;
 using Newtonsoft.Json;
-using TUFReplay.Recording;
 using TUFReplay.Shared;
 
 namespace TUFReplay.Replay;
@@ -42,42 +41,10 @@ public static class ReplayService
     return result;
   }
 
-  public static PlayRecord GetActiveRecord()
-  {
-    return _activeContext?.Record;
-  }
-
-  public static bool CanInjectInput(out string reason)
-  {
-    reason = null;
-
-    if (_activeContext == null)
-    {
-      reason = "no active replay context";
-      return false;
-    }
-
-    int? currentLevelId = TUFHelperAPI.GetLevelID();
-    if (currentLevelId.HasValue && currentLevelId.Value != _activeContext.TufLevelId)
-    {
-      reason = "current TUF level mismatch: current=" + currentLevelId.Value + ", replay=" + _activeContext.TufLevelId;
-      return false;
-    }
-
-    if (!currentLevelId.HasValue && !TUFHelperAPI.IsFromTUFHelper())
-    {
-      reason = "current level is not from TUFHelper";
-      return false;
-    }
-
-    return true;
-  }
-
   public static void StopActiveReplay(string reason)
   {
-    Replay.Instance?.Session.Stop(reason);
     ClearActiveContext();
-    Replay.LogDebug("Active replay context cleared. reason=" + reason);
+    Main.Instance?.Log("[ReplayService] Active replay context cleared. reason=" + reason);
   }
 
   public static void ClearActiveContext()
