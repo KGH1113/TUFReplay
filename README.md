@@ -101,8 +101,6 @@ Available endpoints:
 - `GET /api/records/:id`
 - `DELETE /api/records/:id`
 - `POST /api/records/:id/open`
-- `POST /api/replay/stop`
-- `POST /api/replay/clear`
 
 ## Tech Stack
 

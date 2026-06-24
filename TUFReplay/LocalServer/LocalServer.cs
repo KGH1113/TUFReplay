@@ -3,12 +3,16 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using Newtonsoft.Json;
+using TUFReplay.LocalServer.Controllers;
+using TUFReplay.LocalServer.Http;
+using TUFReplay.LocalServer.Routing;
 
 namespace TUFReplay.LocalServer;
 
 public class LocalServer
 {
   private readonly HttpListener _listener = new HttpListener();
+  private readonly LocalRouter _router = LocalApi.CreateRouter();
   private Thread _thread;
   private bool _running;
 
@@ -84,24 +88,13 @@ public class LocalServer
   {
     try
     {
-      LocalApi.Handle(context);
+      object result = _router.Dispatch(context);
+      ResponseWriter.Write(context, result);
     }
     catch (Exception e)
     {
       Main.Instance?.LogException(e);
-      WriteJson(context.Response, 500, new { error = "internal_error" });
+      ResponseWriter.WriteError(context, e);
     }
-  }
-
-  public static void WriteJson(HttpListenerResponse response, int statusCode, object body)
-  {
-    string json = JsonConvert.SerializeObject(body);
-    byte[] bytes = Encoding.UTF8.GetBytes(json);
-
-    response.StatusCode = statusCode;
-    response.ContentType = "application/json; charset=utf-8";
-    response.ContentLength64 = bytes.Length;
-    response.OutputStream.Write(bytes, 0, bytes.Length);
-    response.OutputStream.Close();
   }
 }
