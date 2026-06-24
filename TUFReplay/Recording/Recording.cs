@@ -14,6 +14,9 @@ public class Recording : Feature
 
   public RecordingSession Session { get; private set; }
 
+  private bool _clearReached;
+  private bool _failed;
+
   public Recording() : base(Main.Instance, nameof(Recording), true, typeof(RecordingPatches), typeof(RecordingSetting))
   {
     Instance = this;
@@ -21,47 +24,47 @@ public class Recording : Feature
     Session = new RecordingSession();
   }
 
-  public void OnRunCleared()
+  public void OnClearReached()
   {
     if (!Session.IsRecording) return;
-
-    if (!RecordingGuard.CanRecord(out string reason))
-    {
-      Session.Stop();
-      Main.Instance.Log("[Recording] Clear reached, but record was not saved. reason=" + reason);
-      return;
-    }
-
-    Session.Stop();
-    if (Session.InputCount <= 0)
-    {
-      Main.Instance.Log("[Recording] Clear reached, but no inputs were captured. Record was not saved.");
-      return;
-    }
-
-    PlayRecordRepository.Save(Session.ToPlayRecord());
-    Main.Instance.Log("[Recording] Saved clear. inputs=" + Session.InputCount);
+    _clearReached = true;
+    Main.Instance.Log("[Recording] Clear reached");
   }
 
   public void OnRunFailed()
   {
     if (!Session.IsRecording) return;
 
+    _failed = true;
+    Session.StopInputCapture("failed");
+    Main.Instance.Log("[Recording] Run failed.");
+  }
+
+  public void OnReturnedToEditor()
+  {
+    if (!Session.IsRecording) return;
+
+    Session.StopInputCapture("editor");
     Session.Stop();
-    Main.Instance.Log("Recording stopped because run failed.");
+
+    if (!_clearReached || _failed) return;
+    if (Session.InputCount <= 0) return;
+
+    PlayRecordRepository.Save(Session.ToPlayRecord());
+    Main.Instance.Log("[Recording] Saved clear. inputs=" + Session.InputCount);
   }
 
   protected override void OnEnable()
   {
     ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
     ADOFAIGameplayHandler.Editor_PlayButtonPressed += OnPlayButtonPressed;
-    RDInputRecorder.Reset();
+    RecordInputTracker.Reset();
   }
 
   protected override void OnDisable()
   {
     ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
-    RDInputRecorder.Reset();
+    RecordInputTracker.Reset();
     Session.Stop();
   }
 
@@ -101,8 +104,9 @@ public class Recording : Feature
       return;
     }
 
+    Instance._clearReached = false;
+    Instance._failed = false;
     Instance?.Session.Start(levelId.Value, levelInfo);
     Main.Instance.Log("TUF level opened: " + levelId.Value);
   }
-
 }

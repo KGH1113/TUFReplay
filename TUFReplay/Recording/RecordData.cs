@@ -45,7 +45,7 @@ public class RecordData
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,
-      inputFormat = "csv-absolute-seconds-v1",
+      inputFormat = "csv-timeus-key-flags",
       inputCount = Inputs.Count,
       micRecord = false
     };
@@ -60,11 +60,11 @@ public class RecordData
     foreach (RecordInput input in Inputs)
     {
       builder
-        .Append(input.SongPosition.ToString("R"))
+        .Append(input.TimeUs)
         .Append(',')
-        .Append(input.KeyCode)
+        .Append(input.Key)
         .Append(',')
-        .Append(input.Down ? 1 : 0)
+        .Append((ushort)input.Flags)
         .Append('\n');
     }
 
@@ -72,9 +72,19 @@ public class RecordData
   }
 }
 
-public class RecordInput
+public struct RecordInput
 {
-  public double SongPosition;
-  public int KeyCode;
-  public bool Down;
+  public long TimeUs;
+  public int Key;
+  public RecordInputFlags Flags;
+}
+
+[Flags]
+public enum RecordInputFlags : ushort
+{
+  Down = 1 << 0,
+  Async = 1 << 1,
+  PassedHook = 1 << 2,
+  MainCandidate = 1 << 3,
+  GameplayCounted = 1 << 4
 }

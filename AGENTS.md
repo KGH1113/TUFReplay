@@ -1,5 +1,6 @@
 # VERY FUCKING IMPORTANT RULE
 - **DO NOT MODIFY THE CODE UNTIL USER SAYS TO.**
+- You are not the only one who modifies the code. Almost every code is modified by the user. So please read the code often that user wrote.
 
 # README.md rule
 - IF you are new to this project 'cause the session started right before, read README.md to understand this project.

@@ -35,7 +35,7 @@ public class RecordingSession
       };
     }
 
-    RDInputRecorder.Reset();
+    RecordInputTracker.Reset();
     Main.Instance.Log("[Recording] Prepared. tufLevelId=" + levelId + ", autoRecord=" + IsRecording);
   }
 
@@ -50,7 +50,7 @@ public class RecordingSession
       Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
     }
 
-    RDInputRecorder.Reset();
+    RecordInputTracker.Reset();
     Main.Instance.Log("[Recording] Stopped. inputs=" + InputCount);
   }
 
@@ -59,13 +59,24 @@ public class RecordingSession
     lock (_lock)
     {
       if (!IsRecording || IsCapturingInput) return;
-
       IsCapturingInput = true;
+    }
+
+    RecordInputTracker.StartCapture();
+    Main.Instance.Log("[Recording] Input capture started");
+  }
+
+  public void MarkGameplayStarted()
+  {
+    lock (_lock)
+    {
+      if (!IsRecording || !IsCapturingInput) return;
       Data.GameplayStartSongPosition = GetSongPosition();
     }
 
-    RDInputRecorder.Reset();
-    Main.Instance.Log("[Recording] Gameplay input marker set. songPosition=" + Data.GameplayStartSongPosition);
+    RecordInputTracker.MarkGameplayStarted();
+    RecordInputTracker.DrainTo(this);
+    Main.Instance.Log("[Recording] Gameplay started. songPosition=" + Data.GameplayStartSongPosition);
   }
 
   public void StopInputCapture(string reason)
@@ -73,15 +84,16 @@ public class RecordingSession
     lock (_lock)
     {
       if (!IsCapturingInput) return;
-
       IsCapturingInput = false;
     }
 
-    RDInputRecorder.Reset();
-    Main.Instance.Log("[Recording] Input capture stopped. reason=" + reason + ", inputs=" + InputCount);
+    Main.Instance.Log("[Recording/InputDebug] Before stop drain: " + RecordInputTracker.DebugSnapshot());
+    RecordInputTracker.StopCapture();
+    RecordInputTracker.DrainTo(this);
+    Main.Instance.Log("[Recording/InputDebug] After stop drain: " + RecordInputTracker.DebugSnapshot());
   }
 
-  public void AddInput(int keyCode, bool down, double songPosition)
+  public void AddInput(long timeUs, int key, RecordInputFlags flags)
   {
     lock (_lock)
     {
@@ -89,9 +101,9 @@ public class RecordingSession
 
       Data.Inputs.Add(new RecordInput
       {
-        SongPosition = songPosition,
-        KeyCode = keyCode,
-        Down = down
+        TimeUs = timeUs,
+        Key = key,
+        Flags = flags
       });
     }
   }
