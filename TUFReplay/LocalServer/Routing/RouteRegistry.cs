@@ -22,7 +22,7 @@ public sealed class RouteRegistry
 
     if (controllerAttribute == null) return;
 
-    object controler = Activator.CreateInstance(controllerType);
+    object controller = Activator.CreateInstance(controllerType);
     string prefix = controllerAttribute.Prefix;
 
     MethodInfo[] methods = controllerType.GetMethods(
@@ -37,7 +37,7 @@ public sealed class RouteRegistry
         _routes.Add(new RouteDefinition(
           routeAttribute.Method,
           fullPath,
-          controler,
+          controller,
           method
         ));
       }
