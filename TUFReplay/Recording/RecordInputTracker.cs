@@ -1,27 +1,26 @@
-using System;
-using System.Collections.Concurrent;
-using System.Threading;
-using SkyHook;
+using System.Collections.Generic;
+using TUFReplay.Recording.NativeInput;
 
 namespace TUFReplay.Recording;
 
 public static class RecordInputTracker
 {
-  private static readonly ConcurrentQueue<PendingRecordInput> PendingInputs = new ConcurrentQueue<PendingRecordInput>();
+  private static readonly INativeInputStateReader StateReader = NativeInputStateReaderFactory.Create();
+  private static readonly Dictionary<int, bool> PreviousStates = new Dictionary<int, bool>();
 
-  private static long _gameplayStartTicks;
-  private static volatile bool _capturing;
-
-  private static long _rawSeen;
-  private static long _rawIgnoredNotCapturing;
-  private static long _rawIgnoredNonKey;
-  private static long _rawEnqueued;
-  private static long _drained;
+  private static bool _capturing;
+  private static long _samples;
+  private static long _transitions;
+  private static long _readFailures;
 
   public static void StartCapture()
   {
     Reset();
     _capturing = true;
+    Main.Instance.Log(
+      "[Recording/InputDebug] Native state capture started. reader=" + StateReader.Name +
+      ", supportedKeys=" + StateReader.KeyCodes.Count
+    );
   }
 
   public static void StopCapture()
@@ -29,77 +28,44 @@ public static class RecordInputTracker
     _capturing = false;
   }
 
-  public static void EnqueueRawAsync(SkyHookEvent ev)
-  {
-    Interlocked.Increment(ref _rawSeen);
-
-    if (!_capturing)
-    {
-      Interlocked.Increment(ref _rawIgnoredNotCapturing);
-      return;
-    }
-
-    bool down;
-    if (ev.Type == EventType.KeyPressed)
-    {
-      down = true;
-    }
-    else if (ev.Type == EventType.KeyReleased)
-    {
-      down = false;
-    }
-    else
-    {
-      Interlocked.Increment(ref _rawIgnoredNonKey);
-      return;
-    }
-
-    RecordInputFlags flags = RecordInputFlags.Async;
-    if (down) flags |= RecordInputFlags.Down;
-
-    Enqueue(ev.GetTimeInTicks(), (int)ev.Label, flags);
-    Interlocked.Increment(ref _rawEnqueued);
-  }
-
-  public static void MarkGameplayStarted()
-  {
-    if (Interlocked.Read(ref _gameplayStartTicks) != 0L) return;
-    Interlocked.Exchange(ref _gameplayStartTicks, DateTime.Now.Ticks);
-  }
-
   public static void Reset()
   {
     _capturing = false;
-    Interlocked.Exchange(ref _gameplayStartTicks, 0L);
-
-    while (PendingInputs.TryDequeue(out _))
-    {
-    }
+    PreviousStates.Clear();
+    _samples = 0;
+    _transitions = 0;
+    _readFailures = 0;
   }
 
-  public static void Enqueue(long timeUs, int key, RecordInputFlags flags)
+  public static void Sample(RecordingSession session)
   {
-    PendingInputs.Enqueue(new PendingRecordInput(timeUs, key, flags));
-  }
+    if (!_capturing) return;
+    if (session == null || !session.IsRecording || !session.IsCapturingInput) return;
+    if (!TryGetSongPosition(out double songPosition)) return;
 
-  public static void DrainTo(RecordingSession session)
-  {
-    if (session == null) return;
+    _samples++;
+    StateReader.Refresh();
 
-    long gameplayStartTicks = Interlocked.Read(ref _gameplayStartTicks);
-    if (gameplayStartTicks == 0L) return;
-
-    int drainedNow = 0;
-    while (PendingInputs.TryDequeue(out PendingRecordInput input))
+    IReadOnlyList<int> keyCodes = StateReader.KeyCodes;
+    for (int i = 0; i < keyCodes.Count; i++)
     {
-      long timeUs = (input.EventTicks - gameplayStartTicks) / 10L;
-      session.AddInput(timeUs, input.Key, input.Flags);
-      drainedNow++;
-    }
+      int key = keyCodes[i];
+      if (!StateReader.TryGetIsDown(key, out bool isDown))
+      {
+        _readFailures++;
+        continue;
+      }
 
-    if (drainedNow > 0)
-    {
-      Interlocked.Add(ref _drained, drainedNow);
+      PreviousStates.TryGetValue(key, out bool wasDown);
+      if (isDown == wasDown) continue;
+
+      PreviousStates[key] = isDown;
+
+      RecordInputFlags flags = RecordInputFlags.Async;
+      if (isDown) flags |= RecordInputFlags.Down;
+
+      session.AddInputAtSongPosition(songPosition, key, flags);
+      _transitions++;
     }
   }
 
@@ -107,26 +73,20 @@ public static class RecordInputTracker
   {
     return
       "capturing=" + _capturing +
-      ", gameplayStartTicks=" + Interlocked.Read(ref _gameplayStartTicks) +
-      ", pending=" + PendingInputs.Count +
-      ", rawSeen=" + Interlocked.Read(ref _rawSeen) +
-      ", ignoredNotCapturing=" + Interlocked.Read(ref _rawIgnoredNotCapturing) +
-      ", ignoredNonKey=" + Interlocked.Read(ref _rawIgnoredNonKey) +
-      ", enqueued=" + Interlocked.Read(ref _rawEnqueued) +
-      ", drained=" + Interlocked.Read(ref _drained);
+      ", mode=native-state-sample" +
+      ", reader=" + StateReader.Name +
+      ", supportedKeys=" + StateReader.KeyCodes.Count +
+      ", samples=" + _samples +
+      ", transitions=" + _transitions +
+      ", readFailures=" + _readFailures;
   }
 
-  private readonly struct PendingRecordInput
+  private static bool TryGetSongPosition(out double songPosition)
   {
-    public readonly long EventTicks;
-    public readonly int Key;
-    public readonly RecordInputFlags Flags;
+    songPosition = 0d;
+    if (ADOBase.conductor == null) return false;
 
-    public PendingRecordInput(long eventTicks, int key, RecordInputFlags flags)
-    {
-      EventTicks = eventTicks;
-      Key = key;
-      Flags = flags;
-    }
+    songPosition = ADOBase.conductor.songposition_minusi;
+    return true;
   }
 }

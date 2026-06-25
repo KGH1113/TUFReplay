@@ -11,8 +11,10 @@ public sealed class RecordDetailDto
   public string StartedAtUtc;
   public string EndedAtUtc;
   public int InputCount;
+  public int HitContextCount;
   public bool Submitted;
   public long InputCsvBytes;
+  public long HitContextCsvBytes;
   public bool HasMicRecord;
   public long MicRecordBytes;
   public object Meta;
@@ -27,8 +29,10 @@ public sealed class RecordDetailDto
       StartedAtUtc = record.StartedAtUtc,
       EndedAtUtc = record.EndedAtUtc,
       InputCount = record.InputCount,
+      HitContextCount = record.HitContextCount,
       Submitted = record.Submitted,
       InputCsvBytes = record.InputCsvBytes,
+      HitContextCsvBytes = record.HitContextCsvBytes,
       HasMicRecord = record.HasMicRecord,
       MicRecordBytes = record.MicRecordBytes,
       Meta = ParseMeta(record.MetaJson)

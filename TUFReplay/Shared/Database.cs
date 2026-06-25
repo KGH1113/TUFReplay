@@ -26,9 +26,11 @@ CREATE TABLE IF NOT EXISTS play_records (
   started_at_utc TEXT NOT NULL,
   ended_at_utc TEXT,
   input_count INTEGER NOT NULL,
+  hit_context_count INTEGER NOT NULL DEFAULT 0,
   submitted INTEGER NOT NULL DEFAULT 0,
   meta_json TEXT NOT NULL,
   input_csv BLOB NOT NULL,
+  hit_context_csv BLOB NOT NULL DEFAULT X'',
   mic_record BLOB
 );
 
@@ -37,6 +39,8 @@ ON play_records(cleared_at_utc);
 ";
 
     command.ExecuteNonQuery();
+    EnsureColumn(connection, "hit_context_count", "ALTER TABLE play_records ADD COLUMN hit_context_count INTEGER NOT NULL DEFAULT 0;");
+    EnsureColumn(connection, "hit_context_csv", "ALTER TABLE play_records ADD COLUMN hit_context_csv BLOB NOT NULL DEFAULT X'';");
   }
 
   public static SqliteConnection OpenConnection()
@@ -44,5 +48,18 @@ ON play_records(cleared_at_utc);
     SqliteConnection connection = new SqliteConnection("Data Source=" + DbPath);
     connection.Open();
     return connection;
+  }
+
+  private static void EnsureColumn(SqliteConnection connection, string columnName, string ddl)
+  {
+    using SqliteCommand check = connection.CreateCommand();
+    check.CommandText = "SELECT 1 FROM pragma_table_info('play_records') WHERE name = @name;";
+    check.Parameters.AddWithValue("@name", columnName);
+
+    if (check.ExecuteScalar() != null) return;
+
+    using SqliteCommand alter = connection.CreateCommand();
+    alter.CommandText = ddl;
+    alter.ExecuteNonQuery();
   }
 }

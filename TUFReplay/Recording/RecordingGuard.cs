@@ -14,12 +14,6 @@ public static class RecordingGuard
         return false;
       }
 
-      if (GCS.useNoFail || (ADOBase.controller != null && ADOBase.controller.noFail))
-      {
-        reason = "no_fail";
-        return false;
-      }
-
       if (GCS.practiceMode)
       {
         reason = "practice_mode";

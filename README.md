@@ -29,13 +29,13 @@
 
 ## Overview
 
-TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records raw keyboard input and microphone input, stores play records in a local SQLite database, serves those records through a localhost HTTP API, and is designed to support replay playback and TUF submission tooling.
+TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, serves those records through a localhost HTTP API, and is designed to support replay playback and TUF submission tooling.
 
 The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows.
 
 ## Features
 
-- Records raw keyboard input during eligible TUFHelper-opened clears.
+- Records OS-native keyboard state changes during eligible TUFHelper-opened clears.
 - Stores records, metadata, input payloads, and future microphone recordings in SQLite.
 - Serves local HTTP APIs for record browsing, deletion, health checks, and opening recorded levels.
 - Opens recorded TUF levels through TUFHelper.

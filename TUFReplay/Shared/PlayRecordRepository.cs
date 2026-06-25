@@ -13,9 +13,9 @@ public static class PlayRecordRepository
 
     command.CommandText = @"
 INSERT OR REPLACE INTO play_records
-(id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, submitted, meta_json, input_csv, mic_record)
+(id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, hit_context_count, submitted, meta_json, input_csv, hit_context_csv, mic_record)
 VALUES
-(@id, @tuf_level_id, @cleared_at_utc, @started_at_utc, @ended_at_utc, @input_count, @submitted, @meta_json, @input_csv, @mic_record);";
+(@id, @tuf_level_id, @cleared_at_utc, @started_at_utc, @ended_at_utc, @input_count, @hit_context_count, @submitted, @meta_json, @input_csv, @hit_context_csv, @mic_record);";
 
     command.Parameters.AddWithValue("@id", record.Id);
     command.Parameters.AddWithValue("@tuf_level_id", record.TufLevelId);
@@ -23,9 +23,11 @@ VALUES
     command.Parameters.AddWithValue("@started_at_utc", record.StartedAtUtc);
     command.Parameters.AddWithValue("@ended_at_utc", ToDbValue(record.EndedAtUtc));
     command.Parameters.AddWithValue("@input_count", record.InputCount);
+    command.Parameters.AddWithValue("@hit_context_count", record.HitContextCount);
     command.Parameters.AddWithValue("@submitted", record.Submitted ? 1 : 0);
     command.Parameters.AddWithValue("@meta_json", record.MetaJson);
     AddBlobParameter(command, "@input_csv", record.InputCsv, false);
+    AddBlobParameter(command, "@hit_context_csv", record.HitContextCsv, false);
     AddBlobParameter(command, "@mic_record", record.MicRecord, true);
 
     command.ExecuteNonQuery();
@@ -39,7 +41,7 @@ VALUES
     using SqliteCommand command = connection.CreateCommand();
 
     command.CommandText = @"
-SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, submitted, meta_json, input_csv, mic_record
+SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, hit_context_count, submitted, meta_json, input_csv, hit_context_csv, mic_record
 FROM play_records
 ORDER BY cleared_at_utc DESC;";
 
@@ -58,7 +60,7 @@ ORDER BY cleared_at_utc DESC;";
 
     command.CommandText = @"
 SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, submitted,
-       length(input_csv), mic_record IS NOT NULL, coalesce(length(mic_record), 0)
+       hit_context_count, length(input_csv), length(hit_context_csv), mic_record IS NOT NULL, coalesce(length(mic_record), 0)
 FROM play_records
 ORDER BY cleared_at_utc DESC;";
 
@@ -76,7 +78,7 @@ ORDER BY cleared_at_utc DESC;";
     using SqliteCommand command = connection.CreateCommand();
 
     command.CommandText = @"
-SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, submitted, meta_json, input_csv, mic_record
+SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, hit_context_count, submitted, meta_json, input_csv, hit_context_csv, mic_record
 FROM play_records
 WHERE cleared_at_utc >= @from_utc
   AND cleared_at_utc < @to_utc
@@ -97,7 +99,7 @@ ORDER BY cleared_at_utc DESC;";
     using SqliteCommand command = connection.CreateCommand();
 
     command.CommandText = @"
-SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, submitted, meta_json, input_csv, mic_record
+SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, hit_context_count, submitted, meta_json, input_csv, hit_context_csv, mic_record
 FROM play_records
 WHERE id = @id;";
 
@@ -114,7 +116,7 @@ WHERE id = @id;";
 
     command.CommandText = @"
 SELECT id, tuf_level_id, cleared_at_utc, started_at_utc, ended_at_utc, input_count, submitted,
-       length(input_csv), mic_record IS NOT NULL, coalesce(length(mic_record), 0), meta_json
+       hit_context_count, length(input_csv), length(hit_context_csv), mic_record IS NOT NULL, coalesce(length(mic_record), 0), meta_json
 FROM play_records
 WHERE id = @id;";
 
@@ -144,10 +146,12 @@ WHERE id = @id;";
       StartedAtUtc = reader.GetString(3),
       EndedAtUtc = ReadNullableString(reader, 4),
       InputCount = reader.GetInt32(5),
-      Submitted = reader.GetInt32(6) != 0,
-      MetaJson = reader.GetString(7),
-      InputCsv = ReadBlob(reader, 8),
-      MicRecord = reader.IsDBNull(9) ? null : ReadBlob(reader, 9)
+      HitContextCount = reader.GetInt32(6),
+      Submitted = reader.GetInt32(7) != 0,
+      MetaJson = reader.GetString(8),
+      InputCsv = ReadBlob(reader, 9),
+      HitContextCsv = ReadBlob(reader, 10),
+      MicRecord = reader.IsDBNull(11) ? null : ReadBlob(reader, 11)
     };
   }
 
@@ -162,9 +166,11 @@ WHERE id = @id;";
       EndedAtUtc = ReadNullableString(reader, 4),
       InputCount = reader.GetInt32(5),
       Submitted = reader.GetInt32(6) != 0,
-      InputCsvBytes = reader.GetInt64(7),
-      HasMicRecord = reader.GetInt32(8) != 0,
-      MicRecordBytes = reader.GetInt64(9)
+      HitContextCount = reader.GetInt32(7),
+      InputCsvBytes = reader.GetInt64(8),
+      HitContextCsvBytes = reader.GetInt64(9),
+      HasMicRecord = reader.GetInt32(10) != 0,
+      MicRecordBytes = reader.GetInt64(11)
     };
   }
 
@@ -179,11 +185,13 @@ WHERE id = @id;";
       StartedAtUtc = summary.StartedAtUtc,
       EndedAtUtc = summary.EndedAtUtc,
       InputCount = summary.InputCount,
+      HitContextCount = summary.HitContextCount,
       Submitted = summary.Submitted,
       InputCsvBytes = summary.InputCsvBytes,
+      HitContextCsvBytes = summary.HitContextCsvBytes,
       HasMicRecord = summary.HasMicRecord,
       MicRecordBytes = summary.MicRecordBytes,
-      MetaJson = reader.GetString(10)
+      MetaJson = reader.GetString(12)
     };
   }
 

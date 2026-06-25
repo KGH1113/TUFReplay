@@ -48,10 +48,10 @@ public class Recording : Feature
     Session.Stop();
 
     if (!_clearReached || _failed) return;
-    if (Session.InputCount <= 0) return;
+    if (!Session.HasRecordableData) return;
 
     PlayRecordRepository.Save(Session.ToPlayRecord());
-    Main.Instance.Log("[Recording] Saved clear. inputs=" + Session.InputCount);
+    Main.Instance.Log("[Recording] Saved clear. inputs=" + Session.InputCount + ", hitContexts=" + Session.HitContextCount);
   }
 
   protected override void OnEnable()
@@ -83,6 +83,7 @@ public class Recording : Feature
     GUILayout.Label("Recording: " + (Session.IsRecording ? "on" : "off"));
     GUILayout.Label("Input capture: " + (Session.IsCapturingInput ? "on" : "off"));
     GUILayout.Label("Inputs: " + Session.InputCount);
+    GUILayout.Label("Hit contexts: " + Session.HitContextCount);
   }
 
   private static void OnPlayButtonPressed(object sender, PlayButtonEventArgs e)

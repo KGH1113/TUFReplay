@@ -8,4 +8,7 @@ public class ReplayRecordMeta
   public int tufLevelId;
   public LevelListInfoElementJson levelInfo;
   public double? gameplayStartSongPosition;
+  public bool? noFailMode;
+  public string inputKeySpace;
+  public string inputNativePlatform;
 }

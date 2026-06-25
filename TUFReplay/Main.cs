@@ -21,6 +21,7 @@ public class Main() : JAMod(typeof(TUFReplaySetting))
     UnityMainThread.Initialize();
     Database.Initialize();
     AddFeature(new Recording.Recording());
+    AddFeature(new Replay.Replay());
   }
 
   protected override void OnEnable()
