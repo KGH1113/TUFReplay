@@ -90,6 +90,14 @@ Important environment variables:
 - `TUFHELPER_DLL`: TUFHelper assembly path.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
+Create a clean shareable package:
+
+```bash
+./package.sh
+```
+
+The package script builds the mod into `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package and excludes local database/log data from the package.
+
 ## Local HTTP API
 
 The local API is intended for the companion web UI and development tools.

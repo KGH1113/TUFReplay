@@ -336,6 +336,13 @@ public static class ReplayService
   {
     nowUs = 0L;
 
+    if (!Application.isFocused)
+    {
+      _activeContext?.NativeInputPlayer?.ReleaseAll();
+      LogGateBlocked("Native", "application_not_focused", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
+      return false;
+    }
+
     if (!TryGetControllerState(out States state))
     {
       LogGateBlocked("Native", "controller_missing", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);

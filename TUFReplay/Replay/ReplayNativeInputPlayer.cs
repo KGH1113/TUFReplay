@@ -24,6 +24,12 @@ public sealed class ReplayNativeInputPlayer
   {
     ReleaseAll();
 
+    if (!UnityEngine.Application.isFocused)
+    {
+      _scheduler.Reset();
+      return 0;
+    }
+
     int restored = 0;
     List<int> heldKeys = _scheduler.SeekTo(nowUs);
 
@@ -40,6 +46,12 @@ public sealed class ReplayNativeInputPlayer
 
   public int Tick(long nowUs)
   {
+    if (!UnityEngine.Application.isFocused)
+    {
+      ReleaseAll();
+      return 0;
+    }
+
     List<ReplayInputEvent> due = _scheduler.PopDue(nowUs);
     int emitted = 0;
 

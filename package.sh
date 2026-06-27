@@ -1,0 +1,126 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+PROJECT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+if [ -f "$PROJECT/.env" ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source "$PROJECT/.env"
+  set +a
+fi
+
+ADOFAI_DIR="${ADOFAI_DIR:-$HOME/Library/Application Support/Steam/steamapps/common/A Dance of Fire and Ice}"
+ADOFAI_MODS_DIR="${ADOFAI_MODS_DIR:-$ADOFAI_DIR/Mods}"
+ADOFAI_MANAGED="${ADOFAI_MANAGED:-$ADOFAI_DIR/ADanceOfFireAndIce.app/Contents/Resources/Data/Managed}"
+
+DOTNET_ROOT="${DOTNET_ROOT:-$HOME/.dotnet}"
+DOTNET_ROOT_ARM64="${DOTNET_ROOT_ARM64:-$DOTNET_ROOT}"
+DOTNET_EXE="${DOTNET_EXE:-$DOTNET_ROOT/dotnet}"
+
+UNITY_MOD_MANAGER_DLL="${UNITY_MOD_MANAGER_DLL:-$ADOFAI_MANAGED/UnityModManager/UnityModManager.dll}"
+HARMONY_DLL="${HARMONY_DLL:-$ADOFAI_MANAGED/UnityModManager/0Harmony.dll}"
+JALIB_DLL="${JALIB_DLL:-$ADOFAI_MODS_DIR/JALib/JALib.dll}"
+JAMOD_BOOTSTRAP_DLL="${JAMOD_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/JALib/JAMod.Bootstrap.dll}"
+TUFHELPER_DLL="${TUFHELPER_DLL:-$ADOFAI_MODS_DIR/TUFHelper/TUFHelper.dll}"
+
+OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
+PACKAGE_ROOT="${TUFREPLAY_PACKAGE_ROOT:-$PROJECT/build/package}"
+STAGE="$PACKAGE_ROOT/TUFReplay"
+DEPS="$STAGE/dependency"
+ZIP_PATH="${TUFREPLAY_PACKAGE_ZIP:-$PROJECT/build/TUFReplay.zip}"
+NUGET_PACKAGES_DIR="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
+SOURCEGEAR_SQLITE3_VERSION="${SOURCEGEAR_SQLITE3_VERSION:-}"
+if [ -z "$SOURCEGEAR_SQLITE3_VERSION" ]; then
+  SOURCEGEAR_SQLITE3_VERSION="$(sed -n 's/.*PackageReference Include="SourceGear\.sqlite3" Version="\([^"]*\)".*/\1/p' "$PROJECT/TUFReplay/TUFReplay.csproj" | head -n 1)"
+fi
+WIN_SQLITE_DLL="$NUGET_PACKAGES_DIR/sourcegear.sqlite3/$SOURCEGEAR_SQLITE3_VERSION/runtimes/win-x64/native/e_sqlite3.dll"
+
+require_file() {
+  if [ ! -f "$1" ]; then
+    echo "Missing required file: $1" >&2
+    exit 1
+  fi
+}
+
+require_dir() {
+  if [ ! -d "$1" ]; then
+    echo "Missing required directory: $1" >&2
+    exit 1
+  fi
+}
+
+require_command() {
+  if ! command -v "$1" >/dev/null 2>&1; then
+    echo "Missing required command: $1" >&2
+    exit 1
+  fi
+}
+
+if [ -z "$SOURCEGEAR_SQLITE3_VERSION" ]; then
+  echo "Missing SourceGear.sqlite3 PackageReference version in TUFReplay.csproj" >&2
+  exit 1
+fi
+
+require_command zip
+require_file "$DOTNET_EXE"
+require_dir "$ADOFAI_MANAGED"
+require_file "$UNITY_MOD_MANAGER_DLL"
+require_file "$HARMONY_DLL"
+require_file "$JALIB_DLL"
+require_file "$JAMOD_BOOTSTRAP_DLL"
+require_file "$TUFHELPER_DLL"
+
+DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
+"$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
+  -p:OutputPath="$OUT/" \
+  -p:AdofaiManaged="$ADOFAI_MANAGED" \
+  -p:AdofaiMods="$ADOFAI_MODS_DIR" \
+  -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL" \
+  -p:HarmonyDll="$HARMONY_DLL" \
+  -p:JALibDll="$JALIB_DLL"
+
+require_file "$WIN_SQLITE_DLL"
+
+rm -rf "$STAGE"
+mkdir -p "$DEPS"
+
+cp "$PROJECT/TUFReplay/Info.json" "$STAGE/"
+cp "$PROJECT/TUFReplay/JAModInfo.json" "$STAGE/"
+cp "$JAMOD_BOOTSTRAP_DLL" "$STAGE/"
+cp "$OUT/TUFReplay.dll" "$STAGE/"
+cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
+
+for dll in \
+  Microsoft.Data.Sqlite.dll \
+  SQLitePCLRaw.core.dll \
+  SQLitePCLRaw.provider.dynamic_cdecl.dll \
+  System.Buffers.dll \
+  System.Memory.dll \
+  System.Numerics.Vectors.dll \
+  System.Runtime.CompilerServices.Unsafe.dll
+do
+  if [ -f "$OUT/$dll" ]; then
+    cp "$OUT/$dll" "$DEPS/"
+  fi
+done
+
+if [ -f "$OUT/TUFReplay.pdb" ]; then
+  cp "$OUT/TUFReplay.pdb" "$STAGE/"
+fi
+
+rm -f "$ZIP_PATH"
+mkdir -p "$(dirname "$ZIP_PATH")"
+(
+  cd "$PACKAGE_ROOT"
+  zip -r "$ZIP_PATH" TUFReplay \
+    -x 'TUFReplay/Data/*' \
+    -x 'TUFReplay/*.sqlite' \
+    -x 'TUFReplay/*.sqlite3' \
+    -x 'TUFReplay/*.db' \
+    -x 'TUFReplay/*.db-shm' \
+    -x 'TUFReplay/*.db-wal' \
+    -x 'TUFReplay/*.log'
+)
+
+echo "Packaged to $ZIP_PATH"

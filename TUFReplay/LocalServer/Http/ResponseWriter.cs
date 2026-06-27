@@ -65,29 +65,8 @@ public static class ResponseWriter
 
   private static void ApplyCorsHeaders(HttpListenerContext context)
   {
-    string origin = context.Request.Headers["Origin"];
-    if (IsLoopbackOrigin(origin))
-    {
-      context.Response.Headers["Access-Control-Allow-Origin"] = origin;
-      context.Response.Headers["Vary"] = "Origin";
-    }
-
+    context.Response.Headers["Access-Control-Allow-Origin"] = "*";
     context.Response.Headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE, OPTIONS";
     context.Response.Headers["Access-Control-Allow-Headers"] = "Content-Type";
-  }
-
-  private static bool IsLoopbackOrigin(string origin)
-  {
-    if (string.IsNullOrEmpty(origin)) return false;
-
-    try
-    {
-      Uri uri = new Uri(origin);
-      return uri.Scheme == "http" && (uri.Host == "localhost" || uri.Host == "127.0.0.1" || uri.Host == "::1");
-    }
-    catch
-    {
-      return false;
-    }
   }
 }

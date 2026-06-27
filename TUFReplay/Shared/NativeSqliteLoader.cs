@@ -14,11 +14,17 @@ public static class NativeSqliteLoader
     if (_initialized) return;
 
     string path = GetNativeLibraryPath();
-    DlOpenFunctionPointer functionPointer = new DlOpenFunctionPointer(path);
+    IGetFunctionPointer functionPointer = CreateFunctionPointerProvider(path);
 
     SQLite3Provider_dynamic_cdecl.Setup(path, functionPointer);
     raw.SetProvider(new SQLite3Provider_dynamic_cdecl());
     _initialized = true;
+  }
+
+  private static IGetFunctionPointer CreateFunctionPointerProvider(string libraryPath)
+  {
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return new WindowsFunctionPointer(libraryPath);
+    return new DlOpenFunctionPointer(libraryPath);
   }
 
   private static string GetNativeLibraryPath()
@@ -44,6 +50,39 @@ public static class NativeSqliteLoader
       return "e_sqlite3.dll";
 
     return "libe_sqlite3.so";
+  }
+
+  private sealed class WindowsFunctionPointer : IGetFunctionPointer
+  {
+    private readonly IntPtr _handle;
+
+    public WindowsFunctionPointer(string libraryPath)
+    {
+      _handle = LoadLibrary(libraryPath);
+      if (_handle == IntPtr.Zero)
+      {
+        int error = Marshal.GetLastWin32Error();
+        throw new DllNotFoundException(libraryPath + ": LoadLibrary failed with Win32 error " + error);
+      }
+    }
+
+    public IntPtr GetFunctionPointer(string name)
+    {
+      IntPtr pointer = GetProcAddress(_handle, name);
+      if (pointer == IntPtr.Zero)
+      {
+        int error = Marshal.GetLastWin32Error();
+        throw new EntryPointNotFoundException(name + "GetProcAddress failed with Win32 error " + error);
+      }
+
+      return pointer;
+    }
+
+    [DllImport("kernel32.dll", EntryPoint = "LoadLibraryW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr LoadLibrary(string lpFileName);
+
+    [DllImport("kernel32.dll", EntryPoint = "GetProcAddress", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+    private static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
   }
 
   private sealed class DlOpenFunctionPointer : IGetFunctionPointer
