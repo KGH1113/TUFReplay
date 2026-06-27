@@ -50,6 +50,7 @@ public class RecordingSession
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive()
       };
+      RefreshPitchLocked();
       _pendingSongPositionInputs.Clear();
     }
 
@@ -66,6 +67,7 @@ public class RecordingSession
 
       IsRecording = false;
       IsCapturingInput = false;
+      RefreshPitchLocked();
       Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
     }
 
@@ -81,6 +83,7 @@ public class RecordingSession
       if (!IsRecording || IsCapturingInput) return;
       IsCapturingInput = true;
       RefreshNoFailModeLocked();
+      RefreshPitchLocked();
     }
 
     RecordInputTracker.StartCapture();
@@ -93,6 +96,7 @@ public class RecordingSession
     {
       if (!IsRecording || !IsCapturingInput) return;
       RefreshNoFailModeLocked();
+      RefreshPitchLocked();
       if (!Data.GameplayStartSongPosition.HasValue)
       {
         Data.GameplayStartSongPosition = GetSongPosition();
@@ -155,6 +159,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
+      RefreshPitchLocked();
       return Data.ToPlayRecord();
     }
   }
@@ -179,6 +184,61 @@ public class RecordingSession
   private void RefreshNoFailModeLocked()
   {
     Data.NoFailMode = Data.NoFailMode || IsNoFailModeActive();
+  }
+
+  private void RefreshPitchLocked()
+  {
+    Data.LevelPitchPercent = GetLevelPitchPercent();
+    Data.PitchSpeedMultiplier = GetPitchSpeedMultiplier();
+    Data.EffectivePitch = GetEffectivePitch();
+    Data.PitchSource = Data.EffectivePitch.HasValue ? "runtime-conductor" : "runtime-level-data";
+  }
+
+  private static int? GetLevelPitchPercent()
+  {
+    try
+    {
+      if (ADOBase.isLevelEditor && ADOBase.editor != null)
+      {
+        return ADOBase.editor.levelData?.pitch;
+      }
+
+      return ADOBase.customLevel?.levelData?.pitch;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private static float? GetPitchSpeedMultiplier()
+  {
+    try
+    {
+      if (ADOBase.isLevelEditor && ADOBase.editor != null)
+      {
+        return ADOBase.editor.playbackSpeed;
+      }
+
+      return GCS.speedTrialMode ? GCS.currentSpeedTrial : 1f;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private static float? GetEffectivePitch()
+  {
+    try
+    {
+      if (ADOBase.conductor == null || ADOBase.conductor.song == null) return null;
+      return ADOBase.conductor.song.pitch;
+    }
+    catch
+    {
+      return null;
+    }
   }
 
   private long ToRecordTimeUs(double songPosition)

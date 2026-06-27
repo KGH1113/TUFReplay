@@ -15,6 +15,7 @@ public static class ReplayService
   private static int _lastNativeGateLogFrame = -100000;
   private static int _lastNativeTickLogFrame = -100000;
   private static int _lastHitContextTickLogFrame = -100000;
+  private static int _pendingReplayPitchApplyFrame = -1;
   private static bool _suppressReplayMarkFail;
 
   public static bool HasActiveContext => _activeContext != null;
@@ -95,6 +96,53 @@ public static class ReplayService
     return result;
   }
 
+  public static void RequestReplayPitchApplyAfterLevelLoad()
+  {
+    if (_activeContext?.Meta?.levelPitchPercent == null) return;
+
+    _pendingReplayPitchApplyFrame = Time.frameCount + 1;
+  }
+
+  public static void TickReplayPitchEditorApply()
+  {
+    if (_pendingReplayPitchApplyFrame < 0) return;
+    if (Time.frameCount < _pendingReplayPitchApplyFrame) return;
+
+    if (_activeContext?.Meta == null)
+    {
+      _pendingReplayPitchApplyFrame = -1;
+      return;
+    }
+
+    if (!IsReplayLevelStillCurrent())
+    {
+      _pendingReplayPitchApplyFrame = -1;
+      return;
+    }
+
+    ReplayRecordMeta meta = _activeContext.Meta;
+    int? pitchPercent = meta.levelPitchPercent;
+    if (!pitchPercent.HasValue)
+    {
+      _pendingReplayPitchApplyFrame = -1;
+      return;
+    }
+
+    ReplayPitchApplyResult result = ApplyPitchToEditorLevelData(pitchPercent.Value);
+    if (result == ReplayPitchApplyResult.NotReady) return;
+
+    _pendingReplayPitchApplyFrame = -1;
+
+    if (result == ReplayPitchApplyResult.Applied)
+    {
+      Main.Instance?.Log(
+        "[ReplayService] Applied replay pitch as editor change. " +
+        ", levelPitchPercent=" + pitchPercent.Value +
+        ", effectivePitch=" + (meta.effectivePitch?.ToString("F6") ?? "null")
+      );
+    }
+  }
+
   public static void StopActiveReplay(string reason)
   {
     ClearActiveContext();
@@ -107,6 +155,7 @@ public static class ReplayService
 
     _activeContext?.NativeInputPlayer?.ReleaseAll();
     _activeContext = null;
+    _pendingReplayPitchApplyFrame = -1;
     _suppressReplayMarkFail = false;
 
     if (hadActiveContext && ADOBase.controller != null)
@@ -254,6 +303,34 @@ public static class ReplayService
     {
       ADOBase.controller.freeroamInvulnerability = Persistence.freeroamInvulnerability;
     }
+  }
+
+  private static ReplayPitchApplyResult ApplyPitchToEditorLevelData(int pitchPercent)
+  {
+    try
+    {
+      if (ADOBase.editor?.levelData?.songSettings == null) return ReplayPitchApplyResult.NotReady;
+      if (ADOBase.editor.levelData.pitch == pitchPercent) return ReplayPitchApplyResult.Skipped;
+
+      ADOBase.editor.SaveState(true, true);
+      ADOBase.editor.levelData.songSettings["pitch"] = pitchPercent;
+      ADOBase.editor.UpdateSongAndLevelSettings();
+
+      return ReplayPitchApplyResult.Applied;
+    }
+    catch (Exception ex)
+    {
+      Main.Instance?.Log("[ReplayService] Failed to apply replay pitch as editor change. error=" + ex.GetType().Name);
+      return ReplayPitchApplyResult.Failed;
+    }
+  }
+
+  private enum ReplayPitchApplyResult
+  {
+    NotReady,
+    Skipped,
+    Applied,
+    Failed
   }
 
   public static bool ShouldSuppressReplayMarkFail()

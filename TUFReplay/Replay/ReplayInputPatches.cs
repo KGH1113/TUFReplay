@@ -7,6 +7,30 @@ namespace TUFReplay.Replay;
 public static class ReplayInputPatches
 {
   [JAPatch(
+    typeof(scnGame),
+    "LoadLevel",
+    PatchType.Postfix,
+    true
+  )]
+  private static void OnScnGameLoadLevelPostfix(bool __result)
+  {
+    if (!__result) return;
+
+    ReplayService.RequestReplayPitchApplyAfterLevelLoad();
+  }
+
+  [JAPatch(
+    typeof(scnEditor),
+    "Update",
+    PatchType.Postfix,
+    true
+  )]
+  private static void OnScnEditorUpdatePostfix()
+  {
+    ReplayService.TickReplayPitchEditorApply();
+  }
+
+  [JAPatch(
     typeof(AsyncInputManager),
     "Update",
     PatchType.Postfix,

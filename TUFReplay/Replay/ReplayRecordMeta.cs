@@ -9,6 +9,10 @@ public class ReplayRecordMeta
   public LevelListInfoElementJson levelInfo;
   public double? gameplayStartSongPosition;
   public bool? noFailMode;
+  public int? levelPitchPercent;
+  public float? pitchSpeedMultiplier;
+  public float? effectivePitch;
+  public string pitchSource;
   public string inputKeySpace;
   public string inputNativePlatform;
 }

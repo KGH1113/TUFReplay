@@ -17,6 +17,10 @@ public class RecordData
   public string EndedAtUtc;
   public double? GameplayStartSongPosition;
   public bool NoFailMode;
+  public int? LevelPitchPercent;
+  public float? PitchSpeedMultiplier;
+  public float? EffectivePitch;
+  public string PitchSource;
   public List<RecordInput> Inputs = new List<RecordInput>();
   public List<RecordHitContext> HitContexts = new List<RecordHitContext>();
 
@@ -53,6 +57,10 @@ public class RecordData
       endedAtUtc = EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,
       noFailMode = NoFailMode,
+      levelPitchPercent = LevelPitchPercent,
+      pitchSpeedMultiplier = PitchSpeedMultiplier,
+      effectivePitch = EffectivePitch,
+      pitchSource = PitchSource,
       inputFormat = "csv-conductor-timeus-key-flags",
       inputTimeBase = "ADOBase.conductor.songposition_minusi",
       inputCapture = "creplay-style-native-key-state-sample",
