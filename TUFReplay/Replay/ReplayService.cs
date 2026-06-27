@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Newtonsoft.Json;
+using TUFReplay.Recording;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Shared;
 using UnityEngine;
@@ -22,6 +23,22 @@ public static class ReplayService
   public static bool IsActiveReplayLevel(int tufLevelId)
   {
     return _activeContext != null && _activeContext.TufLevelId == tufLevelId;
+  }
+
+  public static void ClearActiveContextIfLevelChanged(int? tufLevelId)
+  {
+    if (_activeContext == null) return;
+
+    if (!tufLevelId.HasValue)
+    {
+      StopActiveReplay("tuf_level_id_missing");
+      return;
+    }
+
+    if (_activeContext.TufLevelId != tufLevelId.Value)
+    {
+      StopActiveReplay("different_tuf_level_opened:" + tufLevelId.Value);
+    }
   }
 
   public static OpenRecordResult OpenRecord(string recordId)
@@ -102,6 +119,11 @@ public static class ReplayService
   {
     if (_activeContext == null) return;
 
+    if (!IsReplayLevelStillCurrent())
+    {
+      return;
+    }
+
     switch (newState)
     {
       case States.Countdown:
@@ -118,6 +140,32 @@ public static class ReplayService
           PrepareReplayRunRestart("state_start_after_replay_run");
         break;
     }
+  }
+
+  private static bool IsReplayLevelStillCurrent()
+  {
+    if (_activeContext == null) return false;
+
+    if (!TUFHelperAPI.IsFromTUFHelper())
+    {
+      StopActiveReplay("not_from_tuf_helper");
+      return false;
+    }
+
+    int? levelId = TUFHelperAPI.GetLevelID();
+    if (!levelId.HasValue)
+    {
+      StopActiveReplay("tuf_level_id_missing");
+      return false;
+    }
+
+    if (_activeContext.TufLevelId != levelId.Value)
+    {
+      StopActiveReplay("different_tuf_level_current:" + levelId.Value);
+      return false;
+    }
+
+    return true;
   }
 
   private static void PrepareReplayRunRestart(string reason)
