@@ -10,7 +10,7 @@ public static class LocalApi
     RouteRegistry registry = new RouteRegistry();
 
     registry.RegisterController<HealthController>();
-    registry.RegisterController<RecordsController>();
+    registry.RegisterController<ActivityController>();
 
     return new LocalRouter(registry);
   }

@@ -1,7 +1,8 @@
 using System;
 using System.Net;
 using System.Text;
-using System.Threading;
+using System.Threading.Tasks;
+using JALib.Tools;
 using Newtonsoft.Json;
 using TUFReplay.LocalServer.Controllers;
 using TUFReplay.LocalServer.Http;
@@ -13,7 +14,7 @@ public class LocalServer
 {
   private readonly HttpListener _listener = new HttpListener();
   private readonly LocalRouter _router = LocalApi.CreateRouter();
-  private Thread _thread;
+  private Task _listenTask;
   private bool _running;
 
   public string Url { get; } = "http://127.0.0.1:32145/";
@@ -26,12 +27,7 @@ public class LocalServer
 
     _listener.Start();
     _running = true;
-    _thread = new Thread(ListenLoop)
-    {
-      Name = "TUFReplay Local HTTP Server",
-      IsBackground = true
-    };
-    _thread.Start();
+    _listenTask = JATask.Run(new JAction(Main.Instance, ListenLoop));
 
     Main.Instance.Log("Local server started: " + Url);
   }
@@ -51,13 +47,13 @@ public class LocalServer
 
     try
     {
-      _thread?.Join(500);
+      _listenTask?.Wait(500);
     }
     catch
     {
     }
 
-    _thread = null;
+    _listenTask = null;
   }
 
   private void ListenLoop()

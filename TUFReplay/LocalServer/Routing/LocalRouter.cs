@@ -96,6 +96,14 @@ public sealed class LocalRouter
         continue;
       }
 
+      QueryAttribute queryAttribute = parameter.GetCustomAttribute<QueryAttribute>();
+      if (queryAttribute != null)
+      {
+        string value = context.Request.QueryString[queryAttribute.Name];
+        args[i] = ConvertValue(value, parameter.ParameterType);
+        continue;
+      }
+
       args[i] = GetDefault(parameter.ParameterType);
     }
 
@@ -104,6 +112,11 @@ public sealed class LocalRouter
 
   private static object ConvertValue(string value, Type targetType)
   {
+    if (string.IsNullOrEmpty(value)) return GetDefault(targetType);
+
+    Type nullableType = Nullable.GetUnderlyingType(targetType);
+    if (nullableType != null) return ConvertValue(value, nullableType);
+
     if (targetType == typeof(string)) return value;
     if (targetType == typeof(int)) return int.Parse(value);
     if (targetType == typeof(long)) return long.Parse(value);

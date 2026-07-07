@@ -1,6 +1,6 @@
 ﻿using JALib.Core;
 using JALib.Tools;
-using TUFReplay.Shared;
+using TUFReplay.Bootstrap;
 using UnityEngine;
 
 namespace TUFReplay;
@@ -18,10 +18,8 @@ public class Main() : JAMod(typeof(TUFReplaySetting))
     Settings = (TUFReplaySetting)Setting;
     SettingGUI = new SettingGUI(this);
 
-    UnityMainThread.Initialize();
-    Database.Initialize();
-    AddFeature(new Recording.Recording());
-    AddFeature(new Replay.Replay());
+    ModBootstrap.InitializeRuntime();
+    AddFeature(FeatureRegistry.CreateFeatures());
   }
 
   protected override void OnEnable()
@@ -31,10 +29,7 @@ public class Main() : JAMod(typeof(TUFReplaySetting))
 
   protected override void OnDisable()
   {
-    Server?.Stop();
-    Server = null;
-
-    Recording.Recording.Instance?.Session.Stop();
+    ModBootstrap.Shutdown();
     SaveSetting();
   }
 
