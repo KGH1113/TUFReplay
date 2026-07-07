@@ -17,6 +17,6 @@ public static class ModBootstrap
     Main.Server?.Stop();
     Main.Server = null;
 
-    RecordingFeature.Instance?.StopSession();
+    FeatureRegistry.Shutdown();
   }
 }

@@ -6,6 +6,8 @@ namespace TUFReplay.Features.Replay;
 
 public static class ReplayInputPatches
 {
+  private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;
+
   [JAPatch(
     typeof(scnGame),
     "LoadLevel",
@@ -14,6 +16,7 @@ public static class ReplayInputPatches
   )]
   private static void OnScnGameLoadLevelPostfix(bool __result)
   {
+    if (!IsActive) return;
     if (!__result) return;
 
     ReplaySessionService.RequestReplayPitchApplyAfterLevelLoad();
@@ -27,6 +30,8 @@ public static class ReplayInputPatches
   )]
   private static void OnScnEditorUpdatePostfix()
   {
+    if (!IsActive) return;
+
     ReplaySessionService.TickReplayPitchEditorApply();
   }
 
@@ -38,6 +43,7 @@ public static class ReplayInputPatches
   )]
   private static void OnAsyncInputManagerUpdatePostfix()
   {
+    if (!IsActive) return;
     if (!ReplaySessionService.HasActiveContext) return;
     if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs)) return;
 
@@ -52,6 +58,8 @@ public static class ReplayInputPatches
   )]
   private static void OnPlayerControlUpdatePostfix(scrController __instance)
   {
+    if (!IsActive) return;
+
     ReplaySessionService.TickHitContextPlayback(__instance);
   }
 
@@ -63,11 +71,14 @@ public static class ReplayInputPatches
   )]
   private static bool OnUpdateFreeroamPrefix(scrController __instance)
   {
+    if (!IsActive) return true;
+
     return !ReplaySessionService.ShouldBlockFreeroam(__instance);
   }
 
   public static bool OnScrPlayerHitPrefix(ref bool __result)
   {
+    if (!IsActive) return true;
     if (!ReplaySessionService.ShouldBlockOriginalHit()) return true;
 
     __result = false;
@@ -82,6 +93,7 @@ public static class ReplayInputPatches
   )]
   private static bool OnScrPlanetMarkFailPrefix(ref scrMissIndicator __result)
   {
+    if (!IsActive) return true;
     if (!ReplaySessionService.ShouldSuppressReplayMarkFail()) return true;
 
     __result = null;
@@ -90,6 +102,8 @@ public static class ReplayInputPatches
 
   public static void OnChangeState(States newState)
   {
+    if (!IsActive) return;
+
     ReplaySessionService.OnStateChanged(newState);
   }
 
@@ -101,6 +115,8 @@ public static class ReplayInputPatches
   )]
   private static void OnScnEditorQuitToMenuPrefix()
   {
+    if (!IsActive) return;
+
     ReplaySessionService.StopActiveReplay("editor_quit_to_menu");
   }
 }

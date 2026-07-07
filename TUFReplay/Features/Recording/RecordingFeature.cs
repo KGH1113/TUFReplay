@@ -1,24 +1,22 @@
-using JALib.Core;
 using TUFHelper.ModScripts.Json;
 using TUFHelper.Utils;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
-using TUFReplay.Features.Gameplay;
 using TUFReplay.Features.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Infrastructure.Unity;
-using UnityEngine;
 
 namespace TUFReplay.Features.Recording;
 
-public class RecordingFeature : Feature
+public class RecordingFeature
 {
   public static RecordingFeature Instance;
-  public static RecordingSetting Settings;
+  public static TUFReplaySetting Settings;
 
   public RecordingSession Session { get; private set; }
+  public bool Active { get; private set; }
 
   private bool _clearReached;
   private bool _failed;
@@ -27,12 +25,11 @@ public class RecordingFeature : Feature
 
   private readonly RecordingActivityTracker _activity = new RecordingActivityTracker();
 
-  public RecordingFeature() : base(Main.Instance, nameof(RecordingFeature), true, typeof(RecordingPatches), typeof(RecordingSetting))
+  public RecordingFeature()
   {
     Instance = this;
-    Settings = (RecordingSetting)Setting;
+    Settings = Main.Settings;
     Session = new RecordingSession();
-    AddMultiFeatures(typeof(GameplayPatches));
   }
 
   public void OnClearReached()
@@ -68,39 +65,27 @@ public class RecordingFeature : Feature
     }
   }
 
-  protected override void OnEnable()
+  public void Enable()
   {
+    if (Active) return;
+    Active = true;
+
     ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
     ADOFAIGameplayHandler.Editor_PlayButtonPressed += OnPlayButtonPressed;
     RecordInputTracker.Reset();
     _activity.StartAppSession();
   }
 
-  protected override void OnDisable()
+  public void Disable()
   {
+    if (!Active) return;
+    Active = false;
+
     ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
     RecordInputTracker.Reset();
     StopSession();
     _activity.CloseLevel();
     _activity.StopAppSession();
-  }
-
-  protected override void OnGUI()
-  {
-    if (Settings == null)
-    {
-      GUILayout.Label("Recording setting is not ready.");
-      return;
-    }
-
-    Main.SettingGUI.AddSettingToggle(ref Settings.AutoRecord, "Auto record TUF levels");
-
-    string levelId = Session.LevelId.HasValue ? Session.LevelId.Value.ToString() : "none";
-    GUILayout.Label("TUF level id: " + levelId);
-    GUILayout.Label("Recording: " + (Session.IsRecording ? "on" : "off"));
-    GUILayout.Label("Input capture: " + (Session.IsCapturingInput ? "on" : "off"));
-    GUILayout.Label("Inputs: " + Session.InputCount);
-    GUILayout.Label("Hit contexts: " + Session.HitContextCount);
   }
 
   private static void OnPlayButtonPressed(object sender, PlayButtonEventArgs e)

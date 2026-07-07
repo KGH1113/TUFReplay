@@ -1,33 +1,32 @@
-using JALib.Core;
 using TUFHelper.Utils;
 using TUFReplay.Application.Replay;
-using TUFReplay.Features.Gameplay;
 
 namespace TUFReplay.Features.Replay;
 
-public class ReplayFeature : Feature
+public class ReplayFeature
 {
   public static ReplayFeature Instance;
+  public bool Active { get; private set; }
 
-  public ReplayFeature() : base(
-    Main.Instance,
-    nameof(ReplayFeature),
-    true,
-    typeof(ReplayInputPatches)
-  )
+  public ReplayFeature()
   {
     Instance = this;
-    AddMultiFeatures(typeof(GameplayPatches));
   }
 
-  protected override void OnEnable()
+  public void Enable()
   {
+    if (Active) return;
+    Active = true;
+
     ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
     ADOFAIGameplayHandler.Editor_PlayButtonPressed += OnPlayButtonPressed;
   }
 
-  protected override void OnDisable()
+  public void Disable()
   {
+    if (!Active) return;
+    Active = false;
+
     ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
     ReplaySessionService.StopActiveReplay("feature_disabled");
   }

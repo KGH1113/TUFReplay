@@ -1,14 +1,11 @@
 ﻿using JALib.Core;
-using JALib.Tools;
 using TUFReplay.Bootstrap;
-using UnityEngine;
 
 namespace TUFReplay;
 
 public class Main() : JAMod(typeof(TUFReplaySetting))
 {
   public static Main Instance;
-  public static SettingGUI SettingGUI;
   public static TUFReplaySetting Settings;
   public static LocalServer.LocalServer Server;
 
@@ -16,10 +13,9 @@ public class Main() : JAMod(typeof(TUFReplaySetting))
   {
     Instance = this;
     Settings = (TUFReplaySetting)Setting;
-    SettingGUI = new SettingGUI(this);
 
     ModBootstrap.InitializeRuntime();
-    AddFeature(FeatureRegistry.CreateFeatures());
+    FeatureRegistry.Initialize();
   }
 
   protected override void OnEnable()
@@ -31,11 +27,6 @@ public class Main() : JAMod(typeof(TUFReplaySetting))
   {
     ModBootstrap.Shutdown();
     SaveSetting();
-  }
-
-  protected override void OnGUI()
-  {
-    GUILayout.Label("TUFReplay");
   }
 
   private static void StartServer()

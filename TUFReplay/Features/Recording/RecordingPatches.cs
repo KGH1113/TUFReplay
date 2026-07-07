@@ -10,6 +10,7 @@ public static class RecordingPatches
 {
   private static scrFloor _hitFloor;
   private static int[] _hitMarginsCount;
+  private static bool IsActive => RecordingFeature.Instance != null && RecordingFeature.Instance.Active;
 
   public static void ResetHitContextState()
   {
@@ -43,6 +44,8 @@ public static class RecordingPatches
 
   private static void SampleNativeInput()
   {
+    if (!IsActive) return;
+
     RecordingSession session = RecordingFeature.Instance?.Session;
     if (session == null || !session.IsRecording || !session.IsCapturingInput) return;
     if (!UnityEngine.Application.isFocused) return;
@@ -52,7 +55,7 @@ public static class RecordingPatches
 
   public static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
   {
-    if (RecordingFeature.Instance == null || !RecordingFeature.Instance.Active) return true;
+    if (!IsActive) return true;
     if (!ShouldCaptureHitContext(__instance)) return true;
 
     if (!__instance.responsive)
@@ -137,6 +140,8 @@ public static class RecordingPatches
   )]
   private static void OnSwitchToEditModePostfix(bool clsToEditor)
   {
+    if (!IsActive) return;
+
     RecordingFeature.Instance?.OnReturnedToEditor();
   }
 
