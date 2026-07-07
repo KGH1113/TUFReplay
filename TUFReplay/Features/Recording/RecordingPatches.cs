@@ -50,15 +50,9 @@ public static class RecordingPatches
     RecordInputTracker.Sample(session);
   }
 
-  [JAPatch(
-    typeof(scrPlayer),
-    "Hit",
-    PatchType.Prefix,
-    true,
-    ArgumentTypesType = new[] { typeof(bool) }
-  )]
-  private static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
+  public static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
   {
+    if (RecordingFeature.Instance == null || !RecordingFeature.Instance.Active) return true;
     if (!ShouldCaptureHitContext(__instance)) return true;
 
     if (!__instance.responsive)
@@ -98,19 +92,12 @@ public static class RecordingPatches
     return true;
   }
 
-  [JAPatch(
-    typeof(StateBehaviour),
-    "ChangeState",
-    PatchType.Postfix,
-    true,
-    ArgumentTypesType = new[] { typeof(Enum) }
-  )]
-  private static void OnChangeState(Enum newState)
+  public static void OnChangeState(States newState)
   {
     RecordingFeature recording = RecordingFeature.Instance;
-    if (recording == null) return;
+    if (recording == null || !recording.Active) return;
 
-    switch ((States)newState)
+    switch (newState)
     {
       case States.Countdown:
         if (!recording.Session.IsRecording) return;

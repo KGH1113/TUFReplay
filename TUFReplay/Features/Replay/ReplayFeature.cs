@@ -1,6 +1,7 @@
 using JALib.Core;
 using TUFHelper.Utils;
 using TUFReplay.Application.Replay;
+using TUFReplay.Features.Gameplay;
 
 namespace TUFReplay.Features.Replay;
 
@@ -16,6 +17,7 @@ public class ReplayFeature : Feature
   )
   {
     Instance = this;
+    AddMultiFeatures(typeof(GameplayPatches));
   }
 
   protected override void OnEnable()

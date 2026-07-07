@@ -4,6 +4,7 @@ using TUFHelper.Utils;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
+using TUFReplay.Features.Gameplay;
 using TUFReplay.Features.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
@@ -31,6 +32,7 @@ public class RecordingFeature : Feature
     Instance = this;
     Settings = (RecordingSetting)Setting;
     Session = new RecordingSession();
+    AddMultiFeatures(typeof(GameplayPatches));
   }
 
   public void OnClearReached()

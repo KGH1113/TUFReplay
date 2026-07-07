@@ -1,4 +1,3 @@
-using System;
 using JALib.Core.Patch;
 using MonsterLove.StateMachine;
 using TUFReplay.Application.Replay;
@@ -67,14 +66,7 @@ public static class ReplayInputPatches
     return !ReplaySessionService.ShouldBlockFreeroam(__instance);
   }
 
-  [JAPatch(
-    typeof(scrPlayer),
-    "Hit",
-    PatchType.Prefix,
-    true,
-    ArgumentTypesType = new[] { typeof(bool) }
-  )]
-  private static bool OnScrPlayerHitPrefix(ref bool __result)
+  public static bool OnScrPlayerHitPrefix(ref bool __result)
   {
     if (!ReplaySessionService.ShouldBlockOriginalHit()) return true;
 
@@ -96,16 +88,9 @@ public static class ReplayInputPatches
     return false;
   }
 
-  [JAPatch(
-    typeof(StateBehaviour),
-    "ChangeState",
-    PatchType.Postfix,
-    true,
-    ArgumentTypesType = new[] { typeof(Enum) }
-  )]
-  private static void OnChangeStatePostfix(Enum newState)
+  public static void OnChangeState(States newState)
   {
-    ReplaySessionService.OnStateChanged((States)newState);
+    ReplaySessionService.OnStateChanged(newState);
   }
 
   [JAPatch(
