@@ -4,5 +4,6 @@
   "Author": "impl",
   "Version": "0.1.0",
   "AssemblyName": "JAMod.Bootstrap.dll",
-  "EntryMethod": "JAMod.Bootstrap.Bootstrap.Setup"
+  "EntryMethod": "JAMod.Bootstrap.Bootstrap.Setup",
+  "LoadAfter": ["JALib", "TUFHelper"]
 }
