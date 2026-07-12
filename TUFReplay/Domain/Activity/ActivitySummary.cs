@@ -26,12 +26,14 @@ public class LevelSessionOverview
 {
   public string Id;
   public string AppSessionId;
-  public int TufLevelId;
+  public int? TufLevelId;
   public string OpenedAtUtc;
   public string ClosedAtUtc;
   public int LevelTileCount;
   public int RunCount;
+  public int ClearRunCount;
   public int NoFailRunCount;
   public int? FirstStartTile;
   public int? LastStartTile;
+  public bool ChartAvailable;
 }

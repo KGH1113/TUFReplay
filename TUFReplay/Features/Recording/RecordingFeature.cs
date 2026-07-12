@@ -1,5 +1,5 @@
-using TUFHelper.ModScripts.Json;
-using TUFHelper.Utils;
+using System;
+using System.IO;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
@@ -70,8 +70,6 @@ public class RecordingFeature
     if (Active) return;
     Active = true;
 
-    ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
-    ADOFAIGameplayHandler.Editor_PlayButtonPressed += OnPlayButtonPressed;
     RecordInputTracker.Reset();
     _activity.StartAppSession();
   }
@@ -81,43 +79,58 @@ public class RecordingFeature
     if (!Active) return;
     Active = false;
 
-    ADOFAIGameplayHandler.Editor_PlayButtonPressed -= OnPlayButtonPressed;
     RecordInputTracker.Reset();
     StopSession();
     _activity.CloseLevel();
     _activity.StopAppSession();
   }
 
-  private static void OnPlayButtonPressed(object sender, PlayButtonEventArgs e)
+  public void OnEditorPlay()
   {
-    LevelListInfoElementJson levelInfo = TufHelperGateway.GetLevelInfo(e);
-    int? levelId = levelInfo?.ID;
-    if (!levelId.HasValue)
+    string levelPath = CanonicalLevelPath();
+    if (levelPath == null)
     {
-      Instance?.StopSession();
-      Instance?._activity.CloseLevel();
+      StopSession();
+      _activity.CloseLevel();
       return;
     }
 
-    if (ReplaySessionService.IsActiveReplayLevel(levelId.Value)) return;
+    int? tufLevelId = TufHelperGateway.ResolveTufLevelId(levelPath);
+    ReplaySessionService.ClearActiveContextIfLevelChanged(tufLevelId);
+    if (tufLevelId.HasValue && ReplaySessionService.IsActiveReplayLevel(tufLevelId.Value)) return;
 
     if (!RecordingGuard.CanRecord(out string reason))
     {
-      Instance?.StopSession();
-      Main.Instance.Log("[Recording] Skipped. tufLevelId=" + levelId.Value + ", reason=" + reason);
+      StopSession();
+      Main.Instance.Log("[Recording] Skipped. reason=" + reason);
       return;
     }
 
-    Instance._clearReached = false;
-    Instance._failed = false;
-    Instance._runSaved = false;
-    Instance._currentRun = null;
+    _clearReached = false;
+    _failed = false;
+    _runSaved = false;
+    _currentRun = null;
 
     int levelTileCount = RecordingSession.GetLevelTileCount();
-    Instance._activity.OpenLevel(levelId.Value, levelTileCount);
+    _activity.OpenLevel(levelPath, tufLevelId, levelTileCount);
     RecordingPatches.ResetHitContextState();
-    Instance.Session.Start(levelId.Value, levelInfo, Settings == null || Settings.AutoRecord);
-    Main.Instance.Log("TUF level opened: " + levelId.Value);
+    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord);
+    Main.Instance.Log("[Recording] Custom level opened. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
+  }
+
+  private static string CanonicalLevelPath()
+  {
+    try
+    {
+      string path = ADOBase.levelPath;
+      if (string.IsNullOrWhiteSpace(path) || !path.EndsWith(".adofai", StringComparison.OrdinalIgnoreCase)) return null;
+      path = Path.GetFullPath(path);
+      return File.Exists(path) ? path : null;
+    }
+    catch
+    {
+      return null;
+    }
   }
 
   public void StopSession()

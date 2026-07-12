@@ -3,14 +3,12 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using Newtonsoft.Json;
-using TUFHelper.ModScripts.Json;
 
 namespace TUFReplay.Domain.ReplayData;
 
 public class RecordedRunPayload
 {
-  public int LevelId;
-  public LevelListInfoElementJson LevelInfo;
+  public int? TufLevelId;
   public string StartedAtUtc;
   public string EndedAtUtc;
   public double? GameplayStartSongPosition;
@@ -27,8 +25,7 @@ public class RecordedRunPayload
     var meta = new
     {
       formatVersion = 1,
-      tufLevelId = LevelId,
-      levelInfo = LevelInfo,
+      tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,

@@ -64,10 +64,6 @@
       <HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="TUFHelper">
-      <HintPath>$(AdofaiMods)/TUFHelper/TUFHelper.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="System.Data">
       <HintPath>$(AdofaiManaged)/System.Data.dll</HintPath>
       <Private>false</Private>

@@ -29,13 +29,10 @@ public sealed class TUFReplayIpcFeature
     );
 
     ipc.Register("health.get", TUFReplayIpcHandlers.Health);
-    ipc.Register("activity.days.list", TUFReplayIpcHandlers.ListActivityDays);
-    ipc.Register("activity.day.get", TUFReplayIpcHandlers.GetActivityDay);
-    ipc.Register("activity.app-session.get", TUFReplayIpcHandlers.GetActivityAppSession);
-    ipc.Register("activity.level-session.get", TUFReplayIpcHandlers.GetActivityLevelSession);
-    ipc.Register("activity.level-session.segments.list", TUFReplayIpcHandlers.ListActivitySegments);
-    ipc.Register("activity.level-session.runs.list", TUFReplayIpcHandlers.ListActivityRuns);
-    ipc.Register("activity.level-session.segment-runs.list", TUFReplayIpcHandlers.ListActivitySegmentRuns);
+    ipc.Register("activity.app-sessions.list", TUFReplayIpcHandlers.ListAppSessions);
+    ipc.Register("activity.level-session.get", TUFReplayIpcHandlers.GetLevelSession);
+    ipc.Register("activity.level-session.runs.list", TUFReplayIpcHandlers.ListRuns);
+    ipc.Register("activity.level-session.chart.get", TUFReplayIpcHandlers.GetChart);
 
     Main.Instance.Log("[IPC] Registered namespace: " + Namespace);
   }

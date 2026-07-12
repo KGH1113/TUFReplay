@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using TUFHelper.ModScripts.Json;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
 
@@ -13,7 +12,7 @@ public class RecordingSession
 
   public bool IsRecording { get; private set; }
   public bool IsCapturingInput { get; private set; }
-  public int? LevelId { get; private set; }
+  public int? TufLevelId { get; private set; }
   public RecordedRunPayload Data { get; private set; } = new RecordedRunPayload();
   public int InputCount
   {
@@ -37,17 +36,16 @@ public class RecordingSession
     }
   }
 
-  public void Start(int levelId, LevelListInfoElementJson levelInfo, bool autoRecord)
+  public void Start(int? tufLevelId, bool autoRecord)
   {
     lock (_lock)
     {
-      LevelId = levelId;
+      TufLevelId = tufLevelId;
       IsRecording = autoRecord;
       IsCapturingInput = false;
       Data = new RecordedRunPayload
       {
-        LevelId = levelId,
-        LevelInfo = levelInfo,
+        TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive()
       };
@@ -56,7 +54,7 @@ public class RecordingSession
     }
 
     RecordInputTracker.Reset();
-    Main.Instance.Log("[Recording] Prepared. tufLevelId=" + levelId + ", autoRecord=" + IsRecording);
+    Main.Instance.Log("[Recording] Prepared. tufLevelId=" + (tufLevelId?.ToString() ?? "null") + ", autoRecord=" + IsRecording);
   }
 
   public void Stop()

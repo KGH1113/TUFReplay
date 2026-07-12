@@ -10,16 +10,20 @@ public sealed class RecordingActivityTracker
   public string AppSessionId { get; private set; }
   public string LevelSessionId { get; private set; }
   public int? TufLevelId { get; private set; }
+  public string LevelPath { get; private set; }
 
   public void StartAppSession()
   {
     if (AppSessionId != null) return;
 
     AppSessionId = Guid.NewGuid().ToString("N");
+    DateTimeOffset now = DateTimeOffset.Now;
     AppSessionRepository.Save(new AppSession
     {
       Id = AppSessionId,
-      StartedAtUtc = DateTime.UtcNow.ToString("O")
+      StartedAtUtc = now.UtcDateTime.ToString("O"),
+      RecorderTimeZoneId = TimeZoneInfo.Local.Id,
+      RecorderUtcOffsetMinutes = (int)now.Offset.TotalMinutes
     });
   }
 
@@ -33,21 +37,23 @@ public sealed class RecordingActivityTracker
     AppSessionId = null;
   }
 
-  public void OpenLevel(int tufLevelId, int levelTileCount)
+  public void OpenLevel(string levelPath, int? tufLevelId, int levelTileCount)
   {
     StartAppSession();
 
-    if (LevelSessionId != null && TufLevelId == tufLevelId) return;
+    if (LevelSessionId != null && string.Equals(LevelPath, levelPath, StringComparison.OrdinalIgnoreCase)) return;
 
     CloseLevel();
 
     LevelSessionId = Guid.NewGuid().ToString("N");
     TufLevelId = tufLevelId;
+    LevelPath = levelPath;
     LevelSessionRepository.Save(new LevelSession
     {
       Id = LevelSessionId,
       AppSessionId = AppSessionId,
       TufLevelId = tufLevelId,
+      LevelPath = levelPath,
       OpenedAtUtc = DateTime.UtcNow.ToString("O"),
       LevelTileCount = levelTileCount
     });
@@ -60,24 +66,23 @@ public sealed class RecordingActivityTracker
     LevelSessionRepository.Close(LevelSessionId, DateTime.UtcNow.ToString("O"));
     LevelSessionId = null;
     TufLevelId = null;
+    LevelPath = null;
   }
 
   public RunRecord CreateRunDraft(RecordedRunPayload data, int startTile, int levelTileCount)
   {
     if (AppSessionId == null || LevelSessionId == null || data == null) return null;
 
-    RunRecord lastRun = RunRepository.GetLastByLevelSession(LevelSessionId);
-    int runIndex = lastRun == null ? 0 : lastRun.RunIndex + 1;
-    int segmentGroupIndex = RunRepository.NextSegmentGroupIndex(LevelSessionId, startTile);
+    int runIndex = RunRepository.GetNextRunIndex(LevelSessionId);
 
     return new RunRecord
     {
       Id = Guid.NewGuid().ToString("N"),
       AppSessionId = AppSessionId,
       LevelSessionId = LevelSessionId,
-      TufLevelId = data.LevelId,
+      TufLevelId = data.TufLevelId,
       RunIndex = runIndex,
-      SegmentGroupIndex = segmentGroupIndex,
+      SegmentGroupIndex = 0,
       StartedAtUtc = data.StartedAtUtc,
       LevelTileCount = levelTileCount,
       StartTile = startTile,

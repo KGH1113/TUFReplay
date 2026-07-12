@@ -1,146 +1,15 @@
 using System.Collections.Generic;
+using System.IO;
 using Microsoft.Data.Sqlite;
-using TUFReplay.Infrastructure.Database;
 using TUFReplay.Domain.Activity;
 using DatabaseStore = TUFReplay.Infrastructure.Database.Database;
-
 namespace TUFReplay.Infrastructure.Database.Repositories;
-
 public static class ActivityRepository
 {
-  public static List<ActivityDaySummary> ListDaySummaries(string fromUtc = null, string toUtc = null)
-  {
-    List<ActivityDaySummary> days = new List<ActivityDaySummary>();
-
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
-    using SqliteCommand command = connection.CreateCommand();
-
-    command.CommandText = @"
-SELECT substr(a.started_at_utc, 1, 10) AS activity_date,
-       count(DISTINCT a.id),
-       count(DISTINCT l.id),
-       count(r.id),
-       coalesce(sum(CASE WHEN r.no_fail_mode != 0 THEN 1 ELSE 0 END), 0),
-       count(DISTINCT l.tuf_level_id),
-       min(a.started_at_utc),
-       max(coalesce(a.ended_at_utc, a.started_at_utc))
-FROM app_sessions a
-LEFT JOIN level_sessions l ON l.app_session_id = a.id
-LEFT JOIN runs r ON r.level_session_id = l.id
-WHERE (@from_utc IS NULL OR a.started_at_utc >= @from_utc)
-  AND (@to_utc IS NULL OR a.started_at_utc < @to_utc)
-GROUP BY activity_date
-ORDER BY activity_date DESC;";
-
-    command.Parameters.AddWithValue("@from_utc", DbValue.From(fromUtc));
-    command.Parameters.AddWithValue("@to_utc", DbValue.From(toUtc));
-
-    using SqliteDataReader reader = command.ExecuteReader();
-    while (reader.Read())
-    {
-      days.Add(new ActivityDaySummary
-      {
-        Date = reader.GetString(0),
-        AppSessionCount = reader.GetInt32(1),
-        LevelSessionCount = reader.GetInt32(2),
-        RunCount = reader.GetInt32(3),
-        NoFailRunCount = reader.GetInt32(4),
-        UniqueLevelCount = reader.GetInt32(5),
-        StartedAtUtc = reader.GetString(6),
-        EndedAtUtc = reader.GetString(7)
-      });
-    }
-
-    return days;
-  }
-
-  public static LevelSessionOverview GetLevelSessionOverview(string levelSessionId)
-  {
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
-    using SqliteCommand command = connection.CreateCommand();
-
-    command.CommandText = SelectLevelSessionOverviewSql + @"
-WHERE l.id = @level_session_id
-GROUP BY l.id, l.app_session_id, l.tuf_level_id, l.opened_at_utc, l.closed_at_utc, l.level_tile_count;";
-
-    command.Parameters.AddWithValue("@level_session_id", levelSessionId);
-
-    using SqliteDataReader reader = command.ExecuteReader();
-    return reader.Read() ? ReadLevelSessionOverview(reader) : null;
-  }
-
-  public static List<LevelSessionOverview> ListLevelSessionOverviewsByAppSession(string appSessionId)
-  {
-    List<LevelSessionOverview> sessions = new List<LevelSessionOverview>();
-
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
-    using SqliteCommand command = connection.CreateCommand();
-
-    command.CommandText = SelectLevelSessionOverviewSql + @"
-WHERE l.app_session_id = @app_session_id
-GROUP BY l.id, l.app_session_id, l.tuf_level_id, l.opened_at_utc, l.closed_at_utc, l.level_tile_count
-ORDER BY l.opened_at_utc ASC;";
-
-    command.Parameters.AddWithValue("@app_session_id", appSessionId);
-
-    using SqliteDataReader reader = command.ExecuteReader();
-    while (reader.Read()) sessions.Add(ReadLevelSessionOverview(reader));
-
-    return sessions;
-  }
-
-  public static List<LevelSessionOverview> ListLevelSessionOverviewsByDateRange(string fromUtc, string toUtc)
-  {
-    List<LevelSessionOverview> sessions = new List<LevelSessionOverview>();
-
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
-    using SqliteCommand command = connection.CreateCommand();
-
-    command.CommandText = SelectLevelSessionOverviewSql + @"
-JOIN app_sessions a ON a.id = l.app_session_id
-WHERE a.started_at_utc >= @from_utc
-  AND a.started_at_utc < @to_utc
-GROUP BY l.id, l.app_session_id, l.tuf_level_id, l.opened_at_utc, l.closed_at_utc, l.level_tile_count
-ORDER BY l.opened_at_utc ASC;";
-
-    command.Parameters.AddWithValue("@from_utc", fromUtc);
-    command.Parameters.AddWithValue("@to_utc", toUtc);
-
-    using SqliteDataReader reader = command.ExecuteReader();
-    while (reader.Read()) sessions.Add(ReadLevelSessionOverview(reader));
-
-    return sessions;
-  }
-
-  private const string SelectLevelSessionOverviewSql = @"
-SELECT l.id,
-       l.app_session_id,
-       l.tuf_level_id,
-       l.opened_at_utc,
-       l.closed_at_utc,
-       l.level_tile_count,
-       count(r.id),
-       coalesce(sum(CASE WHEN r.no_fail_mode != 0 THEN 1 ELSE 0 END), 0),
-       min(r.start_tile),
-       max(r.start_tile)
-FROM level_sessions l
-LEFT JOIN runs r ON r.level_session_id = l.id
-";
-
-  private static LevelSessionOverview ReadLevelSessionOverview(SqliteDataReader reader)
-  {
-    return new LevelSessionOverview
-    {
-      Id = reader.GetString(0),
-      AppSessionId = reader.GetString(1),
-      TufLevelId = reader.GetInt32(2),
-      OpenedAtUtc = reader.GetString(3),
-      ClosedAtUtc = DbValue.NullableString(reader, 4),
-      LevelTileCount = reader.GetInt32(5),
-      RunCount = reader.GetInt32(6),
-      NoFailRunCount = reader.GetInt32(7),
-      FirstStartTile = DbValue.NullableInt(reader, 8),
-      LastStartTile = DbValue.NullableInt(reader, 9)
-    };
-  }
+  private const string Select = @"SELECT l.id,l.app_session_id,l.tuf_level_id,l.opened_at_utc,l.closed_at_utc,l.level_tile_count,
+count(r.id),coalesce(sum(CASE WHEN r.result='cleared' THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
+l.level_path FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id ";
+  public static LevelSessionOverview GetLevelSessionOverview(string id) { using SqliteConnection c=DatabaseStore.OpenConnection();using SqliteCommand q=c.CreateCommand();q.CommandText=Select+" WHERE l.id=@id GROUP BY l.id";q.Parameters.AddWithValue("@id",id);using SqliteDataReader r=q.ExecuteReader();return r.Read()?Read(r):null; }
+  public static List<LevelSessionOverview> ListLevelSessionOverviewsByAppSession(string id) { var result=new List<LevelSessionOverview>();using SqliteConnection c=DatabaseStore.OpenConnection();using SqliteCommand q=c.CreateCommand();q.CommandText=Select+" WHERE l.app_session_id=@id GROUP BY l.id ORDER BY l.opened_at_utc ASC";q.Parameters.AddWithValue("@id",id);using SqliteDataReader r=q.ExecuteReader();while(r.Read())result.Add(Read(r));return result; }
+  private static LevelSessionOverview Read(SqliteDataReader r)=>new LevelSessionOverview{Id=r.GetString(0),AppSessionId=r.GetString(1),TufLevelId=DbValue.NullableInt(r,2),OpenedAtUtc=r.GetString(3),ClosedAtUtc=DbValue.NullableString(r,4),LevelTileCount=r.GetInt32(5),RunCount=r.GetInt32(6),ClearRunCount=r.GetInt32(7),NoFailRunCount=r.GetInt32(8),FirstStartTile=DbValue.NullableInt(r,9),LastStartTile=DbValue.NullableInt(r,10),ChartAvailable=File.Exists(r.GetString(11))};
 }

@@ -209,4 +209,10 @@ public static class RecordingPatches
 
     return true;
   }
+  [JAPatch(typeof(scnEditor), "Play", PatchType.Prefix, true)]
+  private static void OnEditorPlayPrefix()
+  {
+    if (!IsActive) return;
+    RecordingFeature.Instance.OnEditorPlay();
+  }
 }

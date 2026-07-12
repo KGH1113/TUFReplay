@@ -5,7 +5,7 @@ public class RunRecord
   public string Id;
   public string AppSessionId;
   public string LevelSessionId;
-  public int TufLevelId;
+  public int? TufLevelId;
   public int RunIndex;
   public int SegmentGroupIndex;
 
@@ -27,5 +27,7 @@ public class RunRecord
   public int HitContextCount;
   public byte[] InputCsv;
   public byte[] HitContextCsv;
+  public long InputCsvBytes;
+  public long HitContextCsvBytes;
   public string MetaJson;
 }

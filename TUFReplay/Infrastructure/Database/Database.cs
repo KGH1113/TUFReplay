@@ -22,8 +22,11 @@ public static class Database
 
   public static SqliteConnection OpenConnection()
   {
-    SqliteConnection connection = new SqliteConnection("Data Source=" + DbPath);
+    SqliteConnection connection = new SqliteConnection("Data Source=" + DbPath + ";Default Timeout=2");
     connection.Open();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "PRAGMA foreign_keys=ON; PRAGMA busy_timeout=2000;";
+    command.ExecuteNonQuery();
     return connection;
   }
 
