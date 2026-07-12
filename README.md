@@ -35,10 +35,11 @@ The project is built around preserving low-level play data instead of trusting f
 
 ## Features
 
-- Records OS-native keyboard state changes during eligible TUFHelper-opened clears.
-- Stores records, metadata, input payloads, and future microphone recordings in SQLite.
+- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
+- Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
-- Opens recorded TUF levels through TUFHelper.
+- Serves the current chart text to the companion web UI without exposing local file paths.
+- Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 
 ## Runtime
@@ -51,8 +52,9 @@ Required at runtime:
 - UnityModManager
 - JALib
 - AdofaiIpc
-- TUFHelper
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
+
+TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
 
 ## Repository Layout
 
@@ -88,7 +90,6 @@ Important environment variables:
 - `DOTNET_EXE`: .NET SDK executable.
 - `JALIB_DLL`: JALib assembly path.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
-- `TUFHELPER_DLL`: TUFHelper assembly path.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
 Create a clean shareable package:
@@ -113,9 +114,10 @@ Run the companion web UI:
 bun run web:dev
 ```
 
-Type-check or build the web workspace:
+Test, type-check, or build the web workspace:
 
 ```bash
+bun run web:test
 bun run web:typecheck
 bun run web:build
 ```
@@ -143,13 +145,10 @@ Content-Type: application/json
 Registered methods:
 
 - `health.get`
-- `activity.days.list`
-- `activity.day.get`
-- `activity.app-session.get`
+- `activity.app-sessions.list`
 - `activity.level-session.get`
-- `activity.level-session.segments.list`
 - `activity.level-session.runs.list`
-- `activity.level-session.segment-runs.list`
+- `activity.level-session.chart.get`
 
 ## Tech Stack
 
@@ -159,9 +158,10 @@ Registered methods:
 - **JALib**: JAMod lifecycle, settings, and mod structure.
 - **AdofaiIpc**: shared localhost IPC listener and namespace routing.
 - **Harmony**: game method patching for recording hooks.
-- **TUFHelper**: TUF level metadata and level-opening integration.
+- **TUFHelperLite**: optional public TUF level ID resolution for downloaded charts.
 - **SQLite / Microsoft.Data.Sqlite**: local play record storage.
 - **Newtonsoft.Json**: metadata and API JSON serialization.
+- **Bun / React / Vite**: companion activity explorer and embedded chart bridge.
 - **Bash / .env**: local build and install configuration.
 
 ## Special Thanks
