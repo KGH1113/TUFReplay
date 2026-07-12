@@ -18,13 +18,8 @@ export interface ActivityAppSession {
   LevelSessions: ActivityLevelSessionOverview[];
 }
 
-export interface ActivityLevelSessionDetail extends ActivityLevelSessionOverview {
-  AppSession: ActivityAppSession;
-}
-
 export interface ActivityRun {
   Id: string;
-  AppSessionId: string;
   LevelSessionId: string;
   TufLevelId: number | null;
   RunIndex: number;
@@ -39,7 +34,9 @@ export interface ActivityRun {
   EffectivePitch: number | null;
   InputCount: number;
   HitContextCount: number;
-  Meta: unknown;
+  FloorCount: number;
+  InputBytes: number;
+  HitContextBytes: number;
 }
 
 export interface ActivityChart {

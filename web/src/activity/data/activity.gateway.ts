@@ -3,21 +3,31 @@ import { tryConnect, type AdofaiIpcNamespaceClient } from "@adofai-ipc/client";
 import type {
   ActivityAppSession,
   ActivityChart,
-  ActivityLevelSessionDetail,
+  ActivityLevelSessionOverview,
   ActivityRun,
 } from "../activity.model";
 
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
 
-interface Page<T> {
-  Items: T[];
+interface DomainErrorPayload {
+  error: {
+    code: string;
+    message: string;
+  };
+}
+
+export class ActivityDomainError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = "ActivityDomainError";
+  }
 }
 
 export interface ActivityGateway {
   health(): Promise<unknown>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
-  getLevelSession(id: string): Promise<ActivityLevelSessionDetail>;
+  getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   listAllRuns(id: string, onPage?: (items: ActivityRun[]) => void): Promise<ActivityRun[]>;
   getChart(id: string): Promise<ActivityChart>;
 }
@@ -29,29 +39,41 @@ export async function connectActivityGateway(): Promise<ActivityGateway> {
 
 export function createActivityGateway(namespace: Pick<AdofaiIpcNamespaceClient, "call">): ActivityGateway {
   return {
-    health: () => namespace.call("health.get", {}),
+    health: () => callDomain(namespace, "health.get", {}),
     listAllAppSessions: (onPage) => loadAllPages<ActivityAppSession>(
-      (offset, limit) => namespace.call<Page<ActivityAppSession>>("activity.app-sessions.list", { offset, limit }),
+      (offset, limit) => callDomain<ActivityAppSession[]>(namespace, "activity.app-sessions.list", { offset, limit }),
       onPage,
     ),
-    getLevelSession: (id) => namespace.call("activity.level-session.get", { id }),
+    getLevelSession: (id) => callDomain(namespace, "activity.level-session.get", { id }),
     listAllRuns: (id, onPage) => loadAllPages<ActivityRun>(
-      (offset, limit) => namespace.call<Page<ActivityRun>>("activity.level-session.runs.list", { id, offset, limit }),
+      (offset, limit) => callDomain<ActivityRun[]>(namespace, "activity.level-session.runs.list", { id, offset, limit }),
       onPage,
     ),
-    getChart: (id) => namespace.call("activity.level-session.chart.get", { id }),
+    getChart: (id) => callDomain(namespace, "activity.level-session.chart.get", { id }),
   };
 }
 
 export async function loadAllPages<T>(
-  load: (offset: number, limit: number) => Promise<Page<T>>,
+  load: (offset: number, limit: number) => Promise<T[]>,
   onPage?: (items: T[]) => void,
 ): Promise<T[]> {
   const all: T[] = [];
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const page = await load(offset, PAGE_SIZE);
-    all.push(...page.Items);
+    all.push(...page);
     onPage?.([...all]);
-    if (page.Items.length < PAGE_SIZE) return all;
+    if (page.length < PAGE_SIZE) return all;
   }
+}
+
+async function callDomain<TResult>(namespace: Pick<AdofaiIpcNamespaceClient, "call">, method: string, params: object): Promise<TResult> {
+  const result: unknown = await namespace.call(method, params);
+  if (isDomainError(result)) throw new ActivityDomainError(result.error.code, result.error.message);
+  return result as TResult;
+}
+
+function isDomainError(value: unknown): value is DomainErrorPayload {
+  if (!value || typeof value !== "object") return false;
+  const error = (value as { error?: unknown }).error;
+  return Boolean(error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string" && typeof (error as { message?: unknown }).message === "string");
 }
