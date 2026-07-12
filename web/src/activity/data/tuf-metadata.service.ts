@@ -3,6 +3,7 @@ import type { LevelMetadata } from "../activity.model";
 const API_ROOT = "https://api.tuforums.com/v2/database";
 const CACHE_NAME = "tuf-replay-metadata-v1";
 const memory = new Map<number, Promise<LevelMetadata>>();
+let difficultyCatalogRequest: Promise<Map<number, JsonRecord>> | null = null;
 
 type JsonRecord = Record<string, unknown>;
 
@@ -22,14 +23,15 @@ export function getTufMetadata(levelId: number, fetchImpl: typeof fetch = fetch)
 }
 
 async function loadMetadata(levelId: number, fetchImpl: typeof fetch): Promise<LevelMetadata> {
-  const level = await fetchJson(`${API_ROOT}/levels/byId/${levelId}`, fetchImpl);
-  const difficultyId = value(level, "difficultyId", "DifficultyId", "difficulty_id");
+  const level = record(await fetchJson(`${API_ROOT}/levels/byId/${levelId}`, fetchImpl));
+  if (!level) throw new Error("TUF level response was not an object");
+  const difficultyId = numberValue(level, "diffId", "difficultyId", "DifficultyId", "difficulty_id");
   const embedded = record(value(level, "difficulty", "Difficulty"));
-  const difficulty = embedded ?? (difficultyId == null ? null : await fetchJson(`${API_ROOT}/difficulties/${difficultyId}`, fetchImpl));
+  const difficulty = embedded ?? (difficultyId === null ? null : (await getDifficultyCatalog(fetchImpl).catch(() => new Map())).get(difficultyId) ?? null);
   return {
     levelId,
     artist: text(level, "artist", "Artist", "songAuthor", "SongAuthor") || "Unknown artist",
-    name: text(level, "name", "Name", "levelName", "LevelName") || `Level #${levelId}`,
+    name: text(level, "song", "name", "Name", "levelName", "LevelName") || `Level #${levelId}`,
     creator: text(level, "creator", "Creator", "levelAuthor", "LevelAuthor") || "Unknown creator",
     difficulty: difficulty ? text(difficulty, "name", "Name", "displayName", "DisplayName") || "Unknown" : "Unknown",
     difficultyIconUrl: difficulty ? text(difficulty, "icon", "Icon", "iconUrl", "IconUrl") : "",
@@ -37,7 +39,25 @@ async function loadMetadata(levelId: number, fetchImpl: typeof fetch): Promise<L
   };
 }
 
-async function fetchJson(url: string, fetchImpl: typeof fetch): Promise<JsonRecord> {
+function getDifficultyCatalog(fetchImpl: typeof fetch): Promise<Map<number, JsonRecord>> {
+  difficultyCatalogRequest ??= loadDifficultyCatalog(fetchImpl);
+  return difficultyCatalogRequest;
+}
+
+async function loadDifficultyCatalog(fetchImpl: typeof fetch): Promise<Map<number, JsonRecord>> {
+  const payload = await fetchJson(`${API_ROOT}/difficulties`, fetchImpl);
+  if (!Array.isArray(payload)) throw new Error("TUF difficulty response was not an array");
+  const catalog = new Map<number, JsonRecord>();
+  for (const item of payload) {
+    const difficulty = record(item);
+    if (!difficulty) continue;
+    const id = numberValue(difficulty, "id", "Id");
+    if (id !== null) catalog.set(id, difficulty);
+  }
+  return catalog;
+}
+
+async function fetchJson(url: string, fetchImpl: typeof fetch): Promise<unknown> {
   const cache = "caches" in globalThis ? await caches.open(CACHE_NAME) : null;
   const cached = await cache?.match(url);
   if (cached) return unwrap(await cached.json());
@@ -47,9 +67,10 @@ async function fetchJson(url: string, fetchImpl: typeof fetch): Promise<JsonReco
   return unwrap(await response.json());
 }
 
-function unwrap(input: unknown): JsonRecord {
-  const root = record(input) ?? {};
-  return record(root.data) ?? record(root.result) ?? root;
+function unwrap(input: unknown): unknown {
+  const root = record(input);
+  if (!root) return input;
+  return root.data ?? root.result ?? root;
 }
 
 function record(input: unknown): JsonRecord | null {
@@ -66,6 +87,14 @@ function text(input: JsonRecord, ...keys: string[]): string {
   return typeof found === "string" ? found : "";
 }
 
+function numberValue(input: JsonRecord, ...keys: string[]): number | null {
+  const found = value(input, ...keys);
+  if (typeof found === "number" && Number.isFinite(found)) return found;
+  if (typeof found === "string" && found.trim() !== "" && Number.isFinite(Number(found))) return Number(found);
+  return null;
+}
+
 export function clearTufMetadataMemoryCacheForTests() {
   memory.clear();
+  difficultyCatalogRequest = null;
 }
