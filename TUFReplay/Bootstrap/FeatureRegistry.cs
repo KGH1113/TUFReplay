@@ -1,5 +1,6 @@
 using JALib.Core.Patch;
 using TUFReplay.Features.Gameplay;
+using TUFReplay.Features.Ipc;
 using TUFReplay.Features.Recording;
 using TUFReplay.Features.Replay;
 
@@ -9,6 +10,7 @@ public static class FeatureRegistry
 {
   private static JAPatcher _patcher;
 
+  public static TUFReplayIpcFeature Ipc { get; private set; }
   public static RecordingFeature Recording { get; private set; }
   public static ReplayFeature Replay { get; private set; }
 
@@ -16,6 +18,7 @@ public static class FeatureRegistry
   {
     if (_patcher != null) return;
 
+    Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
     Replay = new ReplayFeature();
 
@@ -26,6 +29,7 @@ public static class FeatureRegistry
       .AddPatch(typeof(GameplayPatches));
 
     _patcher.Patch();
+    Ipc.Enable();
     Recording.Enable();
     Replay.Enable();
   }
@@ -34,11 +38,13 @@ public static class FeatureRegistry
   {
     Replay?.Disable();
     Recording?.Disable();
+    Ipc?.Disable();
 
     _patcher?.Dispose();
     _patcher = null;
 
     Replay = null;
     Recording = null;
+    Ipc = null;
   }
 }

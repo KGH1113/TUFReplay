@@ -15,3 +15,5 @@
     - [JipperResourcePack](https://github.com/Jongye0l/JipperResourcePack)
 - If you need TUFHelper source code, use this repository:
     - [TUFHelper](https://github.com/coyami-ke/TUFHelper)
+- Here is also a documentation about AdofaiIpc
+    - [AdofaiIpc-Documentation](https://github.com/KGH1113/adofai-ipc/tree/main/docs)

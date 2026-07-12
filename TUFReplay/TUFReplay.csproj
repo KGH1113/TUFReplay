@@ -16,6 +16,10 @@
       <HintPath>$(JALibDll)</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="AdofaiIpc">
+      <HintPath>$(AdofaiIpcDll)</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityModManager">
       <HintPath>$(UnityModManagerDll)</HintPath>
       <Private>false</Private>

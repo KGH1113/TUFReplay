@@ -14,9 +14,6 @@ public static class ModBootstrap
 
   public static void Shutdown()
   {
-    Main.Server?.Stop();
-    Main.Server = null;
-
     FeatureRegistry.Shutdown();
   }
 }

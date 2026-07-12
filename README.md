@@ -8,7 +8,7 @@
 [![Build](https://img.shields.io/badge/build-.NET%20SDK-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Target](https://img.shields.io/badge/target-netstandard2.1-2563eb?style=for-the-badge)](https://learn.microsoft.com/dotnet/standard/net-standard)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
-[![API](https://img.shields.io/badge/api-local%20HTTP-f97316?style=for-the-badge)](#local-http-api)
+[![API](https://img.shields.io/badge/api-AdofaiIpc-f97316?style=for-the-badge)](#adofaiipc-api)
 
 <br />
 
@@ -29,7 +29,7 @@
 
 ## Overview
 
-TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, serves those records through a localhost HTTP API, and is designed to support replay playback and TUF submission tooling.
+TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and is designed to support replay playback and TUF submission tooling.
 
 The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows.
 
@@ -37,7 +37,7 @@ The project is built around preserving low-level play data instead of trusting f
 
 - Records OS-native keyboard state changes during eligible TUFHelper-opened clears.
 - Stores records, metadata, input payloads, and future microphone recordings in SQLite.
-- Serves local HTTP APIs for record browsing, deletion, health checks, and opening recorded levels.
+- Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Opens recorded TUF levels through TUFHelper.
 - Provides the project foundation for replay playback and TUF clear submission.
 
@@ -50,14 +50,14 @@ Required at runtime:
 - A Dance of Fire and Ice
 - UnityModManager
 - JALib
+- AdofaiIpc
 - TUFHelper
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
-The mod starts a localhost server at:
+## Repository Layout
 
-```text
-http://127.0.0.1:32145/
-```
+- `TUFReplay/`: UnityModManager/JALib mod source.
+- `web/`: Bun/Vite companion web UI, managed as a workspace package.
 
 ## Build
 
@@ -87,6 +87,7 @@ Important environment variables:
 - `ADOFAI_MANAGED`: Unity managed assembly directory.
 - `DOTNET_EXE`: .NET SDK executable.
 - `JALIB_DLL`: JALib assembly path.
+- `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `TUFHELPER_DLL`: TUFHelper assembly path.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
@@ -98,17 +99,57 @@ Create a clean shareable package:
 
 The package script builds the mod into `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package and excludes local database/log data from the package.
 
-## Local HTTP API
+## Web Development
 
-The local API is intended for the companion web UI and development tools.
+Install the Bun workspace dependencies from the repository root:
 
-Available endpoints:
+```bash
+bun install
+```
 
-- `GET /api/health`
-- `GET /api/records`
-- `GET /api/records/:id`
-- `DELETE /api/records/:id`
-- `POST /api/records/:id/open`
+Run the companion web UI:
+
+```bash
+bun run web:dev
+```
+
+Type-check or build the web workspace:
+
+```bash
+bun run web:typecheck
+bun run web:build
+```
+
+The web UI is built and deployed independently. `build.sh` and `package.sh` continue to build and package only the ADOFAI mod.
+
+## AdofaiIpc API
+
+The local API is intended for the companion web UI and development tools. Clients should find AdofaiIpc by probing `/ipc/health`, then call TUFReplay through:
+
+```http
+POST /ipc
+Content-Type: application/json
+```
+
+```json
+{
+  "namespace": "tuf-replay",
+  "method": "health.get",
+  "params": {},
+  "id": "optional-client-id"
+}
+```
+
+Registered methods:
+
+- `health.get`
+- `activity.days.list`
+- `activity.day.get`
+- `activity.app-session.get`
+- `activity.level-session.get`
+- `activity.level-session.segments.list`
+- `activity.level-session.runs.list`
+- `activity.level-session.segment-runs.list`
 
 ## Tech Stack
 
@@ -116,11 +157,11 @@ Available endpoints:
 - **netstandard2.1**: target framework for Unity compatibility.
 - **UnityModManager**: ADOFAI mod loading.
 - **JALib**: JAMod lifecycle, settings, and mod structure.
+- **AdofaiIpc**: shared localhost IPC listener and namespace routing.
 - **Harmony**: game method patching for recording hooks.
 - **TUFHelper**: TUF level metadata and level-opening integration.
 - **SQLite / Microsoft.Data.Sqlite**: local play record storage.
 - **Newtonsoft.Json**: metadata and API JSON serialization.
-- **HttpListener**: localhost API server.
 - **Bash / .env**: local build and install configuration.
 
 ## Special Thanks

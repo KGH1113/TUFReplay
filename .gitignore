@@ -6,9 +6,12 @@ build/
 
 # Library
 packages/
+node_modules/
+web/dist/
 
 # Local Environment
 .env
+web/.env
 
 # MacOS Finder Cache
 .DS_Store
