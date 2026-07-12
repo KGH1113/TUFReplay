@@ -16,3 +16,10 @@ public sealed class ActivityRunDto
   public string Id;public string LevelSessionId;public int? TufLevelId;public int RunIndex;public string StartedAtUtc;public string EndedAtUtc;public int FloorCount;public int StartTile;public int? LastTile;public string Result;public bool NoFailMode;public double? GameplayStartSongPosition;public int? LevelPitchPercent;public float? EffectivePitch;public int InputCount;public int HitContextCount;public long InputBytes;public long HitContextBytes;
   public static ActivityRunDto From(RunRecord r)=>new ActivityRunDto{Id=r.Id,LevelSessionId=r.LevelSessionId,TufLevelId=r.TufLevelId,RunIndex=r.RunIndex,StartedAtUtc=r.StartedAtUtc,EndedAtUtc=r.EndedAtUtc,FloorCount=r.LevelTileCount,StartTile=r.StartTile,LastTile=r.LastTile,Result=r.Result,NoFailMode=r.NoFailMode,GameplayStartSongPosition=r.GameplayStartSongPosition,LevelPitchPercent=r.LevelPitchPercent,EffectivePitch=r.EffectivePitch,InputCount=r.InputCount,HitContextCount=r.HitContextCount,InputBytes=r.InputCsvBytes,HitContextBytes=r.HitContextCsvBytes};
 }
+
+public sealed class ActivityChartDto
+{
+  public string LevelSessionId;
+  public string LevelText;
+  public int FloorCount;
+}
