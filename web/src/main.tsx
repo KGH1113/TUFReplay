@@ -11,6 +11,6 @@ if (!root) throw new Error("root element not found");
 
 createRoot(root).render(
   <React.StrictMode>
-  <ActivityDashboard />
+    <ActivityDashboard />
   </React.StrictMode>,
 );

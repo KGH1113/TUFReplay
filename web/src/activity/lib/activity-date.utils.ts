@@ -41,10 +41,9 @@ export function formatMonthLabel(date: Date) {
   return date.toLocaleDateString(undefined, { month: "long", year: "numeric" });
 }
 
-export function formatTime(value: string | null | undefined) {
+export function formatTime(value: string | null | undefined, timeZone?: string) {
   if (!value) return "Open";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
+  return parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone });
 }
-

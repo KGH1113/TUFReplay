@@ -1,65 +1,35 @@
-export interface ActivityDaySummary {
-  Date: string;
-  AppSessionCount: number;
-  LevelSessionCount: number;
-  RunCount: number;
-  ClearRunCount: number;
-  NoFailRunCount: number;
-  UniqueLevelCount: number;
-  StartedAtUtc: string;
-  EndedAtUtc: string | null;
-}
-
-export interface ActivityLevelSession {
+export interface ActivityLevelSessionOverview {
   Id: string;
   AppSessionId: string;
-  TufLevelId: number;
+  TufLevelId: number | null;
   OpenedAtUtc: string;
   ClosedAtUtc: string | null;
-  LevelTileCount: number;
   RunCount: number;
-  NoFailRunCount: number;
-  FirstStartTile: number | null;
-  LastStartTile: number | null;
+  ClearRunCount: number;
+  ChartAvailable: boolean;
 }
 
 export interface ActivityAppSession {
   Id: string;
   StartedAtUtc: string;
   EndedAtUtc: string | null;
-  LevelSessions: ActivityLevelSession[];
+  RecorderTimeZoneId: string | null;
+  RecorderUtcOffsetMinutes: number;
+  LevelSessions: ActivityLevelSessionOverview[];
 }
 
-export interface ActivityDay {
-  Date: string;
-  Summary: ActivityDaySummary;
-  AppSessions: ActivityAppSession[];
-}
-
-export interface ActivitySegmentGroup {
-  SegmentGroupIndex: number;
-  StartTile: number;
-  AttemptCount: number;
-  BestLastTile: number;
-  FirstStartedAtUtc: string;
-  LastStartedAtUtc: string;
-}
-
-export interface ActivityLevelSessionDetail {
-  Session: ActivityLevelSession;
-  SegmentGroups: ActivitySegmentGroup[];
+export interface ActivityLevelSessionDetail extends ActivityLevelSessionOverview {
+  AppSession: ActivityAppSession;
 }
 
 export interface ActivityRun {
   Id: string;
   AppSessionId: string;
   LevelSessionId: string;
-  TufLevelId: number;
+  TufLevelId: number | null;
   RunIndex: number;
-  SegmentGroupIndex: number;
   StartedAtUtc: string;
   EndedAtUtc: string | null;
-  LevelTileCount: number;
   StartTile: number;
   LastTile: number | null;
   Result: string;
@@ -72,29 +42,36 @@ export interface ActivityRun {
   Meta: unknown;
 }
 
+export interface ActivityChart {
+  LevelSessionId: string;
+  LevelText: string;
+  FloorCount: number;
+}
+
+export interface RunMarker {
+  id: string;
+  floorIndex: number;
+  count: number;
+  clearCount: number;
+  bestLastFloorIndex: number;
+}
+
+export interface ActivityDay {
+  date: string;
+  appSessions: ActivityAppSession[];
+  levelSessions: ActivityLevelSessionOverview[];
+  runCount: number;
+  clearRunCount: number;
+}
+
 export interface LevelMetadata {
-  Difficulty: string;
-  DifficultyIconUrl: string;
-  LevelId: number;
-  Artist: string;
-  Name: string;
-  Creator: string;
+  levelId: number | null;
+  artist: string;
+  name: string;
+  creator: string;
+  difficulty: string;
+  difficultyIconUrl: string;
+  source: "tuf" | "local" | "fallback";
 }
 
-export interface PlottedSegmentGroup {
-  group: ActivitySegmentGroup;
-  runs: ActivityRun[];
-}
-
-export interface TimeExpansionRange {
-  start: number;
-  end: number;
-  extra: number;
-}
-
-export interface AdaptiveTimeScale {
-  domain: { min: number; max: number };
-  expandedRanges: TimeExpansionRange[];
-  toPosition: (value: number) => number;
-  toPercent: (value: number) => number;
-}
+export type ConnectionStatus = "connecting" | "online" | "error";
