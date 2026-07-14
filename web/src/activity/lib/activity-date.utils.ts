@@ -47,3 +47,14 @@ export function formatTime(value: string | null | undefined, timeZone?: string) 
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone });
 }
+
+export function formatTimeWithOffset(value: string | null | undefined, timeZone?: string) {
+  if (!value) return "Open";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  const time = parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone });
+  const offset = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" })
+    .formatToParts(parsed)
+    .find((part) => part.type === "timeZoneName")?.value;
+  return offset ? `${time} (${offset})` : time;
+}

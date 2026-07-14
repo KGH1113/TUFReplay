@@ -12,6 +12,9 @@ public class RecordedRunPayload
   public string StartedAtUtc;
   public string EndedAtUtc;
   public double? GameplayStartSongPosition;
+  public long? WonTimeUs;
+  public long? TerminalTimeUs;
+  public string InputTimeBase = TUFReplay.Application.Recording.RecordingClock.HybridInputTimeBase;
   public bool NoFailMode;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
@@ -24,18 +27,20 @@ public class RecordedRunPayload
   {
     var meta = new
     {
-      formatVersion = 1,
+      formatVersion = 2,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,
+      wonTimeUs = WonTimeUs,
+      terminalTimeUs = TerminalTimeUs,
       noFailMode = NoFailMode,
       levelPitchPercent = LevelPitchPercent,
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,
       pitchSource = PitchSource,
       inputFormat = "csv-conductor-timeus-key-flags",
-      inputTimeBase = "ADOBase.conductor.songposition_minusi",
+      inputTimeBase = InputTimeBase,
       inputCapture = "creplay-style-native-key-state-sample",
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),

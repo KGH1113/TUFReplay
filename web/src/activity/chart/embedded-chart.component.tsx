@@ -1,25 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 
-import type { ActivityChart, RunMarker } from "../activity.model";
+import type { ActivityChart, ActivityRun, RunMarker } from "../activity.model";
 import { ChartBridge } from "./chart-bridge";
 
-const DEFAULT_EMBED_URL = "https://web-adofai.impl1113.dev/embed/chart";
+const DEFAULT_EMBED_URL = "http://127.0.0.1:5173/embed/chart";
 
-export function EmbeddedChart({
-  chart,
-  markers,
-  selectedMarker,
-  onMarkerSelect,
-  onFloorSelect,
-}: {
+export interface EmbeddedChartHandle {
+  fitEntireRun(): void;
+  refocusSelection(): void;
+}
+
+interface EmbeddedChartProps {
   chart: ActivityChart | null;
   markers: RunMarker[];
   selectedMarker: RunMarker | null;
+  selectedRun: ActivityRun | null;
   onMarkerSelect: (id: string) => void;
   onFloorSelect: (floorIndex: number) => void;
-}) {
+}
+
+export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>(function EmbeddedChart({
+  chart,
+  markers,
+  selectedMarker,
+  selectedRun,
+  onMarkerSelect,
+  onFloorSelect,
+}, ref) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const bridgeRef = useRef<ChartBridge | null>(null);
+  const callbacksRef = useRef({ onFloorSelect, onMarkerSelect });
+  callbacksRef.current = { onFloorSelect, onMarkerSelect };
+  const [frameSrc, setFrameSrc] = useState("about:blank");
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
   const [error, setError] = useState("");
   const embed = useMemo(() => {
@@ -35,36 +47,73 @@ export function EmbeddedChart({
       onReady: () => setState("loading"),
       onLoaded: () => setState("ready"),
       onError: (message) => { setError(message); setState("error"); },
-      onFloorSelected: onFloorSelect,
-      onMarkerSelected: onMarkerSelect,
+      onFloorSelected: (floorIndex) => callbacksRef.current.onFloorSelect(floorIndex),
+      onMarkerSelected: (markerId) => callbacksRef.current.onMarkerSelect(markerId),
     });
     bridgeRef.current = bridge;
     const listener = (event: MessageEvent) => bridge.handleMessage(event);
     window.addEventListener("message", listener);
+    setFrameSrc(embed.src);
     return () => {
       window.removeEventListener("message", listener);
       if (bridgeRef.current === bridge) bridgeRef.current = null;
     };
-  }, [embed.origin, onFloorSelect, onMarkerSelect]);
+  }, [embed.origin, embed.src]);
 
   useEffect(() => {
     if (!chart) return;
     setState("loading");
-    bridgeRef.current?.load(chart, markers);
-  }, [chart, markers]);
+    bridgeRef.current?.load(chart);
+  }, [chart?.FloorCount, chart?.LevelSessionId, chart?.LevelText]);
 
   useEffect(() => {
-    if (selectedMarker) bridgeRef.current?.focus(selectedMarker.floorIndex, selectedMarker.id);
-  }, [selectedMarker]);
+    bridgeRef.current?.setMarkers(markers);
+  }, [markers]);
+
+  const selectedMarkerId = selectedMarker?.id ?? null;
+  const selectedMarkerFloor = selectedMarker?.floorIndex ?? null;
+  const selectedRunId = selectedRun?.Id ?? null;
+  const selectedRunStart = selectedRun?.StartTile ?? null;
+  const selectedRunEnd = selectedRun ? Math.max(selectedRun.StartTile, selectedRun.LastTile ?? selectedRun.StartTile) : null;
+
+  useEffect(() => {
+    if (state !== "ready" || selectedMarkerId === null || selectedMarkerFloor === null) return;
+    bridgeRef.current?.focus(selectedMarkerFloor, selectedMarkerId);
+  }, [selectedMarkerFloor, selectedMarkerId, state]);
+
+  useEffect(() => {
+    if (state !== "ready") return;
+    if (selectedRunId === null || selectedRunStart === null || selectedRunEnd === null) {
+      bridgeRef.current?.clearRunFocus();
+      return;
+    }
+    bridgeRef.current?.focusRun(selectedRunStart, selectedRunEnd);
+  }, [selectedRunEnd, selectedRunId, selectedRunStart, state]);
+
+  useImperativeHandle(ref, () => ({
+    fitEntireRun() {
+      if (selectedRunStart === null || selectedRunEnd === null) return;
+      bridgeRef.current?.fitEntireRun(selectedRunStart, selectedRunEnd);
+    },
+    refocusSelection() {
+      if (state !== "ready") return;
+      if (selectedRunStart !== null && selectedRunEnd !== null) {
+        bridgeRef.current?.focusRun(selectedRunStart, selectedRunEnd);
+        return;
+      }
+      if (selectedMarkerFloor === null || selectedMarkerId === null) return;
+      bridgeRef.current?.focus(selectedMarkerFloor, selectedMarkerId);
+    },
+  }), [selectedMarkerFloor, selectedMarkerId, selectedRunEnd, selectedRunStart, state]);
 
   return (
-    <div className="relative min-h-[24rem] flex-1 overflow-hidden rounded-lg border border-border bg-black/30">
-      <iframe ref={frameRef} src={embed.src} title="ADOFAI level chart" className="absolute inset-0 size-full border-0" />
+    <div className="relative min-h-0 flex-1 overflow-hidden bg-black/30">
+      <iframe ref={frameRef} src={frameSrc} title="ADOFAI level chart" className="absolute inset-0 size-full border-0" />
       {state === "loading" ? <ChartOverlay>Loading chart…</ChartOverlay> : null}
       {state === "error" ? <ChartOverlay>{error || "The embedded chart could not be loaded."}</ChartOverlay> : null}
     </div>
   );
-}
+});
 
 function ChartOverlay({ children }: { children: React.ReactNode }) {
   return <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/80 text-sm text-muted-foreground backdrop-blur-sm">{children}</div>;

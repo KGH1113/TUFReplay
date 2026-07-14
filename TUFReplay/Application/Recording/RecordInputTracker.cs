@@ -42,7 +42,6 @@ public static class RecordInputTracker
   {
     if (!_capturing) return;
     if (session == null || !session.IsRecording || !session.IsCapturingInput) return;
-    if (!TryGetSongPosition(out double songPosition)) return;
 
     _samples++;
     StateReader.Refresh();
@@ -65,7 +64,7 @@ public static class RecordInputTracker
       RecordInputFlags flags = RecordInputFlags.Async;
       if (isDown) flags |= RecordInputFlags.Down;
 
-      session.AddInputAtSongPosition(songPosition, key, flags);
+      session.AddInputAtCurrentTime(key, flags);
       _transitions++;
     }
   }
@@ -82,12 +81,4 @@ public static class RecordInputTracker
       ", readFailures=" + _readFailures;
   }
 
-  private static bool TryGetSongPosition(out double songPosition)
-  {
-    songPosition = 0d;
-    if (ADOBase.conductor == null) return false;
-
-    songPosition = ADOBase.conductor.songposition_minusi;
-    return true;
-  }
 }

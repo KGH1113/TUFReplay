@@ -19,26 +19,35 @@ public static class ReplaySessionService
 
   public static bool HasActiveContext => _activeContext != null;
   public static bool UsesHitContextPlayback => _activeContext?.HitContextPlayer?.Count > 0;
+  public static string ActiveRunId => _activeContext?.RunId;
+  public static bool NativeInputFinished => _activeContext?.NativeInputScheduler?.Finished == true;
+  public static bool HitContextFinished => _activeContext?.HitContextPlayer == null || _activeContext.HitContextPlayer.Finished;
+  public static string ActiveResult => _activeContext?.Result;
+  public static long ActiveTerminalTimeUs => _activeContext?.TerminalTimeUs ?? 0L;
 
-  public static bool IsActiveReplayLevel(int tufLevelId)
+  public static bool IsActiveReplayLevel(string levelPath)
   {
-    return _activeContext != null && _activeContext.TufLevelId == tufLevelId;
+    return _activeContext != null && LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath);
   }
 
-  public static void ClearActiveContextIfLevelChanged(int? tufLevelId)
+  public static void ClearActiveContextIfLevelChanged(string levelPath)
   {
     if (_activeContext == null) return;
+    if (!LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath))
+      StopActiveReplay("different_level_opened");
+  }
 
-    if (!tufLevelId.HasValue)
-    {
-      StopActiveReplay("tuf_level_id_missing");
-      return;
-    }
+  public static void InstallActiveContext(ActiveReplayContext context)
+  {
+    if (context == null) throw new ArgumentNullException(nameof(context));
 
-    if (_activeContext.TufLevelId != tufLevelId.Value)
-    {
-      StopActiveReplay("different_tuf_level_opened:" + tufLevelId.Value);
-    }
+    ClearActiveContext();
+    _activeContext = context;
+    _lastNativeGateLogKey = null;
+    _lastNativeGateLogFrame = -100000;
+    _lastNativeTickLogFrame = -100000;
+    _lastHitContextTickLogFrame = -100000;
+    _suppressReplayMarkFail = false;
   }
 
   public static void RequestReplayPitchApplyAfterLevelLoad()
@@ -66,26 +75,15 @@ public static class ReplaySessionService
     }
 
     ReplayMetadata meta = _activeContext.Meta;
-    int? pitchPercent = meta.levelPitchPercent;
-    if (!pitchPercent.HasValue)
+    if (!meta.levelPitchPercent.HasValue)
     {
       _pendingReplayPitchApplyFrame = -1;
       return;
     }
 
-    ReplayPitchApplyResult result = ReplayPitchService.ApplyToEditorLevelData(pitchPercent.Value);
-    if (result == ReplayPitchApplyResult.NotReady) return;
-
+    if (!ReplayPitchService.GetEditorPitch().HasValue) return;
+    ApplyReplayPitchNow();
     _pendingReplayPitchApplyFrame = -1;
-
-    if (result == ReplayPitchApplyResult.Applied)
-    {
-      Main.Instance?.Log(
-        "[ReplaySessionService] Applied replay pitch as editor change. " +
-        ", levelPitchPercent=" + pitchPercent.Value +
-        ", effectivePitch=" + (meta.effectivePitch?.ToString("F6") ?? "null")
-      );
-    }
   }
 
   public static void StopActiveReplay(string reason)
@@ -99,6 +97,7 @@ public static class ReplaySessionService
     bool hadActiveContext = _activeContext != null;
 
     _activeContext?.NativeInputPlayer?.ReleaseAll();
+    RestoreReplayPitch();
     _activeContext = null;
     _pendingReplayPitchApplyFrame = -1;
     _suppressReplayMarkFail = false;
@@ -117,6 +116,11 @@ public static class ReplaySessionService
     {
       return;
     }
+
+    if (newState == States.Won)
+      ReplayClock.EnterWon(_activeContext);
+
+    ReplayPlaybackCoordinator.OnGameStateChanged(newState);
 
     switch (newState)
     {
@@ -140,22 +144,11 @@ public static class ReplaySessionService
   {
     if (_activeContext == null) return false;
 
-    if (!TufHelperGateway.IsFromTUFHelper())
+    string levelPath = LevelPathIdentity.Current();
+    if (!LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath))
     {
-      StopActiveReplay("not_from_tuf_helper");
-      return false;
-    }
-
-    int? levelId = TufHelperGateway.GetLevelID();
-    if (!levelId.HasValue)
-    {
-      StopActiveReplay("tuf_level_id_missing");
-      return false;
-    }
-
-    if (_activeContext.TufLevelId != levelId.Value)
-    {
-      StopActiveReplay("different_tuf_level_current:" + levelId.Value);
+      StopActiveReplay("different_level_current");
+      ReplayPlaybackCoordinator.Fail("different_level_current", "The open level changed during replay.");
       return false;
     }
 
@@ -325,7 +318,31 @@ public static class ReplaySessionService
       );
     }
 
+    ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
     return emitted;
+  }
+
+  public static void ApplyReplayPitchNow()
+  {
+    if (_activeContext?.Meta?.levelPitchPercent == null) return;
+    if (_activeContext.ReplayPitchApplied) return;
+
+    int? originalPitch = ReplayPitchService.GetEditorPitch();
+    if (!originalPitch.HasValue) return;
+
+    ReplayPitchApplyResult result = ReplayPitchService.ApplyToEditorLevelData(_activeContext.Meta.levelPitchPercent.Value);
+    if (result != ReplayPitchApplyResult.Applied) return;
+
+    _activeContext.OriginalLevelPitchPercent = originalPitch;
+    _activeContext.ReplayPitchApplied = true;
+  }
+
+  private static void RestoreReplayPitch()
+  {
+    if (_activeContext?.ReplayPitchApplied != true || !_activeContext.OriginalLevelPitchPercent.HasValue) return;
+
+    ReplayPitchService.ApplyToEditorLevelData(_activeContext.OriginalLevelPitchPercent.Value);
+    _activeContext.ReplayPitchApplied = false;
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)

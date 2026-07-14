@@ -1,6 +1,6 @@
 import type { LevelMetadata } from "../activity.model";
 
-const API_ROOT = "https://api.tuforums.com/v2/database";
+const API_ROOT = "/api/tuf/v2/database";
 const CACHE_NAME = "tuf-replay-metadata-v1";
 const memory = new Map<number, Promise<LevelMetadata>>();
 let difficultyCatalogRequest: Promise<Map<number, JsonRecord>> | null = null;

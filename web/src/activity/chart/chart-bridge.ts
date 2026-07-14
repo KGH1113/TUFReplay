@@ -17,7 +17,9 @@ export class ChartBridge {
   private revision = 0;
   private requestId = "";
   private ready = false;
-  private pending: { chart: ActivityChart; markers: RunMarker[] } | null = null;
+  private chart: ActivityChart | null = null;
+  private markers: RunMarker[] = [];
+  private markerSignature = "";
 
   constructor(
     private readonly frame: HTMLIFrameElement,
@@ -31,7 +33,7 @@ export class ChartBridge {
     if (isReadyMessage(message)) {
       this.ready = true;
       this.callbacks.onReady();
-      this.flush();
+      this.sendChart();
       return;
     }
     if (isLoadedMessage(message)) {
@@ -45,11 +47,17 @@ export class ChartBridge {
     }
   }
 
-  load(chart: ActivityChart, markers: RunMarker[]) {
-    this.revision += 1;
-    this.requestId = `chart-${this.revision}-${crypto.randomUUID()}`;
-    this.pending = { chart, markers };
-    this.flush();
+  load(chart: ActivityChart) {
+    this.chart = chart;
+    this.sendChart();
+  }
+
+  setMarkers(markers: RunMarker[]) {
+    const signature = markerSetSignature(markers);
+    if (signature === this.markerSignature) return;
+    this.markers = markers;
+    this.markerSignature = signature;
+    this.sendMarkers();
   }
 
   focus(floorIndex: number, markerId?: string) {
@@ -57,18 +65,45 @@ export class ChartBridge {
     this.frame.contentWindow?.postMessage(envelope("chart.focus", { floorIndex, markerId }), this.origin);
   }
 
+  focusRun(startFloorIndex: number, endFloorIndex: number) {
+    if (!this.ready) return;
+    this.frame.contentWindow?.postMessage(envelope("run.focus", { startFloorIndex, endFloorIndex }), this.origin);
+  }
+
+  fitEntireRun(startFloorIndex: number, endFloorIndex: number) {
+    if (!this.ready) return;
+    this.frame.contentWindow?.postMessage(envelope("run.fit-all", { startFloorIndex, endFloorIndex }), this.origin);
+  }
+
+  clearRunFocus() {
+    if (!this.ready) return;
+    this.frame.contentWindow?.postMessage(envelope("run.clear", {}), this.origin);
+  }
+
   clear() {
-    this.pending = null;
+    this.chart = null;
+    this.markers = [];
+    this.markerSignature = "";
     if (!this.ready) return;
     this.frame.contentWindow?.postMessage(envelope("chart.clear", {}), this.origin);
   }
 
-  private flush() {
-    if (!this.ready || !this.pending) return;
-    this.frame.contentWindow?.postMessage(envelope("chart.load", { requestId: this.requestId, levelText: this.pending.chart.LevelText }), this.origin);
-    this.frame.contentWindow?.postMessage(envelope("markers.set", { revision: this.revision, markers: this.pending.markers }), this.origin);
-    this.pending = null;
+  private sendChart() {
+    if (!this.ready || !this.chart) return;
+    this.requestId = `chart-${this.revision + 1}-${crypto.randomUUID()}`;
+    this.frame.contentWindow?.postMessage(envelope("chart.load", { requestId: this.requestId, levelText: this.chart.LevelText }), this.origin);
+    this.sendMarkers();
   }
+
+  private sendMarkers() {
+    if (!this.ready) return;
+    this.revision += 1;
+    this.frame.contentWindow?.postMessage(envelope("markers.set", { revision: this.revision, markers: this.markers }), this.origin);
+  }
+}
+
+function markerSetSignature(markers: readonly RunMarker[]) {
+  return markers.map((marker) => `${marker.id}:${marker.floorIndex}:${marker.count}:${marker.clearCount}:${marker.bestLastFloorIndex}`).join("|");
 }
 
 function isEnvelope(input: unknown): input is Envelope & Record<string, unknown> {

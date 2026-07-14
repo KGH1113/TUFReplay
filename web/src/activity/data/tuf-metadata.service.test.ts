@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 
 import { clearTufMetadataMemoryCacheForTests, getTufMetadata } from "./tuf-metadata.service";
 
-const API_ROOT = "https://api.tuforums.com/v2/database";
+const API_ROOT = "/api/tuf/v2/database";
 
 describe("TUF metadata live API contract", () => {
   beforeEach(clearTufMetadataMemoryCacheForTests);

@@ -5,7 +5,9 @@ import type {
   ActivityChart,
   ActivityLevelSessionOverview,
   ActivityRun,
+  ReplayStatus,
 } from "../activity.model";
+import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
@@ -30,10 +32,14 @@ export interface ActivityGateway {
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   listAllRuns(id: string, onPage?: (items: ActivityRun[]) => void): Promise<ActivityRun[]>;
   getChart(id: string): Promise<ActivityChart>;
+  playReplay(runId: string): Promise<ReplayStatus>;
+  getReplayStatus(): Promise<ReplayStatus>;
 }
 
 export async function connectActivityGateway(): Promise<ActivityGateway> {
-  const client = await tryConnect();
+  const client = await tryConnect({
+    fetch: adofaiIpcFetch,
+  });
   return createActivityGateway(client.namespace(NAMESPACE));
 }
 
@@ -50,6 +56,8 @@ export function createActivityGateway(namespace: Pick<AdofaiIpcNamespaceClient, 
       onPage,
     ),
     getChart: (id) => callDomain(namespace, "activity.level-session.chart.get", { id }),
+    playReplay: (runId) => callDomain(namespace, "replay.play", { runId }),
+    getReplayStatus: () => callDomain(namespace, "replay.status.get", {}),
   };
 }
 

@@ -8,7 +8,7 @@ export function DayRail({ days, selectedDate, onSelectDate }: { days: ActivityDa
   const refs = useRef(new Map<string, HTMLButtonElement>());
   useEffect(() => { if (selectedDate) refs.current.get(selectedDate)?.scrollIntoView({ block: "nearest" }); }, [selectedDate]);
   return (
-    <aside className="flex min-h-screen flex-col bg-muted/20">
+    <aside className="flex min-h-0 flex-col bg-muted/20">
       <div className="border-b border-border px-3 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Days</div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {days.map((day) => (

@@ -103,6 +103,7 @@ public static class RecordingPatches
     switch (newState)
     {
       case States.Countdown:
+      case States.Checkpoint:
         if (!recording.Session.IsRecording) return;
 
         if (!RecordingGuard.CanRecord(out string reason))
@@ -112,6 +113,7 @@ public static class RecordingPatches
           return;
         }
 
+        if (!recording.PrepareRunForInputCapture()) return;
         recording.Session.StartInputCapture();
         ResetHitContextState();
         break;
@@ -142,6 +144,7 @@ public static class RecordingPatches
   {
     if (!IsActive) return;
 
+    SampleNativeInput();
     RecordingFeature.Instance?.OnReturnedToEditor();
   }
 

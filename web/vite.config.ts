@@ -4,7 +4,13 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-console.log("VITE CONFIG LOADED");
+const tufApiProxy = {
+  "/api/tuf": {
+    target: "https://api.tuforums.com",
+    changeOrigin: true,
+    rewrite: (path: string) => path.replace(/^\/api\/tuf/, ""),
+  },
+};
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -15,5 +21,7 @@ export default defineConfig({
   },
   server: {
     allowedHosts: ["guhyeons-macbook-pro.tail234c02.ts.net"],
+    proxy: tufApiProxy,
   },
+  preview: { proxy: tufApiProxy },
 });

@@ -29,7 +29,7 @@
 
 ## Overview
 
-TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and is designed to support replay playback and TUF submission tooling.
+TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
 The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows.
 
@@ -39,6 +39,8 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves the current chart text to the companion web UI without exposing local file paths.
+- Opens a saved run's recorded level, reuses an already-open matching editor level, and replays it from its recorded start tile.
+- Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 
@@ -114,6 +116,8 @@ Run the companion web UI:
 bun run web:dev
 ```
 
+To run the UI against the bundled activity, chart, run, and replay mock data instead of AdofaiIpc, open the development URL with `?mock=1` (for example, `http://localhost:5174/?mock=1`) or start Vite with `VITE_USE_MOCK_ACTIVITY=true`.
+
 Test, type-check, or build the web workspace:
 
 ```bash
@@ -123,6 +127,8 @@ bun run web:build
 ```
 
 The web UI is built and deployed independently. `build.sh` and `package.sh` continue to build and package only the ADOFAI mod.
+
+The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
 
 ## AdofaiIpc API
 
@@ -149,6 +155,8 @@ Registered methods:
 - `activity.level-session.get`
 - `activity.level-session.runs.list`
 - `activity.level-session.chart.get`
+- `replay.play`
+- `replay.status.get`
 
 ## Tech Stack
 

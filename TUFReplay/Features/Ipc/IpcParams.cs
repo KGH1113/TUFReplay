@@ -5,6 +5,19 @@ namespace TUFReplay.Features.Ipc;
 
 public static class IpcParams
 {
+  public static bool TryRequiredString(IpcRequest request, string name, out string value)
+  {
+    value = null;
+    JToken token = GetToken(request, name);
+    if (token == null || token.Type != JTokenType.String) return false;
+
+    string parsed = token.Value<string>();
+    if (string.IsNullOrWhiteSpace(parsed)) return false;
+
+    value = parsed.Trim();
+    return true;
+  }
+
   public static string OptionalString(IpcRequest request, string name)
   {
     JToken token = GetToken(request, name);

@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
@@ -34,18 +33,18 @@ public class RecordingFeature
 
   public void OnClearReached()
   {
-    if (!Session.IsRecording) return;
+    if (!Session.IsRecording || _clearReached) return;
     _clearReached = true;
-    Session.StopInputCapture("cleared");
-    SaveActivityRun("cleared", RecordingSession.GetLevelTileCount());
-    Main.Instance.Log("[Recording] Clear reached");
+    Session.MarkWonReached();
+    Main.Instance.Log("[Recording] Clear reached; input capture continues until editor return.");
   }
 
   public void OnRunFailed()
   {
-    if (!Session.IsRecording) return;
+    if (!Session.IsRecording || _runSaved) return;
 
     _failed = true;
+    Session.MarkTerminal();
     Session.StopInputCapture("failed");
     SaveActivityRun("failed", Session.GetLastReachedTile());
     Main.Instance.Log("[Recording] Run failed.");
@@ -55,8 +54,15 @@ public class RecordingFeature
   {
     if (!Session.IsRecording) return;
 
+    Session.MarkTerminal();
     Session.StopInputCapture("editor");
-    if (!_runSaved) SaveActivityRun("aborted", Session.GetLastReachedTile());
+    if (!_runSaved)
+    {
+      SaveActivityRun(
+        _clearReached ? "cleared" : "aborted",
+        _clearReached ? RecordingSession.GetLevelTileCount() : Session.GetLastReachedTile()
+      );
+    }
     StopSession();
 
     if (_clearReached && !_failed && Session.HasRecordableData)
@@ -79,8 +85,8 @@ public class RecordingFeature
     if (!Active) return;
     Active = false;
 
-    RecordInputTracker.Reset();
     StopSession();
+    RecordInputTracker.Reset();
     _activity.CloseLevel();
     _activity.StopAppSession();
   }
@@ -96,8 +102,8 @@ public class RecordingFeature
     }
 
     int? tufLevelId = TufHelperGateway.ResolveTufLevelId(levelPath);
-    ReplaySessionService.ClearActiveContextIfLevelChanged(tufLevelId);
-    if (tufLevelId.HasValue && ReplaySessionService.IsActiveReplayLevel(tufLevelId.Value)) return;
+    ReplaySessionService.ClearActiveContextIfLevelChanged(levelPath);
+    if (ReplaySessionService.IsActiveReplayLevel(levelPath)) return;
 
     if (!RecordingGuard.CanRecord(out string reason))
     {
@@ -106,10 +112,7 @@ public class RecordingFeature
       return;
     }
 
-    _clearReached = false;
-    _failed = false;
-    _runSaved = false;
-    _currentRun = null;
+    ResetRunState();
 
     int levelTileCount = RecordingSession.GetLevelTileCount();
     _activity.OpenLevel(levelPath, tufLevelId, levelTileCount);
@@ -118,23 +121,34 @@ public class RecordingFeature
     Main.Instance.Log("[Recording] Custom level opened. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
   }
 
+  public bool PrepareRunForInputCapture()
+  {
+    if (!Session.IsRecording) return false;
+    if (!_runSaved) return true;
+
+    int? tufLevelId = Session.TufLevelId;
+    ResetRunState();
+    RecordingPatches.ResetHitContextState();
+    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord);
+
+    Main.Instance.Log("[Recording] Prepared retry run. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
+    return Session.IsRecording;
+  }
+
   private static string CanonicalLevelPath()
   {
-    try
-    {
-      string path = ADOBase.levelPath;
-      if (string.IsNullOrWhiteSpace(path) || !path.EndsWith(".adofai", StringComparison.OrdinalIgnoreCase)) return null;
-      path = Path.GetFullPath(path);
-      return File.Exists(path) ? path : null;
-    }
-    catch
-    {
-      return null;
-    }
+    return LevelPathIdentity.Current();
   }
 
   public void StopSession()
   {
+    if (Session.IsRecording && _clearReached && !_runSaved)
+    {
+      Session.MarkTerminal();
+      Session.StopInputCapture("session_stop_after_clear");
+      SaveActivityRun("cleared", RecordingSession.GetLevelTileCount());
+    }
+
     Session.Stop();
     RecordingPatches.ResetHitContextState();
   }
@@ -170,5 +184,13 @@ public class RecordingFeature
       ", inputs=" + run.InputCount +
       ", hitContexts=" + run.HitContextCount
     );
+  }
+
+  private void ResetRunState()
+  {
+    _clearReached = false;
+    _failed = false;
+    _runSaved = false;
+    _currentRun = null;
   }
 }

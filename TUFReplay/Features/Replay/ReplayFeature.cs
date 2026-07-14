@@ -24,6 +24,6 @@ public class ReplayFeature
     if (!Active) return;
     Active = false;
 
-    ReplaySessionService.StopActiveReplay("feature_disabled");
+    ReplayPlaybackCoordinator.Shutdown();
   }
 }

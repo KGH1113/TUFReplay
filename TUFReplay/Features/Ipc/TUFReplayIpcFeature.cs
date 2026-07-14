@@ -33,6 +33,8 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("activity.level-session.get", TUFReplayIpcHandlers.GetLevelSession);
     ipc.Register("activity.level-session.runs.list", TUFReplayIpcHandlers.ListRuns);
     ipc.Register("activity.level-session.chart.get", TUFReplayIpcHandlers.GetChart);
+    ipc.Register("replay.play", TUFReplayIpcHandlers.PlayReplay);
+    ipc.Register("replay.status.get", TUFReplayIpcHandlers.GetReplayStatus);
 
     Main.Instance.Log("[IPC] Registered namespace: " + Namespace);
   }

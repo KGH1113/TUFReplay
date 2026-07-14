@@ -33,6 +33,20 @@ public static class ReplayInputPatches
     if (!IsActive) return;
 
     ReplaySessionService.TickReplayPitchEditorApply();
+    ReplayPlaybackCoordinator.Tick();
+  }
+
+  [JAPatch(
+    typeof(scnEditor),
+    "SwitchToEditMode",
+    PatchType.Postfix,
+    true,
+    ArgumentTypesType = new[] { typeof(bool) }
+  )]
+  private static void OnSwitchToEditModePostfix(bool clsToEditor)
+  {
+    if (!IsActive) return;
+    ReplayPlaybackCoordinator.OnReturnedToEditor();
   }
 
   [JAPatch(
@@ -117,6 +131,7 @@ public static class ReplayInputPatches
   {
     if (!IsActive) return;
 
+    ReplayPlaybackCoordinator.Fail("editor_quit_to_menu", "The editor was closed during replay.");
     ReplaySessionService.StopActiveReplay("editor_quit_to_menu");
   }
 }

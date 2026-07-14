@@ -53,6 +53,26 @@ export interface RunMarker {
   bestLastFloorIndex: number;
 }
 
+export type ReplayState =
+  | "idle"
+  | "preparing"
+  | "opening_level"
+  | "waiting_for_focus"
+  | "starting"
+  | "playing"
+  | "returning_to_editor"
+  | "completed"
+  | "cancelled"
+  | "error";
+
+export interface ReplayStatus {
+  OperationId: string | null;
+  RunId: string | null;
+  State: ReplayState;
+  ErrorCode: string | null;
+  Message: string | null;
+}
+
 export interface ActivityDay {
   date: string;
   appSessions: ActivityAppSession[];

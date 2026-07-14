@@ -9,6 +9,9 @@ public class RecordingSession
 {
   private readonly object _lock = new object();
   private readonly List<PendingSongPositionInput> _pendingSongPositionInputs = new List<PendingSongPositionInput>();
+  private double? _wonUnscaledTime;
+  private long _lastTimelineTimeUs;
+  private bool _hasTimelineTime;
 
   public bool IsRecording { get; private set; }
   public bool IsCapturingInput { get; private set; }
@@ -51,6 +54,9 @@ public class RecordingSession
       };
       RefreshPitchLocked();
       _pendingSongPositionInputs.Clear();
+      _wonUnscaledTime = null;
+      _lastTimelineTimeUs = 0L;
+      _hasTimelineTime = false;
     }
 
     RecordInputTracker.Reset();
@@ -66,7 +72,7 @@ public class RecordingSession
       IsRecording = false;
       IsCapturingInput = false;
       RefreshPitchLocked();
-      Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+      MarkTerminalLocked();
     }
 
     RecordInputTracker.Reset();
@@ -104,6 +110,31 @@ public class RecordingSession
     Main.Instance.Log("[Recording] Gameplay started. songPosition=" + Data.GameplayStartSongPosition);
   }
 
+  public void MarkWonReached()
+  {
+    lock (_lock)
+    {
+      if (!IsRecording || Data.WonTimeUs.HasValue) return;
+
+      long wonTimeUs = CurrentTimelineTimeUsLocked();
+      Data.WonTimeUs = wonTimeUs;
+      _wonUnscaledTime = RecordingClock.CurrentUnscaledTime();
+      _lastTimelineTimeUs = wonTimeUs;
+      _hasTimelineTime = true;
+    }
+
+    Main.Instance.Log("[Recording] Won timeline anchored. wonTimeUs=" + Data.WonTimeUs);
+  }
+
+  public void MarkTerminal()
+  {
+    lock (_lock)
+    {
+      if (!IsRecording) return;
+      MarkTerminalLocked();
+    }
+  }
+
   public void StopInputCapture(string reason)
   {
     lock (_lock)
@@ -117,7 +148,7 @@ public class RecordingSession
     Main.Instance.Log("[Recording/InputDebug] After stop: " + RecordInputTracker.DebugSnapshot());
   }
 
-  public void AddInputAtSongPosition(double songPosition, int key, RecordInputFlags flags)
+  public void AddInputAtCurrentTime(int key, RecordInputFlags flags)
   {
     lock (_lock)
     {
@@ -125,11 +156,11 @@ public class RecordingSession
 
       if (!Data.GameplayStartSongPosition.HasValue)
       {
-        _pendingSongPositionInputs.Add(new PendingSongPositionInput(songPosition, key, flags));
+        _pendingSongPositionInputs.Add(new PendingSongPositionInput(RecordingClock.CurrentSongPosition(), key, flags));
         return;
       }
 
-      AddInputLocked(ToRecordTimeUs(songPosition), key, flags);
+      AddInputLocked(CurrentTimelineTimeUsLocked(), key, flags);
     }
   }
 
@@ -160,6 +191,7 @@ public class RecordingSession
 
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
+      MarkTerminalLocked();
 
       run.EndedAtUtc = Data.EndedAtUtc ?? DateTime.UtcNow.ToString("O");
       run.LastTile = lastTile;
@@ -287,6 +319,35 @@ public class RecordingSession
     return RecordingClock.ToRecordTimeUs(songPosition, Data.GameplayStartSongPosition);
   }
 
+  private long CurrentTimelineTimeUsLocked()
+  {
+    long timeUs;
+    if (Data.WonTimeUs.HasValue && _wonUnscaledTime.HasValue)
+    {
+      timeUs = RecordingClock.ContinueFromUnscaledTime(
+        Data.WonTimeUs.Value,
+        _wonUnscaledTime.Value,
+        RecordingClock.CurrentUnscaledTime()
+      );
+    }
+    else
+    {
+      timeUs = ToRecordTimeUs(RecordingClock.CurrentSongPosition());
+    }
+
+    return _hasTimelineTime ? Math.Max(_lastTimelineTimeUs, timeUs) : timeUs;
+  }
+
+  private void MarkTerminalLocked()
+  {
+    if (Data.TerminalTimeUs.HasValue) return;
+
+    Data.TerminalTimeUs = CurrentTimelineTimeUsLocked();
+    _lastTimelineTimeUs = Data.TerminalTimeUs.Value;
+    _hasTimelineTime = true;
+    Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+  }
+
   private void FlushPendingSongPositionInputsLocked()
   {
     foreach (PendingSongPositionInput input in _pendingSongPositionInputs)
@@ -299,6 +360,9 @@ public class RecordingSession
 
   private void AddInputLocked(long timeUs, int key, RecordInputFlags flags)
   {
+    if (_hasTimelineTime) timeUs = Math.Max(_lastTimelineTimeUs, timeUs);
+    _lastTimelineTimeUs = timeUs;
+    _hasTimelineTime = true;
     Data.Inputs.Add(new RecordedInput(timeUs, key, flags));
   }
 
