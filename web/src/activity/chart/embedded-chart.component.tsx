@@ -3,8 +3,6 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState }
 import type { ActivityChart, ActivityRun, RunMarker } from "../activity.model";
 import { ChartBridge } from "./chart-bridge";
 
-const DEFAULT_EMBED_URL = "http://127.0.0.1:5173/embed/chart";
-
 export interface EmbeddedChartHandle {
   fitEntireRun(): void;
   refocusSelection(): void;
@@ -31,16 +29,13 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
   const bridgeRef = useRef<ChartBridge | null>(null);
   const callbacksRef = useRef({ onFloorSelect, onMarkerSelect });
   callbacksRef.current = { onFloorSelect, onMarkerSelect };
+  const embed = useMemo(resolveEmbedConfig, []);
   const [frameSrc, setFrameSrc] = useState("about:blank");
-  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
-  const [error, setError] = useState("");
-  const embed = useMemo(() => {
-    const url = new URL(import.meta.env.VITE_WEB_ADOFAI_EMBED_URL || DEFAULT_EMBED_URL);
-    url.searchParams.set("parentOrigin", window.location.origin);
-    return { src: url.toString(), origin: url.origin };
-  }, []);
+  const [state, setState] = useState<"loading" | "ready" | "error">(embed.error ? "error" : "loading");
+  const [error, setError] = useState(embed.error);
 
   useEffect(() => {
+    if (!embed.src || !embed.origin) return;
     const frame = frameRef.current;
     if (!frame) return;
     const bridge = new ChartBridge(frame, embed.origin, {
@@ -108,12 +103,24 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
 
   return (
     <div className="relative min-h-0 flex-1 overflow-hidden bg-black/30">
-      <iframe ref={frameRef} src={frameSrc} title="ADOFAI level chart" className="absolute inset-0 size-full border-0" />
+      {embed.src ? <iframe ref={frameRef} src={frameSrc} title="ADOFAI level chart" className="absolute inset-0 size-full border-0" /> : null}
       {state === "loading" ? <ChartOverlay>Loading chart…</ChartOverlay> : null}
       {state === "error" ? <ChartOverlay>{error || "The embedded chart could not be loaded."}</ChartOverlay> : null}
     </div>
   );
 });
+
+function resolveEmbedConfig(): { src: string; origin: string; error: string } {
+  const configuredUrl = import.meta.env.VITE_WEB_ADOFAI_EMBED_URL?.trim();
+  if (!configuredUrl) return { src: "", origin: "", error: "Set VITE_WEB_ADOFAI_EMBED_URL to load the ADOFAI chart viewer." };
+  try {
+    const url = new URL(configuredUrl);
+    url.searchParams.set("parentOrigin", window.location.origin);
+    return { src: url.toString(), origin: url.origin, error: "" };
+  } catch {
+    return { src: "", origin: "", error: "VITE_WEB_ADOFAI_EMBED_URL must be a valid absolute URL." };
+  }
+}
 
 function ChartOverlay({ children }: { children: React.ReactNode }) {
   return <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/80 text-sm text-muted-foreground backdrop-blur-sm">{children}</div>;
