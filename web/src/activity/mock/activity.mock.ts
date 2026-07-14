@@ -95,6 +95,7 @@ function createRun(levelSessionId: string, tufLevelId: number, openedAtUtc: stri
     GameplayStartSongPosition: null,
     LevelPitchPercent: 100,
     EffectivePitch: 1,
+    XAccuracy: cleared ? 1 : Math.max(0, 0.985 - index * 0.011),
     InputCount: Math.max(1, lastTile - startTile),
     HitContextCount: Math.max(1, lastTile - startTile),
     FloorCount: floorCount,

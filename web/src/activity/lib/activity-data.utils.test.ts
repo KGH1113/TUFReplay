@@ -4,7 +4,7 @@ import type { ActivityAppSession, ActivityRun } from "../activity.model";
 import { aggregateRunMarkers, groupSessionsByDay } from "./activity-data.utils";
 
 const session = (id: string, started: string): ActivityAppSession => ({ Id: id, StartedAtUtc: started, EndedAtUtc: null, RecorderTimeZoneId: "Asia/Seoul", RecorderUtcOffsetMinutes: 540, LevelSessions: [] });
-const run = (id: string, start: number, last: number, result = "failed"): ActivityRun => ({ Id: id, LevelSessionId: "l", TufLevelId: 1, RunIndex: 1, StartedAtUtc: "2026-01-01T00:00:00Z", EndedAtUtc: null, StartTile: start, LastTile: last, Result: result, NoFailMode: false, GameplayStartSongPosition: null, LevelPitchPercent: 100, EffectivePitch: 1, InputCount: 0, HitContextCount: 0, FloorCount: 100, InputBytes: 0, HitContextBytes: 0 });
+const run = (id: string, start: number, last: number, result = "failed"): ActivityRun => ({ Id: id, LevelSessionId: "l", TufLevelId: 1, RunIndex: 1, StartedAtUtc: "2026-01-01T00:00:00Z", EndedAtUtc: null, StartTile: start, LastTile: last, Result: result, NoFailMode: false, GameplayStartSongPosition: null, LevelPitchPercent: 100, EffectivePitch: 1, XAccuracy: 0.95, InputCount: 0, HitContextCount: 0, FloorCount: 100, InputBytes: 0, HitContextBytes: 0 });
 
 describe("activity data", () => {
   test("groups every nested session under the app-session start day in the selected timezone", () => {

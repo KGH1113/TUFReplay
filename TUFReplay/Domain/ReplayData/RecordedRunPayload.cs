@@ -19,6 +19,7 @@ public class RecordedRunPayload
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
   public float? EffectivePitch;
+  public float? XAccuracy;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();

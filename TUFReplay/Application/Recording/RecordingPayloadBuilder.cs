@@ -11,6 +11,7 @@ public static class RecordingPayloadBuilder
     run.GameplayStartSongPosition = data.GameplayStartSongPosition;
     run.LevelPitchPercent = data.LevelPitchPercent;
     run.EffectivePitch = data.EffectivePitch;
+    run.XAccuracy = data.XAccuracy;
     run.InputCount = data.Inputs.Count;
     run.HitContextCount = data.HitContexts.Count;
     run.InputCsv = data.ToInputCsvBytes();

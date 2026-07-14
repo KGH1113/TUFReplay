@@ -32,6 +32,7 @@ export interface ActivityRun {
   GameplayStartSongPosition: number | null;
   LevelPitchPercent: number | null;
   EffectivePitch: number | null;
+  XAccuracy: number | null;
   InputCount: number;
   HitContextCount: number;
   FloorCount: number;

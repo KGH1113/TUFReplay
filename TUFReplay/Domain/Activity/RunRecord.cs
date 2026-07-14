@@ -22,6 +22,7 @@ public class RunRecord
   public double? GameplayStartSongPosition;
   public int? LevelPitchPercent;
   public float? EffectivePitch;
+  public float? XAccuracy;
 
   public int InputCount;
   public int HitContextCount;

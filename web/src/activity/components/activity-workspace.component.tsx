@@ -1,10 +1,11 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown02Icon, ArrowLeft02Icon, ArrowRight02Icon, ArrowUp02Icon, Clock01Icon, DashboardSpeed01Icon, PercentIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown02Icon, ArrowLeft02Icon, ArrowRight02Icon, ArrowUp02Icon, ChartAverageIcon, Clock01Icon, DashboardSpeed01Icon, PercentIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 
 import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../activity.model";
 import { formatTimeWithOffset } from "../lib/activity-date.utils";
 import { runsForMarker } from "../lib/activity-data.utils";
+import { formatXAccuracy } from "../lib/x-accuracy.format";
 import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
 import { cn } from "../../ui/ui-class.utils";
 import { Button } from "../../ui/button.component";
@@ -105,6 +106,7 @@ export function ActivityWorkspace({ chartAvailable, chart, runs, markers, select
             <div className="mt-2.5 grid grid-cols-2 gap-2">
               <RunMetric icon={PercentIcon} label="Progress" value={`${run.StartTile} → ${runProgressPercent(run)}%`} />
               <RunMetric className="justify-self-end" icon={DashboardSpeed01Icon} label="Pitch" value={`${run.LevelPitchPercent ?? "?"}%`} />
+              <RunMetric className="col-span-2" icon={ChartAverageIcon} label="X-Accuracy" value={formatXAccuracy(run.XAccuracy)} />
               <RunMetric className="col-span-2" icon={Clock01Icon} label="Started at" value={formatTimeWithOffset(run.StartedAtUtc, timeZone)} />
             </div>
           </button>;

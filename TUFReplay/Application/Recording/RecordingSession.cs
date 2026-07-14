@@ -191,6 +191,7 @@ public class RecordingSession
 
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
+      Data.XAccuracy = GetXAccuracy();
       MarkTerminalLocked();
 
       run.EndedAtUtc = Data.EndedAtUtc ?? DateTime.UtcNow.ToString("O");
@@ -307,6 +308,20 @@ public class RecordingSession
     {
       if (ADOBase.conductor == null || ADOBase.conductor.song == null) return null;
       return ADOBase.conductor.song.pitch;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private static float? GetXAccuracy()
+  {
+    try
+    {
+      float value = ADOBase.controller?.playerOne?.marginTracker?.percentXAcc ?? float.NaN;
+      if (float.IsNaN(value) || float.IsInfinity(value)) return null;
+      return Math.Max(0f, Math.Min(1f, value));
     }
     catch
     {

@@ -1,20 +1,36 @@
+using System;
 using Microsoft.Data.Sqlite;
 
 namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 2;
+  public const int Version = 3;
 
   public static void Ensure(SqliteConnection connection)
   {
     using SqliteCommand command = connection.CreateCommand();
     command.CommandText = "PRAGMA user_version;";
     int version = System.Convert.ToInt32(command.ExecuteScalar());
-    if (version != Version)
+
+    if (version > Version)
     {
-      command.CommandText = "DROP TABLE IF EXISTS runs; DROP TABLE IF EXISTS level_sessions; DROP TABLE IF EXISTS app_sessions;";
+      throw new InvalidOperationException("TUFReplay database schema is newer than this mod supports. version=" + version);
+    }
+
+    if (version == 2)
+    {
+      using SqliteTransaction transaction = connection.BeginTransaction();
+      command.Transaction = transaction;
+      command.CommandText = "ALTER TABLE runs ADD COLUMN x_accuracy REAL; PRAGMA user_version = 3;";
       command.ExecuteNonQuery();
+      transaction.Commit();
+      return;
+    }
+
+    if (version != 0 && version != Version)
+    {
+      throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
     }
 
     command.CommandText = @"
@@ -47,6 +63,7 @@ CREATE TABLE IF NOT EXISTS runs (
   gameplay_start_song_position REAL,
   level_pitch_percent INTEGER,
   effective_pitch REAL,
+  x_accuracy REAL,
   input_count INTEGER NOT NULL DEFAULT 0,
   hit_context_count INTEGER NOT NULL DEFAULT 0,
   input_csv BLOB NOT NULL DEFAULT X'',
@@ -58,7 +75,7 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc 
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 2;";
+PRAGMA user_version = 3;";
     command.ExecuteNonQuery();
   }
 }
