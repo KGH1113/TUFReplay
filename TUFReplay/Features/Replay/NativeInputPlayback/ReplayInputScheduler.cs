@@ -68,6 +68,16 @@ public class ReplayInputScheduler
     return due;
   }
 
+  public int SkipDue(long nowUs)
+  {
+    int startIndex = _nextIndex;
+
+    while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
+      _nextIndex++;
+
+    return _nextIndex - startIndex;
+  }
+
   public RecordedInput? PeekNext()
   {
     if (_nextIndex >= _events.Count)

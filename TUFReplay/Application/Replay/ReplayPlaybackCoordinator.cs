@@ -117,8 +117,8 @@ public static class ReplayPlaybackCoordinator
       return;
     }
 
-    if (state == ReplayPlaybackStates.WaitingForFocus && UnityEngine.Application.isFocused)
-      StartReplay(operation);
+    if (state == ReplayPlaybackStates.WaitingForFocus)
+      WaitForFocusOrStart(operation);
   }
 
   public static void OnGameStateChanged(States state)
@@ -353,9 +353,13 @@ public static class ReplayPlaybackCoordinator
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
-    if (!UnityEngine.Application.isFocused)
+    if (operation.NativeInputFocusGuard == null)
+      operation.NativeInputFocusGuard = NativeInputFocusGuardFactory.Create();
+
+    if (!operation.NativeInputFocusGuard.IsStable(out _))
     {
-      SetOperationState(operation, ReplayPlaybackStates.WaitingForFocus, "Focus ADOFAI to start replay.");
+      if (GetStatus().State != ReplayPlaybackStates.WaitingForFocus)
+        SetOperationState(operation, ReplayPlaybackStates.WaitingForFocus, "Focus ADOFAI to start replay.");
       return;
     }
 
@@ -391,6 +395,9 @@ public static class ReplayPlaybackCoordinator
     }
 
     ReplayInputScheduler scheduler = new ReplayInputScheduler(operation.Inputs);
+    INativeInputFocusGuard focusGuard =
+      operation.NativeInputFocusGuard
+      ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
     ActiveReplayContext context = new ActiveReplayContext
     {
       OperationId = operation.OperationId,
@@ -403,7 +410,11 @@ public static class ReplayPlaybackCoordinator
       Inputs = operation.Inputs,
       HitContexts = operation.HitContexts,
       NativeInputScheduler = scheduler,
-      NativeInputPlayer = new ReplayNativeInputPlayer(scheduler, NativeInputEmitterFactory.Create()),
+      NativeInputPlayer = new ReplayNativeInputPlayer(
+        scheduler,
+        NativeInputEmitterFactory.Create(focusGuard),
+        focusGuard
+      ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
       Meta = operation.Meta,
     };
@@ -635,6 +646,7 @@ public static class ReplayPlaybackCoordinator
     public readonly List<ReplayHitContext> HitContexts;
     public readonly long TerminalTimeUs;
     public double LevelOpenStartedAt;
+    public INativeInputFocusGuard NativeInputFocusGuard;
 
     public PendingReplay(
       string operationId,
