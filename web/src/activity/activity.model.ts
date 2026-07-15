@@ -2,6 +2,9 @@ export interface ActivityLevelSessionOverview {
   Id: string;
   AppSessionId: string;
   TufLevelId: number | null;
+  Song: string | null;
+  Author: string | null;
+  Artist: string | null;
   OpenedAtUtc: string;
   ClosedAtUtc: string | null;
   RunCount: number;

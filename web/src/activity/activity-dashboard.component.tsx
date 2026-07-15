@@ -46,7 +46,7 @@ export function ActivityDashboard() {
         (run) => run.Id === selectedRunId && run.StartTile === selectedMarker.floorIndex,
       ) ?? null)
     : null;
-  const metadataFor = useLevelMetadata(levelSessions.map((session) => session.TufLevelId));
+  const metadataFor = useLevelMetadata(levelSessions);
   useEffect(() => {
     if (!days.length) {
       setSelectedDate(null);

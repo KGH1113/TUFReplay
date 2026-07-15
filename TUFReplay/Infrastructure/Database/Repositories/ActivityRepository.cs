@@ -11,7 +11,8 @@ public static class ActivityRepository
   private const string Select =
     @"SELECT l.id,l.app_session_id,l.tuf_level_id,l.opened_at_utc,l.closed_at_utc,l.level_tile_count,
 count(r.id),coalesce(sum(CASE WHEN r.result='cleared' THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
-l.level_path FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id ";
+l.level_path,l.song,l.author,l.artist,l.metadata_state
+FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id ";
 
   public static LevelSessionOverview GetLevelSessionOverview(string id)
   {
@@ -51,5 +52,10 @@ l.level_path FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id "
       FirstStartTile = DbValue.NullableInt(r, 9),
       LastStartTile = DbValue.NullableInt(r, 10),
       ChartAvailable = File.Exists(r.GetString(11)),
+      LevelPath = r.GetString(11),
+      Song = DbValue.NullableString(r, 12),
+      Author = DbValue.NullableString(r, 13),
+      Artist = DbValue.NullableString(r, 14),
+      MetadataState = (LevelMetadataState)r.GetInt32(15),
     };
 }
