@@ -21,6 +21,7 @@ DOTNET_EXE="${DOTNET_EXE:-$DOTNET_ROOT/dotnet}"
 UNITY_MOD_MANAGER_DLL="${UNITY_MOD_MANAGER_DLL:-$ADOFAI_MANAGED/UnityModManager/UnityModManager.dll}"
 HARMONY_DLL="${HARMONY_DLL:-$ADOFAI_MANAGED/UnityModManager/0Harmony.dll}"
 ADOFAI_IPC_DLL="${ADOFAI_IPC_DLL:-${ADOFIA_IPC_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.dll}}"
+ADOFAI_IPC_BOOTSTRAP_DLL="${ADOFAI_IPC_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.Bootstrap.dll}"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
 DEST="${TUFREPLAY_INSTALL_DIR:-$ADOFAI_MODS_DIR/TUFReplay}"
@@ -44,6 +45,7 @@ require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
 require_file "$HARMONY_DLL"
 require_file "$ADOFAI_IPC_DLL"
+require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
@@ -55,11 +57,14 @@ DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   -p:AdofaiIpcDll="$ADOFAI_IPC_DLL"
 
 mkdir -p "$DEST"
+rm -rf "$DEST/assembly_cache"
 rm -rf "$DEST/dependency"
 rm -f "$DEST/JAModInfo.json" "$DEST/JAMod.Bootstrap.dll"
 rm -f "$DEST"/JAMod.Bootstrap.dll.*.cache
 cp "$PROJECT/TUFReplay/Info.json" "$DEST/"
+cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$DEST/"
 cp "$OUT/TUFReplay.dll" "$DEST/"
+cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$DEST/"
 
 for dll in \
   Microsoft.Data.Sqlite.dll \

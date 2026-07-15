@@ -55,7 +55,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc
+- AdofaiIpc, installed automatically when missing
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -82,8 +82,10 @@ Build and install the mod:
 The build script:
 
 - Builds `TUFReplay/TUFReplay.csproj`.
-- Copies `Info.json`, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
+- Copies `Info.json`, the AdofaiIpc bootstrap, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
 - Installs the mod into `Mods/TUFReplay` by default.
+
+The packaged bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed.
 
 Important environment variables:
 
@@ -92,6 +94,8 @@ Important environment variables:
 - `ADOFAI_MANAGED`: Unity managed assembly directory.
 - `DOTNET_EXE`: .NET SDK executable.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
+- `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
+- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by `package.sh` for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
 Create a clean shareable package:
@@ -208,7 +212,7 @@ Registered methods:
 - **C# / .NET SDK**: mod implementation and build tooling.
 - **netstandard2.1**: target framework for Unity compatibility.
 - **UnityModManager**: ADOFAI mod loading.
-- **AdofaiIpc**: shared localhost IPC listener and namespace routing.
+- **AdofaiIpc**: shared localhost IPC listener, namespace routing, and dependency bootstrap.
 - **Harmony**: game method patching for recording hooks.
 - **TUFHelperLite**: optional public TUF level ID resolution for downloaded charts.
 - **SQLite / Microsoft.Data.Sqlite**: local play record storage.

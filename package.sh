@@ -21,6 +21,9 @@ DOTNET_EXE="${DOTNET_EXE:-$DOTNET_ROOT/dotnet}"
 UNITY_MOD_MANAGER_DLL="${UNITY_MOD_MANAGER_DLL:-$ADOFAI_MANAGED/UnityModManager/UnityModManager.dll}"
 HARMONY_DLL="${HARMONY_DLL:-$ADOFAI_MANAGED/UnityModManager/0Harmony.dll}"
 ADOFAI_IPC_DLL="${ADOFAI_IPC_DLL:-${ADOFIA_IPC_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.dll}}"
+ADOFAI_IPC_BOOTSTRAP_DLL="${ADOFAI_IPC_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.Bootstrap.dll}"
+ADOFAI_IPC_INFO_JSON="${ADOFAI_IPC_INFO_JSON:-$ADOFAI_MODS_DIR/AdofaiIpc/Info.json}"
+ADOFAI_IPC_BOOTSTRAP_LOCK="$PROJECT/TUFReplay/AdofaiIpcBootstrap.lock"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
 PACKAGE_ROOT="${TUFREPLAY_PACKAGE_ROOT:-$PROJECT/build/package}"
@@ -60,11 +63,32 @@ if [ -z "$SOURCEGEAR_SQLITE3_VERSION" ]; then
 fi
 
 require_command zip
+require_command shasum
 require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
 require_file "$HARMONY_DLL"
 require_file "$ADOFAI_IPC_DLL"
+require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
+require_file "$ADOFAI_IPC_INFO_JSON"
+require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
+
+# shellcheck disable=SC1090
+source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
+
+installed_ipc_version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ADOFAI_IPC_INFO_JSON" | head -n 1)"
+if [ "$installed_ipc_version" != "$ADOFAIIPC_VERSION" ]; then
+  echo "AdofaiIpc version mismatch: expected $ADOFAIIPC_VERSION, found ${installed_ipc_version:-unknown}" >&2
+  exit 1
+fi
+
+bootstrap_sha256="$(shasum -a 256 "$ADOFAI_IPC_BOOTSTRAP_DLL" | awk '{print $1}')"
+if [ "$bootstrap_sha256" != "$ADOFAIIPC_BOOTSTRAP_SHA256" ]; then
+  echo "AdofaiIpc Bootstrap checksum mismatch." >&2
+  echo "Expected: $ADOFAIIPC_BOOTSTRAP_SHA256" >&2
+  echo "Actual:   $bootstrap_sha256" >&2
+  exit 1
+fi
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
@@ -81,7 +105,9 @@ rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
 cp "$PROJECT/TUFReplay/Info.json" "$STAGE/"
+cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$STAGE/"
 cp "$OUT/TUFReplay.dll" "$STAGE/"
+cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$STAGE/"
 cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
 
 for dll in \
