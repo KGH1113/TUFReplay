@@ -45,18 +45,18 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:gh-runner
-          ping: 100.124.42.91
+          ping: kgh
 
       - name: Verify connectivity
         run: |
           set -euo pipefail
           tailscale status
-          tailscale ssh kgh@100.124.42.91 "whoami && hostname"
+          tailscale ssh kgh@kgh "whoami && hostname"
 
       - name: Deploy web app
         run: |
           set -euo pipefail
-          tailscale ssh kgh@100.124.42.91 'bash -s' <<'REMOTE'
+          tailscale ssh kgh@kgh 'bash -s' <<'REMOTE'
           set -euo pipefail
 
           DEPLOY_DIR="/srv/TUFReplay"
