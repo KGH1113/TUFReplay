@@ -11,14 +11,16 @@ public static class ReplayInputParser
   public static List<RecordedInput> Parse(byte[] inputCsv)
   {
     List<RecordedInput> events = new List<RecordedInput>();
-    if (inputCsv == null || inputCsv.Length == 0) return events;
+    if (inputCsv == null || inputCsv.Length == 0)
+      return events;
 
     string text = Encoding.UTF8.GetString(inputCsv);
     string[] lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
     foreach (string line in lines)
     {
-      if (!TryParseLine(line, out RecordedInput input)) continue;
+      if (!TryParseLine(line, out RecordedInput input))
+        continue;
       events.Add(input);
     }
 
@@ -31,7 +33,8 @@ public static class ReplayInputParser
     input = default;
 
     string[] parts = line.Split(',');
-    if (parts.Length != 3) return false;
+    if (parts.Length != 3)
+      return false;
 
     if (!long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long timeUs))
       return false;

@@ -9,7 +9,8 @@ public static class ReplayFailPolicy
 
   public static void ApplyReplayNoFail(bool enabled)
   {
-    if (ADOBase.controller == null) return;
+    if (ADOBase.controller == null)
+      return;
 
     ADOBase.controller.noFail = enabled;
     ADOBase.controller.noFailInfiniteMargin = false;

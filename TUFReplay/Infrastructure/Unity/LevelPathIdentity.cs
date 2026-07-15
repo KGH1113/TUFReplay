@@ -6,16 +6,17 @@ namespace TUFReplay.Infrastructure.Unity;
 
 public static class LevelPathIdentity
 {
-  private static StringComparison Comparison => RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-    ? StringComparison.OrdinalIgnoreCase
-    : StringComparison.Ordinal;
+  private static StringComparison Comparison =>
+    RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
   public static string Canonicalize(string levelPath, bool requireExists = true)
   {
     try
     {
-      if (string.IsNullOrWhiteSpace(levelPath)) return null;
-      if (!levelPath.EndsWith(".adofai", StringComparison.OrdinalIgnoreCase)) return null;
+      if (string.IsNullOrWhiteSpace(levelPath))
+        return null;
+      if (!levelPath.EndsWith(".adofai", StringComparison.OrdinalIgnoreCase))
+        return null;
 
       string canonical = Path.GetFullPath(levelPath);
       return !requireExists || File.Exists(canonical) ? canonical : null;

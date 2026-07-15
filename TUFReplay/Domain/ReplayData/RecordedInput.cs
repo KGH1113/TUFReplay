@@ -27,5 +27,5 @@ public enum RecordInputFlags : ushort
   Async = 1 << 1,
   PassedHook = 1 << 2,
   MainCandidate = 1 << 3,
-  GameplayCounted = 1 << 4
+  GameplayCounted = 1 << 4,
 }

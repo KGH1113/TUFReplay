@@ -14,26 +14,30 @@ public sealed class RecordingActivityTracker
 
   public void StartAppSession()
   {
-    if (AppSessionId != null) return;
+    if (AppSessionId != null)
+      return;
 
     AppSessionId = Guid.NewGuid().ToString("N");
     DateTimeOffset now = DateTimeOffset.Now;
-    AppSessionRepository.Save(new AppSession
-    {
-      Id = AppSessionId,
-      StartedAtUtc = now.UtcDateTime.ToString("O"),
-      RecorderTimeZoneId = TimeZoneInfo.Local.Id,
-      RecorderUtcOffsetMinutes = (int)now.Offset.TotalMinutes
-    });
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = AppSessionId,
+        StartedAtUtc = now.UtcDateTime.ToString("O"),
+        RecorderTimeZoneId = TimeZoneInfo.Local.Id,
+        RecorderUtcOffsetMinutes = (int)now.Offset.TotalMinutes,
+      }
+    );
   }
 
   public void StopAppSession()
   {
     CloseLevel();
 
-    if (AppSessionId == null) return;
+    if (AppSessionId == null)
+      return;
 
-    AppSessionRepository.Close(AppSessionId, DateTime.UtcNow.ToString("O"));
+    AppSessionRepository.CloseOrDeleteIfEmpty(AppSessionId, DateTime.UtcNow.ToString("O"));
     AppSessionId = null;
   }
 
@@ -41,29 +45,33 @@ public sealed class RecordingActivityTracker
   {
     StartAppSession();
 
-    if (LevelSessionId != null && string.Equals(LevelPath, levelPath, StringComparison.OrdinalIgnoreCase)) return;
+    if (LevelSessionId != null && string.Equals(LevelPath, levelPath, StringComparison.OrdinalIgnoreCase))
+      return;
 
     CloseLevel();
 
     LevelSessionId = Guid.NewGuid().ToString("N");
     TufLevelId = tufLevelId;
     LevelPath = levelPath;
-    LevelSessionRepository.Save(new LevelSession
-    {
-      Id = LevelSessionId,
-      AppSessionId = AppSessionId,
-      TufLevelId = tufLevelId,
-      LevelPath = levelPath,
-      OpenedAtUtc = DateTime.UtcNow.ToString("O"),
-      LevelTileCount = levelTileCount
-    });
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = LevelSessionId,
+        AppSessionId = AppSessionId,
+        TufLevelId = tufLevelId,
+        LevelPath = levelPath,
+        OpenedAtUtc = DateTime.UtcNow.ToString("O"),
+        LevelTileCount = levelTileCount,
+      }
+    );
   }
 
   public void CloseLevel()
   {
-    if (LevelSessionId == null) return;
+    if (LevelSessionId == null)
+      return;
 
-    LevelSessionRepository.Close(LevelSessionId, DateTime.UtcNow.ToString("O"));
+    LevelSessionRepository.CloseOrDeleteIfEmpty(LevelSessionId, DateTime.UtcNow.ToString("O"));
     LevelSessionId = null;
     TufLevelId = null;
     LevelPath = null;
@@ -71,7 +79,8 @@ public sealed class RecordingActivityTracker
 
   public RunRecord CreateRunDraft(RecordedRunPayload data, int startTile, int levelTileCount)
   {
-    if (AppSessionId == null || LevelSessionId == null || data == null) return null;
+    if (AppSessionId == null || LevelSessionId == null || data == null)
+      return null;
 
     int runIndex = RunRepository.GetNextRunIndex(LevelSessionId);
 
@@ -92,13 +101,14 @@ public sealed class RecordingActivityTracker
       EffectivePitch = data.EffectivePitch,
       InputCount = data.Inputs.Count,
       HitContextCount = data.HitContexts.Count,
-      MetaJson = data.ToActivityMetaJson()
+      MetaJson = data.ToActivityMetaJson(),
     };
   }
 
   public void SaveRun(RunRecord run)
   {
-    if (run == null) return;
+    if (run == null)
+      return;
     RunRepository.Save(run);
   }
 }

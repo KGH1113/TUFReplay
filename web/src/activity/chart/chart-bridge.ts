@@ -3,7 +3,11 @@ import type { ActivityChart, RunMarker } from "../activity.model";
 const PROTOCOL = "web-adofai.chart";
 const VERSION = 1;
 
-interface Envelope { protocol: string; version: number; type: string }
+interface Envelope {
+  protocol: string;
+  version: number;
+  type: string;
+}
 
 export interface ChartBridgeCallbacks {
   onReady(): void;
@@ -28,7 +32,12 @@ export class ChartBridge {
   ) {}
 
   handleMessage(event: MessageEvent) {
-    if (event.origin !== this.origin || event.source !== this.frame.contentWindow || !isEnvelope(event.data)) return;
+    if (
+      event.origin !== this.origin ||
+      event.source !== this.frame.contentWindow ||
+      !isEnvelope(event.data)
+    )
+      return;
     const message = event.data;
     if (isReadyMessage(message)) {
       this.ready = true;
@@ -62,17 +71,26 @@ export class ChartBridge {
 
   focus(floorIndex: number, markerId?: string) {
     if (!this.ready) return;
-    this.frame.contentWindow?.postMessage(envelope("chart.focus", { floorIndex, markerId }), this.origin);
+    this.frame.contentWindow?.postMessage(
+      envelope("chart.focus", { floorIndex, markerId }),
+      this.origin,
+    );
   }
 
   focusRun(startFloorIndex: number, endFloorIndex: number) {
     if (!this.ready) return;
-    this.frame.contentWindow?.postMessage(envelope("run.focus", { startFloorIndex, endFloorIndex }), this.origin);
+    this.frame.contentWindow?.postMessage(
+      envelope("run.focus", { startFloorIndex, endFloorIndex }),
+      this.origin,
+    );
   }
 
   fitEntireRun(startFloorIndex: number, endFloorIndex: number) {
     if (!this.ready) return;
-    this.frame.contentWindow?.postMessage(envelope("run.fit-all", { startFloorIndex, endFloorIndex }), this.origin);
+    this.frame.contentWindow?.postMessage(
+      envelope("run.fit-all", { startFloorIndex, endFloorIndex }),
+      this.origin,
+    );
   }
 
   clearRunFocus() {
@@ -91,19 +109,30 @@ export class ChartBridge {
   private sendChart() {
     if (!this.ready || !this.chart) return;
     this.requestId = `chart-${this.revision + 1}-${crypto.randomUUID()}`;
-    this.frame.contentWindow?.postMessage(envelope("chart.load", { requestId: this.requestId, levelText: this.chart.LevelText }), this.origin);
+    this.frame.contentWindow?.postMessage(
+      envelope("chart.load", { requestId: this.requestId, levelText: this.chart.LevelText }),
+      this.origin,
+    );
     this.sendMarkers();
   }
 
   private sendMarkers() {
     if (!this.ready) return;
     this.revision += 1;
-    this.frame.contentWindow?.postMessage(envelope("markers.set", { revision: this.revision, markers: this.markers }), this.origin);
+    this.frame.contentWindow?.postMessage(
+      envelope("markers.set", { revision: this.revision, markers: this.markers }),
+      this.origin,
+    );
   }
 }
 
 function markerSetSignature(markers: readonly RunMarker[]) {
-  return markers.map((marker) => `${marker.id}:${marker.floorIndex}:${marker.count}:${marker.clearCount}:${marker.bestLastFloorIndex}`).join("|");
+  return markers
+    .map(
+      (marker) =>
+        `${marker.id}:${marker.floorIndex}:${marker.count}:${marker.clearCount}:${marker.bestLastFloorIndex}`,
+    )
+    .join("|");
 }
 
 function isEnvelope(input: unknown): input is Envelope & Record<string, unknown> {
@@ -120,20 +149,43 @@ function isReadyMessage(message: Envelope & Record<string, unknown>) {
   return message.type === "chart.ready";
 }
 
-function isLoadedMessage(message: Envelope & Record<string, unknown>): message is Envelope & Record<string, unknown> & { requestId: string; floorCount: number } {
-  return message.type === "chart.loaded" && typeof message.requestId === "string" && isFloorIndex(message.floorCount);
+function isLoadedMessage(
+  message: Envelope & Record<string, unknown>,
+): message is Envelope & Record<string, unknown> & { requestId: string; floorCount: number } {
+  return (
+    message.type === "chart.loaded" &&
+    typeof message.requestId === "string" &&
+    isFloorIndex(message.floorCount)
+  );
 }
 
-function isErrorMessage(message: Envelope & Record<string, unknown>): message is Envelope & Record<string, unknown> & { requestId: string; code: string; message: string } {
-  return message.type === "chart.error" && typeof message.requestId === "string" && typeof message.code === "string" && typeof message.message === "string";
+function isErrorMessage(
+  message: Envelope & Record<string, unknown>,
+): message is Envelope &
+  Record<string, unknown> & { requestId: string; code: string; message: string } {
+  return (
+    message.type === "chart.error" &&
+    typeof message.requestId === "string" &&
+    typeof message.code === "string" &&
+    typeof message.message === "string"
+  );
 }
 
-function isFloorSelectedMessage(message: Envelope & Record<string, unknown>): message is Envelope & Record<string, unknown> & { floorIndex: number } {
+function isFloorSelectedMessage(
+  message: Envelope & Record<string, unknown>,
+): message is Envelope & Record<string, unknown> & { floorIndex: number } {
   return message.type === "chart.floor-selected" && isFloorIndex(message.floorIndex);
 }
 
-function isMarkerSelectedMessage(message: Envelope & Record<string, unknown>): message is Envelope & Record<string, unknown> & { id: string; floorIndex: number } {
-  return message.type === "chart.marker-selected" && typeof message.id === "string" && message.id.length > 0 && isFloorIndex(message.floorIndex);
+function isMarkerSelectedMessage(
+  message: Envelope & Record<string, unknown>,
+): message is Envelope & Record<string, unknown> & { id: string; floorIndex: number } {
+  return (
+    message.type === "chart.marker-selected" &&
+    typeof message.id === "string" &&
+    message.id.length > 0 &&
+    isFloorIndex(message.floorIndex)
+  );
 }
 
 function isFloorIndex(value: unknown): value is number {

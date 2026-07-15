@@ -36,8 +36,10 @@ public sealed class ReplayHitContextPlayer
     int freeRoamSection = controller.curFreeRoamSection;
     float angle = skipPassedAngles ? GetCurrentAngle(controller) : float.NegativeInfinity;
 
-    while (_nextIndex < _contexts.Count &&
-           IsBeforePlaybackPosition(_contexts[_nextIndex], floor, freeRoamSection, angle, skipPassedAngles))
+    while (
+      _nextIndex < _contexts.Count
+      && IsBeforePlaybackPosition(_contexts[_nextIndex], floor, freeRoamSection, angle, skipPassedAngles)
+    )
     {
       _nextIndex++;
     }
@@ -47,7 +49,8 @@ public sealed class ReplayHitContextPlayer
 
   public ReplayHitContext? PeekNext()
   {
-    if (_nextIndex >= _contexts.Count) return null;
+    if (_nextIndex >= _contexts.Count)
+      return null;
     return _contexts[_nextIndex];
   }
 
@@ -67,21 +70,26 @@ public sealed class ReplayHitContextPlayer
     int ignoredFalseResults = 0;
     ReplayHitContext next = _contexts[_nextIndex];
 
-    if (controller.currFloor.seqID != next.CurrentFloorID ||
-        controller.curFreeRoamSection > next.CurFreeRoamSection)
+    if (controller.currFloor.seqID != next.CurrentFloorID || controller.curFreeRoamSection > next.CurFreeRoamSection)
     {
       return HitContextTickResult.Failed(
-        "mismatch floor=" + controller.currFloor.seqID +
-        ", expected=" + next.CurrentFloorID +
-        ", freeRoam=" + controller.curFreeRoamSection +
-        ", expectedFreeRoam=" + next.CurFreeRoamSection
+        "mismatch floor="
+          + controller.currFloor.seqID
+          + ", expected="
+          + next.CurrentFloorID
+          + ", freeRoam="
+          + controller.curFreeRoamSection
+          + ", expectedFreeRoam="
+          + next.CurFreeRoamSection
       );
     }
 
     float angle = GetCurrentAngle(controller);
-    while (controller.currFloor.seqID == next.CurrentFloorID &&
-           controller.curFreeRoamSection == next.CurFreeRoamSection &&
-           angle >= next.CurrAngle)
+    while (
+      controller.currFloor.seqID == next.CurrentFloorID
+      && controller.curFreeRoamSection == next.CurFreeRoamSection
+      && angle >= next.CurrAngle
+    )
     {
       if (!PlayHit(controller.playerOne, next))
       {
@@ -98,14 +106,17 @@ public sealed class ReplayHitContextPlayer
 
       next = _contexts[_nextIndex];
 
-      if (controller.currFloor.seqID != next.CurrentFloorID ||
-          controller.curFreeRoamSection > next.CurFreeRoamSection)
+      if (controller.currFloor.seqID != next.CurrentFloorID || controller.curFreeRoamSection > next.CurFreeRoamSection)
       {
         return HitContextTickResult.Failed(
-          "mismatch after hit floor=" + controller.currFloor.seqID +
-          ", expected=" + next.CurrentFloorID +
-          ", freeRoam=" + controller.curFreeRoamSection +
-          ", expectedFreeRoam=" + next.CurFreeRoamSection
+          "mismatch after hit floor="
+            + controller.currFloor.seqID
+            + ", expected="
+            + next.CurrentFloorID
+            + ", freeRoam="
+            + controller.curFreeRoamSection
+            + ", expectedFreeRoam="
+            + next.CurFreeRoamSection
         );
       }
 
@@ -117,7 +128,8 @@ public sealed class ReplayHitContextPlayer
 
   public bool ShouldBlockFreeroam(scrController controller)
   {
-    if (controller == null || _nextIndex >= _contexts.Count) return false;
+    if (controller == null || _nextIndex >= _contexts.Count)
+      return false;
 
     ReplayHitContext next = _contexts[_nextIndex];
     return next.CurFreeRoamSection == controller.curFreeRoamSection;
@@ -162,8 +174,9 @@ public sealed class ReplayHitContextPlayer
       return false;
     }
 
-    bool nextFloorAuto = player.planetarySystem.chosenPlanet.currfloor.nextfloor != null &&
-                         player.planetarySystem.chosenPlanet.currfloor.nextfloor.auto;
+    bool nextFloorAuto =
+      player.planetarySystem.chosenPlanet.currfloor.nextfloor != null
+      && player.planetarySystem.chosenPlanet.currfloor.nextfloor.auto;
     player.planetarySystem.chosenPlanet.cachedAngle = player.planetarySystem.chosenPlanet.angle;
 
     if (!player.HitInputEvent(isAuto, InputEventState.Down))
@@ -176,9 +189,11 @@ public sealed class ReplayHitContextPlayer
     player.planetarySystem.chosenPlanet = player.planetarySystem.chosenPlanet.SwitchChosen();
     bool result = hitPlanet != player.planetarySystem.chosenPlanet;
 
-    if (ADOBase.controller.errorMeter &&
-        ADOBase.controller.gameworld &&
-        Persistence.hitErrorMeterSize != ErrorMeterSize.Off)
+    if (
+      ADOBase.controller.errorMeter
+      && ADOBase.controller.gameworld
+      && Persistence.hitErrorMeterSize != ErrorMeterSize.Off
+    )
     {
       float angleDiff = (float)(hitPlanet.cachedAngle - hitPlanet.targetExitAngle);
       if (hitPlanet.currfloor.isCCW)
@@ -209,9 +224,12 @@ public sealed class ReplayHitContextPlayer
       return result;
     }
 
-    bool shouldPulseCamera = player.planetarySystem.chosenPlanet.currfloor.holdLength == -1 ||
-                             (player.planetarySystem.chosenPlanet.currfloor.holdLength > -1 &&
-                              ADOBase.controller.lastCamPulseFloor < player.planetarySystem.chosenPlanet.currfloor.seqID);
+    bool shouldPulseCamera =
+      player.planetarySystem.chosenPlanet.currfloor.holdLength == -1
+      || (
+        player.planetarySystem.chosenPlanet.currfloor.holdLength > -1
+        && ADOBase.controller.lastCamPulseFloor < player.planetarySystem.chosenPlanet.currfloor.seqID
+      );
     ADOBase.controller.lastCamPulseFloor = player.planetarySystem.chosenPlanet.currfloor.seqID;
 
     scrCamera camera = ADOBase.controller.camy;
@@ -228,15 +246,19 @@ public sealed class ReplayHitContextPlayer
     bool shouldHitAvatar = true;
     if (ADOBase.lm != null && ADOBase.controller.gameworld)
     {
-      if (player.currFloor.midSpin ||
-          (player.currFloor.seqID > 0 && ADOBase.lm.listFloors[player.currFloor.seqID - 1].holdLength > -1))
+      if (
+        player.currFloor.midSpin
+        || (player.currFloor.seqID > 0 && ADOBase.lm.listFloors[player.currFloor.seqID - 1].holdLength > -1)
+      )
       {
         shouldHitAvatar = false;
       }
 
-      if (player.currFloor.seqID > 1 &&
-          ADOBase.lm.listFloors[player.currFloor.seqID - 1].midSpin &&
-          ADOBase.lm.listFloors[player.currFloor.seqID - 2].holdLength > -1)
+      if (
+        player.currFloor.seqID > 1
+        && ADOBase.lm.listFloors[player.currFloor.seqID - 1].midSpin
+        && ADOBase.lm.listFloors[player.currFloor.seqID - 2].holdLength > -1
+      )
       {
         shouldHitAvatar = false;
       }
@@ -289,10 +311,14 @@ public sealed class ReplayHitContextPlayer
     bool compareAngle
   )
   {
-    if (context.CurrentFloorID < floor) return true;
-    if (context.CurrentFloorID > floor) return false;
-    if (context.CurFreeRoamSection < freeRoamSection) return true;
-    if (context.CurFreeRoamSection > freeRoamSection) return false;
+    if (context.CurrentFloorID < floor)
+      return true;
+    if (context.CurrentFloorID > floor)
+      return false;
+    if (context.CurFreeRoamSection < freeRoamSection)
+      return true;
+    if (context.CurFreeRoamSection > freeRoamSection)
+      return false;
 
     return compareAngle && context.CurrAngle <= angle;
   }
@@ -315,7 +341,9 @@ public readonly struct HitContextTickResult
   }
 
   public static HitContextTickResult None => new HitContextTickResult(0, 0, null);
+
   public static HitContextTickResult Played(int playedCount, int ignoredFalseResultCount) =>
     new HitContextTickResult(playedCount, ignoredFalseResultCount, null);
+
   public static HitContextTickResult Failed(string errorMessage) => new HitContextTickResult(0, 0, errorMessage);
 }

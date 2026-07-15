@@ -29,5 +29,4 @@ public static class Database
     command.ExecuteNonQuery();
     return connection;
   }
-
 }

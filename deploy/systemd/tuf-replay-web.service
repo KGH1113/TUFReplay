@@ -1,0 +1,14 @@
+[Unit]
+Description=TUFReplay Web Docker Compose service
+After=default.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/TUFReplay
+RemainAfterExit=yes
+ExecStart=/usr/bin/env docker compose up -d --build --remove-orphans
+ExecStop=/usr/bin/env docker compose down
+TimeoutStartSec=0
+
+[Install]
+WantedBy=default.target

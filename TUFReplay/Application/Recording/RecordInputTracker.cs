@@ -19,8 +19,10 @@ public static class RecordInputTracker
     Reset();
     _capturing = true;
     Main.Instance.Log(
-      "[Recording/InputDebug] Native state capture started. reader=" + StateReader.Name +
-      ", supportedKeys=" + StateReader.KeyCodes.Count
+      "[Recording/InputDebug] Native state capture started. reader="
+        + StateReader.Name
+        + ", supportedKeys="
+        + StateReader.KeyCodes.Count
     );
   }
 
@@ -40,8 +42,10 @@ public static class RecordInputTracker
 
   public static void Sample(RecordingSession session)
   {
-    if (!_capturing) return;
-    if (session == null || !session.IsRecording || !session.IsCapturingInput) return;
+    if (!_capturing)
+      return;
+    if (session == null || !session.IsRecording || !session.IsCapturingInput)
+      return;
 
     _samples++;
     StateReader.Refresh();
@@ -57,12 +61,14 @@ public static class RecordInputTracker
       }
 
       PreviousStates.TryGetValue(key, out bool wasDown);
-      if (isDown == wasDown) continue;
+      if (isDown == wasDown)
+        continue;
 
       PreviousStates[key] = isDown;
 
       RecordInputFlags flags = RecordInputFlags.Async;
-      if (isDown) flags |= RecordInputFlags.Down;
+      if (isDown)
+        flags |= RecordInputFlags.Down;
 
       session.AddInputAtCurrentTime(key, flags);
       _transitions++;
@@ -71,14 +77,18 @@ public static class RecordInputTracker
 
   public static string DebugSnapshot()
   {
-    return
-      "capturing=" + _capturing +
-      ", mode=native-state-sample" +
-      ", reader=" + StateReader.Name +
-      ", supportedKeys=" + StateReader.KeyCodes.Count +
-      ", samples=" + _samples +
-      ", transitions=" + _transitions +
-      ", readFailures=" + _readFailures;
+    return "capturing="
+      + _capturing
+      + ", mode=native-state-sample"
+      + ", reader="
+      + StateReader.Name
+      + ", supportedKeys="
+      + StateReader.KeyCodes.Count
+      + ", samples="
+      + _samples
+      + ", transitions="
+      + _transitions
+      + ", readFailures="
+      + _readFailures;
   }
-
 }

@@ -10,7 +10,8 @@ public sealed class TUFReplayIpcFeature
 
   public void Enable()
   {
-    if (_active) return;
+    if (_active)
+      return;
     _active = true;
 
     AdofaiIpcNamespace ipc = AdofaiIpc.AdofaiIpc.RegisterNamespace(
@@ -19,12 +20,7 @@ public sealed class TUFReplayIpcFeature
       {
         DisplayName = "TUFReplay",
         Version = Main.Instance.Version.ToString(),
-        AllowedOrigins = new[]
-        {
-          "https://tuforums.com",
-          "http://localhost",
-          "http://127.0.0.1"
-        }
+        AllowedOrigins = new[] { "https://tuforums.com", "http://localhost", "http://127.0.0.1" },
       }
     );
 
@@ -41,7 +37,8 @@ public sealed class TUFReplayIpcFeature
 
   public void Disable()
   {
-    if (!_active) return;
+    if (!_active)
+      return;
     _active = false;
 
     AdofaiIpc.AdofaiIpc.UnregisterNamespace(Namespace);

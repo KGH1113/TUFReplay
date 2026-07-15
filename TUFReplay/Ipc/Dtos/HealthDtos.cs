@@ -12,7 +12,7 @@ public sealed class HealthResponseDto
     {
       Ok = true,
       Mod = "TUFReplay",
-      ServerVersion = 1
+      ServerVersion = 1,
     };
   }
 }

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using Newtonsoft.Json;
+using TUFReplay.Domain.Activity;
 
 namespace TUFReplay.Domain.ReplayData;
 
@@ -20,6 +21,8 @@ public class RecordedRunPayload
   public float? PitchSpeedMultiplier;
   public float? EffectivePitch;
   public float? XAccuracy;
+  public RunJudgmentDifficulty? JudgmentDifficulty;
+  public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
@@ -48,7 +51,7 @@ public class RecordedRunPayload
       inputCount = Inputs.Count,
       hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection",
       hitContextCount = HitContexts.Count,
-      micRecord = false
+      micRecord = false,
     };
 
     return JsonConvert.SerializeObject(meta, Formatting.None);
@@ -56,9 +59,12 @@ public class RecordedRunPayload
 
   private static string NativeInputPlatformName()
   {
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "macos";
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "windows";
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "linux";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+      return "macos";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+      return "windows";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+      return "linux";
     return "unknown";
   }
 
@@ -68,13 +74,7 @@ public class RecordedRunPayload
 
     foreach (RecordedInput input in Inputs)
     {
-      builder
-        .Append(input.TimeUs)
-        .Append(',')
-        .Append(input.Key)
-        .Append(',')
-        .Append((ushort)input.Flags)
-        .Append('\n');
+      builder.Append(input.TimeUs).Append(',').Append(input.Key).Append(',').Append((ushort)input.Flags).Append('\n');
     }
 
     return Encoding.UTF8.GetBytes(builder.ToString());

@@ -21,21 +21,24 @@ public class RecordingSession
   {
     get
     {
-      lock (_lock) return Data.Inputs.Count;
+      lock (_lock)
+        return Data.Inputs.Count;
     }
   }
   public int HitContextCount
   {
     get
     {
-      lock (_lock) return Data.HitContexts.Count;
+      lock (_lock)
+        return Data.HitContexts.Count;
     }
   }
   public bool HasRecordableData
   {
     get
     {
-      lock (_lock) return Data.Inputs.Count > 0 || Data.HitContexts.Count > 0;
+      lock (_lock)
+        return Data.Inputs.Count > 0 || Data.HitContexts.Count > 0;
     }
   }
 
@@ -50,7 +53,7 @@ public class RecordingSession
       {
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
-        NoFailMode = IsNoFailModeActive()
+        NoFailMode = IsNoFailModeActive(),
       };
       RefreshPitchLocked();
       _pendingSongPositionInputs.Clear();
@@ -60,14 +63,17 @@ public class RecordingSession
     }
 
     RecordInputTracker.Reset();
-    Main.Instance.Log("[Recording] Prepared. tufLevelId=" + (tufLevelId?.ToString() ?? "null") + ", autoRecord=" + IsRecording);
+    Main.Instance.Log(
+      "[Recording] Prepared. tufLevelId=" + (tufLevelId?.ToString() ?? "null") + ", autoRecord=" + IsRecording
+    );
   }
 
   public void Stop()
   {
     lock (_lock)
     {
-      if (!IsRecording) return;
+      if (!IsRecording)
+        return;
 
       IsRecording = false;
       IsCapturingInput = false;
@@ -83,7 +89,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || IsCapturingInput) return;
+      if (!IsRecording || IsCapturingInput)
+        return;
       IsCapturingInput = true;
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
@@ -97,7 +104,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || !IsCapturingInput) return;
+      if (!IsRecording || !IsCapturingInput)
+        return;
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
       if (!Data.GameplayStartSongPosition.HasValue)
@@ -114,7 +122,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.WonTimeUs.HasValue) return;
+      if (!IsRecording || Data.WonTimeUs.HasValue)
+        return;
 
       long wonTimeUs = CurrentTimelineTimeUsLocked();
       Data.WonTimeUs = wonTimeUs;
@@ -130,7 +139,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording) return;
+      if (!IsRecording)
+        return;
       MarkTerminalLocked();
     }
   }
@@ -139,7 +149,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsCapturingInput) return;
+      if (!IsCapturingInput)
+        return;
       IsCapturingInput = false;
     }
 
@@ -152,7 +163,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording) return;
+      if (!IsRecording)
+        return;
 
       if (!Data.GameplayStartSongPosition.HasValue)
       {
@@ -168,7 +180,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording) return;
+      if (!IsRecording)
+        return;
       RefreshNoFailModeLocked();
       Data.HitContexts.Add(hitContext);
     }
@@ -178,7 +191,8 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.HitContexts.Count == 0) return;
+      if (!IsRecording || Data.HitContexts.Count == 0)
+        return;
       Data.HitContexts.RemoveAt(Data.HitContexts.Count - 1);
     }
   }
@@ -187,11 +201,13 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (run == null) return null;
+      if (run == null)
+        return null;
 
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
       Data.XAccuracy = GetXAccuracy();
+      CaptureJudgmentStats(Data);
       MarkTerminalLocked();
 
       run.EndedAtUtc = Data.EndedAtUtc ?? DateTime.UtcNow.ToString("O");
@@ -218,7 +234,8 @@ public class RecordingSession
   {
     try
     {
-      if (ADOBase.lm?.listFloors != null) return ADOBase.lm.listFloors.Count;
+      if (ADOBase.lm?.listFloors != null)
+        return ADOBase.lm.listFloors.Count;
     }
     catch
     {
@@ -232,8 +249,10 @@ public class RecordingSession
   {
     try
     {
-      if (ADOBase.controller?.currFloor != null) return Math.Max(0, ADOBase.controller.currFloor.seqID);
-      if (scrController.instance?.currFloor != null) return Math.Max(0, scrController.instance.currFloor.seqID);
+      if (ADOBase.controller?.currFloor != null)
+        return Math.Max(0, ADOBase.controller.currFloor.seqID);
+      if (scrController.instance?.currFloor != null)
+        return Math.Max(0, scrController.instance.currFloor.seqID);
     }
     catch
     {
@@ -306,7 +325,8 @@ public class RecordingSession
   {
     try
     {
-      if (ADOBase.conductor == null || ADOBase.conductor.song == null) return null;
+      if (ADOBase.conductor == null || ADOBase.conductor.song == null)
+        return null;
       return ADOBase.conductor.song.pitch;
     }
     catch
@@ -320,13 +340,57 @@ public class RecordingSession
     try
     {
       float value = ADOBase.controller?.playerOne?.marginTracker?.percentXAcc ?? float.NaN;
-      if (float.IsNaN(value) || float.IsInfinity(value)) return null;
+      if (float.IsNaN(value) || float.IsInfinity(value))
+        return null;
       return Math.Max(0f, Math.Min(1f, value));
     }
     catch
     {
       return null;
     }
+  }
+
+  private static void CaptureJudgmentStats(RecordedRunPayload data)
+  {
+    try
+    {
+      scrMarginTracker tracker = ADOBase.controller?.playerOne?.marginTracker;
+      if (tracker == null)
+        return;
+
+      int[] hits = tracker.hitMarginsCount;
+      if (hits == null)
+        return;
+
+      data.JudgmentCounts = new JudgmentCounts
+      {
+        Overload = ReadHitCount(hits, HitMargin.FailOverload),
+        TooEarly = ReadHitCount(hits, HitMargin.TooEarly),
+        Early = ReadHitCount(hits, HitMargin.VeryEarly),
+        EarlyPerfect = ReadHitCount(hits, HitMargin.EarlyPerfect),
+        Perfect = ReadHitCount(hits, HitMargin.Perfect) + ReadHitCount(hits, HitMargin.Auto),
+        LatePerfect = ReadHitCount(hits, HitMargin.LatePerfect),
+        Late = ReadHitCount(hits, HitMargin.VeryLate),
+        TooLate = ReadHitCount(hits, HitMargin.TooLate),
+        Miss = ReadHitCount(hits, HitMargin.FailMiss),
+      };
+
+      int difficulty = (int)tracker.hardestDifficulty;
+      if (difficulty >= (int)RunJudgmentDifficulty.Lenient && difficulty <= (int)RunJudgmentDifficulty.Strict)
+      {
+        data.JudgmentDifficulty = (RunJudgmentDifficulty)difficulty;
+      }
+    }
+    catch
+    {
+      // Judgment telemetry must never interrupt run persistence.
+    }
+  }
+
+  private static int ReadHitCount(int[] hits, HitMargin margin)
+  {
+    int index = (int)margin;
+    return index >= 0 && index < hits.Length ? Math.Max(0, hits[index]) : 0;
   }
 
   private long ToRecordTimeUs(double songPosition)
@@ -355,7 +419,8 @@ public class RecordingSession
 
   private void MarkTerminalLocked()
   {
-    if (Data.TerminalTimeUs.HasValue) return;
+    if (Data.TerminalTimeUs.HasValue)
+      return;
 
     Data.TerminalTimeUs = CurrentTimelineTimeUsLocked();
     _lastTimelineTimeUs = Data.TerminalTimeUs.Value;
@@ -375,7 +440,8 @@ public class RecordingSession
 
   private void AddInputLocked(long timeUs, int key, RecordInputFlags flags)
   {
-    if (_hasTimelineTime) timeUs = Math.Max(_lastTimelineTimeUs, timeUs);
+    if (_hasTimelineTime)
+      timeUs = Math.Max(_lastTimelineTimeUs, timeUs);
     _lastTimelineTimeUs = timeUs;
     _hasTimelineTime = true;
     Data.Inputs.Add(new RecordedInput(timeUs, key, flags));

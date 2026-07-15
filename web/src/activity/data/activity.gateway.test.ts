@@ -16,7 +16,9 @@ describe("activity IPC contract", () => {
   });
 
   test("successful HTTP domain-error payloads become useful typed errors", async () => {
-    const namespace = { call: async () => ({ error: { code: "not_found", message: "Session is missing" } }) };
+    const namespace = {
+      call: async () => ({ error: { code: "not_found", message: "Session is missing" } }),
+    };
     const gateway = createActivityGateway(namespace as never);
     try {
       await gateway.getLevelSession("missing");
@@ -30,11 +32,19 @@ describe("activity IPC contract", () => {
 
   test("uses the exact replay command names and params", async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
-    const status = { OperationId: "op-1", RunId: "run-1", State: "preparing", ErrorCode: null, Message: null } satisfies ReplayStatus;
-    const namespace = { call: async (method: string, params: unknown) => {
-      calls.push({ method, params });
-      return status;
-    } };
+    const status = {
+      OperationId: "op-1",
+      RunId: "run-1",
+      State: "preparing",
+      ErrorCode: null,
+      Message: null,
+    } satisfies ReplayStatus;
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return status;
+      },
+    };
     const gateway = createActivityGateway(namespace as never);
 
     expect(await gateway.playReplay("run-1")).toBe(status);

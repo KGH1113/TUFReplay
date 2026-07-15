@@ -116,7 +116,7 @@ internal static class NativeInputKeyCodeMapper
     { KeyLabel.ArrowLeft, 0x7B },
     { KeyLabel.ArrowRight, 0x7C },
     { KeyLabel.ArrowDown, 0x7D },
-    { KeyLabel.ArrowUp, 0x7E }
+    { KeyLabel.ArrowUp, 0x7E },
   };
 
   public static List<RecordedInput> NormalizeForPlayback(
@@ -126,7 +126,8 @@ internal static class NativeInputKeyCodeMapper
   )
   {
     dropped = 0;
-    if (inputs == null) return new List<RecordedInput>();
+    if (inputs == null)
+      return new List<RecordedInput>();
 
     if (string.Equals(meta?.inputKeySpace, NativeKeySpace, StringComparison.OrdinalIgnoreCase))
     {
@@ -152,11 +153,13 @@ internal static class NativeInputKeyCodeMapper
   {
     nativeKeyCode = 0;
     KeyLabel label = (KeyLabel)key;
-    if (label == KeyLabel.Unknown) return false;
+    if (label == KeyLabel.Unknown)
+      return false;
 
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
     {
-      if (!MacVirtualKeyCodes.TryGetValue(label, out ushort macKeyCode)) return false;
+      if (!MacVirtualKeyCodes.TryGetValue(label, out ushort macKeyCode))
+        return false;
       nativeKeyCode = macKeyCode;
       return true;
     }
@@ -166,7 +169,8 @@ internal static class NativeInputKeyCodeMapper
       try
       {
         ushort virtualKey = SkyHookKeyMapper.KeyLabelToNativeKeyCode(label);
-        if (virtualKey == 0) return false;
+        if (virtualKey == 0)
+          return false;
 
         nativeKeyCode = virtualKey;
         return true;

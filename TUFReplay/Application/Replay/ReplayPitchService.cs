@@ -8,8 +8,10 @@ public static class ReplayPitchService
   {
     try
     {
-      if (ADOBase.editor?.levelData?.songSettings == null) return ReplayPitchApplyResult.NotReady;
-      if (ADOBase.editor.levelData.pitch == pitchPercent) return ReplayPitchApplyResult.Skipped;
+      if (ADOBase.editor?.levelData?.songSettings == null)
+        return ReplayPitchApplyResult.NotReady;
+      if (ADOBase.editor.levelData.pitch == pitchPercent)
+        return ReplayPitchApplyResult.Skipped;
 
       ADOBase.editor.levelData.songSettings["pitch"] = pitchPercent;
       ADOBase.editor.UpdateSongAndLevelSettings();
@@ -18,7 +20,9 @@ public static class ReplayPitchService
     }
     catch (Exception ex)
     {
-      Main.Instance?.Log("[ReplayPitchService] Failed to apply replay pitch as editor change. error=" + ex.GetType().Name);
+      Main.Instance?.Log(
+        "[ReplayPitchService] Failed to apply replay pitch as editor change. error=" + ex.GetType().Name
+      );
       return ReplayPitchApplyResult.Failed;
     }
   }
@@ -41,5 +45,5 @@ public enum ReplayPitchApplyResult
   NotReady,
   Skipped,
   Applied,
-  Failed
+  Failed,
 }

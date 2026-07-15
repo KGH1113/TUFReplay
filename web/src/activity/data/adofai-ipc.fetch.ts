@@ -25,16 +25,19 @@ export const adofaiIpcFetch = (async (...args: Parameters<typeof fetch>) => {
     const payload: unknown = JSON.parse(text);
     if (!isLegacyIpcResponse(payload)) return response;
 
-    return new Response(JSON.stringify({
-      ok: payload.Ok,
-      result: payload.Result,
-      error: normalizeError(payload.Error),
-      id: payload.Id,
-    }), {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
-    });
+    return new Response(
+      JSON.stringify({
+        ok: payload.Ok,
+        result: payload.Result,
+        error: normalizeError(payload.Error),
+        id: payload.Id,
+      }),
+      {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      },
+    );
   } catch {
     return response;
   }

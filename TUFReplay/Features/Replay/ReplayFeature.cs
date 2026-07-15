@@ -14,14 +14,15 @@ public class ReplayFeature
 
   public void Enable()
   {
-    if (Active) return;
+    if (Active)
+      return;
     Active = true;
-
   }
 
   public void Disable()
   {
-    if (!Active) return;
+    if (!Active)
+      return;
     Active = false;
 
     ReplayPlaybackCoordinator.Shutdown();

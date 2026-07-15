@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import type { ConnectionStatus, ReplayStatus } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
@@ -15,7 +15,10 @@ const IDLE_STATUS: ReplayStatus = {
 
 const POLL_INTERVAL_MS = 500;
 
-export function useReplayControl(gatewayRef: RefObject<ActivityGateway | null>, connectionStatus: ConnectionStatus) {
+export function useReplayControl(
+  gatewayRef: RefObject<ActivityGateway | null>,
+  connectionStatus: ConnectionStatus,
+) {
   const [status, setStatus] = useState<ReplayStatus>(IDLE_STATUS);
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -52,7 +55,9 @@ export function useReplayControl(gatewayRef: RefObject<ActivityGateway | null>, 
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
   useEffect(() => {
     if (connectionStatus === "online") void pollerRef.current?.refresh();
@@ -63,48 +68,53 @@ export function useReplayControl(gatewayRef: RefObject<ActivityGateway | null>, 
     void pollerRef.current?.refresh();
   }, POLL_INTERVAL_MS);
 
-  const play = useCallback(async (runId: string) => {
-    const gateway = gatewayRef.current;
-    if (!gateway) {
-      setError("TUFReplay is not connected");
-      return;
-    }
+  const play = useCallback(
+    async (runId: string) => {
+      const gateway = gatewayRef.current;
+      if (!gateway) {
+        setError("TUFReplay is not connected");
+        return;
+      }
 
-    const generation = playGenerationRef.current + 1;
-    playGenerationRef.current = generation;
-    pollerRef.current?.invalidate();
-    pendingRunIdRef.current = runId;
-    setPendingRunId(runId);
-    setError("");
-    setErrorRunId(null);
-    try {
-      const next = await gateway.playReplay(runId);
-      if (generation !== playGenerationRef.current) return;
-      statusRef.current = next;
-      setStatus(next);
-    } catch (cause) {
-      if (generation === playGenerationRef.current) {
-        setError(errorMessage(cause));
-        setErrorRunId(runId);
+      const generation = playGenerationRef.current + 1;
+      playGenerationRef.current = generation;
+      pollerRef.current?.invalidate();
+      pendingRunIdRef.current = runId;
+      setPendingRunId(runId);
+      setError("");
+      setErrorRunId(null);
+      try {
+        const next = await gateway.playReplay(runId);
+        if (generation !== playGenerationRef.current) return;
+        statusRef.current = next;
+        setStatus(next);
+      } catch (cause) {
+        if (generation === playGenerationRef.current) {
+          setError(errorMessage(cause));
+          setErrorRunId(runId);
+        }
+      } finally {
+        if (generation === playGenerationRef.current) {
+          pendingRunIdRef.current = null;
+          setPendingRunId(null);
+        }
       }
-    } finally {
-      if (generation === playGenerationRef.current) {
-        pendingRunIdRef.current = null;
-        setPendingRunId(null);
-      }
-    }
-  }, [gatewayRef]);
+    },
+    [gatewayRef],
+  );
 
   return { status, pendingRunId, error, errorRunId, play };
 }
 
 export function shouldPollReplayStatus(status: ReplayStatus) {
-  return status.State === "preparing"
-    || status.State === "opening_level"
-    || status.State === "waiting_for_focus"
-    || status.State === "starting"
-    || status.State === "playing"
-    || status.State === "returning_to_editor";
+  return (
+    status.State === "preparing" ||
+    status.State === "opening_level" ||
+    status.State === "waiting_for_focus" ||
+    status.State === "starting" ||
+    status.State === "playing" ||
+    status.State === "returning_to_editor"
+  );
 }
 
 function errorMessage(cause: unknown) {

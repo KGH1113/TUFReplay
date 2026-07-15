@@ -22,7 +22,8 @@ internal sealed class WindowsNativeInputStateReader : INativeInputStateReader
   public bool TryGetIsDown(int keyCode, out bool isDown)
   {
     isDown = false;
-    if (keyCode <= 0 || keyCode >= _keyState.Length) return false;
+    if (keyCode <= 0 || keyCode >= _keyState.Length)
+      return false;
 
     isDown = (_keyState[keyCode] & 0x80) != 0;
     return true;

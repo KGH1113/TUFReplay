@@ -9,12 +9,31 @@ type JsonRecord = Record<string, unknown>;
 
 export function getFallbackMetadata(levelId: number | null): LevelMetadata {
   if (levelId === null) {
-    return { levelId, artist: "Local level", name: "Custom level", creator: "Unknown creator", difficulty: "Local", difficultyIconUrl: "", source: "local" };
+    return {
+      levelId,
+      artist: "Local level",
+      name: "Custom level",
+      creator: "Unknown creator",
+      difficulty: "Local",
+      difficultyIconUrl: "",
+      source: "local",
+    };
   }
-  return { levelId, artist: "TUF database", name: `Level #${levelId}`, creator: "Unknown creator", difficulty: "Unknown", difficultyIconUrl: "", source: "fallback" };
+  return {
+    levelId,
+    artist: "TUF database",
+    name: `Level #${levelId}`,
+    creator: "Unknown creator",
+    difficulty: "Unknown",
+    difficultyIconUrl: "",
+    source: "fallback",
+  };
 }
 
-export function getTufMetadata(levelId: number, fetchImpl: typeof fetch = fetch): Promise<LevelMetadata> {
+export function getTufMetadata(
+  levelId: number,
+  fetchImpl: typeof fetch = fetch,
+): Promise<LevelMetadata> {
   const existing = memory.get(levelId);
   if (existing) return existing;
   const request = loadMetadata(levelId, fetchImpl).catch(() => getFallbackMetadata(levelId));
@@ -25,15 +44,27 @@ export function getTufMetadata(levelId: number, fetchImpl: typeof fetch = fetch)
 async function loadMetadata(levelId: number, fetchImpl: typeof fetch): Promise<LevelMetadata> {
   const level = record(await fetchJson(`${API_ROOT}/levels/byId/${levelId}`, fetchImpl));
   if (!level) throw new Error("TUF level response was not an object");
-  const difficultyId = numberValue(level, "diffId", "difficultyId", "DifficultyId", "difficulty_id");
+  const difficultyId = numberValue(
+    level,
+    "diffId",
+    "difficultyId",
+    "DifficultyId",
+    "difficulty_id",
+  );
   const embedded = record(value(level, "difficulty", "Difficulty"));
-  const difficulty = embedded ?? (difficultyId === null ? null : (await getDifficultyCatalog(fetchImpl).catch(() => new Map())).get(difficultyId) ?? null);
+  const difficulty =
+    embedded ??
+    (difficultyId === null
+      ? null
+      : ((await getDifficultyCatalog(fetchImpl).catch(() => new Map())).get(difficultyId) ?? null));
   return {
     levelId,
     artist: text(level, "artist", "Artist", "songAuthor", "SongAuthor") || "Unknown artist",
     name: text(level, "song", "name", "Name", "levelName", "LevelName") || `Level #${levelId}`,
     creator: text(level, "creator", "Creator", "levelAuthor", "LevelAuthor") || "Unknown creator",
-    difficulty: difficulty ? text(difficulty, "name", "Name", "displayName", "DisplayName") || "Unknown" : "Unknown",
+    difficulty: difficulty
+      ? text(difficulty, "name", "Name", "displayName", "DisplayName") || "Unknown"
+      : "Unknown",
     difficultyIconUrl: difficulty ? text(difficulty, "icon", "Icon", "iconUrl", "IconUrl") : "",
     source: "tuf",
   };
@@ -74,7 +105,9 @@ function unwrap(input: unknown): unknown {
 }
 
 function record(input: unknown): JsonRecord | null {
-  return input !== null && typeof input === "object" && !Array.isArray(input) ? input as JsonRecord : null;
+  return input !== null && typeof input === "object" && !Array.isArray(input)
+    ? (input as JsonRecord)
+    : null;
 }
 
 function value(input: JsonRecord, ...keys: string[]): unknown {
@@ -90,7 +123,8 @@ function text(input: JsonRecord, ...keys: string[]): string {
 function numberValue(input: JsonRecord, ...keys: string[]): number | null {
   const found = value(input, ...keys);
   if (typeof found === "number" && Number.isFinite(found)) return found;
-  if (typeof found === "string" && found.trim() !== "" && Number.isFinite(Number(found))) return Number(found);
+  if (typeof found === "string" && found.trim() !== "" && Number.isFinite(Number(found)))
+    return Number(found);
   return null;
 }
 

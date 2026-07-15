@@ -1,144 +1,479 @@
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { ArrowDown02Icon, ArrowLeft02Icon, ArrowRight02Icon, ArrowUp02Icon, ChartAverageIcon, Clock01Icon, DashboardSpeed01Icon, PercentIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown02Icon,
+  ArrowLeft02Icon,
+  ArrowRight02Icon,
+  ArrowUp02Icon,
+  ChartAverageIcon,
+  Clock01Icon,
+  DashboardSpeed01Icon,
+  FitToScreenIcon,
+  PercentIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-
-import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../activity.model";
-import { formatTimeWithOffset } from "../lib/activity-date.utils";
-import { runsForMarker } from "../lib/activity-data.utils";
-import { formatXAccuracy } from "../lib/x-accuracy.format";
-import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
-import { cn } from "../../ui/ui-class.utils";
+import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { Button } from "../../ui/button.component";
+import { cn } from "../../ui/ui-class.utils";
+import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../activity.model";
+import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
+import { runsForMarker } from "../lib/activity-data.utils";
+import { formatTimeWithOffset } from "../lib/activity-date.utils";
+import { formatXAccuracy } from "../lib/x-accuracy.format";
+import { RunDifficultyIcon } from "./run-difficulty-icon.component";
+import { RunJudgmentStrip } from "./run-judgment-strip.component";
+import { RunNoFailIcon } from "./run-no-fail-icon.component";
 
-type RunSortKey = "progress" | "time" | "pitch";
+type RunSortKey = "progress" | "time" | "pitch" | "accuracy";
 type SortDirection = "asc" | "desc";
+type PendingRunSortLayout = {
+  positions: Map<string, DOMRect>;
+  scrollTop: number;
+};
 
 const runSortOptions: { value: RunSortKey; label: string }[] = [
   { value: "progress", label: "Progress" },
   { value: "time", label: "Time" },
   { value: "pitch", label: "Pitch" },
+  { value: "accuracy", label: "Accuracy" },
 ];
 
-export function ActivityWorkspace({ chartAvailable, chart, runs, markers, selectedMarker, selectedRun, loading, error, timeZone, replayStatus, replayPendingRunId, replayError, replayErrorRunId, onSelectMarker, onSelectRun, onPlayReplay }: {
-  chartAvailable: boolean; chart: ActivityChart | null; runs: ActivityRun[]; markers: RunMarker[]; selectedMarker: RunMarker | null;
-  selectedRun: ActivityRun | null; loading: boolean; error: string; timeZone: string;
-  replayStatus: ReplayStatus; replayPendingRunId: string | null; replayError: string; replayErrorRunId: string | null;
-  onSelectMarker: (marker: RunMarker | null) => void; onSelectRun: (run: ActivityRun) => void; onPlayReplay: (run: ActivityRun) => void;
+export function ActivityWorkspace({
+  chartAvailable,
+  chart,
+  runs,
+  markers,
+  selectedMarker,
+  selectedRun,
+  loading,
+  error,
+  timeZone,
+  replayStatus,
+  replayPendingRunId,
+  replayError,
+  replayErrorRunId,
+  onSelectMarker,
+  onSelectRun,
+  onPlayReplay,
+}: {
+  chartAvailable: boolean;
+  chart: ActivityChart | null;
+  runs: ActivityRun[];
+  markers: RunMarker[];
+  selectedMarker: RunMarker | null;
+  selectedRun: ActivityRun | null;
+  loading: boolean;
+  error: string;
+  timeZone: string;
+  replayStatus: ReplayStatus;
+  replayPendingRunId: string | null;
+  replayError: string;
+  replayErrorRunId: string | null;
+  onSelectMarker: (marker: RunMarker | null) => void;
+  onSelectRun: (run: ActivityRun) => void;
+  onPlayReplay: (run: ActivityRun) => void;
 }) {
   const chartRef = useRef<EmbeddedChartHandle>(null);
   const runListRef = useRef<HTMLDivElement>(null);
-  const previousRunPositionsRef = useRef(new Map<string, DOMRect>());
+  const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
   const [runSort, setRunSort] = useState<RunSortKey>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const selectId = useCallback((id: string) => onSelectMarker(markers.find((marker) => marker.id === id) ?? null), [markers, onSelectMarker]);
-  const selectFloor = useCallback((floor: number) => onSelectMarker(markers.find((marker) => marker.floorIndex === floor) ?? null), [markers, onSelectMarker]);
-  const selectedMarkerIndex = selectedMarker ? markers.findIndex((marker) => marker.id === selectedMarker.id) : -1;
+  const captureRunSortLayout = useCallback(() => {
+    const runList = runListRef.current;
+    if (!runList) return;
+
+    const positions = new Map<string, DOMRect>();
+    for (const element of runList.querySelectorAll<HTMLElement>("[data-run-id]")) {
+      const runId = element.dataset.runId;
+      if (!runId) continue;
+      for (const animation of element.getAnimations()) {
+        if (animation.id === "run-sort") animation.cancel();
+      }
+      positions.set(runId, element.getBoundingClientRect());
+    }
+
+    pendingRunSortLayoutRef.current = {
+      positions,
+      scrollTop: runList.parentElement?.scrollTop ?? 0,
+    };
+  }, []);
+  const changeRunSort = useCallback(
+    (nextSort: RunSortKey) => {
+      if (nextSort === runSort) return;
+      captureRunSortLayout();
+      setRunSort(nextSort);
+    },
+    [captureRunSortLayout, runSort],
+  );
+  const changeSortDirection = useCallback(
+    (nextDirection: SortDirection) => {
+      if (nextDirection === sortDirection) return;
+      captureRunSortLayout();
+      setSortDirection(nextDirection);
+    },
+    [captureRunSortLayout, sortDirection],
+  );
+  const selectId = useCallback(
+    (id: string) => onSelectMarker(markers.find((marker) => marker.id === id) ?? null),
+    [markers, onSelectMarker],
+  );
+  const selectFloor = useCallback(
+    (floor: number) =>
+      onSelectMarker(markers.find((marker) => marker.floorIndex === floor) ?? null),
+    [markers, onSelectMarker],
+  );
+  const selectedMarkerIndex = selectedMarker
+    ? markers.findIndex((marker) => marker.id === selectedMarker.id)
+    : -1;
   const previousMarker = selectedMarkerIndex > 0 ? markers[selectedMarkerIndex - 1] : null;
-  const nextMarker = selectedMarkerIndex >= 0 && selectedMarkerIndex < markers.length - 1 ? markers[selectedMarkerIndex + 1] : null;
+  const nextMarker =
+    selectedMarkerIndex >= 0 && selectedMarkerIndex < markers.length - 1
+      ? markers[selectedMarkerIndex + 1]
+      : null;
   const selectedRuns = runsForMarker(runs, selectedMarker);
   const sortedRuns = sortRuns(selectedRuns, runSort, sortDirection);
-  const replayMessage = selectedRun ? describeReplay(selectedRun.Id, replayStatus, replayPendingRunId, replayError, replayErrorRunId) : null;
+  const replayMessage = selectedRun
+    ? describeReplay(
+        selectedRun.Id,
+        replayStatus,
+        replayPendingRunId,
+        replayError,
+        replayErrorRunId,
+      )
+    : null;
   useLayoutEffect(() => {
-    const elements = runListRef.current?.querySelectorAll<HTMLElement>("[data-run-id]");
-    if (!elements) return;
-    const nextPositions = new Map<string, DOMRect>();
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    elements.forEach((element) => {
+    void runSort;
+    void sortDirection;
+
+    const pendingLayout = pendingRunSortLayoutRef.current;
+    pendingRunSortLayoutRef.current = null;
+    const runList = runListRef.current;
+    if (!pendingLayout || !runList) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+    const scrollDelta = (runList.parentElement?.scrollTop ?? 0) - pendingLayout.scrollTop;
+    for (const element of runList.querySelectorAll<HTMLElement>("[data-run-id]")) {
       const runId = element.dataset.runId;
-      if (!runId) return;
+      if (!runId) continue;
+      const previousPosition = pendingLayout.positions.get(runId);
+      if (!previousPosition) continue;
+
       const nextPosition = element.getBoundingClientRect();
-      nextPositions.set(runId, nextPosition);
-      const previousPosition = previousRunPositionsRef.current.get(runId);
-      if (!previousPosition || reduceMotion) return;
       const x = previousPosition.left - nextPosition.left;
-      const y = previousPosition.top - nextPosition.top;
-      if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) return;
-      element.animate(
+      const y = previousPosition.top - scrollDelta - nextPosition.top;
+      if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) continue;
+
+      const animation = element.animate(
         [{ transform: `translate(${x}px, ${y}px)` }, { transform: "translate(0, 0)" }],
         { duration: 360, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
       );
-    });
-    previousRunPositionsRef.current = nextPositions;
-  }, [sortedRuns]);
+      animation.id = "run-sort";
+    }
+  }, [runSort, sortDirection]);
   if (error) return <StatePanel title="Could not load activity" body={error} />;
-  if (!chartAvailable) return <StatePanel title="Chart unavailable" body="This session has no stored chart text. Its level remains listed and browsable." />;
-  if (!chart) return <StatePanel title={loading ? "Loading session…" : "Chart unavailable"} body={loading ? "Runs and chart pages are loading incrementally." : "No chart data was returned."} />;
-  return <section className="flex min-h-0 flex-1">
-    <EmbeddedChart ref={chartRef} chart={chart} markers={markers} selectedMarker={selectedMarker} selectedRun={selectedRun} onMarkerSelect={selectId} onFloorSelect={selectFloor} />
-    <aside
-      aria-hidden={!selectedMarker}
-      onTransitionEnd={(event) => {
-        if (event.currentTarget !== event.target || event.propertyName !== "width" || !selectedMarker) return;
-        chartRef.current?.refocusSelection();
-      }}
+  if (!chartAvailable)
+    return (
+      <StatePanel
+        title="Chart unavailable"
+        body="This session has no stored chart text. Its level remains listed and browsable."
+      />
+    );
+  if (!chart)
+    return (
+      <StatePanel
+        title={loading ? "Loading session…" : "Chart unavailable"}
+        body={
+          loading
+            ? "Runs and chart pages are loading incrementally."
+            : "No chart data was returned."
+        }
+      />
+    );
+  return (
+    <section className="flex min-h-0 flex-1">
+      <EmbeddedChart
+        ref={chartRef}
+        chart={chart}
+        markers={markers}
+        selectedMarker={selectedMarker}
+        selectedRun={selectedRun}
+        onMarkerSelect={selectId}
+        onFloorSelect={selectFloor}
+      />
+      <aside
+        aria-hidden={!selectedMarker}
+        onTransitionEnd={(event) => {
+          if (
+            event.currentTarget !== event.target ||
+            event.propertyName !== "width" ||
+            !selectedMarker
+          )
+            return;
+          chartRef.current?.refocusSelection();
+        }}
+        className={cn(
+          "flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/10 transition-[width,padding,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+          selectedMarker
+            ? "w-96 border-border p-3"
+            : "pointer-events-none w-0 border-transparent p-0",
+        )}
+      >
+        {selectedMarker ? (
+          <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col">
+            <div className="mb-3 flex shrink-0 items-center justify-between border-b border-border pb-3">
+              <div>
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Run start
+                </div>
+                <div className="mt-0.5 font-heading text-sm font-semibold tabular-nums">
+                  Floor {selectedMarker.floorIndex}
+                </div>
+              </div>
+              <fieldset
+                className="grid min-w-0 grid-cols-3 rounded-md border border-border bg-background/70 p-1"
+                aria-label="Run start navigation and camera controls"
+              >
+                <RunStartNavigationButton
+                  label="Previous run start"
+                  icon={ArrowLeft02Icon}
+                  marker={previousMarker}
+                  onSelect={onSelectMarker}
+                />
+                <RunStartNavigationButton
+                  label="Next run start"
+                  icon={ArrowRight02Icon}
+                  marker={nextMarker}
+                  onSelect={onSelectMarker}
+                />
+                <button
+                  type="button"
+                  aria-label="Fit entire run"
+                  title="Fit entire run"
+                  disabled={!selectedRun}
+                  onClick={() => chartRef.current?.fitEntireRun()}
+                  className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={FitToScreenIcon}
+                    size={16}
+                    strokeWidth={2}
+                  />
+                </button>
+              </fieldset>
+            </div>
+            <div className="mb-3 shrink-0">
+              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Sort by
+              </div>
+              <fieldset
+                className="flex min-w-0 items-center gap-2"
+                aria-label="Run sorting controls"
+              >
+                <div className="grid min-w-0 flex-1 grid-cols-4 rounded-md border border-border bg-background/70 p-1">
+                  {runSortOptions.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      aria-pressed={runSort === option.value}
+                      onClick={() => changeRunSort(option.value)}
+                      className={cn(
+                        "h-7 rounded-sm px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        runSort === option.value && "bg-muted text-foreground shadow-sm",
+                      )}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 rounded-md border border-border bg-background/70 p-1">
+                  <SortDirectionButton
+                    direction="asc"
+                    selected={sortDirection === "asc"}
+                    onSelect={changeSortDirection}
+                  />
+                  <SortDirectionButton
+                    direction="desc"
+                    selected={sortDirection === "desc"}
+                    onSelect={changeSortDirection}
+                  />
+                </div>
+              </fieldset>
+            </div>
+            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
+              <div ref={runListRef} className="space-y-2">
+                {sortedRuns.map((run) => {
+                  const active = selectedRun?.Id === run.Id;
+                  return (
+                    <button
+                      key={run.Id}
+                      data-run-id={run.Id}
+                      type="button"
+                      aria-pressed={active}
+                      onClick={() => onSelectRun(run)}
+                      className={cn(
+                        "block w-full rounded-md border border-border bg-background/60 p-3 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        active && "border-primary bg-primary/10 ring-1 ring-primary/40",
+                      )}
+                    >
+                      <div className="flex items-center justify-between font-medium">
+                        <span className="inline-flex min-w-7 items-center justify-center rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-heading text-[11px] font-semibold tabular-nums text-primary">
+                          #{run.RunIndex}
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <RunNoFailIcon enabled={run.NoFailMode} />
+                          <RunDifficultyIcon difficulty={run.JudgmentDifficulty} />
+                        </span>
+                      </div>
+                      <div className="mt-2.5 grid grid-cols-2 gap-2">
+                        <RunMetric
+                          icon={PercentIcon}
+                          label="Progress"
+                          value={`${run.StartTile} → ${runProgressPercent(run)}%`}
+                        />
+                        <RunMetric
+                          icon={DashboardSpeed01Icon}
+                          label="Pitch"
+                          value={`${run.LevelPitchPercent ?? "?"}%`}
+                        />
+                        <RunMetric
+                          icon={ChartAverageIcon}
+                          label="X-Accuracy"
+                          value={formatXAccuracy(run.XAccuracy)}
+                        />
+                        <RunMetric
+                          icon={Clock01Icon}
+                          label="Started at"
+                          value={formatTimeWithOffset(run.StartedAtUtc, timeZone)}
+                        />
+                      </div>
+                      <RunJudgmentStrip counts={run.JudgmentCounts} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {selectedRun ? (
+              <div className="mt-3 shrink-0 border-t border-border pt-3">
+                <Button
+                  type="button"
+                  className="w-full"
+                  disabled={replayPendingRunId === selectedRun.Id}
+                  onClick={() => onPlayReplay(selectedRun)}
+                >
+                  {replayPendingRunId === selectedRun.Id ? "Starting…" : "Play replay"}
+                </Button>
+                {replayMessage ? (
+                  <p
+                    aria-live="polite"
+                    className={cn(
+                      "mt-2 text-xs text-muted-foreground",
+                      replayErrorRunId === selectedRun.Id ||
+                        (replayStatus.RunId === selectedRun.Id && replayStatus.State === "error")
+                        ? "text-destructive"
+                        : null,
+                    )}
+                  >
+                    {replayMessage}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+      </aside>
+    </section>
+  );
+}
+
+function StatePanel({ title, body }: { title: string; body: string }) {
+  return (
+    <section className="grid min-h-0 flex-1 place-items-center p-8 text-center">
+      <div>
+        <h2 className="font-heading text-xl font-semibold">{title}</h2>
+        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
+      </div>
+    </section>
+  );
+}
+
+function RunMetric({
+  icon,
+  label,
+  value,
+  className,
+}: {
+  icon: typeof PercentIcon;
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn("inline-flex min-w-0 items-center gap-2 whitespace-nowrap", className)}
+      title={`${label}: ${value}`}
+    >
+      <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-muted/70 text-muted-foreground">
+        <HugeiconsIcon aria-hidden="true" icon={icon} size={14} strokeWidth={2} />
+      </span>
+      <span className="min-w-0 truncate font-medium tabular-nums text-foreground/85">{value}</span>
+    </span>
+  );
+}
+
+function SortDirectionButton({
+  direction,
+  selected,
+  onSelect,
+}: {
+  direction: SortDirection;
+  selected: boolean;
+  onSelect: (direction: SortDirection) => void;
+}) {
+  const label = direction === "asc" ? "Ascending" : "Descending";
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      aria-pressed={selected}
+      title={label}
+      onClick={() => onSelect(direction)}
       className={cn(
-        "flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/10 transition-[width,padding,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
-        selectedMarker ? "w-80 border-border p-3" : "pointer-events-none w-0 border-transparent p-0",
+        "grid size-7 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        selected && "bg-primary/15 text-primary shadow-sm",
       )}
     >
-      {selectedMarker ? <div className="flex min-h-0 min-w-[18.5rem] flex-1 flex-col">
-        <div className="mb-3 flex shrink-0 items-center justify-between border-b border-border pb-3">
-          <div>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Run start</div>
-            <div className="mt-0.5 font-heading text-sm font-semibold tabular-nums">Floor {selectedMarker.floorIndex}</div>
-          </div>
-          <div className="grid grid-cols-2 rounded-md border border-border bg-background/70 p-1" aria-label="Run start navigation">
-            <RunStartNavigationButton label="Previous run start" icon={ArrowLeft02Icon} marker={previousMarker} onSelect={onSelectMarker} />
-            <RunStartNavigationButton label="Next run start" icon={ArrowRight02Icon} marker={nextMarker} onSelect={onSelectMarker} />
-          </div>
-        </div>
-        <div className="mb-3 shrink-0">
-          <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Sort by</div>
-          <div className="flex items-center gap-2" aria-label="Run sorting controls">
-            <div className="grid min-w-0 flex-1 grid-cols-3 rounded-md border border-border bg-background/70 p-1">
-              {runSortOptions.map((option) => <button key={option.value} type="button" aria-pressed={runSort === option.value} onClick={() => setRunSort(option.value)} className={cn("h-7 rounded-sm px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", runSort === option.value && "bg-muted text-foreground shadow-sm")}>{option.label}</button>)}
-            </div>
-            <div className="grid grid-cols-2 rounded-md border border-border bg-background/70 p-1">
-              <SortDirectionButton direction="asc" selected={sortDirection === "asc"} onSelect={setSortDirection} />
-              <SortDirectionButton direction="desc" selected={sortDirection === "desc"} onSelect={setSortDirection} />
-            </div>
-          </div>
-        </div>
-        <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1"><div ref={runListRef} className="space-y-2">{sortedRuns.map((run) => {
-          const active = selectedRun?.Id === run.Id;
-          return <button key={run.Id} data-run-id={run.Id} type="button" aria-pressed={active} onClick={() => onSelectRun(run)} className={cn("block w-full rounded-md border border-border bg-background/60 p-3 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active && "border-primary bg-primary/10 ring-1 ring-primary/40")}>
-            <div className="flex items-center justify-between font-medium"><span className="inline-flex min-w-7 items-center justify-center rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-heading text-[11px] font-semibold tabular-nums text-primary">#{run.RunIndex}</span><span>{run.Result}</span></div>
-            <div className="mt-2.5 grid grid-cols-2 gap-2">
-              <RunMetric icon={PercentIcon} label="Progress" value={`${run.StartTile} → ${runProgressPercent(run)}%`} />
-              <RunMetric className="justify-self-end" icon={DashboardSpeed01Icon} label="Pitch" value={`${run.LevelPitchPercent ?? "?"}%`} />
-              <RunMetric className="col-span-2" icon={ChartAverageIcon} label="X-Accuracy" value={formatXAccuracy(run.XAccuracy)} />
-              <RunMetric className="col-span-2" icon={Clock01Icon} label="Started at" value={formatTimeWithOffset(run.StartedAtUtc, timeZone)} />
-            </div>
-          </button>;
-        })}</div></div>
-        {selectedRun ? <div className="mt-3 shrink-0 border-t border-border pt-3"><div className="grid grid-cols-2 gap-2"><Button type="button" disabled={replayPendingRunId === selectedRun.Id} onClick={() => onPlayReplay(selectedRun)}>{replayPendingRunId === selectedRun.Id ? "Starting…" : "Play replay"}</Button><Button type="button" variant="outline" onClick={() => chartRef.current?.fitEntireRun()}>Fit entire run</Button></div>{replayMessage ? <p aria-live="polite" className={cn("mt-2 text-xs text-muted-foreground", replayErrorRunId === selectedRun.Id || replayStatus.RunId === selectedRun.Id && replayStatus.State === "error" ? "text-destructive" : null)}>{replayMessage}</p> : null}</div> : null}
-      </div> : null}
-    </aside>
-  </section>;
+      <HugeiconsIcon
+        aria-hidden="true"
+        icon={direction === "asc" ? ArrowUp02Icon : ArrowDown02Icon}
+        size={15}
+        strokeWidth={2}
+      />
+    </button>
+  );
 }
 
-function StatePanel({ title, body }: { title: string; body: string }) { return <section className="grid min-h-0 flex-1 place-items-center p-8 text-center"><div><h2 className="font-heading text-xl font-semibold">{title}</h2><p className="mt-2 text-sm text-muted-foreground">{body}</p></div></section>; }
-
-function RunMetric({ icon, label, value, className }: { icon: typeof PercentIcon; label: string; value: string; className?: string }) {
-  return <span className={cn("inline-flex w-fit min-w-0 items-center gap-2 whitespace-nowrap", className)} title={label}>
-    <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-muted/70 text-muted-foreground">
-      <HugeiconsIcon aria-hidden="true" icon={icon} size={14} strokeWidth={2} />
-    </span>
-    <span className="font-medium tabular-nums text-foreground/85">{value}</span>
-  </span>;
-}
-
-function SortDirectionButton({ direction, selected, onSelect }: { direction: SortDirection; selected: boolean; onSelect: (direction: SortDirection) => void }) {
-  const label = direction === "asc" ? "Ascending" : "Descending";
-  return <button type="button" aria-label={label} aria-pressed={selected} title={label} onClick={() => onSelect(direction)} className={cn("grid size-7 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", selected && "bg-primary/15 text-primary shadow-sm")}>
-    <HugeiconsIcon aria-hidden="true" icon={direction === "asc" ? ArrowUp02Icon : ArrowDown02Icon} size={15} strokeWidth={2} />
-  </button>;
-}
-
-function RunStartNavigationButton({ label, icon, marker, onSelect }: { label: string; icon: typeof ArrowLeft02Icon; marker: RunMarker | null; onSelect: (marker: RunMarker | null) => void }) {
-  return <button type="button" aria-label={label} title={label} disabled={!marker} onClick={() => marker && onSelect(marker)} className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-    <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={2} />
-  </button>;
+function RunStartNavigationButton({
+  label,
+  icon,
+  marker,
+  onSelect,
+}: {
+  label: string;
+  icon: typeof ArrowLeft02Icon;
+  marker: RunMarker | null;
+  onSelect: (marker: RunMarker | null) => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={!marker}
+      onClick={() => marker && onSelect(marker)}
+      className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={2} />
+    </button>
+  );
 }
 
 function sortRuns(runs: ActivityRun[], sort: RunSortKey, direction: SortDirection) {
@@ -149,13 +484,17 @@ function sortRuns(runs: ActivityRun[], sort: RunSortKey, direction: SortDirectio
     if (leftValue === null) return 1;
     if (rightValue === null) return -1;
     const difference = leftValue - rightValue;
-    return (direction === "asc" ? difference : -difference) || (direction === "asc" ? left.RunIndex - right.RunIndex : right.RunIndex - left.RunIndex);
+    return (
+      (direction === "asc" ? difference : -difference) ||
+      (direction === "asc" ? left.RunIndex - right.RunIndex : right.RunIndex - left.RunIndex)
+    );
   });
 }
 
 function runSortValue(run: ActivityRun, sort: RunSortKey) {
   if (sort === "progress") return runProgressPercent(run);
   if (sort === "pitch") return run.LevelPitchPercent;
+  if (sort === "accuracy") return Number.isFinite(run.XAccuracy) ? run.XAccuracy : null;
   const timestamp = Date.parse(run.StartedAtUtc);
   return Number.isNaN(timestamp) ? null : timestamp;
 }
@@ -165,7 +504,13 @@ function runProgressPercent(run: ActivityRun) {
   return Math.round(Math.min(1, lastTile / Math.max(1, run.FloorCount)) * 100);
 }
 
-function describeReplay(runId: string, status: ReplayStatus, pendingRunId: string | null, error: string, errorRunId: string | null) {
+function describeReplay(
+  runId: string,
+  status: ReplayStatus,
+  pendingRunId: string | null,
+  error: string,
+  errorRunId: string | null,
+) {
   if (pendingRunId === runId) return "Sending replay to ADOFAI…";
   if (errorRunId === runId && error) return error;
   if (status.RunId === runId) {
@@ -180,7 +525,14 @@ function describeReplay(runId: string, status: ReplayStatus, pendingRunId: strin
     if (status.State === "error") return status.Message || status.ErrorCode || "Replay failed.";
     return null;
   }
-  if (status.State === "preparing" || status.State === "opening_level" || status.State === "waiting_for_focus" || status.State === "starting" || status.State === "playing" || status.State === "returning_to_editor") {
+  if (
+    status.State === "preparing" ||
+    status.State === "opening_level" ||
+    status.State === "waiting_for_focus" ||
+    status.State === "starting" ||
+    status.State === "playing" ||
+    status.State === "returning_to_editor"
+  ) {
     return "Starting this run will replace the active replay.";
   }
   return null;

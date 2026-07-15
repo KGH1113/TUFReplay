@@ -4,7 +4,8 @@ public static class ReplayRunController
 {
   public static void MarkRestartPrepared(ActiveReplayContext context)
   {
-    if (context == null) return;
+    if (context == null)
+      return;
     context.NativeInputPlayer?.ReleaseAll();
     context.RunStarted = false;
     context.WonClockStarted = false;

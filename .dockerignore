@@ -1,0 +1,9 @@
+.git
+.github
+.env
+.vscode
+build
+node_modules
+web/.env
+web/dist
+*.log
