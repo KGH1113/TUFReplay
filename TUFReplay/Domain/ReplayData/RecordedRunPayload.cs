@@ -33,7 +33,7 @@ public class RecordedRunPayload
   {
     var meta = new
     {
-      formatVersion = 2,
+      formatVersion = 3,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,
@@ -47,7 +47,7 @@ public class RecordedRunPayload
       pitchSource = PitchSource,
       inputFormat = "csv-conductor-timeus-key-flags",
       inputTimeBase = InputTimeBase,
-      inputCapture = "creplay-style-native-key-state-sample",
+      inputCapture = "skyhook-native-events-with-state-polling-fallback",
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = Inputs.Count,

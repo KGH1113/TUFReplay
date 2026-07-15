@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 6;
+  public const int Version = 7;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -75,6 +75,12 @@ PRAGMA user_version = 6;"
       version = 6;
     }
 
+    if (version == 6)
+    {
+      SkyHookInputKeyMigration.Migrate(connection, out _, out _, out _);
+      version = 7;
+    }
+
     if (version != 0 && version != Version)
     {
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -140,7 +146,7 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc 
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 6;";
+PRAGMA user_version = 7;";
     command.ExecuteNonQuery();
   }
 

@@ -10,6 +10,8 @@ internal static class NativeInputKeyCodeMapper
 {
   public const string NativeKeySpace = "os-native-key-code";
 
+  private static readonly Dictionary<int, KeyLabel> HidUsageLabels = CreateHidUsageLabels();
+
   private static readonly Dictionary<KeyLabel, ushort> MacVirtualKeyCodes = new Dictionary<KeyLabel, ushort>
   {
     { KeyLabel.A, 0x00 },
@@ -137,7 +139,7 @@ internal static class NativeInputKeyCodeMapper
     List<RecordedInput> converted = new List<RecordedInput>(inputs.Count);
     foreach (RecordedInput input in inputs)
     {
-      if (!TryConvertLegacyKeyLabel(input.Key, out int nativeKeyCode))
+      if (!TryConvertKeyLabel((KeyLabel)input.Key, out int nativeKeyCode))
       {
         dropped++;
         continue;
@@ -149,19 +151,33 @@ internal static class NativeInputKeyCodeMapper
     return converted;
   }
 
-  private static bool TryConvertLegacyKeyLabel(int key, out int nativeKeyCode)
+  public static bool TryConvertKeyLabel(KeyLabel label, out int nativeKeyCode)
   {
     nativeKeyCode = 0;
-    KeyLabel label = (KeyLabel)key;
     if (label == KeyLabel.Unknown)
       return false;
 
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
     {
-      if (!MacVirtualKeyCodes.TryGetValue(label, out ushort macKeyCode))
+      if (MacVirtualKeyCodes.TryGetValue(label, out ushort macKeyCode))
+      {
+        nativeKeyCode = macKeyCode;
+        return true;
+      }
+
+      try
+      {
+        ushort fallbackKeyCode = SkyHookKeyMapper.KeyLabelToNativeKeyCode(label);
+        if (fallbackKeyCode == 0)
+          return false;
+
+        nativeKeyCode = fallbackKeyCode;
+        return true;
+      }
+      catch
+      {
         return false;
-      nativeKeyCode = macKeyCode;
-      return true;
+      }
     }
 
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -182,5 +198,167 @@ internal static class NativeInputKeyCodeMapper
     }
 
     return false;
+  }
+
+  public static bool TryConvertSkyHookHidUsage(int hidUsage, out int nativeKeyCode)
+  {
+    nativeKeyCode = 0;
+    return HidUsageLabels.TryGetValue(hidUsage, out KeyLabel label) && TryConvertKeyLabel(label, out nativeKeyCode);
+  }
+
+  private static Dictionary<int, KeyLabel> CreateHidUsageLabels()
+  {
+    Dictionary<int, KeyLabel> labels = new Dictionary<int, KeyLabel>();
+
+    KeyLabel[] letters =
+    {
+      KeyLabel.A,
+      KeyLabel.B,
+      KeyLabel.C,
+      KeyLabel.D,
+      KeyLabel.E,
+      KeyLabel.F,
+      KeyLabel.G,
+      KeyLabel.H,
+      KeyLabel.I,
+      KeyLabel.J,
+      KeyLabel.K,
+      KeyLabel.L,
+      KeyLabel.M,
+      KeyLabel.N,
+      KeyLabel.O,
+      KeyLabel.P,
+      KeyLabel.Q,
+      KeyLabel.R,
+      KeyLabel.S,
+      KeyLabel.T,
+      KeyLabel.U,
+      KeyLabel.V,
+      KeyLabel.W,
+      KeyLabel.X,
+      KeyLabel.Y,
+      KeyLabel.Z,
+    };
+    for (int i = 0; i < letters.Length; i++)
+      labels[4 + i] = letters[i];
+
+    KeyLabel[] digits =
+    {
+      KeyLabel.Alpha1,
+      KeyLabel.Alpha2,
+      KeyLabel.Alpha3,
+      KeyLabel.Alpha4,
+      KeyLabel.Alpha5,
+      KeyLabel.Alpha6,
+      KeyLabel.Alpha7,
+      KeyLabel.Alpha8,
+      KeyLabel.Alpha9,
+      KeyLabel.Alpha0,
+    };
+    for (int i = 0; i < digits.Length; i++)
+      labels[30 + i] = digits[i];
+
+    labels[40] = KeyLabel.Enter;
+    labels[41] = KeyLabel.Escape;
+    labels[42] = KeyLabel.Backspace;
+    labels[43] = KeyLabel.Tab;
+    labels[44] = KeyLabel.Space;
+    labels[45] = KeyLabel.Minus;
+    labels[46] = KeyLabel.Equal;
+    labels[47] = KeyLabel.LeftBrace;
+    labels[48] = KeyLabel.RightBrace;
+    labels[49] = KeyLabel.BackSlash;
+    labels[50] = KeyLabel.BackSlash;
+    labels[51] = KeyLabel.Semicolon;
+    labels[52] = KeyLabel.Apostrophe;
+    labels[53] = KeyLabel.Grave;
+    labels[54] = KeyLabel.Comma;
+    labels[55] = KeyLabel.Dot;
+    labels[56] = KeyLabel.Slash;
+    labels[57] = KeyLabel.CapsLock;
+
+    KeyLabel[] functionKeys =
+    {
+      KeyLabel.F1,
+      KeyLabel.F2,
+      KeyLabel.F3,
+      KeyLabel.F4,
+      KeyLabel.F5,
+      KeyLabel.F6,
+      KeyLabel.F7,
+      KeyLabel.F8,
+      KeyLabel.F9,
+      KeyLabel.F10,
+      KeyLabel.F11,
+      KeyLabel.F12,
+    };
+    for (int i = 0; i < functionKeys.Length; i++)
+      labels[58 + i] = functionKeys[i];
+
+    labels[70] = KeyLabel.PrintScreen;
+    labels[71] = KeyLabel.ScrollLock;
+    labels[72] = KeyLabel.PauseBreak;
+    labels[73] = KeyLabel.Insert;
+    labels[74] = KeyLabel.Home;
+    labels[75] = KeyLabel.PageUp;
+    labels[76] = KeyLabel.Delete;
+    labels[77] = KeyLabel.End;
+    labels[78] = KeyLabel.PageDown;
+    labels[79] = KeyLabel.ArrowRight;
+    labels[80] = KeyLabel.ArrowLeft;
+    labels[81] = KeyLabel.ArrowDown;
+    labels[82] = KeyLabel.ArrowUp;
+    labels[83] = KeyLabel.NumLock;
+    labels[84] = KeyLabel.KeypadSlash;
+    labels[85] = KeyLabel.KeypadAsterisk;
+    labels[86] = KeyLabel.KeypadMinus;
+    labels[87] = KeyLabel.KeypadPlus;
+    labels[88] = KeyLabel.KeypadEnter;
+
+    KeyLabel[] keypadDigits =
+    {
+      KeyLabel.Keypad1,
+      KeyLabel.Keypad2,
+      KeyLabel.Keypad3,
+      KeyLabel.Keypad4,
+      KeyLabel.Keypad5,
+      KeyLabel.Keypad6,
+      KeyLabel.Keypad7,
+      KeyLabel.Keypad8,
+      KeyLabel.Keypad9,
+      KeyLabel.Keypad0,
+    };
+    for (int i = 0; i < keypadDigits.Length; i++)
+      labels[89 + i] = keypadDigits[i];
+    labels[99] = KeyLabel.KeypadDot;
+    labels[100] = KeyLabel.BackSlash;
+
+    KeyLabel[] extendedFunctionKeys =
+    {
+      KeyLabel.F13,
+      KeyLabel.F14,
+      KeyLabel.F15,
+      KeyLabel.F16,
+      KeyLabel.F17,
+      KeyLabel.F18,
+      KeyLabel.F19,
+      KeyLabel.F20,
+      KeyLabel.F21,
+      KeyLabel.F22,
+      KeyLabel.F23,
+      KeyLabel.F24,
+    };
+    for (int i = 0; i < extendedFunctionKeys.Length; i++)
+      labels[104 + i] = extendedFunctionKeys[i];
+
+    labels[224] = KeyLabel.LControl;
+    labels[225] = KeyLabel.LShift;
+    labels[226] = KeyLabel.LAlt;
+    labels[227] = KeyLabel.Super;
+    labels[228] = KeyLabel.RControl;
+    labels[229] = KeyLabel.RShift;
+    labels[230] = KeyLabel.RAlt;
+    labels[231] = KeyLabel.Super;
+    return labels;
   }
 }
