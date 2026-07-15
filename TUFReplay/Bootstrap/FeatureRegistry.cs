@@ -1,3 +1,4 @@
+using System.Linq;
 using HarmonyLib;
 using TUFReplay.Features.Gameplay;
 using TUFReplay.Features.Ipc;
@@ -28,6 +29,8 @@ public static class FeatureRegistry
     try
     {
       _harmony.PatchAll(typeof(FeatureRegistry).Assembly);
+      if (!_harmony.GetPatchedMethods().Any())
+        throw new System.InvalidOperationException("Harmony did not apply any TUFReplay patches.");
       Ipc.Enable();
       Recording.Enable();
       Replay.Enable();

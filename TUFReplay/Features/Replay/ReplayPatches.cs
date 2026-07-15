@@ -6,6 +6,7 @@ using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Features.Replay;
 
+[HarmonyPatch]
 public static class ReplayInputPatches
 {
   private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;

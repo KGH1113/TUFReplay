@@ -6,6 +6,7 @@ using TUFReplay.Domain.ReplayData;
 
 namespace TUFReplay.Features.Recording;
 
+[HarmonyPatch]
 public static class RecordingPatches
 {
   private static scrFloor _hitFloor;

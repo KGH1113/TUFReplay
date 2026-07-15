@@ -6,6 +6,7 @@ using TUFReplay.Features.Replay;
 
 namespace TUFReplay.Features.Gameplay;
 
+[HarmonyPatch]
 public static class GameplayPatches
 {
   [HarmonyPatch(typeof(scrPlayer), "Hit", new[] { typeof(bool) })]
