@@ -19,12 +19,14 @@ id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,r
 gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
+gameplay_hash,gameplay_hash_version,
 input_count,hit_context_count,input_csv,hit_context_csv,meta_json
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
 @song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
+@gameplayHash,@gameplayHashVersion,
 @inputs,@hits,@inputCsv,@hitCsv,@meta
 )";
     q.Parameters.AddWithValue("@id", r.Id);
@@ -53,6 +55,8 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.Parameters.AddWithValue("@judgmentLate", judgments.Late);
     q.Parameters.AddWithValue("@judgmentTooLate", judgments.TooLate);
     q.Parameters.AddWithValue("@judgmentMiss", judgments.Miss);
+    q.Parameters.AddWithValue("@gameplayHash", (object)r.GameplayHash ?? System.DBNull.Value);
+    q.Parameters.AddWithValue("@gameplayHashVersion", DbValue.From(r.GameplayHashVersion));
     q.Parameters.AddWithValue("@inputs", r.InputCount);
     q.Parameters.AddWithValue("@hits", r.HitContextCount);
     q.Parameters.AddWithValue("@inputCsv", r.InputCsv ?? new byte[0]);
@@ -95,7 +99,8 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.CommandText =
       @"
 SELECT r.id,r.level_session_id,l.tuf_level_id,l.level_path,l.level_tile_count,
-       r.start_tile,r.last_tile,r.result,r.input_csv,r.hit_context_csv,r.meta_json
+       r.start_tile,r.last_tile,r.result,r.input_csv,r.hit_context_csv,r.meta_json,
+       r.gameplay_hash,r.gameplay_hash_version
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 WHERE r.id=@id
@@ -118,7 +123,24 @@ LIMIT 1";
       InputCsv = (byte[])r.GetValue(8),
       HitContextCsv = (byte[])r.GetValue(9),
       MetaJson = r.GetString(10),
+      GameplayHash = r.IsDBNull(11) ? null : (byte[])r.GetValue(11),
+      GameplayHashVersion = DbValue.NullableInt(r, 12),
     };
+  }
+
+  public static void UpdateGameplayHashIfMissing(string runId, byte[] hash, int version)
+  {
+    if (string.IsNullOrWhiteSpace(runId) || hash == null)
+      return;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText =
+      "UPDATE runs SET gameplay_hash=@hash,gameplay_hash_version=@version WHERE id=@id AND gameplay_hash IS NULL";
+    q.Parameters.AddWithValue("@hash", hash);
+    q.Parameters.AddWithValue("@version", version);
+    q.Parameters.AddWithValue("@id", runId);
+    q.ExecuteNonQuery();
   }
 
   private const string Select =
@@ -128,6 +150,7 @@ l.level_tile_count,r.start_tile,r.last_tile,r.result,r.no_fail_mode,r.gameplay_s
 r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,
 r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfect,r.judgment_perfect,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
+r.gameplay_hash,r.gameplay_hash_version,
 r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json
 FROM runs r JOIN level_sessions l ON l.id=r.level_session_id";
 
@@ -163,11 +186,13 @@ FROM runs r JOIN level_sessions l ON l.id=r.level_session_id";
         TooLate = r.GetInt32(24),
         Miss = r.GetInt32(25),
       },
-      InputCount = r.GetInt32(26),
-      HitContextCount = r.GetInt32(27),
-      InputCsvBytes = r.GetInt64(28),
-      HitContextCsvBytes = r.GetInt64(29),
-      MetaJson = r.GetString(30),
+      GameplayHash = r.IsDBNull(26) ? null : (byte[])r.GetValue(26),
+      GameplayHashVersion = DbValue.NullableInt(r, 27),
+      InputCount = r.GetInt32(28),
+      HitContextCount = r.GetInt32(29),
+      InputCsvBytes = r.GetInt64(30),
+      HitContextCsvBytes = r.GetInt64(31),
+      MetaJson = r.GetString(32),
     };
 
   private static RunJudgmentDifficulty? ReadDifficulty(SqliteDataReader reader, int index)

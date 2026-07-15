@@ -14,6 +14,8 @@ public static class RecordingPayloadBuilder
     run.XAccuracy = data.XAccuracy;
     run.JudgmentDifficulty = data.JudgmentDifficulty;
     run.JudgmentCounts = data.JudgmentCounts ?? new JudgmentCounts();
+    run.GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone();
+    run.GameplayHashVersion = data.GameplayHashVersion;
     run.InputCount = data.Inputs.Count;
     run.HitContextCount = data.HitContexts.Count;
     run.InputCsv = data.ToInputCsvBytes();

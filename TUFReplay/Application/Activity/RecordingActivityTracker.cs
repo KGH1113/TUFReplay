@@ -101,6 +101,8 @@ public sealed class RecordingActivityTracker
       EffectivePitch = data.EffectivePitch,
       InputCount = data.Inputs.Count,
       HitContextCount = data.HitContexts.Count,
+      GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone(),
+      GameplayHashVersion = data.GameplayHashVersion,
       MetaJson = data.ToActivityMetaJson(),
     };
   }

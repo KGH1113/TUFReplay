@@ -5,6 +5,7 @@ import type {
   ActivityChart,
   ActivityLevelSessionOverview,
   ActivityRun,
+  ReplayLevelFilePickerStatus,
   ReplayStatus,
 } from "../activity.model";
 import { adofaiIpcFetch } from "./adofai-ipc.fetch";
@@ -35,8 +36,10 @@ export interface ActivityGateway {
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   listAllRuns(id: string, onPage?: (items: ActivityRun[]) => void): Promise<ActivityRun[]>;
   getChart(id: string): Promise<ActivityChart>;
-  playReplay(runId: string): Promise<ReplayStatus>;
+  playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getReplayStatus(): Promise<ReplayStatus>;
+  startReplayLevelFilePicker(runId: string): Promise<ReplayLevelFilePickerStatus>;
+  getReplayLevelFilePickerStatus(operationId: string): Promise<ReplayLevelFilePickerStatus>;
 }
 
 export async function connectActivityGateway(): Promise<ActivityGateway> {
@@ -72,8 +75,13 @@ export function createActivityGateway(
         onPage,
       ),
     getChart: (id) => callDomain(namespace, "activity.level-session.chart.get", { id }),
-    playReplay: (runId) => callDomain(namespace, "replay.play", { runId }),
+    playReplay: (runId, levelPath) =>
+      callDomain(namespace, "replay.play", levelPath ? { runId, levelPath } : { runId }),
     getReplayStatus: () => callDomain(namespace, "replay.status.get", {}),
+    startReplayLevelFilePicker: (runId) =>
+      callDomain(namespace, "replay.level-file.pick.start", { runId }),
+    getReplayLevelFilePickerStatus: (operationId) =>
+      callDomain(namespace, "replay.level-file.pick.status", { operationId }),
   };
 }
 

@@ -90,6 +90,17 @@ export interface ReplayStatus {
   Message: string | null;
 }
 
+export type ReplayLevelFilePickerState = "picking" | "selected" | "cancelled" | "error";
+
+export interface ReplayLevelFilePickerStatus {
+  OperationId: string;
+  RunId: string;
+  State: ReplayLevelFilePickerState;
+  LevelPath: string | null;
+  ErrorCode: string | null;
+  Message: string | null;
+}
+
 export interface ActivityDay {
   date: string;
   appSessions: ActivityAppSession[];

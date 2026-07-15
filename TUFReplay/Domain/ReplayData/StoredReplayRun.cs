@@ -13,4 +13,6 @@ public sealed class StoredReplayRun
   public byte[] InputCsv;
   public byte[] HitContextCsv;
   public string MetaJson;
+  public byte[] GameplayHash;
+  public int? GameplayHashVersion;
 }
