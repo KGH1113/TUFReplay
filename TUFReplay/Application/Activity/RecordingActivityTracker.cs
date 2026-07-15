@@ -1,6 +1,7 @@
 using System;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database.Repositories;
 
 namespace TUFReplay.Application.Activity;
@@ -53,6 +54,7 @@ public sealed class RecordingActivityTracker
     LevelSessionId = Guid.NewGuid().ToString("N");
     TufLevelId = tufLevelId;
     LevelPath = levelPath;
+    bool metadataAvailable = AdofaiLevelMetadataReader.TryRead(levelPath, out LevelMetadataSnapshot metadata);
     LevelSessionRepository.Save(
       new LevelSession
       {
@@ -62,6 +64,10 @@ public sealed class RecordingActivityTracker
         LevelPath = levelPath,
         OpenedAtUtc = DateTime.UtcNow.ToString("O"),
         LevelTileCount = levelTileCount,
+        Song = metadata?.Song,
+        Author = metadata?.Author,
+        Artist = metadata?.Artist,
+        MetadataState = metadataAvailable ? LevelMetadataState.Captured : LevelMetadataState.Unavailable,
       }
     );
   }
@@ -101,6 +107,8 @@ public sealed class RecordingActivityTracker
       EffectivePitch = data.EffectivePitch,
       InputCount = data.Inputs.Count,
       HitContextCount = data.HitContexts.Count,
+      GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone(),
+      GameplayHashVersion = data.GameplayHashVersion,
       MetaJson = data.ToActivityMetaJson(),
     };
   }

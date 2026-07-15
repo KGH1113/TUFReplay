@@ -20,15 +20,18 @@ DOTNET_EXE="${DOTNET_EXE:-$DOTNET_ROOT/dotnet}"
 
 UNITY_MOD_MANAGER_DLL="${UNITY_MOD_MANAGER_DLL:-$ADOFAI_MANAGED/UnityModManager/UnityModManager.dll}"
 HARMONY_DLL="${HARMONY_DLL:-$ADOFAI_MANAGED/UnityModManager/0Harmony.dll}"
-JALIB_DLL="${JALIB_DLL:-$ADOFAI_MODS_DIR/JALib/JALib.dll}"
-JAMOD_BOOTSTRAP_DLL="${JAMOD_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/JALib/JAMod.Bootstrap.dll}"
 ADOFAI_IPC_DLL="${ADOFAI_IPC_DLL:-${ADOFIA_IPC_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.dll}}"
+ADOFAI_IPC_BOOTSTRAP_DLL="${ADOFAI_IPC_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.Bootstrap.dll}"
+ADOFAI_IPC_INFO_JSON="${ADOFAI_IPC_INFO_JSON:-$ADOFAI_MODS_DIR/AdofaiIpc/Info.json}"
+ADOFAI_IPC_BOOTSTRAP_LOCK="$PROJECT/TUFReplay/AdofaiIpcBootstrap.lock"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
+BOOTSTRAP_OUT="${TUFREPLAY_BOOTSTRAP_BUILD_DIR:-$PROJECT/build/TUFReplay.Bootstrap}"
 PACKAGE_ROOT="${TUFREPLAY_PACKAGE_ROOT:-$PROJECT/build/package}"
 STAGE="$PACKAGE_ROOT/TUFReplay"
-DEPS="$STAGE/dependency"
 ZIP_PATH="${TUFREPLAY_PACKAGE_ZIP:-$PROJECT/build/TUFReplay.zip}"
+VERSION_PATH="${TUFREPLAY_VERSION_ASSET:-$PROJECT/build/TUFReplay.version}"
+CHECKSUM_PATH="${TUFREPLAY_CHECKSUM_ASSET:-$ZIP_PATH.sha256}"
 NUGET_PACKAGES_DIR="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
 SOURCEGEAR_SQLITE3_VERSION="${SOURCEGEAR_SQLITE3_VERSION:-}"
 if [ -z "$SOURCEGEAR_SQLITE3_VERSION" ]; then
@@ -63,33 +66,60 @@ if [ -z "$SOURCEGEAR_SQLITE3_VERSION" ]; then
 fi
 
 require_command zip
+require_command shasum
 require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
 require_file "$HARMONY_DLL"
-require_file "$JALIB_DLL"
-require_file "$JAMOD_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_DLL"
+require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
+require_file "$ADOFAI_IPC_INFO_JSON"
+require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
+
+# shellcheck disable=SC1090
+source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
+
+installed_ipc_version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ADOFAI_IPC_INFO_JSON" | head -n 1)"
+if [ "$installed_ipc_version" != "$ADOFAIIPC_VERSION" ]; then
+  echo "AdofaiIpc version mismatch: expected $ADOFAIIPC_VERSION, found ${installed_ipc_version:-unknown}" >&2
+  exit 1
+fi
+
+bootstrap_sha256="$(shasum -a 256 "$ADOFAI_IPC_BOOTSTRAP_DLL" | awk '{print $1}')"
+if [ "$bootstrap_sha256" != "$ADOFAIIPC_BOOTSTRAP_SHA256" ]; then
+  echo "AdofaiIpc Bootstrap checksum mismatch." >&2
+  echo "Expected: $ADOFAIIPC_BOOTSTRAP_SHA256" >&2
+  echo "Actual:   $bootstrap_sha256" >&2
+  exit 1
+fi
+
+DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
+"$DOTNET_EXE" build "$PROJECT/TUFReplay.Bootstrap/TUFReplay.Bootstrap.csproj" \
+  --configuration Release \
+  -p:OutputPath="$BOOTSTRAP_OUT/" \
+  -p:AdofaiManaged="$ADOFAI_MANAGED" \
+  -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL"
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
+  --configuration Release \
   -p:OutputPath="$OUT/" \
   -p:AdofaiManaged="$ADOFAI_MANAGED" \
   -p:AdofaiMods="$ADOFAI_MODS_DIR" \
   -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL" \
   -p:HarmonyDll="$HARMONY_DLL" \
-  -p:JALibDll="$JALIB_DLL" \
   -p:AdofaiIpcDll="$ADOFAI_IPC_DLL"
 
 require_file "$WIN_SQLITE_DLL"
 
 rm -rf "$STAGE"
-mkdir -p "$DEPS"
+mkdir -p "$STAGE"
 
 cp "$PROJECT/TUFReplay/Info.json" "$STAGE/"
-cp "$PROJECT/TUFReplay/JAModInfo.json" "$STAGE/"
-cp "$JAMOD_BOOTSTRAP_DLL" "$STAGE/"
+cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$STAGE/"
 cp "$OUT/TUFReplay.dll" "$STAGE/"
+cp "$BOOTSTRAP_OUT/TUFReplay.Bootstrap.dll" "$STAGE/"
+cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$STAGE/"
 cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
 
 for dll in \
@@ -101,14 +131,9 @@ for dll in \
   System.Numerics.Vectors.dll \
   System.Runtime.CompilerServices.Unsafe.dll
 do
-  if [ -f "$OUT/$dll" ]; then
-    cp "$OUT/$dll" "$DEPS/"
-  fi
+  require_file "$OUT/$dll"
+  cp "$OUT/$dll" "$STAGE/"
 done
-
-if [ -f "$OUT/TUFReplay.pdb" ]; then
-  cp "$OUT/TUFReplay.pdb" "$STAGE/"
-fi
 
 rm -f "$ZIP_PATH"
 mkdir -p "$(dirname "$ZIP_PATH")"
@@ -124,4 +149,15 @@ mkdir -p "$(dirname "$ZIP_PATH")"
     -x 'TUFReplay/*.log'
 )
 
+version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PROJECT/TUFReplay/Info.json" | head -n 1)"
+if [ -z "$version" ]; then
+  echo "TUFReplay version is missing from Info.json." >&2
+  exit 1
+fi
+
+printf '%s\n' "$version" > "$VERSION_PATH"
+shasum -a 256 "$ZIP_PATH" > "$CHECKSUM_PATH"
+
 echo "Packaged to $ZIP_PATH"
+echo "Version asset: $VERSION_PATH"
+echo "Checksum asset: $CHECKSUM_PATH"

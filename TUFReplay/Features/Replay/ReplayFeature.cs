@@ -26,5 +26,6 @@ public class ReplayFeature
     Active = false;
 
     ReplayPlaybackCoordinator.Shutdown();
+    ReplayLevelFilePickerCoordinator.Shutdown();
   }
 }

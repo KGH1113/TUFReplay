@@ -14,6 +14,9 @@ public static class ReplaySessionService
   private static int _lastNativeGateLogFrame = -100000;
   private static int _lastNativeTickLogFrame = -100000;
   private static int _lastHitContextTickLogFrame = -100000;
+  private static bool _nativeFocusBlocked;
+  private static string _nativeFocusBlockReason;
+  private static long _nativeFocusSkippedEvents;
   private static int _pendingReplayPitchApplyFrame = -1;
   private static bool _suppressReplayMarkFail;
 
@@ -50,6 +53,7 @@ public static class ReplaySessionService
     _lastNativeGateLogFrame = -100000;
     _lastNativeTickLogFrame = -100000;
     _lastHitContextTickLogFrame = -100000;
+    ResetNativeFocusTracking();
     _suppressReplayMarkFail = false;
   }
 
@@ -212,6 +216,7 @@ public static class ReplaySessionService
     _lastNativeGateLogFrame = -100000;
     _lastNativeTickLogFrame = -100000;
     _lastHitContextTickLogFrame = -100000;
+    ResetNativeFocusTracking();
 
     Main.Instance?.Log(
       "[ReplaySessionService] Replay run reset. reason="
@@ -395,12 +400,16 @@ public static class ReplaySessionService
   {
     nowUs = 0L;
 
-    if (!UnityEngine.Application.isFocused)
+    ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
+    if (player == null)
     {
-      _activeContext?.NativeInputPlayer?.ReleaseAll();
-      LogGateBlocked("Native", "application_not_focused", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
+      LogGateBlocked("Native", "native_player_missing", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
       return false;
     }
+
+    bool focusReady = player.CanEmit(out string focusReason);
+    if (!focusReady)
+      player.ReleaseAll();
 
     if (!TryGetControllerState(out States state))
     {
@@ -420,7 +429,66 @@ public static class ReplaySessionService
       return false;
     }
 
+    if (!focusReady)
+    {
+      int skipped = player.SkipTo(nowUs);
+      LogNativeFocusBlocked(focusReason, skipped, nowUs, player);
+      ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
+      return false;
+    }
+
+    LogNativeFocusResumed(nowUs, player);
+
     return true;
+  }
+
+  private static void LogNativeFocusBlocked(string reason, int skipped, long nowUs, ReplayNativeInputPlayer player)
+  {
+    _nativeFocusSkippedEvents += skipped;
+    if (_nativeFocusBlocked)
+      return;
+
+    _nativeFocusBlocked = true;
+    _nativeFocusBlockReason = reason;
+    Main.Instance?.Log(
+      "[Replay/InputDebug] Native focus blocked. reason="
+        + reason
+        + ", nowUs="
+        + nowUs
+        + ", skipped="
+        + skipped
+        + ", "
+        + player.DescribeFocus()
+        + ", scheduler="
+        + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
+    );
+  }
+
+  private static void LogNativeFocusResumed(long nowUs, ReplayNativeInputPlayer player)
+  {
+    if (!_nativeFocusBlocked)
+      return;
+
+    Main.Instance?.Log(
+      "[Replay/InputDebug] Native focus resumed. previousReason="
+        + _nativeFocusBlockReason
+        + ", nowUs="
+        + nowUs
+        + ", skipped="
+        + _nativeFocusSkippedEvents
+        + ", "
+        + player.DescribeFocus()
+        + ", scheduler="
+        + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
+    );
+    ResetNativeFocusTracking();
+  }
+
+  private static void ResetNativeFocusTracking()
+  {
+    _nativeFocusBlocked = false;
+    _nativeFocusBlockReason = null;
+    _nativeFocusSkippedEvents = 0L;
   }
 
   private static void LogGateBlocked(string channel, string reason, ref string lastKey, ref int lastFrame)

@@ -1,6 +1,10 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
-import type { ConnectionStatus, ReplayStatus } from "../activity.model";
+import type {
+  ConnectionStatus,
+  ReplayLevelFilePickerStatus,
+  ReplayStatus,
+} from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
 import { ReplayStatusPoller } from "../lib/replay-status.poller";
 import { useVisiblePolling } from "./use-visible-polling.hook";
@@ -23,9 +27,12 @@ export function useReplayControl(
   const [pendingRunId, setPendingRunId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [errorRunId, setErrorRunId] = useState<string | null>(null);
+  const [pickerStatus, setPickerStatus] = useState<ReplayLevelFilePickerStatus | null>(null);
   const statusRef = useRef(status);
   const pendingRunIdRef = useRef(pendingRunId);
   const playGenerationRef = useRef(0);
+  const pickerGenerationRef = useRef(0);
+  const pickerRefreshInFlightRef = useRef(false);
   const mountedRef = useRef(true);
   statusRef.current = status;
   pendingRunIdRef.current = pendingRunId;
@@ -68,12 +75,41 @@ export function useReplayControl(
     void pollerRef.current?.refresh();
   }, POLL_INTERVAL_MS);
 
+  useVisiblePolling(() => {
+    const current = pickerStatus;
+    if (!current || !shouldPollReplayLevelFilePicker(current) || pickerRefreshInFlightRef.current)
+      return;
+
+    const gateway = gatewayRef.current;
+    if (!gateway) return;
+    const generation = pickerGenerationRef.current;
+    pickerRefreshInFlightRef.current = true;
+    void gateway
+      .getReplayLevelFilePickerStatus(current.OperationId)
+      .then((next) => {
+        if (mountedRef.current && generation === pickerGenerationRef.current) setPickerStatus(next);
+      })
+      .catch((cause) => {
+        if (mountedRef.current && generation === pickerGenerationRef.current) {
+          setPickerStatus({
+            ...current,
+            State: "error",
+            ErrorCode: "file_picker_status_failed",
+            Message: errorMessage(cause),
+          });
+        }
+      })
+      .finally(() => {
+        pickerRefreshInFlightRef.current = false;
+      });
+  }, POLL_INTERVAL_MS);
+
   const play = useCallback(
-    async (runId: string) => {
+    async (runId: string, levelPath?: string) => {
       const gateway = gatewayRef.current;
       if (!gateway) {
         setError("TUFReplay is not connected");
-        return;
+        return false;
       }
 
       const generation = playGenerationRef.current + 1;
@@ -84,15 +120,17 @@ export function useReplayControl(
       setError("");
       setErrorRunId(null);
       try {
-        const next = await gateway.playReplay(runId);
-        if (generation !== playGenerationRef.current) return;
+        const next = await gateway.playReplay(runId, levelPath);
+        if (generation !== playGenerationRef.current) return false;
         statusRef.current = next;
         setStatus(next);
+        return true;
       } catch (cause) {
         if (generation === playGenerationRef.current) {
           setError(errorMessage(cause));
           setErrorRunId(runId);
         }
+        return false;
       } finally {
         if (generation === playGenerationRef.current) {
           pendingRunIdRef.current = null;
@@ -103,7 +141,62 @@ export function useReplayControl(
     [gatewayRef],
   );
 
-  return { status, pendingRunId, error, errorRunId, play };
+  const startLevelFilePicker = useCallback(
+    async (runId: string) => {
+      const gateway = gatewayRef.current;
+      if (!gateway) {
+        setPickerStatus({
+          OperationId: "",
+          RunId: runId,
+          State: "error",
+          LevelPath: null,
+          ErrorCode: "not_connected",
+          Message: "TUFReplay is not connected",
+        });
+        return false;
+      }
+
+      const generation = pickerGenerationRef.current + 1;
+      pickerGenerationRef.current = generation;
+      setPickerStatus(null);
+      try {
+        const next = await gateway.startReplayLevelFilePicker(runId);
+        if (generation !== pickerGenerationRef.current) return false;
+        setPickerStatus(next);
+        return true;
+      } catch (cause) {
+        if (generation === pickerGenerationRef.current) {
+          setPickerStatus({
+            OperationId: "",
+            RunId: runId,
+            State: "error",
+            LevelPath: null,
+            ErrorCode: "file_picker_start_failed",
+            Message: errorMessage(cause),
+          });
+        }
+        return false;
+      }
+    },
+    [gatewayRef],
+  );
+
+  const clearLevelFilePicker = useCallback(() => {
+    pickerGenerationRef.current += 1;
+    pickerRefreshInFlightRef.current = false;
+    setPickerStatus(null);
+  }, []);
+
+  return {
+    status,
+    pendingRunId,
+    error,
+    errorRunId,
+    pickerStatus,
+    play,
+    startLevelFilePicker,
+    clearLevelFilePicker,
+  };
 }
 
 export function shouldPollReplayStatus(status: ReplayStatus) {
@@ -115,6 +208,10 @@ export function shouldPollReplayStatus(status: ReplayStatus) {
     status.State === "playing" ||
     status.State === "returning_to_editor"
   );
+}
+
+export function shouldPollReplayLevelFilePicker(status: ReplayLevelFilePickerStatus) {
+  return status.State === "picking";
 }
 
 function errorMessage(cause: unknown) {

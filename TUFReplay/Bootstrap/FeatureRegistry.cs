@@ -1,4 +1,5 @@
-using JALib.Core.Patch;
+using System.Linq;
+using HarmonyLib;
 using TUFReplay.Features.Gameplay;
 using TUFReplay.Features.Ipc;
 using TUFReplay.Features.Recording;
@@ -8,7 +9,8 @@ namespace TUFReplay.Bootstrap;
 
 public static class FeatureRegistry
 {
-  private static JAPatcher _patcher;
+  private const string HarmonyId = "TUFReplay";
+  private static Harmony _harmony;
 
   public static TUFReplayIpcFeature Ipc { get; private set; }
   public static RecordingFeature Recording { get; private set; }
@@ -16,20 +18,28 @@ public static class FeatureRegistry
 
   public static void Initialize()
   {
-    if (_patcher != null)
+    if (_harmony != null)
       return;
 
     Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
     Replay = new ReplayFeature();
 
-    _patcher = new JAPatcher(Main.Instance);
-    _patcher.AddPatch(typeof(RecordingPatches)).AddPatch(typeof(ReplayInputPatches)).AddPatch(typeof(GameplayPatches));
-
-    _patcher.Patch();
-    Ipc.Enable();
-    Recording.Enable();
-    Replay.Enable();
+    _harmony = new Harmony(HarmonyId);
+    try
+    {
+      _harmony.PatchAll(typeof(FeatureRegistry).Assembly);
+      if (!_harmony.GetPatchedMethods().Any())
+        throw new System.InvalidOperationException("Harmony did not apply any TUFReplay patches.");
+      Ipc.Enable();
+      Recording.Enable();
+      Replay.Enable();
+    }
+    catch
+    {
+      Shutdown();
+      throw;
+    }
   }
 
   public static void Shutdown()
@@ -38,8 +48,8 @@ public static class FeatureRegistry
     Recording?.Disable();
     Ipc?.Disable();
 
-    _patcher?.Dispose();
-    _patcher = null;
+    _harmony?.UnpatchAll(HarmonyId);
+    _harmony = null;
 
     Replay = null;
     Recording = null;

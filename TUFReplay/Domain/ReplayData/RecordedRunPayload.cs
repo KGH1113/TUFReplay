@@ -23,6 +23,8 @@ public class RecordedRunPayload
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
+  public byte[] GameplayHash;
+  public int? GameplayHashVersion;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
@@ -31,7 +33,7 @@ public class RecordedRunPayload
   {
     var meta = new
     {
-      formatVersion = 2,
+      formatVersion = 3,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,
@@ -45,7 +47,7 @@ public class RecordedRunPayload
       pitchSource = PitchSource,
       inputFormat = "csv-conductor-timeus-key-flags",
       inputTimeBase = InputTimeBase,
-      inputCapture = "creplay-style-native-key-state-sample",
+      inputCapture = "skyhook-native-events-with-state-polling-fallback",
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = Inputs.Count,

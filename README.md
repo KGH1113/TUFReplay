@@ -4,7 +4,7 @@
 
 [![Runtime](https://img.shields.io/badge/runtime-ADOFAI%20%2F%20Unity-111827?style=for-the-badge&logo=unity&logoColor=white)](https://store.steampowered.com/app/977950/A_Dance_of_Fire_and_Ice/)
 [![Mod Loader](https://img.shields.io/badge/mod%20loader-UnityModManager-7c3aed?style=for-the-badge)](https://www.nexusmods.com/site/mods/21)
-[![Framework](https://img.shields.io/badge/framework-JALib-f43f5e?style=for-the-badge)](https://github.com/Jongye0l/JALib)
+[![Patching](https://img.shields.io/badge/patching-Harmony-f43f5e?style=for-the-badge)](https://github.com/pardeike/Harmony)
 [![Build](https://img.shields.io/badge/build-.NET%20SDK-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
 [![Target](https://img.shields.io/badge/target-netstandard2.1-2563eb?style=for-the-badge)](https://learn.microsoft.com/dotnet/standard/net-standard)
 [![Database](https://img.shields.io/badge/database-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
@@ -29,7 +29,7 @@
 
 ## Overview
 
-TUFReplay is a UnityModManager/JALib mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
+TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
 The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows.
 
@@ -39,31 +39,33 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
 - Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
+- Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves the current chart text to the companion web UI without exposing local file paths.
 - Opens a saved run's recorded level, reuses an already-open matching editor level, and replays it from its recorded start tile.
+- Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
+- Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 
 ## Runtime
 
-TUFReplay runs inside ADOFAI through UnityModManager and JALib.
+TUFReplay runs inside ADOFAI through UnityModManager.
 
 Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- JALib
-- AdofaiIpc
+- AdofaiIpc, installed automatically when missing
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
 
 ## Repository Layout
 
-- `TUFReplay/`: UnityModManager/JALib mod source.
+- `TUFReplay/`: UnityModManager mod source.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
 
 ## Build
@@ -82,10 +84,13 @@ Build and install the mod:
 
 The build script:
 
-- Builds `TUFReplay/TUFReplay.csproj`.
-- Copies `Info.json`, `JAModInfo.json`, `JAMod.Bootstrap.dll`, and `TUFReplay.dll`.
-- Copies managed dependencies into `Mods/TUFReplay/dependency`.
+- Builds the TUFReplay payload and its small auto-update bootstrap.
+- Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
 - Installs the mod into `Mods/TUFReplay` by default.
+
+The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the TUFReplay bootstrap checks the latest TUFReplay release before loading the payload. Network work has a single 20-second deadline; timeout or any update error emits an `AutoUpdate` warning and loads the installed or last-known-good payload. A verified update is loaded immediately from the versioned cache during the same ADOFAI launch.
+
+The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
 Important environment variables:
 
@@ -93,8 +98,9 @@ Important environment variables:
 - `ADOFAI_MODS_DIR`: ADOFAI Mods directory.
 - `ADOFAI_MANAGED`: Unity managed assembly directory.
 - `DOTNET_EXE`: .NET SDK executable.
-- `JALIB_DLL`: JALib assembly path.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
+- `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
+- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by `package.sh` for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
 Create a clean shareable package:
@@ -103,7 +109,9 @@ Create a clean shareable package:
 ./package.sh
 ```
 
-The package script builds the mod into `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package and excludes local database/log data from the package.
+The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates the release assets `build/TUFReplay.version` and `build/TUFReplay.zip.sha256`; all three files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+
+Beta releases use the same three assets and must be marked as a prerelease on GitHub.
 
 ## Web Development
 
@@ -205,14 +213,15 @@ Registered methods:
 - `activity.level-session.chart.get`
 - `replay.play`
 - `replay.status.get`
+- `replay.level-file.pick.start`
+- `replay.level-file.pick.status`
 
 ## Tech Stack
 
 - **C# / .NET SDK**: mod implementation and build tooling.
 - **netstandard2.1**: target framework for Unity compatibility.
 - **UnityModManager**: ADOFAI mod loading.
-- **JALib**: JAMod lifecycle, settings, and mod structure.
-- **AdofaiIpc**: shared localhost IPC listener and namespace routing.
+- **AdofaiIpc**: shared localhost IPC listener, namespace routing, and dependency bootstrap.
 - **Harmony**: game method patching for recording hooks.
 - **TUFHelperLite**: optional public TUF level ID resolution for downloaded charts.
 - **SQLite / Microsoft.Data.Sqlite**: local play record storage.

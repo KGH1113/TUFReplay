@@ -3,6 +3,7 @@ import type {
   ActivityChart,
   ActivityLevelSessionOverview,
   ActivityRun,
+  ReplayLevelFilePickerStatus,
   ReplayStatus,
 } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
@@ -57,6 +58,7 @@ export function createMockActivityGateway(): ActivityGateway {
     ErrorCode: null,
     Message: null,
   };
+  let pickerStatus: ReplayLevelFilePickerStatus | null = null;
   return {
     health: async () => ({ Status: "mock" }),
     listAllAppSessions: async (onPage) => {
@@ -81,6 +83,22 @@ export function createMockActivityGateway(): ActivityGateway {
       return replayStatus;
     },
     getReplayStatus: async () => replayStatus,
+    startReplayLevelFilePicker: async (runId) => {
+      pickerStatus = {
+        OperationId: `mock-picker-${runId}`,
+        RunId: runId,
+        State: "selected",
+        LevelPath: `/mock/${runId}.adofai`,
+        ErrorCode: null,
+        Message: "Matching level file selected.",
+      };
+      return pickerStatus;
+    },
+    getReplayLevelFilePickerStatus: async (operationId) => {
+      if (!pickerStatus || pickerStatus.OperationId !== operationId)
+        throw new Error("Mock picker operation was not found");
+      return pickerStatus;
+    },
   };
 }
 
@@ -116,6 +134,9 @@ function createLevel(
       Id: id,
       AppSessionId: appSessionId,
       TufLevelId: tufLevelId,
+      Song: null,
+      Author: null,
+      Artist: null,
       OpenedAtUtc: openedAtUtc,
       ClosedAtUtc: null,
       RunCount: runs.length,

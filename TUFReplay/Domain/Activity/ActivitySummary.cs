@@ -27,6 +27,7 @@ public class LevelSessionOverview
   public string Id;
   public string AppSessionId;
   public int? TufLevelId;
+  public string LevelPath;
   public string OpenedAtUtc;
   public string ClosedAtUtc;
   public int LevelTileCount;
@@ -36,4 +37,8 @@ public class LevelSessionOverview
   public int? FirstStartTile;
   public int? LastStartTile;
   public bool ChartAvailable;
+  public string Song;
+  public string Author;
+  public string Artist;
+  public LevelMetadataState MetadataState;
 }
