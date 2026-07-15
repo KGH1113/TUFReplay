@@ -1,0 +1,10 @@
+services:
+  tuf-replay-web:
+    build:
+      context: .
+      args:
+        VITE_WEB_ADOFAI_EMBED_URL: ${VITE_WEB_ADOFAI_EMBED_URL:-https://web-adofai.impl1113.dev/embed/chart}
+    image: tuf-replay-web:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${TUF_REPLAY_WEB_PORT:-4174}:4173"

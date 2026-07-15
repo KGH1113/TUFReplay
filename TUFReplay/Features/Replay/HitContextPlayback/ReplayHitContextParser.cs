@@ -10,7 +10,8 @@ public static class ReplayHitContextParser
   public static List<ReplayHitContext> Parse(byte[] hitContextCsv)
   {
     List<ReplayHitContext> contexts = new List<ReplayHitContext>();
-    if (hitContextCsv == null || hitContextCsv.Length == 0) return contexts;
+    if (hitContextCsv == null || hitContextCsv.Length == 0)
+      return contexts;
 
     string text = Encoding.UTF8.GetString(hitContextCsv);
     string[] lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
@@ -31,7 +32,8 @@ public static class ReplayHitContextParser
     context = default;
 
     string[] parts = line.Split(',');
-    if (parts.Length != 11) return false;
+    if (parts.Length != 11)
+      return false;
 
     if (!int.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int currentFloorID))
       return false;

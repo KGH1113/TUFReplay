@@ -1,8 +1,11 @@
-import type { ConnectionStatus } from "../activity.model";
 import { Button } from "@/ui/button.component";
 import { cn } from "@/ui/ui-class.utils";
+import type { ConnectionStatus } from "../activity.model";
 
-export function DashboardHeader({ status, onRetry }: {
+export function DashboardHeader({
+  status,
+  onRetry,
+}: {
   status: ConnectionStatus;
   onRetry: () => void;
 }) {
@@ -20,7 +23,11 @@ export function DashboardHeader({ status, onRetry }: {
             status === "error" && "bg-destructive",
           )}
         />
-        {status === "error" ? <Button size="sm" onClick={onRetry}>Retry</Button> : null}
+        {status === "error" ? (
+          <Button size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        ) : null}
       </div>
     </header>
   );

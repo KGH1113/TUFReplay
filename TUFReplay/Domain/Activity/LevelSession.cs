@@ -8,5 +8,5 @@ public class LevelSession
   public string LevelPath;
   public string OpenedAtUtc;
   public string ClosedAtUtc;
-public int LevelTileCount;
+  public int LevelTileCount;
 }

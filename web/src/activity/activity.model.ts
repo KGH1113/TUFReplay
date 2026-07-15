@@ -33,11 +33,27 @@ export interface ActivityRun {
   LevelPitchPercent: number | null;
   EffectivePitch: number | null;
   XAccuracy: number | null;
+  JudgmentDifficulty: JudgmentDifficulty | null;
+  JudgmentCounts: ActivityJudgmentCounts;
   InputCount: number;
   HitContextCount: number;
   FloorCount: number;
   InputBytes: number;
   HitContextBytes: number;
+}
+
+export type JudgmentDifficulty = "Lenient" | "Normal" | "Strict";
+
+export interface ActivityJudgmentCounts {
+  Overload: number;
+  TooEarly: number;
+  Early: number;
+  EarlyPerfect: number;
+  Perfect: number;
+  LatePerfect: number;
+  Late: number;
+  TooLate: number;
+  Miss: number;
 }
 
 export interface ActivityChart {

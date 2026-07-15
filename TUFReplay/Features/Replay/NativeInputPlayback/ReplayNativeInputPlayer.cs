@@ -37,7 +37,8 @@ public sealed class ReplayNativeInputPlayer
 
     foreach (int key in heldKeys)
     {
-      if (!_emitter.Emit(key, true)) continue;
+      if (!_emitter.Emit(key, true))
+        continue;
 
       _heldKeys.Add(key);
       restored++;
@@ -59,8 +60,10 @@ public sealed class ReplayNativeInputPlayer
 
     foreach (RecordedInput input in due)
     {
-      if (!input.Async) continue;
-      if (!_emitter.Emit(input.Key, input.Down)) continue;
+      if (!input.Async)
+        continue;
+      if (!_emitter.Emit(input.Key, input.Down))
+        continue;
 
       if (input.Down)
         _heldKeys.Add(input.Key);

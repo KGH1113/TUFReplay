@@ -10,9 +10,7 @@ internal sealed class MacOsNativeInputStateReader : INativeInputStateReader
   public string Name => "macos-native-key-state";
   public IReadOnlyList<int> KeyCodes => _keyCodes;
 
-  public void Refresh()
-  {
-  }
+  public void Refresh() { }
 
   [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
   [return: MarshalAs(UnmanagedType.I1)]
@@ -21,7 +19,8 @@ internal sealed class MacOsNativeInputStateReader : INativeInputStateReader
   public bool TryGetIsDown(int keyCode, out bool isDown)
   {
     isDown = false;
-    if (keyCode < 0 || keyCode > 0x7F) return false;
+    if (keyCode < 0 || keyCode > 0x7F)
+      return false;
 
     isDown = CGEventSourceKeyState(0, (ushort)keyCode);
     return true;

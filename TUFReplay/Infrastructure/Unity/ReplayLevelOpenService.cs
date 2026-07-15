@@ -8,7 +8,8 @@ public static class ReplayLevelOpenService
 {
   public static void OpenEditor(string levelPath)
   {
-    if (string.IsNullOrWhiteSpace(levelPath)) throw new ArgumentException("Level path is required.", nameof(levelPath));
+    if (string.IsNullOrWhiteSpace(levelPath))
+      throw new ArgumentException("Level path is required.", nameof(levelPath));
 
     void LoadEditor()
     {

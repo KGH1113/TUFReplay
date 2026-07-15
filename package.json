@@ -9,6 +9,9 @@
     "web:dev": "bun run --cwd web dev",
     "web:test": "bun run --cwd web test",
     "web:typecheck": "bun run --cwd web typecheck",
+    "web:format": "bun run --cwd web format",
+    "web:format:check": "bun run --cwd web format:check",
+    "web:biome": "bun run --cwd web biome:check",
     "web:build": "bun run --cwd web build",
     "web:preview": "bun run --cwd web preview"
   }

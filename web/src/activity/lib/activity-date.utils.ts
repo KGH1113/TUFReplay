@@ -52,7 +52,11 @@ export function formatTimeWithOffset(value: string | null | undefined, timeZone?
   if (!value) return "Open";
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  const time = parsed.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", timeZone });
+  const time = parsed.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone,
+  });
   const offset = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" })
     .formatToParts(parsed)
     .find((part) => part.type === "timeZoneName")?.value;

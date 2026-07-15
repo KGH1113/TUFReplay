@@ -4,8 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Newtonsoft.Json;
-using TUFReplay.Domain.ReplayData;
 using TUFReplay.Application.Recording;
+using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.NativeInput;
@@ -33,13 +33,15 @@ public static class ReplayPlaybackCoordinator
     lock (CommandGate)
     {
       string operationId = Guid.NewGuid().ToString("N");
-      SetStatus(new ReplayPlaybackStatus
-      {
-        OperationId = operationId,
-        RunId = runId,
-        State = ReplayPlaybackStates.Preparing,
-        Message = "Preparing replay."
-      });
+      SetStatus(
+        new ReplayPlaybackStatus
+        {
+          OperationId = operationId,
+          RunId = runId,
+          State = ReplayPlaybackStates.Preparing,
+          Message = "Preparing replay.",
+        }
+      );
 
       if (!TryPrepare(operationId, runId, out PendingReplay pending, out string code, out string message))
       {
@@ -54,13 +56,15 @@ public static class ReplayPlaybackCoordinator
 
   public static ReplayPlaybackStatus GetStatus()
   {
-    lock (Gate) return Clone(_status);
+    lock (Gate)
+      return Clone(_status);
   }
 
   public static void Tick()
   {
     PendingReplay operation = _operation;
-    if (operation == null || !IsCurrent(operation.OperationId)) return;
+    if (operation == null || !IsCurrent(operation.OperationId))
+      return;
 
     if (_returnRequested)
     {
@@ -70,7 +74,8 @@ public static class ReplayPlaybackCoordinator
 
     if (_waitingForEditor)
     {
-      if (scnEditor.instance == null || scnEditor.instance.playMode) return;
+      if (scnEditor.instance == null || scnEditor.instance.playMode)
+        return;
       _waitingForEditor = false;
       PrepareLevel(operation);
       return;
@@ -97,7 +102,8 @@ public static class ReplayPlaybackCoordinator
   public static void OnGameStateChanged(States state)
   {
     PendingReplay operation = _operation;
-    if (operation == null || !IsCurrent(operation.OperationId)) return;
+    if (operation == null || !IsCurrent(operation.OperationId))
+      return;
 
     switch (state)
     {
@@ -119,8 +125,10 @@ public static class ReplayPlaybackCoordinator
   public static void OnReplayTimeAdvanced(long nowUs)
   {
     PendingReplay operation = _operation;
-    if (operation == null || !IsCurrent(operation.OperationId)) return;
-    if (!ReplaySessionService.NativeInputFinished || nowUs < operation.TerminalTimeUs) return;
+    if (operation == null || !IsCurrent(operation.OperationId))
+      return;
+    if (!ReplaySessionService.NativeInputFinished || nowUs < operation.TerminalTimeUs)
+      return;
 
     if (string.Equals(operation.Run.Result, "cleared", StringComparison.OrdinalIgnoreCase))
     {
@@ -135,9 +143,12 @@ public static class ReplayPlaybackCoordinator
       return;
     }
 
-    if (!string.Equals(operation.Run.Result, "failed", StringComparison.OrdinalIgnoreCase) ||
-        _forcedFail ||
-        !ReplaySessionService.HitContextFinished) return;
+    if (
+      !string.Equals(operation.Run.Result, "failed", StringComparison.OrdinalIgnoreCase)
+      || _forcedFail
+      || !ReplaySessionService.HitContextFinished
+    )
+      return;
 
     _forcedFail = true;
     ReplayFailPolicy.ApplyReplayNoFail(false);
@@ -150,7 +161,8 @@ public static class ReplayPlaybackCoordinator
   public static void OnReturnedToEditor()
   {
     PendingReplay operation = _operation;
-    if (operation == null || !IsCurrent(operation.OperationId)) return;
+    if (operation == null || !IsCurrent(operation.OperationId))
+      return;
 
     if (_waitingForEditor)
     {
@@ -176,7 +188,8 @@ public static class ReplayPlaybackCoordinator
   public static void Fail(string errorCode, string message)
   {
     PendingReplay operation = _operation;
-    if (operation == null || !IsCurrent(operation.OperationId)) return;
+    if (operation == null || !IsCurrent(operation.OperationId))
+      return;
 
     ReplaySessionService.ClearActiveContext();
     _returnRequested = false;
@@ -229,16 +242,21 @@ public static class ReplayPlaybackCoordinator
       return Error("format_unsupported", "This replay format is not supported.", out errorCode, out errorMessage);
     if (!meta.gameplayStartSongPosition.HasValue)
       return Error("metadata_invalid", "Replay gameplay timing metadata is missing.", out errorCode, out errorMessage);
-    if (meta.formatVersion == 2 &&
-        !string.Equals(meta.inputTimeBase, RecordingClock.HybridInputTimeBase, StringComparison.Ordinal))
+    if (
+      meta.formatVersion == 2
+      && !string.Equals(meta.inputTimeBase, RecordingClock.HybridInputTimeBase, StringComparison.Ordinal)
+    )
       return Error("time_base_unsupported", "This replay time base is not supported.", out errorCode, out errorMessage);
 
-    if (!ValidateNativePlatform(meta, run.InputCsv, out errorCode, out errorMessage)) return false;
+    if (!ValidateNativePlatform(meta, run.InputCsv, out errorCode, out errorMessage))
+      return false;
 
     List<RecordedInput> parsedInputs = ReplayInputParser.Parse(run.InputCsv);
     List<RecordedInput> inputs = NativeInputKeyCodeMapper.NormalizeForPlayback(parsedInputs, meta, out int dropped);
     List<ReplayHitContext> hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
-    if ((run.InputCsv?.Length > 0 && parsedInputs.Count == 0) || (run.HitContextCsv?.Length > 0 && hitContexts.Count == 0))
+    if (
+      (run.InputCsv?.Length > 0 && parsedInputs.Count == 0) || (run.HitContextCsv?.Length > 0 && hitContexts.Count == 0)
+    )
       return Error("payload_invalid", "Replay payload data is malformed.", out errorCode, out errorMessage);
     if (inputs.Count == 0 && hitContexts.Count == 0)
       return Error("payload_empty", "This run has no replay data.", out errorCode, out errorMessage);
@@ -259,7 +277,8 @@ public static class ReplayPlaybackCoordinator
 
   private static void BeginOnMainThread(PendingReplay operation)
   {
-    if (!IsCurrent(operation.OperationId)) return;
+    if (!IsCurrent(operation.OperationId))
+      return;
 
     ReplaySessionService.ClearActiveContext();
     _operation = operation;
@@ -279,7 +298,8 @@ public static class ReplayPlaybackCoordinator
 
   private static void PrepareLevel(PendingReplay operation)
   {
-    if (!IsCurrent(operation.OperationId)) return;
+    if (!IsCurrent(operation.OperationId))
+      return;
 
     if (IsExpectedLevelReady(operation))
     {
@@ -333,7 +353,7 @@ public static class ReplayPlaybackCoordinator
       NativeInputScheduler = scheduler,
       NativeInputPlayer = new ReplayNativeInputPlayer(scheduler, NativeInputEmitterFactory.Create()),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
-      Meta = operation.Meta
+      Meta = operation.Meta,
     };
 
     ReplaySessionService.InstallActiveContext(context);
@@ -346,13 +366,18 @@ public static class ReplayPlaybackCoordinator
   private static bool IsExpectedLevelReady(PendingReplay operation)
   {
     scnEditor editor = scnEditor.instance;
-    return editor != null && editor.initialized && !editor.isLoading && !editor.playMode &&
-           editor.floors != null && LevelPathIdentity.Equals(operation.Run.LevelPath, LevelPathIdentity.Current());
+    return editor != null
+      && editor.initialized
+      && !editor.isLoading
+      && !editor.playMode
+      && editor.floors != null
+      && LevelPathIdentity.Equals(operation.Run.LevelPath, LevelPathIdentity.Current());
   }
 
   private static void RequestReturn(PendingReplay operation, string terminalState, string message)
   {
-    if (_returnRequested || !IsCurrent(operation.OperationId)) return;
+    if (_returnRequested || !IsCurrent(operation.OperationId))
+      return;
 
     _returnRequested = true;
     _returnTerminalState = terminalState;
@@ -363,7 +388,8 @@ public static class ReplayPlaybackCoordinator
 
   private static void CompleteWithoutEditorReturn(PendingReplay operation, string message)
   {
-    if (!IsCurrent(operation.OperationId)) return;
+    if (!IsCurrent(operation.OperationId))
+      return;
 
     ReplaySessionService.ClearActiveContext();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
@@ -375,7 +401,8 @@ public static class ReplayPlaybackCoordinator
 
   private static void TickReturnToEditor(PendingReplay operation)
   {
-    if (Time.frameCount < _returnNotBeforeFrame) return;
+    if (Time.frameCount < _returnNotBeforeFrame)
+      return;
 
     if (scnEditor.instance != null && scnEditor.instance.playMode)
     {
@@ -390,7 +417,11 @@ public static class ReplayPlaybackCoordinator
   {
     ReplaySessionService.ClearActiveContext();
     string terminalState = _returnTerminalState ?? ReplayPlaybackStates.Completed;
-    SetTerminal(operation, terminalState, terminalState == ReplayPlaybackStates.Cancelled ? "Replay cancelled." : "Replay finished.");
+    SetTerminal(
+      operation,
+      terminalState,
+      terminalState == ReplayPlaybackStates.Cancelled ? "Replay cancelled." : "Replay finished."
+    );
     _returnRequested = false;
     _waitingForEditor = false;
     _forcedFail = false;
@@ -399,47 +430,56 @@ public static class ReplayPlaybackCoordinator
 
   private static void SetOperationState(PendingReplay operation, string state, string message)
   {
-    if (!IsCurrent(operation.OperationId)) return;
-    SetStatus(new ReplayPlaybackStatus
-    {
-      OperationId = operation.OperationId,
-      RunId = operation.Run.Id,
-      State = state,
-      Message = message
-    });
+    if (!IsCurrent(operation.OperationId))
+      return;
+    SetStatus(
+      new ReplayPlaybackStatus
+      {
+        OperationId = operation.OperationId,
+        RunId = operation.Run.Id,
+        State = state,
+        Message = message,
+      }
+    );
   }
 
   private static void SetTerminal(PendingReplay operation, string state, string message)
   {
-    SetStatus(new ReplayPlaybackStatus
-    {
-      OperationId = operation.OperationId,
-      RunId = operation.Run.Id,
-      State = state,
-      Message = message
-    });
+    SetStatus(
+      new ReplayPlaybackStatus
+      {
+        OperationId = operation.OperationId,
+        RunId = operation.Run.Id,
+        State = state,
+        Message = message,
+      }
+    );
   }
 
   private static void SetError(string operationId, string runId, string code, string message)
   {
-    SetStatus(new ReplayPlaybackStatus
-    {
-      OperationId = operationId,
-      RunId = runId,
-      State = ReplayPlaybackStates.Error,
-      ErrorCode = code,
-      Message = message
-    });
+    SetStatus(
+      new ReplayPlaybackStatus
+      {
+        OperationId = operationId,
+        RunId = runId,
+        State = ReplayPlaybackStates.Error,
+        ErrorCode = code,
+        Message = message,
+      }
+    );
   }
 
   private static void SetStatus(ReplayPlaybackStatus status)
   {
-    lock (Gate) _status = status;
+    lock (Gate)
+      _status = status;
   }
 
   private static bool IsCurrent(string operationId)
   {
-    lock (Gate) return string.Equals(_status.OperationId, operationId, StringComparison.Ordinal);
+    lock (Gate)
+      return string.Equals(_status.OperationId, operationId, StringComparison.Ordinal);
   }
 
   private static ReplayPlaybackStatus Clone(ReplayPlaybackStatus status)
@@ -450,38 +490,59 @@ public static class ReplayPlaybackCoordinator
       RunId = status.RunId,
       State = status.State,
       ErrorCode = status.ErrorCode,
-      Message = status.Message
+      Message = status.Message,
     };
   }
 
-  private static bool ValidateNativePlatform(ReplayMetadata meta, byte[] inputCsv, out string errorCode, out string errorMessage)
+  private static bool ValidateNativePlatform(
+    ReplayMetadata meta,
+    byte[] inputCsv,
+    out string errorCode,
+    out string errorMessage
+  )
   {
     errorCode = null;
     errorMessage = null;
-    if (inputCsv == null || inputCsv.Length == 0) return true;
-    if (!string.Equals(meta.inputKeySpace, NativeInputKeyCodeMapper.NativeKeySpace, StringComparison.OrdinalIgnoreCase)) return true;
+    if (inputCsv == null || inputCsv.Length == 0)
+      return true;
+    if (!string.Equals(meta.inputKeySpace, NativeInputKeyCodeMapper.NativeKeySpace, StringComparison.OrdinalIgnoreCase))
+      return true;
 
     string current = CurrentPlatform();
     if (current == "unsupported")
-      return Error("native_input_unsupported", "Native replay input is not supported on this platform.", out errorCode, out errorMessage);
-    if (!string.IsNullOrWhiteSpace(meta.inputNativePlatform) &&
-        !string.Equals(meta.inputNativePlatform, current, StringComparison.OrdinalIgnoreCase))
-      return Error("native_platform_mismatch", "This replay was recorded on a different operating system.", out errorCode, out errorMessage);
+      return Error(
+        "native_input_unsupported",
+        "Native replay input is not supported on this platform.",
+        out errorCode,
+        out errorMessage
+      );
+    if (
+      !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
+      && !string.Equals(meta.inputNativePlatform, current, StringComparison.OrdinalIgnoreCase)
+    )
+      return Error(
+        "native_platform_mismatch",
+        "This replay was recorded on a different operating system.",
+        out errorCode,
+        out errorMessage
+      );
     return true;
   }
 
   private static string CurrentPlatform()
   {
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "macos";
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "windows";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+      return "macos";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+      return "windows";
     return "unsupported";
   }
 
   private static bool IsSupportedResult(string result)
   {
-    return string.Equals(result, "cleared", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase) ||
-           string.Equals(result, "aborted", StringComparison.OrdinalIgnoreCase);
+    return string.Equals(result, "cleared", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase)
+      || string.Equals(result, "aborted", StringComparison.OrdinalIgnoreCase);
   }
 
   private static bool Error(string code, string message, out string errorCode, out string errorMessage)
@@ -494,7 +555,8 @@ public static class ReplayPlaybackCoordinator
   private static bool TryGetControllerState(out States state)
   {
     state = default;
-    if (ADOBase.controller == null) return false;
+    if (ADOBase.controller == null)
+      return false;
 
     try
     {
@@ -505,9 +567,7 @@ public static class ReplayPlaybackCoordinator
         return true;
       }
     }
-    catch
-    {
-    }
+    catch { }
 
     state = ADOBase.controller.state;
     return true;

@@ -36,7 +36,10 @@ The project is built around preserving low-level play data instead of trusting f
 ## Features
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
+- Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
+- Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
 - Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
+- Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves the current chart text to the companion web UI without exposing local file paths.
 - Opens a saved run's recorded level, reuses an already-open matching editor level, and replays it from its recorded start tile.
@@ -131,6 +134,49 @@ bun run web:build
 The web UI is built and deployed independently. `build.sh` and `package.sh` continue to build and package only the ADOFAI mod.
 
 The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
+
+## Web Deployment
+
+GitHub Actions runs the web checks for pushes to `main` and `dev` and for pull requests targeting `main`. A successful push to `main` then connects to the home server through Tailscale SSH and restarts the Docker Compose app managed by the user-level `tuf-replay-web.service` unit.
+
+The server checkout must exist at `/srv/TUFReplay`. The container exposes Vite preview on port 4173 and binds it to `127.0.0.1:4174` on the host by default. Set `TUF_REPLAY_WEB_PORT` in the server checkout's `.env` to override the host port. The production build embeds `https://web-adofai.impl1113.dev/embed/chart`; set `VITE_WEB_ADOFAI_EMBED_URL` in the same `.env` to override it.
+
+The deploy workflow requires these GitHub Actions secrets:
+
+- `TS_OAUTH_CLIENT_ID`
+- `TS_OAUTH_SECRET`
+
+The Tailscale OAuth client must be permitted to create an ephemeral `tag:gh-runner` node and use Tailscale SSH to reach `kgh`.
+
+## Formatting
+
+The repository uses separate deterministic formatters for each source tree:
+
+- C# uses [CSharpier](https://csharpier.com/) 1.3.0 with a 120-character print width.
+- Web TypeScript, JavaScript, JSON, and CSS use Biome 2.5.3 with a 100-character print width.
+
+Restore the repository-local CSharpier tool after cloning:
+
+```bash
+dotnet tool restore
+```
+
+Format or check all C# sources:
+
+```bash
+dotnet csharpier format TUFReplay
+dotnet csharpier check TUFReplay
+```
+
+Format or check the web workspace:
+
+```bash
+bun run web:format
+bun run web:format:check
+bun run web:biome
+```
+
+The checked-in VS Code settings select CSharpier for C# and Biome for web files, with format-on-save enabled for both. Install the `csharpier.csharpier-vscode` and `biomejs.biome` extensions to use those settings.
 
 ## AdofaiIpc API
 

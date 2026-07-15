@@ -10,7 +10,7 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
 
   private enum CGEventTapLocation
   {
-    HID = 0
+    HID = 0,
   }
 
   [Flags]
@@ -21,7 +21,7 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
     MaskShift = 0x00020000,
     MaskControl = 0x00040000,
     MaskAlternate = 0x00080000,
-    MaskCommand = 0x00100000
+    MaskCommand = 0x00100000,
   }
 
   [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
@@ -42,12 +42,15 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
 
   public bool Emit(int key, bool down)
   {
-    if (key < 0 || key > 0x7F) return false;
-    if (IsBlockedKey(key)) return false;
+    if (key < 0 || key > 0x7F)
+      return false;
+    if (IsBlockedKey(key))
+      return false;
 
     CGEventFlags nextFlags = GetNextModifierFlags(key, down);
     IntPtr ev = CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)key, down);
-    if (ev == IntPtr.Zero) return false;
+    if (ev == IntPtr.Zero)
+      return false;
 
     try
     {

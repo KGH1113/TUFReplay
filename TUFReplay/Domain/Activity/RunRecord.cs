@@ -23,6 +23,8 @@ public class RunRecord
   public int? LevelPitchPercent;
   public float? EffectivePitch;
   public float? XAccuracy;
+  public RunJudgmentDifficulty? JudgmentDifficulty;
+  public JudgmentCounts JudgmentCounts = new JudgmentCounts();
 
   public int InputCount;
   public int HitContextCount;

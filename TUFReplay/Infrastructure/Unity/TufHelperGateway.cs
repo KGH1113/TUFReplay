@@ -13,7 +13,8 @@ public static class TufHelperGateway
 
   public static int? ResolveTufLevelId(string levelPath)
   {
-    if (string.IsNullOrWhiteSpace(levelPath)) return null;
+    if (string.IsNullOrWhiteSpace(levelPath))
+      return null;
 
     try
     {
@@ -28,7 +29,8 @@ public static class TufHelperGateway
       if (method != null && method.ReturnType == typeof(int?))
       {
         int? resolvedLevelId = (int?)method.Invoke(null, new object[] { levelPath });
-        if (resolvedLevelId.HasValue) return resolvedLevelId;
+        if (resolvedLevelId.HasValue)
+          return resolvedLevelId;
       }
     }
     catch (Exception ex)
@@ -49,47 +51,54 @@ public static class TufHelperGateway
     try
     {
       Assembly tufHelperAssembly = FindLoadedTufHelperAssembly();
-      if (tufHelperAssembly == null) return null;
+      if (tufHelperAssembly == null)
+        return null;
 
       string modDirectory = ResolveTufHelperModDirectory(tufHelperAssembly);
-      if (string.IsNullOrWhiteSpace(modDirectory)) return null;
+      if (string.IsNullOrWhiteSpace(modDirectory))
+        return null;
 
       string canonicalLevelPath = Path.GetFullPath(levelPath);
-      if (!File.Exists(canonicalLevelPath)) return null;
+      if (!File.Exists(canonicalLevelPath))
+        return null;
 
       string canonicalRoot = Path.GetFullPath(Path.Combine(modDirectory, "Downloads"));
       string relativePath = Path.GetRelativePath(canonicalRoot, canonicalLevelPath);
-      if (string.IsNullOrEmpty(relativePath) || Path.IsPathRooted(relativePath)) return null;
+      if (string.IsNullOrEmpty(relativePath) || Path.IsPathRooted(relativePath))
+        return null;
 
       string parentPrefix = ".." + Path.DirectorySeparatorChar;
       string alternateParentPrefix = ".." + Path.AltDirectorySeparatorChar;
-      if (relativePath == ".." ||
-          relativePath.StartsWith(parentPrefix, StringComparison.Ordinal) ||
-          relativePath.StartsWith(alternateParentPrefix, StringComparison.Ordinal))
+      if (
+        relativePath == ".."
+        || relativePath.StartsWith(parentPrefix, StringComparison.Ordinal)
+        || relativePath.StartsWith(alternateParentPrefix, StringComparison.Ordinal)
+      )
       {
         return null;
       }
 
-      int separatorIndex = relativePath.IndexOfAny(new[]
-      {
-        Path.DirectorySeparatorChar,
-        Path.AltDirectorySeparatorChar
-      });
-      if (separatorIndex <= 0) return null;
+      int separatorIndex = relativePath.IndexOfAny(
+        new[] { Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar }
+      );
+      if (separatorIndex <= 0)
+        return null;
 
       string cacheKey = relativePath.Substring(0, separatorIndex);
-      if (!cacheKey.StartsWith(TufCachePrefix, StringComparison.OrdinalIgnoreCase)) return null;
+      if (!cacheKey.StartsWith(TufCachePrefix, StringComparison.OrdinalIgnoreCase))
+        return null;
 
       string id = cacheKey.Substring(TufCachePrefix.Length);
       return int.TryParse(id, NumberStyles.None, CultureInfo.InvariantCulture, out int levelId) && levelId > 0
         ? levelId
         : null;
     }
-    catch (Exception ex) when (
-      ex is ArgumentException ||
-      ex is IOException ||
-      ex is NotSupportedException ||
-      ex is UnauthorizedAccessException)
+    catch (Exception ex)
+      when (ex is ArgumentException
+        || ex is IOException
+        || ex is NotSupportedException
+        || ex is UnauthorizedAccessException
+      )
     {
       return null;
     }
@@ -114,9 +123,14 @@ public static class TufHelperGateway
     {
       Type mainType = assembly.GetType("TUFHelperLite.Main", false);
       object instance = mainType?.GetProperty("Instance", BindingFlags.Public | BindingFlags.Static)?.GetValue(null);
-      object modEntry = mainType?.GetProperty("ModEntry", BindingFlags.Public | BindingFlags.Instance)?.GetValue(instance);
-      string modPath = modEntry?.GetType().GetProperty("Path", BindingFlags.Public | BindingFlags.Instance)?.GetValue(modEntry) as string;
-      if (!string.IsNullOrWhiteSpace(modPath)) return modPath;
+      object modEntry = mainType
+        ?.GetProperty("ModEntry", BindingFlags.Public | BindingFlags.Instance)
+        ?.GetValue(instance);
+      string modPath =
+        modEntry?.GetType().GetProperty("Path", BindingFlags.Public | BindingFlags.Instance)?.GetValue(modEntry)
+        as string;
+      if (!string.IsNullOrWhiteSpace(modPath))
+        return modPath;
     }
     catch (Exception)
     {

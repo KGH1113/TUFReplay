@@ -1,4 +1,10 @@
-import type { ActivityAppSession, ActivityChart, ActivityLevelSessionOverview, ActivityRun, ReplayStatus } from "../activity.model";
+import type {
+  ActivityAppSession,
+  ActivityChart,
+  ActivityLevelSessionOverview,
+  ActivityRun,
+  ReplayStatus,
+} from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
 
 import level5Text from "./levels/tuf-5.adofai?raw";
@@ -12,9 +18,30 @@ interface MockLevel {
 }
 
 const levels = [
-  createLevel("level-5", "app-2026-07-12", 5, "2026-07-12T09:12:00.000Z", level5Text, [0, 0, 118, 245, 245, 402]),
-  createLevel("level-303", "app-2026-07-12", 303, "2026-07-12T10:03:00.000Z", level303Text, [0, 64, 64, 173, 288]),
-  createLevel("level-871", "app-2026-07-13", 871, "2026-07-13T01:20:00.000Z", level871Text, [0, 0, 92, 214, 356, 356, 480]),
+  createLevel(
+    "level-5",
+    "app-2026-07-12",
+    5,
+    "2026-07-12T09:12:00.000Z",
+    level5Text,
+    [0, 0, 118, 245, 245, 402],
+  ),
+  createLevel(
+    "level-303",
+    "app-2026-07-12",
+    303,
+    "2026-07-12T10:03:00.000Z",
+    level303Text,
+    [0, 64, 64, 173, 288],
+  ),
+  createLevel(
+    "level-871",
+    "app-2026-07-13",
+    871,
+    "2026-07-13T01:20:00.000Z",
+    level871Text,
+    [0, 0, 92, 214, 356, 356, 480],
+  ),
 ];
 
 const appSessions: ActivityAppSession[] = [
@@ -23,7 +50,13 @@ const appSessions: ActivityAppSession[] = [
 ];
 
 export function createMockActivityGateway(): ActivityGateway {
-  let replayStatus: ReplayStatus = { OperationId: null, RunId: null, State: "idle", ErrorCode: null, Message: null };
+  let replayStatus: ReplayStatus = {
+    OperationId: null,
+    RunId: null,
+    State: "idle",
+    ErrorCode: null,
+    Message: null,
+  };
   return {
     health: async () => ({ Status: "mock" }),
     listAllAppSessions: async (onPage) => {
@@ -38,7 +71,13 @@ export function createMockActivityGateway(): ActivityGateway {
     },
     getChart: async (id) => findLevel(id).chart,
     playReplay: async (runId) => {
-      replayStatus = { OperationId: `mock-${runId}`, RunId: runId, State: "playing", ErrorCode: null, Message: null };
+      replayStatus = {
+        OperationId: `mock-${runId}`,
+        RunId: runId,
+        State: "playing",
+        ErrorCode: null,
+        Message: null,
+      };
       return replayStatus;
     },
     getReplayStatus: async () => replayStatus,
@@ -46,7 +85,9 @@ export function createMockActivityGateway(): ActivityGateway {
 }
 
 function createAppSession(id: string, startedAtUtc: string): ActivityAppSession {
-  const levelSessions = levels.filter((level) => level.session.AppSessionId === id).map((level) => level.session);
+  const levelSessions = levels
+    .filter((level) => level.session.AppSessionId === id)
+    .map((level) => level.session);
   return {
     Id: id,
     StartedAtUtc: startedAtUtc,
@@ -57,9 +98,18 @@ function createAppSession(id: string, startedAtUtc: string): ActivityAppSession 
   };
 }
 
-function createLevel(id: string, appSessionId: string, tufLevelId: number, openedAtUtc: string, levelText: string, starts: number[]): MockLevel {
+function createLevel(
+  id: string,
+  appSessionId: string,
+  tufLevelId: number,
+  openedAtUtc: string,
+  levelText: string,
+  starts: number[],
+): MockLevel {
   const floorCount = readFloorCount(levelText);
-  const runs = starts.map((startTile, index) => createRun(id, tufLevelId, openedAtUtc, floorCount, startTile, index));
+  const runs = starts.map((startTile, index) =>
+    createRun(id, tufLevelId, openedAtUtc, floorCount, startTile, index),
+  );
   const clearRunCount = runs.filter((run) => run.Result === "Cleared").length;
   return {
     session: {
@@ -77,7 +127,14 @@ function createLevel(id: string, appSessionId: string, tufLevelId: number, opene
   };
 }
 
-function createRun(levelSessionId: string, tufLevelId: number, openedAtUtc: string, floorCount: number, startTile: number, index: number): ActivityRun {
+function createRun(
+  levelSessionId: string,
+  tufLevelId: number,
+  openedAtUtc: string,
+  floorCount: number,
+  startTile: number,
+  index: number,
+): ActivityRun {
   const startedAt = new Date(new Date(openedAtUtc).getTime() + (index + 1) * 75_000);
   const cleared = index === 0 && startTile === 0;
   const lastTile = cleared ? floorCount - 1 : Math.min(floorCount - 1, startTile + 35 + index * 19);
@@ -91,11 +148,23 @@ function createRun(levelSessionId: string, tufLevelId: number, openedAtUtc: stri
     StartTile: startTile,
     LastTile: lastTile,
     Result: cleared ? "Cleared" : "Failed",
-    NoFailMode: false,
+    NoFailMode: tufLevelId === 5 && index === 1,
     GameplayStartSongPosition: null,
     LevelPitchPercent: 100,
     EffectivePitch: 1,
     XAccuracy: cleared ? 1 : Math.max(0, 0.985 - index * 0.011),
+    JudgmentDifficulty: (["Strict", "Normal", "Lenient"] as const)[index % 3],
+    JudgmentCounts: {
+      Overload: cleared ? 0 : index % 2,
+      TooEarly: index,
+      Early: index + 1,
+      EarlyPerfect: 3 + index,
+      Perfect: Math.max(1, lastTile - startTile - 8),
+      LatePerfect: 2 + index,
+      Late: index,
+      TooLate: cleared ? 0 : index % 3,
+      Miss: cleared ? 0 : 1,
+    },
     InputCount: Math.max(1, lastTile - startTile),
     HitContextCount: Math.max(1, lastTile - startTile),
     FloorCount: floorCount,

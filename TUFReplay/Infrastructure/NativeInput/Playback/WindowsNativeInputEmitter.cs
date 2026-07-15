@@ -13,11 +13,14 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
 
   public bool Emit(int key, bool down)
   {
-    if (key <= 0 || key > 255) return false;
-    if (IsBlockedKey((ushort)key)) return false;
+    if (key <= 0 || key > 255)
+      return false;
+    if (IsBlockedKey((ushort)key))
+      return false;
 
     uint flags = down ? 0u : KeyEventKeyUp;
-    if (IsExtendedKey((ushort)key)) flags |= KeyEventExtendedKey;
+    if (IsExtendedKey((ushort)key))
+      flags |= KeyEventExtendedKey;
 
     keybd_event((byte)key, 0, flags, UIntPtr.Zero);
     return true;

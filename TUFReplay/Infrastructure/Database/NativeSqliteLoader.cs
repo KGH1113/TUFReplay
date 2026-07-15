@@ -11,7 +11,8 @@ public static class NativeSqliteLoader
 
   public static void Initialize()
   {
-    if (_initialized) return;
+    if (_initialized)
+      return;
 
     string path = GetNativeLibraryPath();
     IGetFunctionPointer functionPointer = CreateFunctionPointerProvider(path);
@@ -23,21 +24,27 @@ public static class NativeSqliteLoader
 
   private static IGetFunctionPointer CreateFunctionPointerProvider(string libraryPath)
   {
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return new WindowsFunctionPointer(libraryPath);
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+      return new WindowsFunctionPointer(libraryPath);
     return new DlOpenFunctionPointer(libraryPath);
   }
 
   private static string GetNativeLibraryPath()
   {
     string configuredPath = Environment.GetEnvironmentVariable("TUFREPLAY_SQLITE_NATIVE_LIBRARY");
-    if (!string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath)) return configuredPath;
+    if (!string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath))
+      return configuredPath;
 
     string bundledPath = Path.Combine(Main.Instance.Path, GetBundledLibraryFileName());
-    if (File.Exists(bundledPath)) return bundledPath;
+    if (File.Exists(bundledPath))
+      return bundledPath;
 
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return "/usr/lib/libsqlite3.dylib";
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux)) return "libsqlite3.so";
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return "sqlite3.dll";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+      return "/usr/lib/libsqlite3.dylib";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+      return "libsqlite3.so";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+      return "sqlite3.dll";
 
     return GetBundledLibraryFileName();
   }
@@ -78,10 +85,22 @@ public static class NativeSqliteLoader
       return pointer;
     }
 
-    [DllImport("kernel32.dll", EntryPoint = "LoadLibraryW", SetLastError = true, CharSet = CharSet.Unicode, ExactSpelling = true)]
+    [DllImport(
+      "kernel32.dll",
+      EntryPoint = "LoadLibraryW",
+      SetLastError = true,
+      CharSet = CharSet.Unicode,
+      ExactSpelling = true
+    )]
     private static extern IntPtr LoadLibrary(string lpFileName);
 
-    [DllImport("kernel32.dll", EntryPoint = "GetProcAddress", SetLastError = true, CharSet = CharSet.Ansi, ExactSpelling = true)]
+    [DllImport(
+      "kernel32.dll",
+      EntryPoint = "GetProcAddress",
+      SetLastError = true,
+      CharSet = CharSet.Ansi,
+      ExactSpelling = true
+    )]
     private static extern IntPtr GetProcAddress(IntPtr hModule, string procName);
   }
 

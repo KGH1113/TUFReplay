@@ -70,7 +70,8 @@ public class ReplayInputScheduler
 
   public RecordedInput? PeekNext()
   {
-    if (_nextIndex >= _events.Count) return null;
+    if (_nextIndex >= _events.Count)
+      return null;
     return _events[_nextIndex];
   }
 }

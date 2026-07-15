@@ -44,19 +44,24 @@ public static class RecordingPatches
 
   private static void SampleNativeInput()
   {
-    if (!IsActive) return;
+    if (!IsActive)
+      return;
 
     RecordingSession session = RecordingFeature.Instance?.Session;
-    if (session == null || !session.IsRecording || !session.IsCapturingInput) return;
-    if (!UnityEngine.Application.isFocused) return;
+    if (session == null || !session.IsRecording || !session.IsCapturingInput)
+      return;
+    if (!UnityEngine.Application.isFocused)
+      return;
 
     RecordInputTracker.Sample(session);
   }
 
   public static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
   {
-    if (!IsActive) return true;
-    if (!ShouldCaptureHitContext(__instance)) return true;
+    if (!IsActive)
+      return true;
+    if (!ShouldCaptureHitContext(__instance))
+      return true;
 
     if (!__instance.responsive)
     {
@@ -77,7 +82,8 @@ public static class RecordingPatches
     }
 
     RecordingSession session = RecordingFeature.Instance?.Session;
-    if (session == null || !session.IsRecording) return true;
+    if (session == null || !session.IsRecording)
+      return true;
 
     scrController controller = scrController.instance;
     scrFloor currentHitFloor = controller.chosenPlanet.currfloor;
@@ -98,13 +104,15 @@ public static class RecordingPatches
   public static void OnChangeState(States newState)
   {
     RecordingFeature recording = RecordingFeature.Instance;
-    if (recording == null || !recording.Active) return;
+    if (recording == null || !recording.Active)
+      return;
 
     switch (newState)
     {
       case States.Countdown:
       case States.Checkpoint:
-        if (!recording.Session.IsRecording) return;
+        if (!recording.Session.IsRecording)
+          return;
 
         if (!RecordingGuard.CanRecord(out string reason))
         {
@@ -113,7 +121,8 @@ public static class RecordingPatches
           return;
         }
 
-        if (!recording.PrepareRunForInputCapture()) return;
+        if (!recording.PrepareRunForInputCapture())
+          return;
         recording.Session.StartInputCapture();
         ResetHitContextState();
         break;
@@ -133,16 +142,11 @@ public static class RecordingPatches
     }
   }
 
-  [JAPatch(
-    typeof(scnEditor),
-    "SwitchToEditMode",
-    PatchType.Postfix,
-    true,
-    ArgumentTypesType = new[] { typeof(bool) }
-  )]
+  [JAPatch(typeof(scnEditor), "SwitchToEditMode", PatchType.Postfix, true, ArgumentTypesType = new[] { typeof(bool) })]
   private static void OnSwitchToEditModePostfix(bool clsToEditor)
   {
-    if (!IsActive) return;
+    if (!IsActive)
+      return;
 
     SampleNativeInput();
     RecordingFeature.Instance?.OnReturnedToEditor();
@@ -151,10 +155,14 @@ public static class RecordingPatches
   private static bool ShouldCaptureHitContext(scrPlayer player)
   {
     RecordingSession session = RecordingFeature.Instance?.Session;
-    if (session == null || !session.IsRecording) return false;
-    if (player == null || scrController.instance == null) return false;
-    if (scrController.instance.playerOne == null || player != scrController.instance.playerOne) return false;
-    if (ADOBase.isLevelEditor && ADOBase.controller != null && ADOBase.controller.paused) return false;
+    if (session == null || !session.IsRecording)
+      return false;
+    if (player == null || scrController.instance == null)
+      return false;
+    if (scrController.instance.playerOne == null || player != scrController.instance.playerOne)
+      return false;
+    if (ADOBase.isLevelEditor && ADOBase.controller != null && ADOBase.controller.paused)
+      return false;
 
     return true;
   }
@@ -176,7 +184,7 @@ public static class RecordingPatches
       TargetExitAngle = chosenPlanet.targetExitAngle,
       MidspinInfiniteMargin = player.midspinInfiniteMargin,
       RDCAuto = RDC.auto,
-      CurFreeRoamSection = controller.curFreeRoamSection
+      CurFreeRoamSection = controller.curFreeRoamSection,
     };
   }
 
@@ -201,21 +209,27 @@ public static class RecordingPatches
 
   private static bool PreviousHitWasInvalid(scrFloor currentHitFloor, int[] currentHitMarginsCount)
   {
-    if (_hitFloor != currentHitFloor) return false;
-    if (_hitMarginsCount == null || currentHitMarginsCount == null) return false;
-    if (_hitMarginsCount.Length != currentHitMarginsCount.Length) return false;
+    if (_hitFloor != currentHitFloor)
+      return false;
+    if (_hitMarginsCount == null || currentHitMarginsCount == null)
+      return false;
+    if (_hitMarginsCount.Length != currentHitMarginsCount.Length)
+      return false;
 
     for (int i = 0; i < _hitMarginsCount.Length; i++)
     {
-      if (_hitMarginsCount[i] != currentHitMarginsCount[i]) return false;
+      if (_hitMarginsCount[i] != currentHitMarginsCount[i])
+        return false;
     }
 
     return true;
   }
+
   [JAPatch(typeof(scnEditor), "Play", PatchType.Prefix, true)]
   private static void OnEditorPlayPrefix()
   {
-    if (!IsActive) return;
+    if (!IsActive)
+      return;
     RecordingFeature.Instance.OnEditorPlay();
   }
 }

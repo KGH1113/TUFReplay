@@ -19,7 +19,7 @@ public sealed class ReplayPlaybackStatusDto
       RunId = status.RunId,
       State = status.State,
       ErrorCode = status.ErrorCode,
-      Message = status.Message
+      Message = status.Message,
     };
   }
 }

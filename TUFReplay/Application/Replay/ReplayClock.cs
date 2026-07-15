@@ -4,12 +4,15 @@ public static class ReplayClock
 {
   public static void EnterWon(ActiveReplayContext context)
   {
-    if (context == null || context.WonClockStarted) return;
+    if (context == null || context.WonClockStarted)
+      return;
 
     long fallback = 0L;
     if (context.Meta?.gameplayStartSongPosition != null && ADOBase.conductor != null)
     {
-      fallback = (long)((ADOBase.conductor.songposition_minusi - context.Meta.gameplayStartSongPosition.Value) * 1_000_000d);
+      fallback = (long)(
+        (ADOBase.conductor.songposition_minusi - context.Meta.gameplayStartSongPosition.Value) * 1_000_000d
+      );
     }
 
     context.WonClockStartTimeUs = context.Meta?.wonTimeUs ?? fallback;

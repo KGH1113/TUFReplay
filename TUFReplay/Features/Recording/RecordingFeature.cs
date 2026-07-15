@@ -2,9 +2,9 @@ using System;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
-using TUFReplay.Features.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Features.Recording;
@@ -33,7 +33,8 @@ public class RecordingFeature
 
   public void OnClearReached()
   {
-    if (!Session.IsRecording || _clearReached) return;
+    if (!Session.IsRecording || _clearReached)
+      return;
     _clearReached = true;
     Session.MarkWonReached();
     Main.Instance.Log("[Recording] Clear reached; input capture continues until editor return.");
@@ -41,7 +42,8 @@ public class RecordingFeature
 
   public void OnRunFailed()
   {
-    if (!Session.IsRecording || _runSaved) return;
+    if (!Session.IsRecording || _runSaved)
+      return;
 
     _failed = true;
     Session.MarkTerminal();
@@ -52,7 +54,8 @@ public class RecordingFeature
 
   public void OnReturnedToEditor()
   {
-    if (!Session.IsRecording) return;
+    if (!Session.IsRecording)
+      return;
 
     Session.MarkTerminal();
     Session.StopInputCapture("editor");
@@ -67,13 +70,16 @@ public class RecordingFeature
 
     if (_clearReached && !_failed && Session.HasRecordableData)
     {
-      Main.Instance.Log("[Recording] Clear data captured. inputs=" + Session.InputCount + ", hitContexts=" + Session.HitContextCount);
+      Main.Instance.Log(
+        "[Recording] Clear data captured. inputs=" + Session.InputCount + ", hitContexts=" + Session.HitContextCount
+      );
     }
   }
 
   public void Enable()
   {
-    if (Active) return;
+    if (Active)
+      return;
     Active = true;
 
     RecordInputTracker.Reset();
@@ -82,7 +88,8 @@ public class RecordingFeature
 
   public void Disable()
   {
-    if (!Active) return;
+    if (!Active)
+      return;
     Active = false;
 
     StopSession();
@@ -103,7 +110,8 @@ public class RecordingFeature
 
     int? tufLevelId = TufHelperGateway.ResolveTufLevelId(levelPath);
     ReplaySessionService.ClearActiveContextIfLevelChanged(levelPath);
-    if (ReplaySessionService.IsActiveReplayLevel(levelPath)) return;
+    if (ReplaySessionService.IsActiveReplayLevel(levelPath))
+      return;
 
     if (!RecordingGuard.CanRecord(out string reason))
     {
@@ -123,8 +131,10 @@ public class RecordingFeature
 
   public bool PrepareRunForInputCapture()
   {
-    if (!Session.IsRecording) return false;
-    if (!_runSaved) return true;
+    if (!Session.IsRecording)
+      return false;
+    if (!_runSaved)
+      return true;
 
     int? tufLevelId = Session.TufLevelId;
     ResetRunState();
@@ -161,8 +171,10 @@ public class RecordingFeature
 
   private void PrepareActivityRun(int levelTileCount)
   {
-    if (!Session.IsRecording) return;
-    if (_currentRun != null) return;
+    if (!Session.IsRecording)
+      return;
+    if (_currentRun != null)
+      return;
 
     int startTile = RecordingSession.GetCurrentTile();
     _currentRun = _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
@@ -170,19 +182,40 @@ public class RecordingFeature
 
   private void SaveActivityRun(string result, int? lastTile)
   {
-    if (_runSaved) return;
-    if (_currentRun == null) return;
+    if (_runSaved)
+      return;
+    if (_currentRun == null)
+      return;
 
     RunRecord run = Session.CompleteRunRecord(_currentRun, lastTile, result);
-    _activity.SaveRun(run);
     _runSaved = true;
 
+    if (!run.LastTile.HasValue || run.LastTile.Value <= run.StartTile)
+    {
+      Main.Instance.Log(
+        "[Recording] Skipped activity run without forward progress. result="
+          + result
+          + ", startTile="
+          + run.StartTile
+          + ", lastTile="
+          + (run.LastTile.HasValue ? run.LastTile.Value.ToString() : "null")
+      );
+      return;
+    }
+
+    _activity.SaveRun(run);
+
     Main.Instance.Log(
-      "[Recording] Saved activity run. result=" + result +
-      ", startTile=" + run.StartTile +
-      ", lastTile=" + (run.LastTile.HasValue ? run.LastTile.Value.ToString() : "null") +
-      ", inputs=" + run.InputCount +
-      ", hitContexts=" + run.HitContextCount
+      "[Recording] Saved activity run. result="
+        + result
+        + ", startTile="
+        + run.StartTile
+        + ", lastTile="
+        + (run.LastTile.HasValue ? run.LastTile.Value.ToString() : "null")
+        + ", inputs="
+        + run.InputCount
+        + ", hitContexts="
+        + run.HitContextCount
     );
   }
 

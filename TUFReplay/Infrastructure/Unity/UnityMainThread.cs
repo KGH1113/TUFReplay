@@ -12,7 +12,8 @@ public static class UnityMainThread
 
   public static void Post(Action action)
   {
-    if (action == null) return;
+    if (action == null)
+      return;
     MainThread.Run(Main.Instance, action);
   }
 }

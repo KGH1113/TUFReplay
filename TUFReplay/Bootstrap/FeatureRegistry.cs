@@ -16,17 +16,15 @@ public static class FeatureRegistry
 
   public static void Initialize()
   {
-    if (_patcher != null) return;
+    if (_patcher != null)
+      return;
 
     Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
     Replay = new ReplayFeature();
 
     _patcher = new JAPatcher(Main.Instance);
-    _patcher
-      .AddPatch(typeof(RecordingPatches))
-      .AddPatch(typeof(ReplayInputPatches))
-      .AddPatch(typeof(GameplayPatches));
+    _patcher.AddPatch(typeof(RecordingPatches)).AddPatch(typeof(ReplayInputPatches)).AddPatch(typeof(GameplayPatches));
 
     _patcher.Patch();
     Ipc.Enable();

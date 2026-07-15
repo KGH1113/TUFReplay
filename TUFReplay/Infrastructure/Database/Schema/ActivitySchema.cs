@@ -5,27 +5,48 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 3;
+  public const int Version = 4;
 
   public static void Ensure(SqliteConnection connection)
   {
-    using SqliteCommand command = connection.CreateCommand();
-    command.CommandText = "PRAGMA user_version;";
-    int version = System.Convert.ToInt32(command.ExecuteScalar());
+    int version;
+    using (SqliteCommand versionCommand = connection.CreateCommand())
+    {
+      versionCommand.CommandText = "PRAGMA user_version;";
+      version = System.Convert.ToInt32(versionCommand.ExecuteScalar());
+    }
 
     if (version > Version)
     {
-      throw new InvalidOperationException("TUFReplay database schema is newer than this mod supports. version=" + version);
+      throw new InvalidOperationException(
+        "TUFReplay database schema is newer than this mod supports. version=" + version
+      );
     }
 
     if (version == 2)
     {
-      using SqliteTransaction transaction = connection.BeginTransaction();
-      command.Transaction = transaction;
-      command.CommandText = "ALTER TABLE runs ADD COLUMN x_accuracy REAL; PRAGMA user_version = 3;";
-      command.ExecuteNonQuery();
-      transaction.Commit();
-      return;
+      Migrate(connection, "ALTER TABLE runs ADD COLUMN x_accuracy REAL; PRAGMA user_version = 3;");
+      version = 3;
+    }
+
+    if (version == 3)
+    {
+      Migrate(
+        connection,
+        @"
+ALTER TABLE runs ADD COLUMN judgment_difficulty INTEGER;
+ALTER TABLE runs ADD COLUMN judgment_overload INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_too_early INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_early INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_early_perfect INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_perfect INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_late_perfect INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_late INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_too_late INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN judgment_miss INTEGER NOT NULL DEFAULT 0;
+PRAGMA user_version = 4;"
+      );
+      version = 4;
     }
 
     if (version != 0 && version != Version)
@@ -33,7 +54,9 @@ public static class ActivitySchema
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
     }
 
-    command.CommandText = @"
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      @"
 CREATE TABLE IF NOT EXISTS app_sessions (
   id TEXT PRIMARY KEY,
   started_at_utc TEXT NOT NULL,
@@ -64,6 +87,16 @@ CREATE TABLE IF NOT EXISTS runs (
   level_pitch_percent INTEGER,
   effective_pitch REAL,
   x_accuracy REAL,
+  judgment_difficulty INTEGER,
+  judgment_overload INTEGER NOT NULL DEFAULT 0,
+  judgment_too_early INTEGER NOT NULL DEFAULT 0,
+  judgment_early INTEGER NOT NULL DEFAULT 0,
+  judgment_early_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_late_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_late INTEGER NOT NULL DEFAULT 0,
+  judgment_too_late INTEGER NOT NULL DEFAULT 0,
+  judgment_miss INTEGER NOT NULL DEFAULT 0,
   input_count INTEGER NOT NULL DEFAULT 0,
   hit_context_count INTEGER NOT NULL DEFAULT 0,
   input_csv BLOB NOT NULL DEFAULT X'',
@@ -75,7 +108,17 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc 
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 3;";
+PRAGMA user_version = 4;";
     command.ExecuteNonQuery();
+  }
+
+  private static void Migrate(SqliteConnection connection, string sql)
+  {
+    using SqliteTransaction transaction = connection.BeginTransaction();
+    using SqliteCommand command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = sql;
+    command.ExecuteNonQuery();
+    transaction.Commit();
   }
 }

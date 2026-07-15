@@ -9,10 +9,12 @@ public static class IpcParams
   {
     value = null;
     JToken token = GetToken(request, name);
-    if (token == null || token.Type != JTokenType.String) return false;
+    if (token == null || token.Type != JTokenType.String)
+      return false;
 
     string parsed = token.Value<string>();
-    if (string.IsNullOrWhiteSpace(parsed)) return false;
+    if (string.IsNullOrWhiteSpace(parsed))
+      return false;
 
     value = parsed.Trim();
     return true;
@@ -21,16 +23,19 @@ public static class IpcParams
   public static string OptionalString(IpcRequest request, string name)
   {
     JToken token = GetToken(request, name);
-    if (token == null || token.Type == JTokenType.Null) return null;
+    if (token == null || token.Type == JTokenType.Null)
+      return null;
     return token.Type == JTokenType.String ? token.Value<string>() : token.ToString();
   }
 
   public static int? OptionalInt(IpcRequest request, string name)
   {
     JToken token = GetToken(request, name);
-    if (token == null || token.Type == JTokenType.Null) return null;
+    if (token == null || token.Type == JTokenType.Null)
+      return null;
 
-    if (token.Type == JTokenType.Integer) return token.Value<int>();
+    if (token.Type == JTokenType.Integer)
+      return token.Value<int>();
 
     return int.TryParse(token.ToString(), out int value) ? value : null;
   }

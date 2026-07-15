@@ -1,6 +1,6 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import * as React from "react";
 import { Tabs as TabsPrimitive } from "radix-ui";
+import type * as React from "react";
 
 import { cn } from "@/ui/ui-class.utils";
 
@@ -66,7 +66,13 @@ function TabsTrigger({ className, ...props }: React.ComponentProps<typeof TabsPr
 }
 
 function TabsContent({ className, ...props }: React.ComponentProps<typeof TabsPrimitive.Content>) {
-  return <TabsPrimitive.Content data-slot="tabs-content" className={cn("flex-1 text-sm outline-none", className)} {...props} />;
+  return (
+    <TabsPrimitive.Content
+      data-slot="tabs-content"
+      className={cn("flex-1 text-sm outline-none", className)}
+      {...props}
+    />
+  );
 }
 
 export { Tabs, TabsContent, TabsList, TabsTrigger, tabsListVariants };

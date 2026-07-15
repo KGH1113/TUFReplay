@@ -6,10 +6,15 @@ namespace TUFReplay.Infrastructure.Database;
 public static class DbValue
 {
   public static object From(string value) => value == null ? DBNull.Value : value;
+
   public static object From(int? value) => value.HasValue ? value.Value : DBNull.Value;
+
   public static object From(long? value) => value.HasValue ? value.Value : DBNull.Value;
+
   public static object From(double? value) => value.HasValue ? value.Value : DBNull.Value;
+
   public static object From(float? value) => value.HasValue ? value.Value : DBNull.Value;
+
   public static int Bool(bool value) => value ? 1 : 0;
 
   public static string NullableString(SqliteDataReader reader, int index)

@@ -4,7 +4,13 @@ import type { ReplayStatus } from "../activity.model";
 import { shouldPollReplayStatus } from "../hooks/use-replay-control.hook";
 import { ReplayStatusPoller } from "./replay-status.poller";
 
-const preparing: ReplayStatus = { OperationId: "op-1", RunId: "run-1", State: "preparing", ErrorCode: null, Message: null };
+const preparing: ReplayStatus = {
+  OperationId: "op-1",
+  RunId: "run-1",
+  State: "preparing",
+  ErrorCode: null,
+  Message: null,
+};
 
 describe("replay status polling", () => {
   test("coalesces overlapping refreshes", async () => {
@@ -12,7 +18,12 @@ describe("replay status polling", () => {
     let calls = 0;
     const statuses: ReplayStatus[] = [];
     const poller = new ReplayStatusPoller(
-      () => { calls += 1; return new Promise((next) => { resolve = next; }); },
+      () => {
+        calls += 1;
+        return new Promise((next) => {
+          resolve = next;
+        });
+      },
       (status) => statuses.push(status),
       () => {},
     );
@@ -29,7 +40,10 @@ describe("replay status polling", () => {
     let resolve!: (status: ReplayStatus) => void;
     const statuses: ReplayStatus[] = [];
     const poller = new ReplayStatusPoller(
-      () => new Promise((next) => { resolve = next; }),
+      () =>
+        new Promise((next) => {
+          resolve = next;
+        }),
       (status) => statuses.push(status),
       () => {},
     );

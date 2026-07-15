@@ -9,9 +9,7 @@ internal sealed class NoopNativeInputStateReader : INativeInputStateReader
   public string Name => "unsupported";
   public IReadOnlyList<int> KeyCodes => NoKeyCodes;
 
-  public void Refresh()
-  {
-  }
+  public void Refresh() { }
 
   public bool TryGetIsDown(int keyCode, out bool isDown)
   {

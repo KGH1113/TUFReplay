@@ -8,8 +8,11 @@ describe("activity mock", () => {
     const sessions = await gateway.listAllAppSessions();
     const levels = sessions.flatMap((session) => session.LevelSessions);
 
-    expect(levels.map((level) => level.TufLevelId).sort((a, b) => Number(a) - Number(b))).toEqual([5, 303, 871]);
+    expect(levels.map((level) => level.TufLevelId).sort((a, b) => Number(a) - Number(b))).toEqual([
+      5, 303, 871,
+    ]);
 
+    let noFailRuns = 0;
     for (const level of levels) {
       const chart = await gateway.getChart(level.Id);
       const runs = await gateway.listAllRuns(level.Id);
@@ -17,6 +20,8 @@ describe("activity mock", () => {
       expect(chart.FloorCount).toBeGreaterThan(0);
       expect(runs.length).toBeGreaterThan(0);
       expect(runs.some((run) => run.StartTile > 0)).toBe(true);
+      noFailRuns += runs.filter((run) => run.NoFailMode).length;
     }
+    expect(noFailRuns).toBe(1);
   });
 });

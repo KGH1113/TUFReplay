@@ -1,0 +1,128 @@
+name: Deploy (Guhyeon Kang's Home Server)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy-main:
+    name: Deploy main to home server
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Biome check
+        run: bun run web:biome
+
+      - name: Typecheck
+        run: bun run web:typecheck
+
+      - name: Build
+        env:
+          VITE_WEB_ADOFAI_EMBED_URL: https://web-adofai.impl1113.dev/embed/chart
+        run: bun run web:build
+
+      - name: Connect to Tailscale (Guhyeon Kang's Tailnet)
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:gh-runner
+          ping: kgh
+
+      - name: Verify connectivity
+        run: |
+          set -euo pipefail
+          tailscale status
+          tailscale ssh kgh@kgh "whoami && hostname"
+
+      - name: Deploy web app
+        run: |
+          set -euo pipefail
+          tailscale ssh kgh@kgh 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          DEPLOY_DIR="/srv/TUFReplay"
+          SERVICE_UNIT="tuf-replay-web.service"
+          REPO_URL="https://github.com/KGH1113/TUFReplay.git"
+          UNIT_SOURCE="$DEPLOY_DIR/deploy/systemd/$SERVICE_UNIT"
+          USER_SYSTEMD_DIR="$HOME/.config/systemd/user"
+          UNIT_TARGET="$USER_SYSTEMD_DIR/$SERVICE_UNIT"
+          USER_RUNTIME_DIR="/run/user/$(id -u)"
+
+          if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "$USER_RUNTIME_DIR" ]; then
+            export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
+          fi
+
+          require_command() {
+            command -v "$1" >/dev/null || {
+              echo "Missing required command: $1"
+              exit 1
+            }
+          }
+
+          require_command git
+          require_command docker
+          require_command systemctl
+
+          docker compose version >/dev/null || {
+            echo "Missing required Docker Compose plugin: docker compose"
+            exit 1
+          }
+
+          test -d "$DEPLOY_DIR" || {
+            echo "Missing deploy directory: $DEPLOY_DIR"
+            echo "Clone $REPO_URL into $DEPLOY_DIR before deploying."
+            exit 1
+          }
+
+          cd "$DEPLOY_DIR"
+
+          test -d .git || {
+            echo "Deploy directory is not a git clone: $DEPLOY_DIR"
+            exit 1
+          }
+
+          git fetch origin main
+          git checkout main
+          git reset --hard origin/main
+
+          test -f docker-compose.yml || {
+            echo "Missing docker-compose.yml in $DEPLOY_DIR"
+            exit 1
+          }
+
+          test -f Dockerfile || {
+            echo "Missing Dockerfile in $DEPLOY_DIR"
+            exit 1
+          }
+
+          test -f "$UNIT_SOURCE" || {
+            echo "Missing systemd unit: $UNIT_SOURCE"
+            exit 1
+          }
+
+          mkdir -p "$USER_SYSTEMD_DIR"
+          install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
+          systemctl --user daemon-reload
+          systemctl --user enable "$SERVICE_UNIT"
+          systemctl --user restart "$SERVICE_UNIT"
+          systemctl --user --no-pager --full status "$SERVICE_UNIT"
+          REMOTE

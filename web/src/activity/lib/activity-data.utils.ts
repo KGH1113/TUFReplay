@@ -7,11 +7,15 @@ export function dateKeyInTimeZone(utc: string, timeZone: string): string {
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(new Date(utc));
-  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? "";
+  const get = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-export function groupSessionsByDay(sessions: ActivityAppSession[], timeZone: string): ActivityDay[] {
+export function groupSessionsByDay(
+  sessions: ActivityAppSession[],
+  timeZone: string,
+): ActivityDay[] {
   const groups = new Map<string, ActivityAppSession[]>();
   for (const session of sessions) {
     const key = dateKeyInTimeZone(session.StartedAtUtc, timeZone);
@@ -41,7 +45,10 @@ export function aggregateRunMarkers(runs: ActivityRun[]): RunMarker[] {
       floorIndex,
       count: markerRuns.length,
       clearCount: markerRuns.filter(isClearRun).length,
-      bestLastFloorIndex: markerRuns.reduce((best, run) => Math.max(best, run.LastTile ?? run.StartTile), floorIndex),
+      bestLastFloorIndex: markerRuns.reduce(
+        (best, run) => Math.max(best, run.LastTile ?? run.StartTile),
+        floorIndex,
+      ),
     }));
 }
 

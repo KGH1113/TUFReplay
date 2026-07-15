@@ -21,7 +21,8 @@ public static class ReplaySessionService
   public static bool UsesHitContextPlayback => _activeContext?.HitContextPlayer?.Count > 0;
   public static string ActiveRunId => _activeContext?.RunId;
   public static bool NativeInputFinished => _activeContext?.NativeInputScheduler?.Finished == true;
-  public static bool HitContextFinished => _activeContext?.HitContextPlayer == null || _activeContext.HitContextPlayer.Finished;
+  public static bool HitContextFinished =>
+    _activeContext?.HitContextPlayer == null || _activeContext.HitContextPlayer.Finished;
   public static string ActiveResult => _activeContext?.Result;
   public static long ActiveTerminalTimeUs => _activeContext?.TerminalTimeUs ?? 0L;
 
@@ -32,14 +33,16 @@ public static class ReplaySessionService
 
   public static void ClearActiveContextIfLevelChanged(string levelPath)
   {
-    if (_activeContext == null) return;
+    if (_activeContext == null)
+      return;
     if (!LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath))
       StopActiveReplay("different_level_opened");
   }
 
   public static void InstallActiveContext(ActiveReplayContext context)
   {
-    if (context == null) throw new ArgumentNullException(nameof(context));
+    if (context == null)
+      throw new ArgumentNullException(nameof(context));
 
     ClearActiveContext();
     _activeContext = context;
@@ -52,15 +55,18 @@ public static class ReplaySessionService
 
   public static void RequestReplayPitchApplyAfterLevelLoad()
   {
-    if (_activeContext?.Meta?.levelPitchPercent == null) return;
+    if (_activeContext?.Meta?.levelPitchPercent == null)
+      return;
 
     _pendingReplayPitchApplyFrame = Time.frameCount + 1;
   }
 
   public static void TickReplayPitchEditorApply()
   {
-    if (_pendingReplayPitchApplyFrame < 0) return;
-    if (Time.frameCount < _pendingReplayPitchApplyFrame) return;
+    if (_pendingReplayPitchApplyFrame < 0)
+      return;
+    if (Time.frameCount < _pendingReplayPitchApplyFrame)
+      return;
 
     if (_activeContext?.Meta == null)
     {
@@ -81,7 +87,8 @@ public static class ReplaySessionService
       return;
     }
 
-    if (!ReplayPitchService.GetEditorPitch().HasValue) return;
+    if (!ReplayPitchService.GetEditorPitch().HasValue)
+      return;
     ApplyReplayPitchNow();
     _pendingReplayPitchApplyFrame = -1;
   }
@@ -110,7 +117,8 @@ public static class ReplaySessionService
 
   public static void OnStateChanged(States newState)
   {
-    if (_activeContext == null) return;
+    if (_activeContext == null)
+      return;
 
     if (!IsReplayLevelStillCurrent())
     {
@@ -142,7 +150,8 @@ public static class ReplaySessionService
 
   private static bool IsReplayLevelStillCurrent()
   {
-    if (_activeContext == null) return false;
+    if (_activeContext == null)
+      return false;
 
     string levelPath = LevelPathIdentity.Current();
     if (!LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath))
@@ -157,7 +166,8 @@ public static class ReplaySessionService
 
   private static void PrepareReplayRunRestart(string reason)
   {
-    if (_activeContext == null) return;
+    if (_activeContext == null)
+      return;
 
     ReplayRunController.MarkRestartPrepared(_activeContext);
     _suppressReplayMarkFail = false;
@@ -172,7 +182,8 @@ public static class ReplaySessionService
 
   private static void ResetReplayRun(string reason)
   {
-    if (_activeContext == null) return;
+    if (_activeContext == null)
+      return;
 
     bool hasReplayTime = TryComputeReplayTimeUs(out long nowUs, out string timeReason);
     int restoredNativeKeys = 0;
@@ -203,15 +214,24 @@ public static class ReplaySessionService
     _lastHitContextTickLogFrame = -100000;
 
     Main.Instance?.Log(
-      "[ReplaySessionService] Replay run reset. reason=" + reason +
-      ", nowUs=" + (hasReplayTime ? nowUs.ToString() : "unavailable:" + timeReason) +
-      ", restoredNativeKeys=" + restoredNativeKeys +
-      ", skippedHitContexts=" + skippedHitContexts +
-      ", skipPassedAngles=" + skipPassedAngles +
-      ", noFail=" + ShouldUseReplayNoFail() +
-      ", native=" + SchedulerSnapshot(_activeContext.NativeInputScheduler) +
-      ", hitContext=" + HitContextSnapshot(_activeContext.HitContextPlayer) +
-      ", " + DescribeControllerState()
+      "[ReplaySessionService] Replay run reset. reason="
+        + reason
+        + ", nowUs="
+        + (hasReplayTime ? nowUs.ToString() : "unavailable:" + timeReason)
+        + ", restoredNativeKeys="
+        + restoredNativeKeys
+        + ", skippedHitContexts="
+        + skippedHitContexts
+        + ", skipPassedAngles="
+        + skipPassedAngles
+        + ", noFail="
+        + ShouldUseReplayNoFail()
+        + ", native="
+        + SchedulerSnapshot(_activeContext.NativeInputScheduler)
+        + ", hitContext="
+        + HitContextSnapshot(_activeContext.HitContextPlayer)
+        + ", "
+        + DescribeControllerState()
     );
   }
 
@@ -250,8 +270,10 @@ public static class ReplaySessionService
 
   public static void TickHitContextPlayback(scrController controller)
   {
-    if (!UsesHitContextPlayback || controller == null) return;
-    if (!TryGetControllerState(out States state) || state != States.PlayerControl) return;
+    if (!UsesHitContextPlayback || controller == null)
+      return;
+    if (!TryGetControllerState(out States state) || state != States.PlayerControl)
+      return;
 
     int before = _activeContext.HitContextPlayer.NextIndex;
     HitContextTickResult result = _activeContext.HitContextPlayer.Tick(controller);
@@ -260,11 +282,16 @@ public static class ReplaySessionService
     if (result.HasError)
     {
       Main.Instance?.Log(
-        "[Replay/HitContext] Playback error. error=" + result.ErrorMessage +
-        ", before=" + before +
-        ", after=" + after +
-        ", hitContext=" + HitContextSnapshot(_activeContext.HitContextPlayer) +
-        ", " + DescribeControllerState()
+        "[Replay/HitContext] Playback error. error="
+          + result.ErrorMessage
+          + ", before="
+          + before
+          + ", after="
+          + after
+          + ", hitContext="
+          + HitContextSnapshot(_activeContext.HitContextPlayer)
+          + ", "
+          + DescribeControllerState()
       );
       StopActiveReplay("hit_context_error");
       return;
@@ -273,12 +300,18 @@ public static class ReplaySessionService
     if (result.PlayedAny)
     {
       Main.Instance?.Log(
-        "[Replay/HitContext] Played hits=" + result.PlayedCount +
-        ", ignoredFalseResults=" + result.IgnoredFalseResultCount +
-        ", before=" + before +
-        ", after=" + after +
-        ", hitContext=" + HitContextSnapshot(_activeContext.HitContextPlayer) +
-        ", " + DescribeControllerState()
+        "[Replay/HitContext] Played hits="
+          + result.PlayedCount
+          + ", ignoredFalseResults="
+          + result.IgnoredFalseResultCount
+          + ", before="
+          + before
+          + ", after="
+          + after
+          + ", hitContext="
+          + HitContextSnapshot(_activeContext.HitContextPlayer)
+          + ", "
+          + DescribeControllerState()
       );
     }
     else
@@ -288,7 +321,9 @@ public static class ReplaySessionService
 
     if (_activeContext?.HitContextPlayer != null && _activeContext.HitContextPlayer.Finished)
     {
-      Main.Instance?.Log("[Replay/HitContext] Finished. hitContext=" + HitContextSnapshot(_activeContext.HitContextPlayer));
+      Main.Instance?.Log(
+        "[Replay/HitContext] Finished. hitContext=" + HitContextSnapshot(_activeContext.HitContextPlayer)
+      );
     }
   }
 
@@ -301,21 +336,17 @@ public static class ReplaySessionService
     if (emitted > 0)
     {
       Main.Instance.Log(
-        "[Replay/InputDebug] Native emitted=" + emitted +
-        ", nowUs=" + nowUs +
-        ", scheduler=" + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
+        "[Replay/InputDebug] Native emitted="
+          + emitted
+          + ", nowUs="
+          + nowUs
+          + ", scheduler="
+          + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
       );
     }
     else
     {
-      LogTickIdle(
-        "Native",
-        nowUs,
-        _activeContext?.NativeInputScheduler,
-        before,
-        after,
-        ref _lastNativeTickLogFrame
-      );
+      LogTickIdle("Native", nowUs, _activeContext?.NativeInputScheduler, before, after, ref _lastNativeTickLogFrame);
     }
 
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
@@ -324,14 +355,20 @@ public static class ReplaySessionService
 
   public static void ApplyReplayPitchNow()
   {
-    if (_activeContext?.Meta?.levelPitchPercent == null) return;
-    if (_activeContext.ReplayPitchApplied) return;
+    if (_activeContext?.Meta?.levelPitchPercent == null)
+      return;
+    if (_activeContext.ReplayPitchApplied)
+      return;
 
     int? originalPitch = ReplayPitchService.GetEditorPitch();
-    if (!originalPitch.HasValue) return;
+    if (!originalPitch.HasValue)
+      return;
 
-    ReplayPitchApplyResult result = ReplayPitchService.ApplyToEditorLevelData(_activeContext.Meta.levelPitchPercent.Value);
-    if (result != ReplayPitchApplyResult.Applied) return;
+    ReplayPitchApplyResult result = ReplayPitchService.ApplyToEditorLevelData(
+      _activeContext.Meta.levelPitchPercent.Value
+    );
+    if (result != ReplayPitchApplyResult.Applied)
+      return;
 
     _activeContext.OriginalLevelPitchPercent = originalPitch;
     _activeContext.ReplayPitchApplied = true;
@@ -339,7 +376,8 @@ public static class ReplaySessionService
 
   private static void RestoreReplayPitch()
   {
-    if (_activeContext?.ReplayPitchApplied != true || !_activeContext.OriginalLevelPitchPercent.HasValue) return;
+    if (_activeContext?.ReplayPitchApplied != true || !_activeContext.OriginalLevelPitchPercent.HasValue)
+      return;
 
     ReplayPitchService.ApplyToEditorLevelData(_activeContext.OriginalLevelPitchPercent.Value);
     _activeContext.ReplayPitchApplied = false;
@@ -370,9 +408,7 @@ public static class ReplaySessionService
       return false;
     }
 
-    if (state != States.Countdown &&
-        state != States.PlayerControl &&
-        state != States.Won)
+    if (state != States.Countdown && state != States.PlayerControl && state != States.Won)
     {
       LogGateBlocked("Native", "state_not_replay_window", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
       return false;
@@ -391,17 +427,25 @@ public static class ReplaySessionService
   {
     int frame = Time.frameCount;
     string key = reason + "|" + DescribeControllerState();
-    if (key == lastKey && frame - lastFrame < 120) return;
+    if (key == lastKey && frame - lastFrame < 120)
+      return;
 
     lastKey = key;
     lastFrame = frame;
 
     Main.Instance?.Log(
-      "[Replay/InputDebug] " + channel + " gate blocked. reason=" + reason +
-      ", frame=" + frame +
-      ", " + DescribeControllerState() +
-      ", conductor=" + DescribeConductor() +
-      ", scheduler=" + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
+      "[Replay/InputDebug] "
+        + channel
+        + " gate blocked. reason="
+        + reason
+        + ", frame="
+        + frame
+        + ", "
+        + DescribeControllerState()
+        + ", conductor="
+        + DescribeConductor()
+        + ", scheduler="
+        + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
     );
   }
 
@@ -416,16 +460,24 @@ public static class ReplaySessionService
   {
     int frame = Time.frameCount;
     bool advanced = before != after;
-    if (!advanced && frame - lastFrame < 120) return;
+    if (!advanced && frame - lastFrame < 120)
+      return;
 
     lastFrame = frame;
     Main.Instance?.Log(
-      "[Replay/InputDebug] " + channel + " tick. emitted=0" +
-      ", nowUs=" + nowUs +
-      ", before=" + before +
-      ", after=" + after +
-      ", scheduler=" + SchedulerSnapshot(scheduler) +
-      ", " + DescribeControllerState()
+      "[Replay/InputDebug] "
+        + channel
+        + " tick. emitted=0"
+        + ", nowUs="
+        + nowUs
+        + ", before="
+        + before
+        + ", after="
+        + after
+        + ", scheduler="
+        + SchedulerSnapshot(scheduler)
+        + ", "
+        + DescribeControllerState()
     );
   }
 
@@ -433,37 +485,46 @@ public static class ReplaySessionService
   {
     int frame = Time.frameCount;
     bool advanced = before != after;
-    if (!advanced && frame - _lastHitContextTickLogFrame < 120) return;
+    if (!advanced && frame - _lastHitContextTickLogFrame < 120)
+      return;
 
     _lastHitContextTickLogFrame = frame;
     Main.Instance?.Log(
-      "[Replay/HitContext] Tick. played=0" +
-      ", before=" + before +
-      ", after=" + after +
-      ", hitContext=" + HitContextSnapshot(_activeContext?.HitContextPlayer) +
-      ", " + DescribeControllerState()
+      "[Replay/HitContext] Tick. played=0"
+        + ", before="
+        + before
+        + ", after="
+        + after
+        + ", hitContext="
+        + HitContextSnapshot(_activeContext?.HitContextPlayer)
+        + ", "
+        + DescribeControllerState()
     );
   }
 
   private static string SchedulerSnapshot(ReplayInputScheduler scheduler)
   {
-    if (scheduler == null) return "null";
+    if (scheduler == null)
+      return "null";
 
     RecordedInput? next = scheduler.PeekNext();
-    string nextText = next.HasValue
-      ? next.Value.TimeUs + "/" + next.Value.Key + "/" + next.Value.Flags
-      : "none";
+    string nextText = next.HasValue ? next.Value.TimeUs + "/" + next.Value.Key + "/" + next.Value.Flags : "none";
 
     return scheduler.NextIndex + "/" + scheduler.Count + ", next=" + nextText;
   }
 
   private static string HitContextSnapshot(ReplayHitContextPlayer player)
   {
-    if (player == null) return "null";
+    if (player == null)
+      return "null";
 
     ReplayHitContext? next = player.PeekNext();
     string nextText = next.HasValue
-      ? next.Value.CurrentFloorID + "/" + next.Value.CurrAngle.ToString("F6") + "/freeRoam=" + next.Value.CurFreeRoamSection
+      ? next.Value.CurrentFloorID
+        + "/"
+        + next.Value.CurrAngle.ToString("F6")
+        + "/freeRoam="
+        + next.Value.CurFreeRoamSection
       : "none";
 
     return player.NextIndex + "/" + player.Count + ", next=" + nextText;
@@ -471,7 +532,8 @@ public static class ReplaySessionService
 
   private static string DescribeControllerState()
   {
-    if (ADOBase.controller == null) return "controller=null";
+    if (ADOBase.controller == null)
+      return "controller=null";
 
     string machineState;
     try
@@ -483,16 +545,20 @@ public static class ReplaySessionService
       machineState = "error:" + ex.GetType().Name;
     }
 
-    return
-      "state=" + ADOBase.controller.state +
-      ", currentState=" + ADOBase.controller.currentState +
-      ", machineState=" + machineState +
-      ", paused=" + ADOBase.controller.paused;
+    return "state="
+      + ADOBase.controller.state
+      + ", currentState="
+      + ADOBase.controller.currentState
+      + ", machineState="
+      + machineState
+      + ", paused="
+      + ADOBase.controller.paused;
   }
 
   private static string DescribeConductor()
   {
-    if (ADOBase.conductor == null) return "null";
+    if (ADOBase.conductor == null)
+      return "null";
 
     string start = _activeContext?.Meta?.gameplayStartSongPosition?.ToString("F6") ?? "null";
     return "songposition_minusi=" + ADOBase.conductor.songposition_minusi.ToString("F6") + ", start=" + start;
@@ -502,7 +568,8 @@ public static class ReplaySessionService
   {
     state = default;
 
-    if (ADOBase.controller == null) return false;
+    if (ADOBase.controller == null)
+      return false;
 
     try
     {
@@ -513,9 +580,7 @@ public static class ReplaySessionService
         return true;
       }
     }
-    catch
-    {
-    }
+    catch { }
 
     state = ADOBase.controller.state;
     return true;
