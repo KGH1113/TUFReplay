@@ -84,11 +84,13 @@ Build and install the mod:
 
 The build script:
 
-- Builds `TUFReplay/TUFReplay.csproj`.
-- Copies `Info.json`, the AdofaiIpc bootstrap, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
+- Builds the TUFReplay payload and its small auto-update bootstrap.
+- Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
 - Installs the mod into `Mods/TUFReplay` by default.
 
-The packaged bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed.
+The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the TUFReplay bootstrap checks the latest TUFReplay release before loading the payload. Network work has a single 20-second deadline; timeout or any update error emits an `AutoUpdate` warning and loads the installed or last-known-good payload. A verified update is loaded immediately from the versioned cache during the same ADOFAI launch.
+
+The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
 Important environment variables:
 
@@ -107,7 +109,9 @@ Create a clean shareable package:
 ./package.sh
 ```
 
-The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates the release assets `build/TUFReplay.version` and `build/TUFReplay.zip.sha256`; all three files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+
+Beta releases use the same three assets and must be marked as a prerelease on GitHub.
 
 ## Web Development
 

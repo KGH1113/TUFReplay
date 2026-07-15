@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TUFReplay", "TUFReplay\TUFReplay.csproj", "{F8E3E8A9-A4DF-4473-A400-F884DF3A7D21}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TUFReplay.Bootstrap", "TUFReplay.Bootstrap\TUFReplay.Bootstrap.csproj", "{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,6 +29,18 @@ Global
 		{F8E3E8A9-A4DF-4473-A400-F884DF3A7D21}.Release|x64.Build.0 = Release|Any CPU
 		{F8E3E8A9-A4DF-4473-A400-F884DF3A7D21}.Release|x86.ActiveCfg = Release|Any CPU
 		{F8E3E8A9-A4DF-4473-A400-F884DF3A7D21}.Release|x86.Build.0 = Release|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Debug|x64.Build.0 = Debug|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Debug|x86.Build.0 = Debug|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x64.ActiveCfg = Release|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x64.Build.0 = Release|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x86.ActiveCfg = Release|Any CPU
+		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
