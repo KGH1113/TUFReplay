@@ -104,7 +104,7 @@ Create a clean shareable package:
 ./package.sh
 ```
 
-The package script builds the mod into `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package and excludes local database/log data from the package.
+The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
 
 ## Web Development
 
