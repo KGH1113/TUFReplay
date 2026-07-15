@@ -1,6 +1,8 @@
-using JALib.Core.Patch;
+using System;
+using HarmonyLib;
 using MonsterLove.StateMachine;
 using TUFReplay.Application.Replay;
+using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Features.Replay;
 
@@ -8,64 +10,115 @@ public static class ReplayInputPatches
 {
   private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;
 
-  [JAPatch(typeof(scnGame), "LoadLevel", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scnGame), "LoadLevel")]
+  [HarmonyPostfix]
   private static void OnScnGameLoadLevelPostfix(bool __result)
   {
-    if (!IsActive)
-      return;
-    if (!__result)
-      return;
+    try
+    {
+      if (!IsActive)
+        return;
+      if (!__result)
+        return;
 
-    ReplaySessionService.RequestReplayPitchApplyAfterLevelLoad();
+      ReplaySessionService.RequestReplayPitchApplyAfterLevelLoad();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnScnGameLoadLevelPostfix), exception);
+    }
   }
 
-  [JAPatch(typeof(scnEditor), "Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scnEditor), "Update")]
+  [HarmonyPostfix]
   private static void OnScnEditorUpdatePostfix()
   {
-    if (!IsActive)
-      return;
+    try
+    {
+      if (!IsActive)
+        return;
 
-    ReplaySessionService.TickReplayPitchEditorApply();
-    ReplayPlaybackCoordinator.Tick();
+      ReplaySessionService.TickReplayPitchEditorApply();
+      ReplayPlaybackCoordinator.Tick();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnScnEditorUpdatePostfix), exception);
+    }
   }
 
-  [JAPatch(typeof(scnEditor), "SwitchToEditMode", PatchType.Postfix, true, ArgumentTypesType = new[] { typeof(bool) })]
+  [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]
+  [HarmonyPostfix]
   private static void OnSwitchToEditModePostfix(bool clsToEditor)
   {
-    if (!IsActive)
-      return;
-    ReplayPlaybackCoordinator.OnReturnedToEditor();
+    try
+    {
+      if (!IsActive)
+        return;
+      ReplayPlaybackCoordinator.OnReturnedToEditor();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnSwitchToEditModePostfix), exception);
+    }
   }
 
-  [JAPatch(typeof(AsyncInputManager), "Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(AsyncInputManager), "Update")]
+  [HarmonyPostfix]
   private static void OnAsyncInputManagerUpdatePostfix()
   {
-    if (!IsActive)
-      return;
-    if (!ReplaySessionService.HasActiveContext)
-      return;
-    if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs))
-      return;
+    try
+    {
+      if (!IsActive)
+        return;
 
-    ReplaySessionService.TickNativeVisual(nowUs);
+      UnityMainThread.DrainPending();
+      if (!ReplaySessionService.HasActiveContext)
+        return;
+      if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs))
+        return;
+
+      ReplaySessionService.TickNativeVisual(nowUs);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnAsyncInputManagerUpdatePostfix), exception);
+    }
   }
 
-  [JAPatch(typeof(scrController), "PlayerControl_Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scrController), "PlayerControl_Update")]
+  [HarmonyPostfix]
   private static void OnPlayerControlUpdatePostfix(scrController __instance)
   {
-    if (!IsActive)
-      return;
+    try
+    {
+      if (!IsActive)
+        return;
 
-    ReplaySessionService.TickHitContextPlayback(__instance);
+      ReplaySessionService.TickHitContextPlayback(__instance);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnPlayerControlUpdatePostfix), exception);
+    }
   }
 
-  [JAPatch(typeof(scrController), "UpdateFreeroam", PatchType.Prefix, true)]
+  [HarmonyPatch(typeof(scrController), "UpdateFreeroam")]
+  [HarmonyPrefix]
   private static bool OnUpdateFreeroamPrefix(scrController __instance)
   {
-    if (!IsActive)
-      return true;
+    try
+    {
+      if (!IsActive)
+        return true;
 
-    return !ReplaySessionService.ShouldBlockFreeroam(__instance);
+      return !ReplaySessionService.ShouldBlockFreeroam(__instance);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnUpdateFreeroamPrefix), exception);
+      return true;
+    }
   }
 
   public static bool OnScrPlayerHitPrefix(ref bool __result)
@@ -79,16 +132,25 @@ public static class ReplayInputPatches
     return false;
   }
 
-  [JAPatch(typeof(scrPlanet), "MarkFail", PatchType.Prefix, true)]
+  [HarmonyPatch(typeof(scrPlanet), "MarkFail")]
+  [HarmonyPrefix]
   private static bool OnScrPlanetMarkFailPrefix(ref scrMissIndicator __result)
   {
-    if (!IsActive)
-      return true;
-    if (!ReplaySessionService.ShouldSuppressReplayMarkFail())
-      return true;
+    try
+    {
+      if (!IsActive)
+        return true;
+      if (!ReplaySessionService.ShouldSuppressReplayMarkFail())
+        return true;
 
-    __result = null;
-    return false;
+      __result = null;
+      return false;
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnScrPlanetMarkFailPrefix), exception);
+      return true;
+    }
   }
 
   public static void OnChangeState(States newState)
@@ -99,13 +161,21 @@ public static class ReplayInputPatches
     ReplaySessionService.OnStateChanged(newState);
   }
 
-  [JAPatch(typeof(scnEditor), "QuitToMenu", PatchType.Prefix, true)]
+  [HarmonyPatch(typeof(scnEditor), "QuitToMenu")]
+  [HarmonyPrefix]
   private static void OnScnEditorQuitToMenuPrefix()
   {
-    if (!IsActive)
-      return;
+    try
+    {
+      if (!IsActive)
+        return;
 
-    ReplayPlaybackCoordinator.Fail("editor_quit_to_menu", "The editor was closed during replay.");
-    ReplaySessionService.StopActiveReplay("editor_quit_to_menu");
+      ReplayPlaybackCoordinator.Fail("editor_quit_to_menu", "The editor was closed during replay.");
+      ReplaySessionService.StopActiveReplay("editor_quit_to_menu");
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnScnEditorQuitToMenuPrefix), exception);
+    }
   }
 }

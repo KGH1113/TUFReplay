@@ -20,13 +20,10 @@ DOTNET_EXE="${DOTNET_EXE:-$DOTNET_ROOT/dotnet}"
 
 UNITY_MOD_MANAGER_DLL="${UNITY_MOD_MANAGER_DLL:-$ADOFAI_MANAGED/UnityModManager/UnityModManager.dll}"
 HARMONY_DLL="${HARMONY_DLL:-$ADOFAI_MANAGED/UnityModManager/0Harmony.dll}"
-JALIB_DLL="${JALIB_DLL:-$ADOFAI_MODS_DIR/JALib/JALib.dll}"
-JAMOD_BOOTSTRAP_DLL="${JAMOD_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/JALib/JAMod.Bootstrap.dll}"
 ADOFAI_IPC_DLL="${ADOFAI_IPC_DLL:-${ADOFIA_IPC_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.dll}}"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
 DEST="${TUFREPLAY_INSTALL_DIR:-$ADOFAI_MODS_DIR/TUFReplay}"
-DEPS="$DEST/dependency"
 
 require_file() {
   if [ ! -f "$1" ]; then
@@ -46,8 +43,6 @@ require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
 require_file "$HARMONY_DLL"
-require_file "$JALIB_DLL"
-require_file "$JAMOD_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_DLL"
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
@@ -57,15 +52,13 @@ DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   -p:AdofaiMods="$ADOFAI_MODS_DIR" \
   -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL" \
   -p:HarmonyDll="$HARMONY_DLL" \
-  -p:JALibDll="$JALIB_DLL" \
   -p:AdofaiIpcDll="$ADOFAI_IPC_DLL"
 
 mkdir -p "$DEST"
-mkdir -p "$DEPS"
-rm -f "$DEPS"/*.dll
+rm -rf "$DEST/dependency"
+rm -f "$DEST/JAModInfo.json" "$DEST/JAMod.Bootstrap.dll"
+rm -f "$DEST"/JAMod.Bootstrap.dll.*.cache
 cp "$PROJECT/TUFReplay/Info.json" "$DEST/"
-cp "$PROJECT/TUFReplay/JAModInfo.json" "$DEST/"
-cp "$JAMOD_BOOTSTRAP_DLL" "$DEST/"
 cp "$OUT/TUFReplay.dll" "$DEST/"
 
 for dll in \
@@ -78,7 +71,7 @@ for dll in \
   System.Runtime.CompilerServices.Unsafe.dll
 do
   if [ -f "$OUT/$dll" ]; then
-    cp "$OUT/$dll" "$DEPS/"
+    cp "$OUT/$dll" "$DEST/"
   fi
 done
 

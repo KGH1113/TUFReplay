@@ -20,14 +20,11 @@ DOTNET_EXE="${DOTNET_EXE:-$DOTNET_ROOT/dotnet}"
 
 UNITY_MOD_MANAGER_DLL="${UNITY_MOD_MANAGER_DLL:-$ADOFAI_MANAGED/UnityModManager/UnityModManager.dll}"
 HARMONY_DLL="${HARMONY_DLL:-$ADOFAI_MANAGED/UnityModManager/0Harmony.dll}"
-JALIB_DLL="${JALIB_DLL:-$ADOFAI_MODS_DIR/JALib/JALib.dll}"
-JAMOD_BOOTSTRAP_DLL="${JAMOD_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/JALib/JAMod.Bootstrap.dll}"
 ADOFAI_IPC_DLL="${ADOFAI_IPC_DLL:-${ADOFIA_IPC_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.dll}}"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
 PACKAGE_ROOT="${TUFREPLAY_PACKAGE_ROOT:-$PROJECT/build/package}"
 STAGE="$PACKAGE_ROOT/TUFReplay"
-DEPS="$STAGE/dependency"
 ZIP_PATH="${TUFREPLAY_PACKAGE_ZIP:-$PROJECT/build/TUFReplay.zip}"
 NUGET_PACKAGES_DIR="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
 SOURCEGEAR_SQLITE3_VERSION="${SOURCEGEAR_SQLITE3_VERSION:-}"
@@ -67,8 +64,6 @@ require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
 require_file "$HARMONY_DLL"
-require_file "$JALIB_DLL"
-require_file "$JAMOD_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_DLL"
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
@@ -78,17 +73,14 @@ DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   -p:AdofaiMods="$ADOFAI_MODS_DIR" \
   -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL" \
   -p:HarmonyDll="$HARMONY_DLL" \
-  -p:JALibDll="$JALIB_DLL" \
   -p:AdofaiIpcDll="$ADOFAI_IPC_DLL"
 
 require_file "$WIN_SQLITE_DLL"
 
 rm -rf "$STAGE"
-mkdir -p "$DEPS"
+mkdir -p "$STAGE"
 
 cp "$PROJECT/TUFReplay/Info.json" "$STAGE/"
-cp "$PROJECT/TUFReplay/JAModInfo.json" "$STAGE/"
-cp "$JAMOD_BOOTSTRAP_DLL" "$STAGE/"
 cp "$OUT/TUFReplay.dll" "$STAGE/"
 cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
 
@@ -102,7 +94,7 @@ for dll in \
   System.Runtime.CompilerServices.Unsafe.dll
 do
   if [ -f "$OUT/$dll" ]; then
-    cp "$OUT/$dll" "$DEPS/"
+    cp "$OUT/$dll" "$STAGE/"
   fi
 done
 

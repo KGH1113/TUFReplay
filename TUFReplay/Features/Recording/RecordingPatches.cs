@@ -1,5 +1,5 @@
 using System;
-using JALib.Core.Patch;
+using HarmonyLib;
 using MonsterLove.StateMachine;
 using TUFReplay.Application.Recording;
 using TUFReplay.Domain.ReplayData;
@@ -18,28 +18,44 @@ public static class RecordingPatches
     _hitMarginsCount = null;
   }
 
-  [JAPatch(typeof(scrController), "Countdown_Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scrController), "Countdown_Update")]
+  [HarmonyPostfix]
   private static void OnCountdownUpdatePostfix()
   {
-    SampleNativeInput();
+    TrySampleNativeInput(nameof(OnCountdownUpdatePostfix));
   }
 
-  [JAPatch(typeof(scrController), "Checkpoint_Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scrController), "Checkpoint_Update")]
+  [HarmonyPostfix]
   private static void OnCheckpointUpdatePostfix()
   {
-    SampleNativeInput();
+    TrySampleNativeInput(nameof(OnCheckpointUpdatePostfix));
   }
 
-  [JAPatch(typeof(scrController), "PlayerControl_Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scrController), "PlayerControl_Update")]
+  [HarmonyPostfix]
   private static void OnPlayerControlUpdatePostfix()
   {
-    SampleNativeInput();
+    TrySampleNativeInput(nameof(OnPlayerControlUpdatePostfix));
   }
 
-  [JAPatch(typeof(scrController), "Won_Update", PatchType.Postfix, true)]
+  [HarmonyPatch(typeof(scrController), "Won_Update")]
+  [HarmonyPostfix]
   private static void OnWonUpdatePostfix()
   {
-    SampleNativeInput();
+    TrySampleNativeInput(nameof(OnWonUpdatePostfix));
+  }
+
+  private static void TrySampleNativeInput(string patchName)
+  {
+    try
+    {
+      SampleNativeInput();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(patchName, exception);
+    }
   }
 
   private static void SampleNativeInput()
@@ -142,14 +158,22 @@ public static class RecordingPatches
     }
   }
 
-  [JAPatch(typeof(scnEditor), "SwitchToEditMode", PatchType.Postfix, true, ArgumentTypesType = new[] { typeof(bool) })]
+  [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]
+  [HarmonyPostfix]
   private static void OnSwitchToEditModePostfix(bool clsToEditor)
   {
-    if (!IsActive)
-      return;
+    try
+    {
+      if (!IsActive)
+        return;
 
-    SampleNativeInput();
-    RecordingFeature.Instance?.OnReturnedToEditor();
+      SampleNativeInput();
+      RecordingFeature.Instance?.OnReturnedToEditor();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnSwitchToEditModePostfix), exception);
+    }
   }
 
   private static bool ShouldCaptureHitContext(scrPlayer player)
@@ -225,11 +249,19 @@ public static class RecordingPatches
     return true;
   }
 
-  [JAPatch(typeof(scnEditor), "Play", PatchType.Prefix, true)]
+  [HarmonyPatch(typeof(scnEditor), "Play")]
+  [HarmonyPrefix]
   private static void OnEditorPlayPrefix()
   {
-    if (!IsActive)
-      return;
-    RecordingFeature.Instance.OnEditorPlay();
+    try
+    {
+      if (!IsActive)
+        return;
+      RecordingFeature.Instance.OnEditorPlay();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnEditorPlayPrefix), exception);
+    }
   }
 }
