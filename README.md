@@ -43,6 +43,8 @@ The project is built around preserving low-level play data instead of trusting f
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves the current chart text to the companion web UI without exposing local file paths.
 - Opens a saved run's recorded level, reuses an already-open matching editor level, and replays it from its recorded start tile.
+- Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
+- Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
@@ -206,6 +208,8 @@ Registered methods:
 - `activity.level-session.chart.get`
 - `replay.play`
 - `replay.status.get`
+- `replay.level-file.pick.start`
+- `replay.level-file.pick.status`
 
 ## Tech Stack
 

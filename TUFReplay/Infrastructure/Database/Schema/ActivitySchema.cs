@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 4;
+  public const int Version = 5;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -47,6 +47,18 @@ ALTER TABLE runs ADD COLUMN judgment_miss INTEGER NOT NULL DEFAULT 0;
 PRAGMA user_version = 4;"
       );
       version = 4;
+    }
+
+    if (version == 4)
+    {
+      Migrate(
+        connection,
+        @"
+ALTER TABLE runs ADD COLUMN gameplay_hash BLOB;
+ALTER TABLE runs ADD COLUMN gameplay_hash_version INTEGER;
+PRAGMA user_version = 5;"
+      );
+      version = 5;
     }
 
     if (version != 0 && version != Version)
@@ -97,6 +109,8 @@ CREATE TABLE IF NOT EXISTS runs (
   judgment_late INTEGER NOT NULL DEFAULT 0,
   judgment_too_late INTEGER NOT NULL DEFAULT 0,
   judgment_miss INTEGER NOT NULL DEFAULT 0,
+  gameplay_hash BLOB,
+  gameplay_hash_version INTEGER,
   input_count INTEGER NOT NULL DEFAULT 0,
   hit_context_count INTEGER NOT NULL DEFAULT 0,
   input_csv BLOB NOT NULL DEFAULT X'',
@@ -108,7 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc 
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 4;";
+PRAGMA user_version = 5;";
     command.ExecuteNonQuery();
   }
 

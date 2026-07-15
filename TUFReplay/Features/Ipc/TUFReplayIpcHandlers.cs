@@ -76,12 +76,43 @@ public static class TUFReplayIpcHandlers
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
 
-    return ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.Play(runId));
+    string levelPath = IpcParams.OptionalString(request, "levelPath");
+    return ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.Play(runId, levelPath));
   }
 
   public static object GetReplayStatus(IpcRequest request)
   {
     return ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus());
+  }
+
+  public static object StartReplayLevelFilePicker(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
+      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+
+    return ReplayLevelFilePickerCoordinator.TryStart(
+      runId,
+      out ReplayLevelFilePickerStatus status,
+      out string errorCode,
+      out string errorMessage
+    )
+      ? ReplayLevelFilePickerStatusDto.From(status)
+      : IpcDomainError.Create(errorCode, errorMessage);
+  }
+
+  public static object GetReplayLevelFilePickerStatus(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "operationId", out string operationId))
+      return IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
+
+    return ReplayLevelFilePickerCoordinator.TryGetStatus(
+      operationId,
+      out ReplayLevelFilePickerStatus status,
+      out string errorCode,
+      out string errorMessage
+    )
+      ? ReplayLevelFilePickerStatusDto.From(status)
+      : IpcDomainError.Create(errorCode, errorMessage);
   }
 
   private static int Offset(IpcRequest r) => Math.Max(0, IpcParams.OptionalInt(r, "offset") ?? 0);

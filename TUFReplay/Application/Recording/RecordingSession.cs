@@ -42,7 +42,7 @@ public class RecordingSession
     }
   }
 
-  public void Start(int? tufLevelId, bool autoRecord)
+  public void Start(int? tufLevelId, bool autoRecord, byte[] gameplayHash = null, int? gameplayHashVersion = null)
   {
     lock (_lock)
     {
@@ -54,6 +54,8 @@ public class RecordingSession
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),
+        GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
+        GameplayHashVersion = gameplayHashVersion,
       };
       RefreshPitchLocked();
       _pendingSongPositionInputs.Clear();

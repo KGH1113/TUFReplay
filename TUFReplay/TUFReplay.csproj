@@ -32,6 +32,10 @@
       <HintPath>$(AdofaiManaged)/Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="UnityFileDialog">
+      <HintPath>$(AdofaiManaged)/UnityFileDialog.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(AdofaiManaged)/UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>

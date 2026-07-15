@@ -23,6 +23,8 @@ public class RecordedRunPayload
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
+  public byte[] GameplayHash;
+  public int? GameplayHashVersion;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
