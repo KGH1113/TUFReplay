@@ -92,6 +92,7 @@ fi
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
+  --configuration Release \
   -p:OutputPath="$OUT/" \
   -p:AdofaiManaged="$ADOFAI_MANAGED" \
   -p:AdofaiMods="$ADOFAI_MODS_DIR" \
@@ -119,14 +120,9 @@ for dll in \
   System.Numerics.Vectors.dll \
   System.Runtime.CompilerServices.Unsafe.dll
 do
-  if [ -f "$OUT/$dll" ]; then
-    cp "$OUT/$dll" "$STAGE/"
-  fi
+  require_file "$OUT/$dll"
+  cp "$OUT/$dll" "$STAGE/"
 done
-
-if [ -f "$OUT/TUFReplay.pdb" ]; then
-  cp "$OUT/TUFReplay.pdb" "$STAGE/"
-fi
 
 rm -f "$ZIP_PATH"
 mkdir -p "$(dirname "$ZIP_PATH")"
