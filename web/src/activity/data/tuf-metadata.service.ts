@@ -1,4 +1,4 @@
-import type { LevelMetadata } from "../activity.model";
+import type { ActivityLevelSessionOverview, LevelMetadata } from "../activity.model";
 
 const API_ROOT = "/api/tuf/v2/database";
 const CACHE_NAME = "tuf-replay-metadata-v1";
@@ -6,8 +6,33 @@ const memory = new Map<number, Promise<LevelMetadata>>();
 let difficultyCatalogRequest: Promise<Map<number, JsonRecord>> | null = null;
 
 type JsonRecord = Record<string, unknown>;
+type StoredMetadata = Pick<ActivityLevelSessionOverview, "Song" | "Author" | "Artist">;
 
-export function getFallbackMetadata(levelId: number | null): LevelMetadata {
+const UNITY_LINE_BREAK = /<br\s*\/?\s*>/gi;
+const UNITY_RICH_TEXT_TAG =
+  /<\/?(?:align|allcaps|alpha|b|cspace|color|font|font-weight|gradient|i|indent|line-height|line-indent|link|lowercase|margin|mark|material|mspace|nobr|noparse|page|pos|rotate|s|size|smallcaps|space|sprite|strikethrough|style|sub|sup|u|uppercase|voffset|width)(?:=[^<>]*)?>/gi;
+
+export function getFallbackMetadata(
+  levelId: number | null,
+  stored?: StoredMetadata,
+): LevelMetadata {
+  const hasStoredMetadata =
+    stored !== undefined &&
+    [stored.Song, stored.Author, stored.Artist].some((value) => typeof value === "string");
+  if (hasStoredMetadata) {
+    return {
+      levelId,
+      artist: cleanUnityMetadata(stored.Artist) || "Unknown artist",
+      name:
+        cleanUnityMetadata(stored.Song) ||
+        (levelId === null ? "Custom level" : `Level #${levelId}`),
+      creator: cleanUnityMetadata(stored.Author) || "Unknown creator",
+      difficulty: levelId === null ? "Local" : "Unknown",
+      difficultyIconUrl: "",
+      source: levelId === null ? "local" : "fallback",
+    };
+  }
+
   if (levelId === null) {
     return {
       levelId,
@@ -36,9 +61,17 @@ export function getTufMetadata(
 ): Promise<LevelMetadata> {
   const existing = memory.get(levelId);
   if (existing) return existing;
-  const request = loadMetadata(levelId, fetchImpl).catch(() => getFallbackMetadata(levelId));
+  const request = loadMetadata(levelId, fetchImpl);
   memory.set(levelId, request);
   return request;
+}
+
+export function cleanUnityMetadata(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(UNITY_LINE_BREAK, " ")
+    .replace(UNITY_RICH_TEXT_TAG, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 async function loadMetadata(levelId: number, fetchImpl: typeof fetch): Promise<LevelMetadata> {

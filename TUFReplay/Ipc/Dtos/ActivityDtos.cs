@@ -29,6 +29,9 @@ public sealed class ActivityLevelSessionOverviewDto
   public string Id;
   public string AppSessionId;
   public int? TufLevelId;
+  public string Song;
+  public string Author;
+  public string Artist;
   public string OpenedAtUtc;
   public string ClosedAtUtc;
   public int FloorCount;
@@ -45,6 +48,9 @@ public sealed class ActivityLevelSessionOverviewDto
       Id = s.Id,
       AppSessionId = s.AppSessionId,
       TufLevelId = s.TufLevelId,
+      Song = s.Song,
+      Author = s.Author,
+      Artist = s.Artist,
       OpenedAtUtc = s.OpenedAtUtc,
       ClosedAtUtc = s.ClosedAtUtc,
       FloorCount = s.LevelTileCount,

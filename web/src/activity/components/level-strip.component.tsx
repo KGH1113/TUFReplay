@@ -12,14 +12,14 @@ export function LevelStrip({
   levelSessions: ActivityLevelSessionOverview[];
   selectedLevelSessionId: string | null;
   timeZone: string;
-  metadataFor: (levelId: number | null) => LevelMetadata;
+  metadataFor: (session: ActivityLevelSessionOverview) => LevelMetadata;
   onSelectLevelSession: (id: string) => void;
 }) {
   return (
     <div className="border-b border-border bg-muted/10 px-3 py-2">
       <div className="flex gap-2 overflow-x-auto">
         {levelSessions.map((session) => {
-          const metadata = metadataFor(session.TufLevelId);
+          const metadata = metadataFor(session);
           return (
             <button
               key={session.Id}
@@ -49,7 +49,9 @@ export function LevelStrip({
               <div className="min-w-0">
                 <p className="truncate text-xs text-muted-foreground">
                   {metadata.levelId === null
-                    ? "Local / unknown metadata"
+                    ? metadata.artist === "Local level"
+                      ? "Local / unknown metadata"
+                      : `Local · ${metadata.artist}`
                     : `#${metadata.levelId} · ${metadata.artist}`}
                 </p>
                 <div className="truncate font-heading text-lg font-semibold">{metadata.name}</div>

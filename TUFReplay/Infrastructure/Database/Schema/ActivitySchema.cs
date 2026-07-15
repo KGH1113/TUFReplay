@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 5;
+  public const int Version = 6;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -61,6 +61,20 @@ PRAGMA user_version = 5;"
       version = 5;
     }
 
+    if (version == 5)
+    {
+      Migrate(
+        connection,
+        @"
+ALTER TABLE level_sessions ADD COLUMN song TEXT;
+ALTER TABLE level_sessions ADD COLUMN author TEXT;
+ALTER TABLE level_sessions ADD COLUMN artist TEXT;
+ALTER TABLE level_sessions ADD COLUMN metadata_state INTEGER NOT NULL DEFAULT 0;
+PRAGMA user_version = 6;"
+      );
+      version = 6;
+    }
+
     if (version != 0 && version != Version)
     {
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -83,7 +97,11 @@ CREATE TABLE IF NOT EXISTS level_sessions (
   level_path TEXT NOT NULL,
   opened_at_utc TEXT NOT NULL,
   closed_at_utc TEXT,
-  level_tile_count INTEGER NOT NULL DEFAULT 0
+  level_tile_count INTEGER NOT NULL DEFAULT 0,
+  song TEXT,
+  author TEXT,
+  artist TEXT,
+  metadata_state INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS runs (
   id TEXT PRIMARY KEY,
@@ -122,7 +140,7 @@ CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc 
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 5;";
+PRAGMA user_version = 6;";
     command.ExecuteNonQuery();
   }
 

@@ -39,6 +39,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
 - Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
+- Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves the current chart text to the companion web UI without exposing local file paths.
