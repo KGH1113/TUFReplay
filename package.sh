@@ -26,9 +26,12 @@ ADOFAI_IPC_INFO_JSON="${ADOFAI_IPC_INFO_JSON:-$ADOFAI_MODS_DIR/AdofaiIpc/Info.js
 ADOFAI_IPC_BOOTSTRAP_LOCK="$PROJECT/TUFReplay/AdofaiIpcBootstrap.lock"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
+BOOTSTRAP_OUT="${TUFREPLAY_BOOTSTRAP_BUILD_DIR:-$PROJECT/build/TUFReplay.Bootstrap}"
 PACKAGE_ROOT="${TUFREPLAY_PACKAGE_ROOT:-$PROJECT/build/package}"
 STAGE="$PACKAGE_ROOT/TUFReplay"
 ZIP_PATH="${TUFREPLAY_PACKAGE_ZIP:-$PROJECT/build/TUFReplay.zip}"
+VERSION_PATH="${TUFREPLAY_VERSION_ASSET:-$PROJECT/build/TUFReplay.version}"
+CHECKSUM_PATH="${TUFREPLAY_CHECKSUM_ASSET:-$ZIP_PATH.sha256}"
 NUGET_PACKAGES_DIR="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
 SOURCEGEAR_SQLITE3_VERSION="${SOURCEGEAR_SQLITE3_VERSION:-}"
 if [ -z "$SOURCEGEAR_SQLITE3_VERSION" ]; then
@@ -91,6 +94,13 @@ if [ "$bootstrap_sha256" != "$ADOFAIIPC_BOOTSTRAP_SHA256" ]; then
 fi
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
+"$DOTNET_EXE" build "$PROJECT/TUFReplay.Bootstrap/TUFReplay.Bootstrap.csproj" \
+  --configuration Release \
+  -p:OutputPath="$BOOTSTRAP_OUT/" \
+  -p:AdofaiManaged="$ADOFAI_MANAGED" \
+  -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL"
+
+DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
   --configuration Release \
   -p:OutputPath="$OUT/" \
@@ -108,6 +118,7 @@ mkdir -p "$STAGE"
 cp "$PROJECT/TUFReplay/Info.json" "$STAGE/"
 cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$STAGE/"
 cp "$OUT/TUFReplay.dll" "$STAGE/"
+cp "$BOOTSTRAP_OUT/TUFReplay.Bootstrap.dll" "$STAGE/"
 cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$STAGE/"
 cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
 
@@ -138,4 +149,15 @@ mkdir -p "$(dirname "$ZIP_PATH")"
     -x 'TUFReplay/*.log'
 )
 
+version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$PROJECT/TUFReplay/Info.json" | head -n 1)"
+if [ -z "$version" ]; then
+  echo "TUFReplay version is missing from Info.json." >&2
+  exit 1
+fi
+
+printf '%s\n' "$version" > "$VERSION_PATH"
+shasum -a 256 "$ZIP_PATH" > "$CHECKSUM_PATH"
+
 echo "Packaged to $ZIP_PATH"
+echo "Version asset: $VERSION_PATH"
+echo "Checksum asset: $CHECKSUM_PATH"

@@ -24,6 +24,7 @@ ADOFAI_IPC_DLL="${ADOFAI_IPC_DLL:-${ADOFIA_IPC_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/A
 ADOFAI_IPC_BOOTSTRAP_DLL="${ADOFAI_IPC_BOOTSTRAP_DLL:-$ADOFAI_MODS_DIR/AdofaiIpc/AdofaiIpc.Bootstrap.dll}"
 
 OUT="${TUFREPLAY_BUILD_DIR:-$PROJECT/build/TUFReplay}"
+BOOTSTRAP_OUT="${TUFREPLAY_BOOTSTRAP_BUILD_DIR:-$PROJECT/build/TUFReplay.Bootstrap}"
 DEST="${TUFREPLAY_INSTALL_DIR:-$ADOFAI_MODS_DIR/TUFReplay}"
 
 require_file() {
@@ -48,6 +49,12 @@ require_file "$ADOFAI_IPC_DLL"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
+"$DOTNET_EXE" build "$PROJECT/TUFReplay.Bootstrap/TUFReplay.Bootstrap.csproj" \
+  -p:OutputPath="$BOOTSTRAP_OUT/" \
+  -p:AdofaiManaged="$ADOFAI_MANAGED" \
+  -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL"
+
+DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay/TUFReplay.csproj" \
   -p:OutputPath="$OUT/" \
   -p:AdofaiManaged="$ADOFAI_MANAGED" \
@@ -59,11 +66,13 @@ DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 mkdir -p "$DEST"
 rm -rf "$DEST/assembly_cache"
 rm -rf "$DEST/dependency"
+rm -rf "$DEST/.tufreplay-update"
 rm -f "$DEST/JAModInfo.json" "$DEST/JAMod.Bootstrap.dll"
 rm -f "$DEST"/JAMod.Bootstrap.dll.*.cache
 cp "$PROJECT/TUFReplay/Info.json" "$DEST/"
 cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$DEST/"
 cp "$OUT/TUFReplay.dll" "$DEST/"
+cp "$BOOTSTRAP_OUT/TUFReplay.Bootstrap.dll" "$DEST/"
 cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$DEST/"
 
 for dll in \
