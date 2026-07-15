@@ -67,7 +67,10 @@ public static class RecordingPatches
     RecordingSession session = RecordingFeature.Instance?.Session;
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
-    if (!UnityEngine.Application.isFocused)
+
+    bool focused = UnityEngine.Application.isFocused;
+    RecordInputTracker.SetCaptureWindowActive(focused);
+    if (!focused)
       return;
 
     RecordInputTracker.Sample(session);
@@ -124,6 +127,8 @@ public static class RecordingPatches
     if (recording == null || !recording.Active)
       return;
 
+    UpdateNativeInputCaptureState(recording.Session, newState);
+
     switch (newState)
     {
       case States.Countdown:
@@ -141,6 +146,7 @@ public static class RecordingPatches
         if (!recording.PrepareRunForInputCapture())
           return;
         recording.Session.StartInputCapture();
+        RecordInputTracker.SetCaptureWindowActive(UnityEngine.Application.isFocused);
         ResetHitContextState();
         break;
 
@@ -157,6 +163,33 @@ public static class RecordingPatches
         RecordingFeature.Instance.OnRunFailed();
         break;
     }
+  }
+
+  private static void UpdateNativeInputCaptureState(RecordingSession session, States newState)
+  {
+    if (session == null || !session.IsRecording || !session.IsCapturingInput)
+      return;
+
+    bool focused = UnityEngine.Application.isFocused;
+    bool active = focused && IsNativeInputCaptureState(newState);
+    if (active)
+    {
+      RecordInputTracker.SetCaptureWindowActive(true);
+      RecordInputTracker.Sample(session);
+      return;
+    }
+
+    if (focused)
+      RecordInputTracker.Sample(session);
+    RecordInputTracker.SetCaptureWindowActive(false);
+  }
+
+  private static bool IsNativeInputCaptureState(States state)
+  {
+    return state == States.Countdown
+      || state == States.Checkpoint
+      || state == States.PlayerControl
+      || state == States.Won;
   }
 
   [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]

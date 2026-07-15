@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Infrastructure.NativeInput.Capture;
 
 namespace TUFReplay.Application.Recording;
 
@@ -175,6 +176,58 @@ public class RecordingSession
       }
 
       AddInputLocked(CurrentTimelineTimeUsLocked(), key, flags);
+    }
+  }
+
+  internal int AddInputBatch(ReadOnlySpan<NativeInputTransition> inputs)
+  {
+    if (inputs.Length == 0)
+      return 0;
+
+    lock (_lock)
+    {
+      if (!IsRecording)
+        return 0;
+
+      long newestTimestampNs = inputs[0].TimestampNs;
+      for (int i = 1; i < inputs.Length; i++)
+      {
+        newestTimestampNs = Math.Max(newestTimestampNs, inputs[i].TimestampNs);
+      }
+
+      double timelineRate = 1d;
+      if (!Data.WonTimeUs.HasValue && Data.EffectivePitch.HasValue && Data.EffectivePitch.Value > 0f)
+        timelineRate = Data.EffectivePitch.Value;
+
+      if (!Data.GameplayStartSongPosition.HasValue)
+      {
+        double anchorSongPosition = RecordingClock.CurrentSongPosition();
+        for (int i = 0; i < inputs.Length; i++)
+        {
+          NativeInputTransition input = inputs[i];
+          double elapsedSeconds = ElapsedSeconds(newestTimestampNs, input.TimestampNs);
+          _pendingSongPositionInputs.Add(
+            new PendingSongPositionInput(
+              anchorSongPosition - elapsedSeconds * timelineRate,
+              input.Key,
+              ToRecordInputFlags(input.Down)
+            )
+          );
+        }
+
+        return inputs.Length;
+      }
+
+      long anchorTimeUs = CurrentTimelineTimeUsLocked();
+      for (int i = 0; i < inputs.Length; i++)
+      {
+        NativeInputTransition input = inputs[i];
+        double elapsedSeconds = ElapsedSeconds(newestTimestampNs, input.TimestampNs);
+        long elapsedTimeUs = (long)(elapsedSeconds * timelineRate * 1_000_000d);
+        AddInputLocked(anchorTimeUs - elapsedTimeUs, input.Key, ToRecordInputFlags(input.Down));
+      }
+
+      return inputs.Length;
     }
   }
 
@@ -393,6 +446,19 @@ public class RecordingSession
   {
     int index = (int)margin;
     return index >= 0 && index < hits.Length ? Math.Max(0, hits[index]) : 0;
+  }
+
+  private static double ElapsedSeconds(long newestTimestampNs, long timestampNs)
+  {
+    if (timestampNs <= 0 || timestampNs >= newestTimestampNs)
+      return 0d;
+    return (newestTimestampNs - timestampNs) / 1_000_000_000d;
+  }
+
+  private static RecordInputFlags ToRecordInputFlags(bool down)
+  {
+    RecordInputFlags flags = RecordInputFlags.Async;
+    return down ? flags | RecordInputFlags.Down : flags;
   }
 
   private long ToRecordTimeUs(double songPosition)

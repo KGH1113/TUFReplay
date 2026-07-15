@@ -263,12 +263,12 @@ public static class ReplayPlaybackCoordinator
       return Error("metadata_invalid", "Replay metadata could not be parsed.", out errorCode, out errorMessage);
     }
 
-    if (meta == null || (meta.formatVersion != 1 && meta.formatVersion != 2))
+    if (meta == null || (meta.formatVersion != 1 && meta.formatVersion != 2 && meta.formatVersion != 3))
       return Error("format_unsupported", "This replay format is not supported.", out errorCode, out errorMessage);
     if (!meta.gameplayStartSongPosition.HasValue)
       return Error("metadata_invalid", "Replay gameplay timing metadata is missing.", out errorCode, out errorMessage);
     if (
-      meta.formatVersion == 2
+      meta.formatVersion >= 2
       && !string.Equals(meta.inputTimeBase, RecordingClock.HybridInputTimeBase, StringComparison.Ordinal)
     )
       return Error("time_base_unsupported", "This replay time base is not supported.", out errorCode, out errorMessage);
