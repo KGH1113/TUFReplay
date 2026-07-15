@@ -1,11 +1,25 @@
-using JALib.Core;
-using JALib.Core.Setting;
+using System.IO;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
 namespace TUFReplay;
 
-public class TUFReplaySetting(JAMod mod, JObject jsonObject = null) : JASetting(mod, jsonObject)
+public sealed class TUFReplaySetting
 {
-  public float Size = 1;
-  public bool AutoRecord = true;
+  public bool AutoRecord { get; set; } = true;
+
+  public static TUFReplaySetting Load(string path)
+  {
+    if (!File.Exists(path))
+      return new TUFReplaySetting();
+
+    JObject root = JObject.Parse(File.ReadAllText(path));
+    JToken settings = root["Setting"] ?? root;
+    return settings.ToObject<TUFReplaySetting>() ?? new TUFReplaySetting();
+  }
+
+  public void Save(string path)
+  {
+    File.WriteAllText(path, JsonConvert.SerializeObject(this, Formatting.Indented));
+  }
 }

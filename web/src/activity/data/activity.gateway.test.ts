@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ReplayStatus } from "../activity.model";
+import type { ReplayLevelFilePickerStatus, ReplayStatus } from "../activity.model";
 import { ActivityDomainError, createActivityGateway, loadAllPages } from "./activity.gateway";
 
 describe("activity IPC contract", () => {
@@ -39,19 +39,39 @@ describe("activity IPC contract", () => {
       ErrorCode: null,
       Message: null,
     } satisfies ReplayStatus;
+    const pickerStatus = {
+      OperationId: "picker-1",
+      RunId: "run-1",
+      State: "picking",
+      LevelPath: null,
+      ErrorCode: null,
+      Message: null,
+    } satisfies ReplayLevelFilePickerStatus;
     const namespace = {
       call: async (method: string, params: unknown) => {
         calls.push({ method, params });
-        return status;
+        return method.includes("level-file") ? pickerStatus : status;
       },
     };
     const gateway = createActivityGateway(namespace as never);
 
     expect(await gateway.playReplay("run-1")).toBe(status);
+    expect(await gateway.playReplay("run-1", "/levels/replay.adofai")).toBe(status);
     expect(await gateway.getReplayStatus()).toBe(status);
+    expect(await gateway.startReplayLevelFilePicker("run-1")).toBe(pickerStatus);
+    expect(await gateway.getReplayLevelFilePickerStatus("picker-1")).toBe(pickerStatus);
     expect(calls).toEqual([
       { method: "replay.play", params: { runId: "run-1" } },
+      {
+        method: "replay.play",
+        params: { runId: "run-1", levelPath: "/levels/replay.adofai" },
+      },
       { method: "replay.status.get", params: {} },
+      { method: "replay.level-file.pick.start", params: { runId: "run-1" } },
+      {
+        method: "replay.level-file.pick.status",
+        params: { operationId: "picker-1" },
+      },
     ]);
   });
 });

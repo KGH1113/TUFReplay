@@ -28,7 +28,23 @@ public static class ReplayPlaybackCoordinator
   private static int _returnNotBeforeFrame;
   private static bool _forcedFail;
 
-  public static ReplayPlaybackStatus Play(string runId)
+  public static bool IsBusy
+  {
+    get
+    {
+      lock (Gate)
+      {
+        return _status.State == ReplayPlaybackStates.Preparing
+          || _status.State == ReplayPlaybackStates.OpeningLevel
+          || _status.State == ReplayPlaybackStates.WaitingForFocus
+          || _status.State == ReplayPlaybackStates.Starting
+          || _status.State == ReplayPlaybackStates.Playing
+          || _status.State == ReplayPlaybackStates.ReturningToEditor;
+      }
+    }
+  }
+
+  public static ReplayPlaybackStatus Play(string runId, string levelPath = null)
   {
     lock (CommandGate)
     {
@@ -43,7 +59,13 @@ public static class ReplayPlaybackCoordinator
         }
       );
 
-      if (!TryPrepare(operationId, runId, out PendingReplay pending, out string code, out string message))
+      if (ReplayLevelFilePickerCoordinator.IsPicking)
+      {
+        SetError(operationId, runId, "file_picker_busy", "A level file picker is still open.");
+        return GetStatus();
+      }
+
+      if (!TryPrepare(operationId, runId, levelPath, out PendingReplay pending, out string code, out string message))
       {
         SetError(operationId, runId, code, message);
         return GetStatus();
@@ -95,8 +117,8 @@ public static class ReplayPlaybackCoordinator
       return;
     }
 
-    if (state == ReplayPlaybackStates.WaitingForFocus && UnityEngine.Application.isFocused)
-      StartReplay(operation);
+    if (state == ReplayPlaybackStates.WaitingForFocus)
+      WaitForFocusOrStart(operation);
   }
 
   public static void OnGameStateChanged(States state)
@@ -211,6 +233,7 @@ public static class ReplayPlaybackCoordinator
   private static bool TryPrepare(
     string operationId,
     string runId,
+    string requestedLevelPath,
     out PendingReplay pending,
     out string errorCode,
     out string errorMessage
@@ -224,9 +247,11 @@ public static class ReplayPlaybackCoordinator
     if (run == null)
       return Error("run_not_found", "The recorded run was not found.", out errorCode, out errorMessage);
 
-    string levelPath = LevelPathIdentity.Canonicalize(run.LevelPath);
-    if (levelPath == null)
-      return Error("level_unavailable", "The recorded level file is unavailable.", out errorCode, out errorMessage);
+    string playbackLevelPath = LevelPathIdentity.Canonicalize(
+      string.IsNullOrWhiteSpace(requestedLevelPath) ? run.LevelPath : requestedLevelPath
+    );
+    if (playbackLevelPath == null)
+      return Error("level_unavailable", "The replay level file is unavailable.", out errorCode, out errorMessage);
 
     ReplayMetadata meta;
     try
@@ -238,12 +263,12 @@ public static class ReplayPlaybackCoordinator
       return Error("metadata_invalid", "Replay metadata could not be parsed.", out errorCode, out errorMessage);
     }
 
-    if (meta == null || (meta.formatVersion != 1 && meta.formatVersion != 2))
+    if (meta == null || (meta.formatVersion != 1 && meta.formatVersion != 2 && meta.formatVersion != 3))
       return Error("format_unsupported", "This replay format is not supported.", out errorCode, out errorMessage);
     if (!meta.gameplayStartSongPosition.HasValue)
       return Error("metadata_invalid", "Replay gameplay timing metadata is missing.", out errorCode, out errorMessage);
     if (
-      meta.formatVersion == 2
+      meta.formatVersion >= 2
       && !string.Equals(meta.inputTimeBase, RecordingClock.HybridInputTimeBase, StringComparison.Ordinal)
     )
       return Error("time_base_unsupported", "This replay time base is not supported.", out errorCode, out errorMessage);
@@ -270,8 +295,7 @@ public static class ReplayPlaybackCoordinator
 
     long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
     long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
-    run.LevelPath = levelPath;
-    pending = new PendingReplay(operationId, run, meta, inputs, hitContexts, terminalTimeUs);
+    pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs);
     return true;
   }
 
@@ -279,6 +303,21 @@ public static class ReplayPlaybackCoordinator
   {
     if (!IsCurrent(operation.OperationId))
       return;
+
+    if (
+      !ReplayLevelHashValidator.ValidateTarget(
+        operation.Run,
+        operation.PlaybackLevelPath,
+        out string canonicalPath,
+        out string validationCode,
+        out string validationMessage
+      )
+    )
+    {
+      SetError(operation.OperationId, operation.Run.Id, validationCode, validationMessage);
+      return;
+    }
+    operation.PlaybackLevelPath = canonicalPath;
 
     ReplaySessionService.ClearActiveContext();
     _operation = operation;
@@ -309,14 +348,18 @@ public static class ReplayPlaybackCoordinator
 
     operation.LevelOpenStartedAt = Time.realtimeSinceStartupAsDouble;
     SetOperationState(operation, ReplayPlaybackStates.OpeningLevel, "Opening recorded level in ADOFAI.");
-    ReplayLevelOpenService.OpenEditor(operation.Run.LevelPath);
+    ReplayLevelOpenService.OpenEditor(operation.PlaybackLevelPath);
   }
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
-    if (!UnityEngine.Application.isFocused)
+    if (operation.NativeInputFocusGuard == null)
+      operation.NativeInputFocusGuard = NativeInputFocusGuardFactory.Create();
+
+    if (!operation.NativeInputFocusGuard.IsStable(out _))
     {
-      SetOperationState(operation, ReplayPlaybackStates.WaitingForFocus, "Focus ADOFAI to start replay.");
+      if (GetStatus().State != ReplayPlaybackStates.WaitingForFocus)
+        SetOperationState(operation, ReplayPlaybackStates.WaitingForFocus, "Focus ADOFAI to start replay.");
       return;
     }
 
@@ -332,6 +375,19 @@ public static class ReplayPlaybackCoordinator
     }
 
     scnEditor editor = scnEditor.instance;
+    if (
+      !ReplayLevelHashValidator.ValidateLoaded(
+        operation.Run,
+        editor.levelData,
+        out string validationCode,
+        out string validationMessage
+      )
+    )
+    {
+      Fail(validationCode, validationMessage);
+      return;
+    }
+
     if (operation.Run.StartTile >= editor.floors.Count)
     {
       Fail("start_tile_invalid", "The recorded start tile is outside the current chart.");
@@ -339,11 +395,14 @@ public static class ReplayPlaybackCoordinator
     }
 
     ReplayInputScheduler scheduler = new ReplayInputScheduler(operation.Inputs);
+    INativeInputFocusGuard focusGuard =
+      operation.NativeInputFocusGuard
+      ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
     ActiveReplayContext context = new ActiveReplayContext
     {
       OperationId = operation.OperationId,
       RunId = operation.Run.Id,
-      LevelPath = operation.Run.LevelPath,
+      LevelPath = operation.PlaybackLevelPath,
       Result = operation.Run.Result,
       TufLevelId = operation.Run.TufLevelId,
       StartTile = operation.Run.StartTile,
@@ -351,7 +410,11 @@ public static class ReplayPlaybackCoordinator
       Inputs = operation.Inputs,
       HitContexts = operation.HitContexts,
       NativeInputScheduler = scheduler,
-      NativeInputPlayer = new ReplayNativeInputPlayer(scheduler, NativeInputEmitterFactory.Create()),
+      NativeInputPlayer = new ReplayNativeInputPlayer(
+        scheduler,
+        NativeInputEmitterFactory.Create(focusGuard),
+        focusGuard
+      ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
       Meta = operation.Meta,
     };
@@ -371,7 +434,7 @@ public static class ReplayPlaybackCoordinator
       && !editor.isLoading
       && !editor.playMode
       && editor.floors != null
-      && LevelPathIdentity.Equals(operation.Run.LevelPath, LevelPathIdentity.Current());
+      && LevelPathIdentity.Equals(operation.PlaybackLevelPath, LevelPathIdentity.Current());
   }
 
   private static void RequestReturn(PendingReplay operation, string terminalState, string message)
@@ -577,15 +640,18 @@ public static class ReplayPlaybackCoordinator
   {
     public readonly string OperationId;
     public readonly StoredReplayRun Run;
+    public string PlaybackLevelPath;
     public readonly ReplayMetadata Meta;
     public readonly List<RecordedInput> Inputs;
     public readonly List<ReplayHitContext> HitContexts;
     public readonly long TerminalTimeUs;
     public double LevelOpenStartedAt;
+    public INativeInputFocusGuard NativeInputFocusGuard;
 
     public PendingReplay(
       string operationId,
       StoredReplayRun run,
+      string playbackLevelPath,
       ReplayMetadata meta,
       List<RecordedInput> inputs,
       List<ReplayHitContext> hitContexts,
@@ -594,6 +660,7 @@ public static class ReplayPlaybackCoordinator
     {
       OperationId = operationId;
       Run = run;
+      PlaybackLevelPath = playbackLevelPath;
       Meta = meta;
       Inputs = inputs;
       HitContexts = hitContexts;

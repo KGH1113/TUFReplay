@@ -2,6 +2,9 @@ export interface ActivityLevelSessionOverview {
   Id: string;
   AppSessionId: string;
   TufLevelId: number | null;
+  Song: string | null;
+  Author: string | null;
+  Artist: string | null;
   OpenedAtUtc: string;
   ClosedAtUtc: string | null;
   RunCount: number;
@@ -86,6 +89,17 @@ export interface ReplayStatus {
   OperationId: string | null;
   RunId: string | null;
   State: ReplayState;
+  ErrorCode: string | null;
+  Message: string | null;
+}
+
+export type ReplayLevelFilePickerState = "picking" | "selected" | "cancelled" | "error";
+
+export interface ReplayLevelFilePickerStatus {
+  OperationId: string;
+  RunId: string;
+  State: ReplayLevelFilePickerState;
+  LevelPath: string | null;
   ErrorCode: string | null;
   Message: string | null;
 }

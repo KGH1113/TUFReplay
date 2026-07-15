@@ -11,11 +11,23 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
   [DllImport("user32.dll")]
   private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
 
+  private readonly INativeInputFocusGuard _focusGuard;
+
+  public WindowsNativeInputEmitter()
+    : this(NativeInputFocusGuardFactory.Create()) { }
+
+  internal WindowsNativeInputEmitter(INativeInputFocusGuard focusGuard)
+  {
+    _focusGuard = focusGuard ?? throw new ArgumentNullException(nameof(focusGuard));
+  }
+
   public bool Emit(int key, bool down)
   {
     if (key <= 0 || key > 255)
       return false;
     if (IsBlockedKey((ushort)key))
+      return false;
+    if (down && !_focusGuard.IsForegroundTarget(out _))
       return false;
 
     uint flags = down ? 0u : KeyEventKeyUp;

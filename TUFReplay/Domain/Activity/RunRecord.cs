@@ -25,6 +25,8 @@ public class RunRecord
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
+  public byte[] GameplayHash;
+  public int? GameplayHashVersion;
 
   public int InputCount;
   public int HitContextCount;

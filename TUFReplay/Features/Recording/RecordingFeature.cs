@@ -21,6 +21,8 @@ public class RecordingFeature
   private bool _failed;
   private bool _runSaved;
   private RunRecord _currentRun;
+  private byte[] _gameplayHash;
+  private int? _gameplayHashVersion;
 
   private readonly RecordingActivityTracker _activity = new RecordingActivityTracker();
 
@@ -125,7 +127,8 @@ public class RecordingFeature
     int levelTileCount = RecordingSession.GetLevelTileCount();
     _activity.OpenLevel(levelPath, tufLevelId, levelTileCount);
     RecordingPatches.ResetHitContextState();
-    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord);
+    CaptureGameplayHash();
+    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
     Main.Instance.Log("[Recording] Custom level opened. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
   }
 
@@ -139,7 +142,7 @@ public class RecordingFeature
     int? tufLevelId = Session.TufLevelId;
     ResetRunState();
     RecordingPatches.ResetHitContextState();
-    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord);
+    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
 
     Main.Instance.Log("[Recording] Prepared retry run. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
     return Session.IsRecording;
@@ -148,6 +151,20 @@ public class RecordingFeature
   private static string CanonicalLevelPath()
   {
     return LevelPathIdentity.Current();
+  }
+
+  private void CaptureGameplayHash()
+  {
+    _gameplayHash = null;
+    _gameplayHashVersion = null;
+    if (GameplayChartHash.TryComputeCurrent(out byte[] hash, out string error))
+    {
+      _gameplayHash = hash;
+      _gameplayHashVersion = GameplayChartHash.Version;
+      return;
+    }
+
+    Main.Instance.Log("[Recording] Gameplay hash unavailable. reason=" + error);
   }
 
   public void StopSession()
