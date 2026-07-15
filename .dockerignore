@@ -4,6 +4,7 @@
 .vscode
 build
 node_modules
+**/node_modules
 web/.env
 web/dist
 *.log
