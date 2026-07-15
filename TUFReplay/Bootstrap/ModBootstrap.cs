@@ -8,7 +8,6 @@ public static class ModBootstrap
 {
   public static void InitializeRuntime()
   {
-    UnityMainThread.Initialize();
     DatabaseStore.Initialize();
   }
 

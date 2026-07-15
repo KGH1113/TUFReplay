@@ -12,10 +12,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Reference Include="JALib">
-      <HintPath>$(JALibDll)</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="AdofaiIpc">
       <HintPath>$(AdofaiIpcDll)</HintPath>
       <Private>false</Private>

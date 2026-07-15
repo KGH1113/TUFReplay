@@ -1,5 +1,5 @@
 using System;
-using JALib.Core.Patch;
+using HarmonyLib;
 using MonsterLove.StateMachine;
 using TUFReplay.Features.Recording;
 using TUFReplay.Features.Replay;
@@ -8,21 +8,38 @@ namespace TUFReplay.Features.Gameplay;
 
 public static class GameplayPatches
 {
-  [JAPatch(typeof(scrPlayer), "Hit", PatchType.Prefix, true, ArgumentTypesType = new[] { typeof(bool) })]
+  [HarmonyPatch(typeof(scrPlayer), "Hit", new[] { typeof(bool) })]
+  [HarmonyPrefix]
   private static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
   {
-    if (!ReplayInputPatches.OnScrPlayerHitPrefix(ref __result))
-      return false;
+    try
+    {
+      if (!ReplayInputPatches.OnScrPlayerHitPrefix(ref __result))
+        return false;
 
-    return RecordingPatches.OnScrPlayerHitPrefix(__instance, isAuto, ref __result);
+      return RecordingPatches.OnScrPlayerHitPrefix(__instance, isAuto, ref __result);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnScrPlayerHitPrefix), exception);
+      return true;
+    }
   }
 
-  [JAPatch(typeof(StateBehaviour), "ChangeState", PatchType.Postfix, true, ArgumentTypesType = new[] { typeof(Enum) })]
+  [HarmonyPatch(typeof(StateBehaviour), "ChangeState", new[] { typeof(Enum) })]
+  [HarmonyPostfix]
   private static void OnChangeStatePostfix(Enum newState)
   {
-    States state = (States)newState;
+    try
+    {
+      States state = (States)newState;
 
-    RecordingPatches.OnChangeState(state);
-    ReplayInputPatches.OnChangeState(state);
+      RecordingPatches.OnChangeState(state);
+      ReplayInputPatches.OnChangeState(state);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnChangeStatePostfix), exception);
+    }
   }
 }
