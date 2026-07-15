@@ -45,39 +45,18 @@ jobs:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
           tags: tag:gh-runner
-
-      - name: Resolve home server Tailscale IP
-        id: home-server
-        run: |
-          set -euo pipefail
-
-          server_ip="$(
-            tailscale status --json |
-              jq -r '[.Peer[] | select(.HostName == "kgh") | .TailscaleIPs[] | select(test("^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+$"))][0] // empty'
-          )"
-
-          test -n "$server_ip" || {
-            echo "Could not resolve kgh's Tailscale IPv4 address."
-            exit 1
-          }
-
-          echo "ip=$server_ip" >> "$GITHUB_OUTPUT"
+          ping: kgh
 
       - name: Verify connectivity
-        env:
-          HOME_SERVER_IP: ${{ steps.home-server.outputs.ip }}
         run: |
           set -euo pipefail
           tailscale status
-          tailscale ping --timeout=10s "$HOME_SERVER_IP"
-          tailscale ssh "kgh@$HOME_SERVER_IP" "whoami && hostname"
+          tailscale ssh kgh@kgh "whoami && hostname"
 
       - name: Deploy web app
-        env:
-          HOME_SERVER_IP: ${{ steps.home-server.outputs.ip }}
         run: |
           set -euo pipefail
-          tailscale ssh "kgh@$HOME_SERVER_IP" 'bash -s' <<'REMOTE'
+          tailscale ssh kgh@kgh 'bash -s' <<'REMOTE'
           set -euo pipefail
 
           DEPLOY_DIR="/srv/TUFReplay"
