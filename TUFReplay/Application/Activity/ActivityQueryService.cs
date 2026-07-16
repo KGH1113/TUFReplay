@@ -8,14 +8,37 @@ namespace TUFReplay.Application.Activity;
 
 public static class ActivityQueryService
 {
-  public static List<AppSession> ListAppSessions(int offset, int limit) => AppSessionRepository.List(offset, limit);
-
-  public static List<LevelSessionOverview> ListLevelSessionOverviewsByAppSession(string id)
+  public static List<AppSessionActivity> ListAppSessionActivities(int offset, int limit)
   {
-    List<LevelSessionOverview> levels = ActivityRepository.ListLevelSessionOverviewsByAppSession(id);
+    List<AppSession> sessions = AppSessionRepository.List(offset, limit);
+    var result = new List<AppSessionActivity>(sessions.Count);
+    if (sessions.Count == 0)
+      return result;
+
+    var sessionIds = new List<string>(sessions.Count);
+    foreach (AppSession session in sessions)
+      sessionIds.Add(session.Id);
+
+    List<LevelSessionOverview> levels = ActivityRepository.ListLevelSessionOverviewsByAppSessions(sessionIds);
+    var levelsBySession = new Dictionary<string, List<LevelSessionOverview>>(sessions.Count);
     foreach (LevelSessionOverview level in levels)
+    {
       EnsureLevelMetadata(level);
-    return levels;
+      if (!levelsBySession.TryGetValue(level.AppSessionId, out List<LevelSessionOverview> sessionLevels))
+      {
+        sessionLevels = new List<LevelSessionOverview>();
+        levelsBySession.Add(level.AppSessionId, sessionLevels);
+      }
+      sessionLevels.Add(level);
+    }
+
+    foreach (AppSession session in sessions)
+    {
+      if (!levelsBySession.TryGetValue(session.Id, out List<LevelSessionOverview> sessionLevels))
+        sessionLevels = new List<LevelSessionOverview>();
+      result.Add(new AppSessionActivity { AppSession = session, LevelSessions = sessionLevels });
+    }
+    return result;
   }
 
   public static LevelSessionOverview GetLevelSessionOverview(string id)
@@ -25,8 +48,15 @@ public static class ActivityQueryService
     return level;
   }
 
-  public static List<RunRecord> ListRunsByLevelSession(string id, int offset, int limit) =>
-    RunRepository.ListByLevelSession(id, offset, limit);
+  public static bool TryListRunsByLevelSession(string id, int offset, int limit, out List<RunRecord> runs)
+  {
+    runs = null;
+    if (!LevelSessionRepository.Exists(id))
+      return false;
+
+    runs = RunRepository.ListByLevelSession(id, offset, limit);
+    return true;
+  }
 
   public static ChartData GetChart(string id)
   {
@@ -56,6 +86,12 @@ public static class ActivityQueryService
     level.Artist = metadata?.Artist;
     level.MetadataState = state;
   }
+}
+
+public sealed class AppSessionActivity
+{
+  public AppSession AppSession;
+  public List<LevelSessionOverview> LevelSessions;
 }
 
 public sealed class ChartData

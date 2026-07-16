@@ -1,5 +1,6 @@
 ﻿using System;
 using TUFReplay.Bootstrap;
+using TUFReplay.Infrastructure.Settings;
 using TUFReplay.Infrastructure.Unity;
 using UnityEngine;
 using UnityModManagerNet;
@@ -9,21 +10,19 @@ namespace TUFReplay;
 public sealed class Main
 {
   public static Main Instance { get; private set; }
-  public static TUFReplaySetting Settings { get; private set; }
+  public static TUFReplaySetting Settings => TUFReplaySettingStore.Current;
   public static UpdateSettings UpdaterSettings { get; private set; }
 
   public UnityModManager.ModEntry ModEntry { get; }
   public string Path => ModEntry.Path;
   public string Version => ModEntry.Info.Version;
 
-  private readonly string _settingsPath;
   private readonly string _updateSettingsPath;
   private bool _enabled;
 
   private Main(UnityModManager.ModEntry modEntry)
   {
     ModEntry = modEntry;
-    _settingsPath = System.IO.Path.Combine(modEntry.Path, "Settings.json");
     _updateSettingsPath = System.IO.Path.Combine(modEntry.Path, "UpdateSettings.json");
   }
 
@@ -32,7 +31,7 @@ public sealed class Main
     try
     {
       Instance = new Main(modEntry);
-      Settings = TUFReplaySetting.Load(Instance._settingsPath);
+      TUFReplaySettingStore.Initialize(System.IO.Path.Combine(modEntry.Path, "Settings.json"));
       UpdaterSettings = UpdateSettings.Load(Instance._updateSettingsPath);
       UnityMainThread.Initialize();
 
@@ -59,11 +58,6 @@ public sealed class Main
   public void LogException(string context, Exception exception)
   {
     ModEntry.Logger.Error("[" + context + "] " + exception);
-  }
-
-  public void SaveSettings()
-  {
-    Settings.Save(_settingsPath);
   }
 
   private static void OnGUI(UnityModManager.ModEntry modEntry)
@@ -166,7 +160,7 @@ public sealed class Main
     }
     finally
     {
-      SaveSettings();
+      TUFReplaySettingStore.Save();
     }
   }
 }

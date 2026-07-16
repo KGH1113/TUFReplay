@@ -81,6 +81,15 @@ song,author,artist,metadata_state FROM level_sessions WHERE id=@id";
       : null;
   }
 
+  public static bool Exists(string id)
+  {
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "SELECT 1 FROM level_sessions WHERE id=@id LIMIT 1";
+    q.Parameters.AddWithValue("@id", id);
+    return q.ExecuteScalar() != null;
+  }
+
   public static void UpdateMetadata(string id, LevelMetadataSnapshot metadata, LevelMetadataState state)
   {
     using SqliteConnection c = DatabaseStore.OpenConnection();
