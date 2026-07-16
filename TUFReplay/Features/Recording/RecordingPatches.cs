@@ -193,8 +193,8 @@ public static class RecordingPatches
   }
 
   [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]
-  [HarmonyPostfix]
-  private static void OnSwitchToEditModePostfix(bool clsToEditor)
+  [HarmonyPrefix]
+  private static void OnSwitchToEditModePrefix(bool clsToEditor)
   {
     try
     {
@@ -206,7 +206,7 @@ public static class RecordingPatches
     }
     catch (Exception exception)
     {
-      Main.Instance?.LogException(nameof(OnSwitchToEditModePostfix), exception);
+      Main.Instance?.LogException(nameof(OnSwitchToEditModePrefix), exception);
     }
   }
 
