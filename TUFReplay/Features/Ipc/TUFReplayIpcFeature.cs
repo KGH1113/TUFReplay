@@ -30,17 +30,17 @@ public sealed class TUFReplayIpcFeature
       }
     );
 
-    ipc.Register("health.get", TUFReplayIpcHandlers.Health);
-    ipc.Register("activity.app-sessions.list", TUFReplayIpcHandlers.ListAppSessions);
-    ipc.Register("activity.level-session.get", TUFReplayIpcHandlers.GetLevelSession);
-    ipc.Register("activity.level-session.runs.list", TUFReplayIpcHandlers.ListRuns);
-    ipc.Register("activity.level-session.chart.get", TUFReplayIpcHandlers.GetChart);
-    ipc.Register("replay.play", TUFReplayIpcHandlers.PlayReplay);
-    ipc.Register("replay.status.get", TUFReplayIpcHandlers.GetReplayStatus);
-    ipc.Register("replay.level-file.pick.start", TUFReplayIpcHandlers.StartReplayLevelFilePicker);
-    ipc.Register("replay.level-file.pick.status", TUFReplayIpcHandlers.GetReplayLevelFilePickerStatus);
-    ipc.RegisterMainThread("microphone.devices.get", TUFReplayIpcHandlers.GetMicrophoneDevices);
-    ipc.RegisterMainThread("microphone.device.select", TUFReplayIpcHandlers.SelectMicrophoneDevice);
+    ipc.Register("health.get", HealthIpcHandlers.Get);
+    ipc.Register("activity.app-sessions.list", ActivityIpcHandlers.ListAppSessions);
+    ipc.Register("activity.level-session.get", ActivityIpcHandlers.GetLevelSession);
+    ipc.Register("activity.level-session.runs.list", ActivityIpcHandlers.ListRuns);
+    ipc.Register("activity.level-session.chart.get", ActivityIpcHandlers.GetChart);
+    ipc.Register("replay.play", ReplayIpcHandlers.Play);
+    ipc.Register("replay.status.get", ReplayIpcHandlers.GetStatus);
+    ipc.Register("replay.level-file.pick.start", ReplayIpcHandlers.StartLevelFilePicker);
+    ipc.Register("replay.level-file.pick.status", ReplayIpcHandlers.GetLevelFilePickerStatus);
+    ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
+    ipc.RegisterMainThread("microphone.device.select", MicrophoneIpcHandlers.SelectDevice);
 
     Main.Instance.Log("[IPC] Registered namespace: " + Namespace);
   }
