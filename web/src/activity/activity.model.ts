@@ -123,3 +123,15 @@ export interface LevelMetadata {
 }
 
 export type ConnectionStatus = "connecting" | "online" | "error";
+
+export interface MicrophoneDevice {
+  Id: string;
+  Name: string;
+  MinFrequency: number;
+  MaxFrequency: number;
+}
+
+export interface MicrophoneDevicesState {
+  Devices: MicrophoneDevice[];
+  SelectedDeviceId: string | null;
+}

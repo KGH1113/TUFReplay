@@ -51,6 +51,21 @@ const appSessions: ActivityAppSession[] = [
 ];
 
 export function createMockActivityGateway(): ActivityGateway {
+  let selectedMicrophoneDeviceId: string | null = null;
+  const microphoneDevices = [
+    {
+      Id: "MacBook Pro Microphone",
+      Name: "MacBook Pro Microphone",
+      MinFrequency: 48_000,
+      MaxFrequency: 48_000,
+    },
+    {
+      Id: "USB Audio Device",
+      Name: "USB Audio Device",
+      MinFrequency: 44_100,
+      MaxFrequency: 48_000,
+    },
+  ];
   let replayStatus: ReplayStatus = {
     OperationId: null,
     RunId: null,
@@ -98,6 +113,17 @@ export function createMockActivityGateway(): ActivityGateway {
       if (!pickerStatus || pickerStatus.OperationId !== operationId)
         throw new Error("Mock picker operation was not found");
       return pickerStatus;
+    },
+    getMicrophoneDevices: async () => ({
+      Devices: microphoneDevices,
+      SelectedDeviceId: selectedMicrophoneDeviceId,
+    }),
+    selectMicrophoneDevice: async (deviceId) => {
+      selectedMicrophoneDeviceId = deviceId;
+      return {
+        Devices: microphoneDevices,
+        SelectedDeviceId: selectedMicrophoneDeviceId,
+      };
     },
   };
 }

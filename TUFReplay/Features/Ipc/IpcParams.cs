@@ -28,6 +28,22 @@ public static class IpcParams
     return token.Type == JTokenType.String ? token.Value<string>() : token.ToString();
   }
 
+  public static bool TryNullableString(IpcRequest request, string name, out string value)
+  {
+    value = null;
+    if (!(request?.Params is JObject obj) || !obj.TryGetValue(name, out JToken token))
+      return false;
+
+    if (token == null || token.Type == JTokenType.Null)
+      return true;
+    if (token.Type != JTokenType.String)
+      return false;
+
+    string parsed = token.Value<string>();
+    value = string.IsNullOrWhiteSpace(parsed) ? null : parsed.Trim();
+    return true;
+  }
+
   public static int? OptionalInt(IpcRequest request, string name)
   {
     JToken token = GetToken(request, name);

@@ -7,6 +7,7 @@ namespace TUFReplay;
 public sealed class TUFReplaySetting
 {
   public bool AutoRecord { get; set; } = true;
+  public string MicrophoneDeviceId { get; set; }
 
   public static TUFReplaySetting Load(string path)
   {

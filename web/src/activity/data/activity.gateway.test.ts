@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ReplayLevelFilePickerStatus, ReplayStatus } from "../activity.model";
+import type {
+  MicrophoneDevicesState,
+  ReplayLevelFilePickerStatus,
+  ReplayStatus,
+} from "../activity.model";
 import { ActivityDomainError, createActivityGateway, loadAllPages } from "./activity.gateway";
 
 describe("activity IPC contract", () => {
@@ -72,6 +76,37 @@ describe("activity IPC contract", () => {
         method: "replay.level-file.pick.status",
         params: { operationId: "picker-1" },
       },
+    ]);
+  });
+
+  test("uses the exact microphone command names and nullable selection param", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const microphones = {
+      Devices: [
+        {
+          Id: "USB Audio Device",
+          Name: "USB Audio Device",
+          MinFrequency: 44_100,
+          MaxFrequency: 48_000,
+        },
+      ],
+      SelectedDeviceId: null,
+    } satisfies MicrophoneDevicesState;
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return microphones;
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.getMicrophoneDevices()).toBe(microphones);
+    expect(await gateway.selectMicrophoneDevice("USB Audio Device")).toBe(microphones);
+    expect(await gateway.selectMicrophoneDevice(null)).toBe(microphones);
+    expect(calls).toEqual([
+      { method: "microphone.devices.get", params: {} },
+      { method: "microphone.device.select", params: { deviceId: "USB Audio Device" } },
+      { method: "microphone.device.select", params: { deviceId: null } },
     ]);
   });
 });
