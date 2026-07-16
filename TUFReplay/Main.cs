@@ -63,17 +63,20 @@ public sealed class Main
 
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
+    GUILayout.Label("UI Test");
+    if (GUILayout.Button("Show microphone recording toast"))
+      FeatureRegistry.MicrophoneRecordingToast?.ShowTest();
+
+    GUILayout.Space(8f);
     GUILayout.Label("Updates");
-    bool receiveBetaUpdates = GUILayout.Toggle(
-      UpdaterSettings.ReceiveBetaUpdates,
-      "Receive beta updates");
+    bool receiveBetaUpdates = GUILayout.Toggle(UpdaterSettings.ReceiveBetaUpdates, "Receive beta updates");
     GUILayout.Label("Beta builds may be unstable. Changes apply on the next game launch.");
 
-    if (receiveBetaUpdates == UpdaterSettings.ReceiveBetaUpdates)
-      return;
-
-    UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
-    SaveUpdateSettings(modEntry);
+    if (receiveBetaUpdates != UpdaterSettings.ReceiveBetaUpdates)
+    {
+      UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
+      SaveUpdateSettings(modEntry);
+    }
   }
 
   private static void OnSaveGUI(UnityModManager.ModEntry modEntry)

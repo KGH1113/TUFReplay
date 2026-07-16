@@ -75,6 +75,9 @@ require_file "$ADOFAI_IPC_DLL"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_INFO_JSON"
 require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
+require_file "$PROJECT/TUFReplay/Assets/mac/tufreplay_ui.bundle"
+require_file "$PROJECT/TUFReplay/Assets/win/tufreplay_ui.bundle"
+require_file "$PROJECT/TUFReplay/Assets/linux/tufreplay_ui.bundle"
 
 # shellcheck disable=SC1090
 source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
@@ -117,10 +120,12 @@ mkdir -p "$STAGE"
 
 cp "$PROJECT/TUFReplay/Info.json" "$STAGE/"
 cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$STAGE/"
+cp "$PROJECT/THIRD_PARTY_NOTICES.md" "$STAGE/"
 cp "$OUT/TUFReplay.dll" "$STAGE/"
 cp "$BOOTSTRAP_OUT/TUFReplay.Bootstrap.dll" "$STAGE/"
 cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$STAGE/"
 cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
+cp -R "$PROJECT/TUFReplay/Assets" "$STAGE/"
 
 for dll in \
   Microsoft.Data.Sqlite.dll \
