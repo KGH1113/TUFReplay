@@ -82,10 +82,19 @@ Build and install the mod:
 ./build.sh
 ```
 
+### Unity UI AssetBundles
+
+The in-game UI prefab is maintained in `TUFReplay.Unity`, using Unity 6.3.10f1. Before the first mod build, open that project and use `TUFReplay > Build > Build All UI Bundles`. The editor builds `tufreplay_ui.bundle` for macOS, Windows, and Linux, then copies the files into `TUFReplay/Assets/{mac,win,linux}`.
+
+For a local macOS-only UI iteration, use `TUFReplay > Build > Build macOS UI Bundle`. After rebuilding the bundle, run `./build.sh` to copy the current platform assets into the installed mod.
+
+The temporary `UI Test` section in the Unity Mod Manager GUI can display the microphone recording save toast without recording microphone audio.
+
 The build script:
 
 - Builds the TUFReplay payload and its small auto-update bootstrap.
 - Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
+- Copies the platform UI AssetBundles and third-party notices into `Mods/TUFReplay`.
 - Installs the mod into `Mods/TUFReplay` by default.
 
 The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the TUFReplay bootstrap checks the latest TUFReplay release before loading the payload. Network work has a single 20-second deadline; timeout or any update error emits an `AutoUpdate` warning and loads the installed or last-known-good payload. A verified update is loaded immediately from the versioned cache during the same ADOFAI launch.

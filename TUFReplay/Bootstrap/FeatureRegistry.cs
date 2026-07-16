@@ -4,6 +4,7 @@ using TUFReplay.Features.Gameplay;
 using TUFReplay.Features.Ipc;
 using TUFReplay.Features.Recording;
 using TUFReplay.Features.Replay;
+using TUFReplay.Features.Ui;
 
 namespace TUFReplay.Bootstrap;
 
@@ -15,6 +16,7 @@ public static class FeatureRegistry
   public static TUFReplayIpcFeature Ipc { get; private set; }
   public static RecordingFeature Recording { get; private set; }
   public static ReplayFeature Replay { get; private set; }
+  public static MicrophoneRecordingToastFeature MicrophoneRecordingToast { get; private set; }
 
   public static void Initialize()
   {
@@ -24,6 +26,7 @@ public static class FeatureRegistry
     Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
     Replay = new ReplayFeature();
+    MicrophoneRecordingToast = new MicrophoneRecordingToastFeature();
 
     _harmony = new Harmony(HarmonyId);
     try
@@ -34,6 +37,7 @@ public static class FeatureRegistry
       Ipc.Enable();
       Recording.Enable();
       Replay.Enable();
+      MicrophoneRecordingToast.Enable();
     }
     catch
     {
@@ -44,6 +48,7 @@ public static class FeatureRegistry
 
   public static void Shutdown()
   {
+    MicrophoneRecordingToast?.Disable();
     Replay?.Disable();
     Recording?.Disable();
     Ipc?.Disable();
@@ -52,6 +57,7 @@ public static class FeatureRegistry
     _harmony = null;
 
     Replay = null;
+    MicrophoneRecordingToast = null;
     Recording = null;
     Ipc = null;
   }

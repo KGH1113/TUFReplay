@@ -71,9 +71,15 @@ rm -f "$DEST/JAModInfo.json" "$DEST/JAMod.Bootstrap.dll"
 rm -f "$DEST"/JAMod.Bootstrap.dll.*.cache
 cp "$PROJECT/TUFReplay/Info.json" "$DEST/"
 cp "$PROJECT/TUFReplay/AdofaiIpcBootstrap.json" "$DEST/"
+cp "$PROJECT/THIRD_PARTY_NOTICES.md" "$DEST/"
 cp "$OUT/TUFReplay.dll" "$DEST/"
 cp "$BOOTSTRAP_OUT/TUFReplay.Bootstrap.dll" "$DEST/"
 cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$DEST/"
+
+if [ -d "$PROJECT/TUFReplay/Assets" ]; then
+  rm -rf "$DEST/Assets"
+  cp -R "$PROJECT/TUFReplay/Assets" "$DEST/"
+fi
 
 for dll in \
   Microsoft.Data.Sqlite.dll \
