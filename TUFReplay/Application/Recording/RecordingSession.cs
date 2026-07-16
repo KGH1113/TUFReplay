@@ -111,6 +111,8 @@ public class RecordingSession
         return;
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
+      if (!Data.JudgmentDifficulty.HasValue)
+        Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
       if (!Data.GameplayStartSongPosition.HasValue)
       {
         Data.GameplayStartSongPosition = RecordingClock.CurrentSongPosition();
@@ -429,16 +431,25 @@ public class RecordingSession
         TooLate = ReadHitCount(hits, HitMargin.TooLate),
         Miss = ReadHitCount(hits, HitMargin.FailMiss),
       };
-
-      int difficulty = (int)tracker.hardestDifficulty;
-      if (difficulty >= (int)RunJudgmentDifficulty.Lenient && difficulty <= (int)RunJudgmentDifficulty.Strict)
-      {
-        data.JudgmentDifficulty = (RunJudgmentDifficulty)difficulty;
-      }
     }
     catch
     {
       // Judgment telemetry must never interrupt run persistence.
+    }
+  }
+
+  private static RunJudgmentDifficulty? GetCurrentJudgmentDifficulty()
+  {
+    try
+    {
+      int difficulty = (int)GCS.difficulty;
+      if (difficulty < (int)RunJudgmentDifficulty.Lenient || difficulty > (int)RunJudgmentDifficulty.Strict)
+        return null;
+      return (RunJudgmentDifficulty)difficulty;
+    }
+    catch
+    {
+      return null;
     }
   }
 

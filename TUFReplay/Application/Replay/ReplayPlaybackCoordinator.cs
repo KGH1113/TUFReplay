@@ -379,6 +379,7 @@ public static class ReplayPlaybackCoordinator
       !ReplayLevelHashValidator.ValidateLoaded(
         operation.Run,
         editor.levelData,
+        operation.PlaybackLevelPath,
         out string validationCode,
         out string validationMessage
       )
