@@ -5,6 +5,7 @@ using TUFReplay.Application.Activity;
 using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Ipc.Dtos;
+using UnityEngine;
 
 namespace TUFReplay.Features.Ipc;
 
@@ -113,6 +114,85 @@ public static class TUFReplayIpcHandlers
     )
       ? ReplayLevelFilePickerStatusDto.From(status)
       : IpcDomainError.Create(errorCode, errorMessage);
+  }
+
+  public static object GetMicrophoneDevices(IpcRequest request)
+  {
+    try
+    {
+      return ReadMicrophoneDevices();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[IPC] Microphone device query failed: " + exception.GetType().Name);
+      return IpcDomainError.Create("microphone_device_query_failed", "Available microphone devices could not be read.");
+    }
+  }
+
+  public static object SelectMicrophoneDevice(IpcRequest request)
+  {
+    if (!IpcParams.TryNullableString(request, "deviceId", out string deviceId))
+      return IpcDomainError.Create("invalid_microphone_device_id", "deviceId must be a string or null.");
+
+    try
+    {
+      MicrophoneDevicesResponseDto response = ReadMicrophoneDevices();
+      if (deviceId != null && !response.Devices.Exists(device => device.Id == deviceId))
+        return IpcDomainError.Create("microphone_device_not_found", "The selected microphone device is not available.");
+
+      string previousDeviceId = Main.Settings.MicrophoneDeviceId;
+      if (!string.Equals(previousDeviceId, deviceId, StringComparison.Ordinal))
+      {
+        Main.Settings.MicrophoneDeviceId = deviceId;
+        try
+        {
+          Main.Instance.SaveSettings();
+        }
+        catch
+        {
+          Main.Settings.MicrophoneDeviceId = previousDeviceId;
+          throw;
+        }
+        Main.Instance.Log("[Microphone] Input device selection updated.");
+      }
+
+      response.SelectedDeviceId = deviceId;
+      return response;
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[IPC] Microphone device selection failed: " + exception.GetType().Name);
+      return IpcDomainError.Create(
+        "microphone_device_selection_failed",
+        "The microphone device selection could not be saved."
+      );
+    }
+  }
+
+  private static MicrophoneDevicesResponseDto ReadMicrophoneDevices()
+  {
+    var devices = new List<MicrophoneDeviceDto>();
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    string[] names = Microphone.devices ?? new string[0];
+    foreach (string rawName in names)
+    {
+      string name = rawName?.Trim();
+      if (string.IsNullOrWhiteSpace(name) || !seen.Add(name))
+        continue;
+
+      Microphone.GetDeviceCaps(name, out int minFrequency, out int maxFrequency);
+      devices.Add(
+        new MicrophoneDeviceDto
+        {
+          Id = name,
+          Name = name,
+          MinFrequency = minFrequency,
+          MaxFrequency = maxFrequency,
+        }
+      );
+    }
+
+    return new MicrophoneDevicesResponseDto { Devices = devices, SelectedDeviceId = Main.Settings.MicrophoneDeviceId };
   }
 
   private static int Offset(IpcRequest r) => Math.Max(0, IpcParams.OptionalInt(r, "offset") ?? 0);

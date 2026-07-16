@@ -61,6 +61,11 @@ public sealed class Main
     ModEntry.Logger.Error("[" + context + "] " + exception);
   }
 
+  public void SaveSettings()
+  {
+    Settings.Save(_settingsPath);
+  }
+
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
     GUILayout.Label("UI Test");
@@ -161,7 +166,7 @@ public sealed class Main
     }
     finally
     {
-      Settings.Save(_settingsPath);
+      SaveSettings();
     }
   }
 }

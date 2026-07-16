@@ -224,6 +224,8 @@ Registered methods:
 - `replay.status.get`
 - `replay.level-file.pick.start`
 - `replay.level-file.pick.status`
+- `microphone.devices.get`
+- `microphone.device.select` (`deviceId` is a detected device name, or `null` for the system default)
 
 ## Tech Stack
 

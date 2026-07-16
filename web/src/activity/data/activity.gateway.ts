@@ -5,6 +5,7 @@ import type {
   ActivityChart,
   ActivityLevelSessionOverview,
   ActivityRun,
+  MicrophoneDevicesState,
   ReplayLevelFilePickerStatus,
   ReplayStatus,
 } from "../activity.model";
@@ -40,6 +41,8 @@ export interface ActivityGateway {
   getReplayStatus(): Promise<ReplayStatus>;
   startReplayLevelFilePicker(runId: string): Promise<ReplayLevelFilePickerStatus>;
   getReplayLevelFilePickerStatus(operationId: string): Promise<ReplayLevelFilePickerStatus>;
+  getMicrophoneDevices(): Promise<MicrophoneDevicesState>;
+  selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
 }
 
 export async function connectActivityGateway(): Promise<ActivityGateway> {
@@ -82,6 +85,9 @@ export function createActivityGateway(
       callDomain(namespace, "replay.level-file.pick.start", { runId }),
     getReplayLevelFilePickerStatus: (operationId) =>
       callDomain(namespace, "replay.level-file.pick.status", { operationId }),
+    getMicrophoneDevices: () => callDomain(namespace, "microphone.devices.get", {}),
+    selectMicrophoneDevice: (deviceId) =>
+      callDomain(namespace, "microphone.device.select", { deviceId }),
   };
 }
 

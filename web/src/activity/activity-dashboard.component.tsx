@@ -9,12 +9,14 @@ import { ReplayLevelChoiceDialog } from "./components/replay-level-choice-dialog
 import { useActivityData } from "./hooks/use-activity-data.hook";
 import { useLevelMetadata } from "./hooks/use-level-metadata.hook";
 import { useLevelSessionData } from "./hooks/use-level-session-data.hook";
+import { useMicrophoneDevices } from "./hooks/use-microphone-devices.hook";
 import { useReplayControl } from "./hooks/use-replay-control.hook";
 import { aggregateRunMarkers, groupSessionsByDay } from "./lib/activity-data.utils";
 
 export function ActivityDashboard() {
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
+  const microphones = useMicrophoneDevices(activity.gatewayRef, activity.status);
   const clearLevelFilePicker = replay.clearLevelFilePicker;
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
@@ -100,7 +102,17 @@ export function ActivityDashboard() {
         <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)]">
           <DayRail days={days} selectedDate={selectedDay?.date ?? null} onSelectDate={handleDate} />
           <section className="flex min-h-0 min-w-0 flex-col border-l border-border">
-            <DashboardHeader status={activity.status} onRetry={() => void activity.retry()} />
+            <DashboardHeader
+              status={activity.status}
+              onRetry={() => void activity.retry()}
+              microphoneDevices={microphones.devices}
+              selectedMicrophoneDeviceId={microphones.selectedDeviceId}
+              microphoneLoading={microphones.loading}
+              pendingMicrophoneDeviceId={microphones.pendingDeviceId}
+              microphoneError={microphones.error}
+              onRefreshMicrophones={() => void microphones.refresh()}
+              onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
+            />
             {activity.error && !activity.sessions.length ? (
               <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
                 {activity.error}
