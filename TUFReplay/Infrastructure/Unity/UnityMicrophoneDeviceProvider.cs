@@ -11,14 +11,14 @@ public static class UnityMicrophoneDeviceProvider
   {
     var devices = new List<MicrophoneDeviceInfo>();
     var seen = new HashSet<string>(StringComparer.Ordinal);
-    string[] names = Microphone.devices ?? new string[0];
+    string[] names = UnityEngine.Microphone.devices ?? new string[0];
     foreach (string rawName in names)
     {
       string name = rawName?.Trim();
       if (string.IsNullOrWhiteSpace(name) || !seen.Add(name))
         continue;
 
-      Microphone.GetDeviceCaps(name, out int minFrequency, out int maxFrequency);
+      UnityEngine.Microphone.GetDeviceCaps(name, out int minFrequency, out int maxFrequency);
       devices.Add(
         new MicrophoneDeviceInfo
         {

@@ -57,6 +57,11 @@ public sealed class MicrophoneRecordingToastFeature
       Main.Instance?.Log("[UI Test] Microphone recording toast: " + message);
     });
   }
+
+  public bool Show(Action<MicrophoneRecordingToastResult> onCompleted)
+  {
+    return _host != null && _host.Show(onCompleted);
+  }
 }
 
 public sealed class MicrophoneRecordingToastHost : MonoBehaviour
@@ -76,15 +81,16 @@ public sealed class MicrophoneRecordingToastHost : MonoBehaviour
     }
   }
 
-  public void Show(Action<MicrophoneRecordingToastResult> onCompleted)
+  public bool Show(Action<MicrophoneRecordingToastResult> onCompleted)
   {
     if (_view == null)
     {
       Main.Instance?.Log("[UI Test] Microphone recording toast AssetBundle is unavailable.");
-      return;
+      return false;
     }
 
     _view.Show(onCompleted);
+    return true;
   }
 
   private void Update()

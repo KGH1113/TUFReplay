@@ -31,7 +31,7 @@
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
-The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows.
+The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
 ## Features
 
@@ -47,6 +47,8 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
+- Captures microphone audio from gameplay start to clear, fail, or abort and asks whether to keep it after each valid run.
+- Streams accepted microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries.
 - Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 
@@ -67,6 +69,8 @@ TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded lev
 
 - `TUFReplay/`: UnityModManager mod source.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
+- `TUFReplay.Unity/`: Unity UI AssetBundle project for the in-game save/discard toast.
+- `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
 
 ## Build
 
@@ -95,6 +99,8 @@ The build script:
 - Builds the TUFReplay payload and its small auto-update bootstrap.
 - Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
 - Copies the platform UI AssetBundles and third-party notices into `Mods/TUFReplay`.
+- On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
+- Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
 The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the TUFReplay bootstrap checks the latest TUFReplay release before loading the payload. Network work has a single 20-second deadline; timeout or any update error emits an `AutoUpdate` warning and loads the installed or last-known-good payload. A verified update is loaded immediately from the versioned cache during the same ADOFAI launch.
@@ -225,7 +231,7 @@ Registered methods:
 - `replay.level-file.pick.start`
 - `replay.level-file.pick.status`
 - `microphone.devices.get`
-- `microphone.device.select` (`deviceId` is a detected device name, or `null` for the system default)
+- `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
 
 ## Tech Stack
 

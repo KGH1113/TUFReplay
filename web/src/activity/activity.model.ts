@@ -43,6 +43,11 @@ export interface ActivityRun {
   FloorCount: number;
   InputBytes: number;
   HitContextBytes: number;
+  HasMicrophoneRecording: boolean;
+  MicrophoneRecordingBytes: number;
+  MicrophoneDurationSeconds: number | null;
+  MicrophoneSampleRate: number | null;
+  MicrophoneChannels: number | null;
 }
 
 export type JudgmentDifficulty = "Lenient" | "Normal" | "Strict";

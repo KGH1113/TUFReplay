@@ -79,6 +79,12 @@ require_file "$PROJECT/TUFReplay/Assets/mac/tufreplay_ui.bundle"
 require_file "$PROJECT/TUFReplay/Assets/win/tufreplay_ui.bundle"
 require_file "$PROJECT/TUFReplay/Assets/linux/tufreplay_ui.bundle"
 
+MAC_HELPER_APP="$PROJECT/build/macos-helper/TUFReplayMicrophoneCapture.app"
+if [ "$(uname -s)" = "Darwin" ]; then
+  "$PROJECT/scripts/build-macos-microphone-helper.sh"
+fi
+require_dir "$MAC_HELPER_APP"
+
 # shellcheck disable=SC1090
 source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 
@@ -126,6 +132,8 @@ cp "$BOOTSTRAP_OUT/TUFReplay.Bootstrap.dll" "$STAGE/"
 cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$STAGE/"
 cp "$WIN_SQLITE_DLL" "$STAGE/e_sqlite3.dll"
 cp -R "$PROJECT/TUFReplay/Assets" "$STAGE/"
+mkdir -p "$STAGE/Helpers/mac"
+cp -R "$MAC_HELPER_APP" "$STAGE/Helpers/mac/"
 
 for dll in \
   Microsoft.Data.Sqlite.dll \

@@ -48,6 +48,12 @@ require_file "$HARMONY_DLL"
 require_file "$ADOFAI_IPC_DLL"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 
+MAC_HELPER_APP="$PROJECT/build/macos-helper/TUFReplayMicrophoneCapture.app"
+if [ "$(uname -s)" = "Darwin" ]; then
+  "$PROJECT/scripts/build-macos-microphone-helper.sh"
+  require_dir "$MAC_HELPER_APP"
+fi
+
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
 "$DOTNET_EXE" build "$PROJECT/TUFReplay.Bootstrap/TUFReplay.Bootstrap.csproj" \
   -p:OutputPath="$BOOTSTRAP_OUT/" \
@@ -62,6 +68,18 @@ DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL" \
   -p:HarmonyDll="$HARMONY_DLL" \
   -p:AdofaiIpcDll="$ADOFAI_IPC_DLL"
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  SOURCEGEAR_VERSION="$(sed -n 's/.*PackageReference Include="SourceGear\.sqlite3" Version="\([^"]*\)".*/\1/p' "$PROJECT/TUFReplay/TUFReplay.csproj" | head -n 1)"
+  TEST_SQLITE_ARCH="$(uname -m)"
+  if [ "$TEST_SQLITE_ARCH" = "x86_64" ]; then TEST_SQLITE_ARCH="x64"; fi
+  TEST_SQLITE_LIBRARY="${NUGET_PACKAGES:-$HOME/.nuget/packages}/sourcegear.sqlite3/$SOURCEGEAR_VERSION/runtimes/osx-$TEST_SQLITE_ARCH/native/libe_sqlite3.dylib"
+  require_file "$TEST_SQLITE_LIBRARY"
+  TUFREPLAY_SQLITE_NATIVE_LIBRARY="$TEST_SQLITE_LIBRARY" \
+  DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
+  "$DOTNET_EXE" run --project "$PROJECT/TUFReplay.Tests/TUFReplay.Tests.csproj" \
+    -p:TUFReplayDll="$OUT/TUFReplay.dll"
+fi
 
 mkdir -p "$DEST"
 rm -rf "$DEST/assembly_cache"
@@ -79,6 +97,12 @@ cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$DEST/"
 if [ -d "$PROJECT/TUFReplay/Assets" ]; then
   rm -rf "$DEST/Assets"
   cp -R "$PROJECT/TUFReplay/Assets" "$DEST/"
+fi
+
+if [ "$(uname -s)" = "Darwin" ]; then
+  rm -rf "$DEST/Helpers/mac"
+  mkdir -p "$DEST/Helpers/mac"
+  cp -R "$MAC_HELPER_APP" "$DEST/Helpers/mac/"
 fi
 
 for dll in \
