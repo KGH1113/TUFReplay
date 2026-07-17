@@ -2,7 +2,12 @@ namespace TUFReplay.Infrastructure.NativeInput;
 
 public sealed class NoopNativeInputEmitter : INativeInputEmitter
 {
-  public bool Emit(int key, bool down)
+  public bool IsSupported(int key)
+  {
+    return false;
+  }
+
+  public bool EmitBatch(NativeInputEmission[] emissions, int count)
   {
     return false;
   }

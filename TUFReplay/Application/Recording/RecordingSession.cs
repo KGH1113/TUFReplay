@@ -100,6 +100,8 @@ public class RecordingSession
     }
 
     RecordInputTracker.StartCapture();
+    lock (_lock)
+      Data.InputCapture = RecordInputTracker.CaptureMode;
     Main.Instance.Log("[Recording] Input capture started");
   }
 
@@ -161,6 +163,8 @@ public class RecordingSession
 
     Main.Instance.Log("[Recording/InputDebug] Before stop: " + RecordInputTracker.DebugSnapshot());
     RecordInputTracker.StopCapture();
+    lock (_lock)
+      Data.InputCapture = RecordInputTracker.CaptureMode;
     Main.Instance.Log("[Recording/InputDebug] After stop: " + RecordInputTracker.DebugSnapshot());
   }
 

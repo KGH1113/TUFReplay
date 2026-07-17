@@ -15,7 +15,7 @@ public static class NativeInputEmitterFactory
       return new MacOsNativeInputEmitter();
 
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-      return new WindowsNativeInputEmitter(focusGuard);
+      return new WindowsNativeInputEmitter();
 
     return new NoopNativeInputEmitter();
   }
