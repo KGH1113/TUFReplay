@@ -13,6 +13,7 @@ public class ReplayMetadata
   public float? effectivePitch;
   public string pitchSource;
   public string inputTimeBase;
+  public string inputCapture;
   public string inputKeySpace;
   public string inputNativePlatform;
 }

@@ -126,6 +126,13 @@ public class RecordingFeature
 
   public void OnEditorPlay()
   {
+    if (ReplaySessionService.HasActiveContext)
+    {
+      StopSession();
+      Main.Instance.Log("[Recording] Skipped replay playback run.");
+      return;
+    }
+
     string levelPath = CanonicalLevelPath();
     if (levelPath == null)
     {
@@ -160,6 +167,8 @@ public class RecordingFeature
 
   public bool PrepareRunForInputCapture()
   {
+    if (ReplaySessionService.HasActiveContext)
+      return false;
     if (!Session.IsRecording)
       return false;
     if (!_runSaved)
@@ -210,6 +219,9 @@ public class RecordingFeature
 
   public void OnGameplayStarted()
   {
+    if (ReplaySessionService.HasActiveContext)
+      return;
+
     Session.MarkGameplayStarted();
     PrepareActivityRun(RecordingSession.GetLevelTileCount());
     if (_currentRun != null && !_microphoneCaptureStarted)

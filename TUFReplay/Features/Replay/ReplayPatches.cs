@@ -104,6 +104,70 @@ public static class ReplayInputPatches
     }
   }
 
+  [HarmonyPatch(typeof(scrPlayer), "ValidInputWasTriggered")]
+  [HarmonyPrefix]
+  private static bool OnValidInputWasTriggeredPrefix(ref bool __result)
+  {
+    if (!IsActive || !ReplaySessionService.ShouldSuppressGameplayInput())
+      return true;
+
+    __result = false;
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "ValidInputWasReleased")]
+  [HarmonyPrefix]
+  private static bool OnValidInputWasReleasedPrefix(ref bool __result)
+  {
+    if (!IsActive || !ReplaySessionService.ShouldSuppressGameplayInput())
+      return true;
+
+    __result = false;
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "HitAutoFloors")]
+  [HarmonyPrefix]
+  private static bool OnHitAutoFloorsPrefix()
+  {
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "OttoHoldHit")]
+  [HarmonyPrefix]
+  private static bool OnOttoHoldHitPrefix()
+  {
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "HitHoldFloorsIfStartedAtHold")]
+  [HarmonyPrefix]
+  private static bool OnHitHoldFloorsIfStartedAtHoldPrefix()
+  {
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "UpdateHoldKeys")]
+  [HarmonyPrefix]
+  private static bool OnUpdateHoldKeysPrefix()
+  {
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "CheckPreHoldFail")]
+  [HarmonyPrefix]
+  private static bool OnCheckPreHoldFailPrefix()
+  {
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
+  [HarmonyPatch(typeof(scrPlayer), "CheckPostHoldFail")]
+  [HarmonyPrefix]
+  private static bool OnCheckPostHoldFailPrefix()
+  {
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
   [HarmonyPatch(typeof(scrController), "UpdateFreeroam")]
   [HarmonyPrefix]
   private static bool OnUpdateFreeroamPrefix(scrController __instance)

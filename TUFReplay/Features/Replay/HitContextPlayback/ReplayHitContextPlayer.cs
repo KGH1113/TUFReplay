@@ -91,7 +91,17 @@ public sealed class ReplayHitContextPlayer
       && angle >= next.CurrAngle
     )
     {
-      if (!PlayHit(controller.playerOne, next))
+      bool hitResult;
+      try
+      {
+        hitResult = PlayHit(controller.playerOne, next);
+      }
+      catch (System.Exception exception)
+      {
+        return HitContextTickResult.Failed("hit_exception:" + exception.GetType().Name + ":" + exception.Message);
+      }
+
+      if (!hitResult)
       {
         ignoredFalseResults++;
       }
@@ -132,164 +142,193 @@ public sealed class ReplayHitContextPlayer
       return false;
 
     ReplayHitContext next = _contexts[_nextIndex];
-    return next.CurFreeRoamSection == controller.curFreeRoamSection;
+    if (next.CurFreeRoamSection != controller.curFreeRoamSection || ADOBase.lm == null)
+      return false;
+
+    List<scrFloor> sections = ADOBase.lm.listFreeroamStartTiles;
+    return sections != null
+      && sections.Count > 0
+      && controller.curFreeRoamSection >= 0
+      && controller.curFreeRoamSection < sections.Count;
   }
 
   private static bool PlayHit(scrPlayer player, ReplayHitContext hit)
   {
-    player.consecMultipressCounter = 0;
-    scrController.instance.multipressPenalty = false;
-    player.failBar.overloadCounter = 0f;
-
-    scrController.instance.noFailInfiniteMargin = hit.NoFailHit;
-    bool isAuto = hit.IsAuto;
-
-    player.planetarySystem.chosenPlanet.SetTargetExitAngle(hit.TargetExitAngle);
-    player.midspinInfiniteMargin = hit.MidspinInfiniteMargin;
-    player.failBar.overloadCounter = hit.OverloadCounter;
-    player.planetarySystem.chosenPlanet.angle = hit.CachedAngle;
-    RDC.auto = hit.IsAuto;
-
-    player.responsive = true;
-
-    ReplaySessionService.AllowReplayMarkFailOnce();
-    if (hit.NoFailHit)
-    {
-      scrMissIndicator indicator = player.planetarySystem.chosenPlanet.MarkFail();
-      if (indicator != null)
-      {
-        indicator.BlinkForSeconds(3f);
-      }
-    }
-    ReplaySessionService.SuppressReplayMarkFail();
-
-    scrMisc.Vibrate(50L);
-    if (!player.responsive)
-    {
+    scrController controller = scrController.instance;
+    if (player == null || controller == null || player.planetarySystem?.chosenPlanet?.currfloor == null)
       return false;
-    }
-
-    if (ADOBase.isLevelEditor && ADOBase.controller.paused)
-    {
-      return false;
-    }
-
-    bool nextFloorAuto =
-      player.planetarySystem.chosenPlanet.currfloor.nextfloor != null
-      && player.planetarySystem.chosenPlanet.currfloor.nextfloor.auto;
-    player.planetarySystem.chosenPlanet.cachedAngle = player.planetarySystem.chosenPlanet.angle;
-
-    if (!player.HitInputEvent(isAuto, InputEventState.Down))
-    {
-      return false;
-    }
-
-    player.planetarySystem.chosenPlanet.next.planetRenderer.ChangeFace(true);
-    scrPlanet hitPlanet = player.planetarySystem.chosenPlanet;
-    player.planetarySystem.chosenPlanet = player.planetarySystem.chosenPlanet.SwitchChosen();
-    bool result = hitPlanet != player.planetarySystem.chosenPlanet;
-
     if (
-      ADOBase.controller.errorMeter
-      && ADOBase.controller.gameworld
-      && Persistence.hitErrorMeterSize != ErrorMeterSize.Off
+      controller.currFloor == null
+      || controller.currFloor.seqID != hit.CurrentFloorID
+      || player.planetarySystem.chosenPlanet.currfloor.seqID != hit.CurrentFloorID
+      || controller.curFreeRoamSection != hit.CurFreeRoamSection
     )
+      throw new System.InvalidOperationException("HitContext playback position changed before hit application.");
+
+    bool previousRdcAuto = RDC.auto;
+    try
     {
-      float angleDiff = (float)(hitPlanet.cachedAngle - hitPlanet.targetExitAngle);
-      if (hitPlanet.currfloor.isCCW)
+      player.consecMultipressCounter = 0;
+      controller.multipressPenalty = false;
+      player.failBar.overloadCounter = 0f;
+
+      controller.noFailInfiniteMargin = hit.NoFailHit;
+
+      player.planetarySystem.chosenPlanet.SetTargetExitAngle(hit.TargetExitAngle);
+      player.midspinInfiniteMargin = hit.MidspinInfiniteMargin;
+      player.failBar.overloadCounter = hit.OverloadCounter;
+      player.planetarySystem.chosenPlanet.angle = hit.CachedAngle;
+      RDC.auto = hit.RDCAuto;
+
+      player.responsive = true;
+
+      if (hit.NoFailHit)
       {
-        angleDiff *= -1f;
+        ReplaySessionService.AllowReplayMarkFailOnce();
+        try
+        {
+          scrMissIndicator indicator = player.planetarySystem.chosenPlanet.MarkFail();
+          if (indicator != null)
+            indicator.BlinkForSeconds(3f);
+        }
+        finally
+        {
+          ReplaySessionService.SuppressReplayMarkFail();
+        }
       }
 
-      if (!player.midspinInfiniteMargin)
+      scrMisc.Vibrate(50L);
+      if (!player.responsive)
       {
-        if ((player.auto || nextFloorAuto) && !RDC.useOldAuto)
+        return false;
+      }
+
+      if (ADOBase.isLevelEditor && ADOBase.controller.paused)
+      {
+        return false;
+      }
+
+      bool nextFloorAuto = hit.NextFloorAuto;
+      player.planetarySystem.chosenPlanet.cachedAngle = player.planetarySystem.chosenPlanet.angle;
+
+      player.planetarySystem.chosenPlanet.next.planetRenderer.ChangeFace(true);
+      scrPlanet hitPlanet = player.planetarySystem.chosenPlanet;
+      scrFloor hitFloor = hitPlanet.currfloor;
+      if (hitFloor.holdLength > -1 && hitFloor.holdRenderer != null)
+        hitFloor.holdRenderer.Hit();
+      player.planetarySystem.chosenPlanet = player.planetarySystem.chosenPlanet.SwitchChosen();
+      bool result = hitPlanet != player.planetarySystem.chosenPlanet;
+
+      if (
+        ADOBase.controller.errorMeter
+        && ADOBase.controller.gameworld
+        && Persistence.hitErrorMeterSize != ErrorMeterSize.Off
+      )
+      {
+        float angleDiff = (float)(hitPlanet.cachedAngle - hitPlanet.targetExitAngle);
+        if (hitPlanet.currfloor.isCCW)
         {
-          ADOBase.controller.errorMeter.AddHit(0f, 1f, player.planetarySystem.chosenPlanet, hitPlanet.player.currFloor);
+          angleDiff *= -1f;
         }
-        else
+
+        if (!player.midspinInfiniteMargin)
         {
-          ADOBase.controller.errorMeter.AddHit(
-            angleDiff,
-            (float)player.currFloor.marginScale,
-            player.planetarySystem.chosenPlanet,
-            hitPlanet.player.currFloor
-          );
+          if ((player.auto || nextFloorAuto) && !RDC.useOldAuto)
+          {
+            ADOBase.controller.errorMeter.AddHit(
+              0f,
+              1f,
+              player.planetarySystem.chosenPlanet,
+              hitPlanet.player.currFloor
+            );
+          }
+          else
+          {
+            ADOBase.controller.errorMeter.AddHit(
+              angleDiff,
+              (float)player.currFloor.marginScale,
+              player.planetarySystem.chosenPlanet,
+              hitPlanet.player.currFloor
+            );
+          }
         }
       }
-    }
 
-    if (ADOBase.playerIsOnIntroScene)
-    {
+      if (ADOBase.playerIsOnIntroScene)
+      {
+        return result;
+      }
+
+      bool shouldPulseCamera =
+        player.planetarySystem.chosenPlanet.currfloor.holdLength == -1
+        || (
+          player.planetarySystem.chosenPlanet.currfloor.holdLength > -1
+          && ADOBase.controller.lastCamPulseFloor < player.planetarySystem.chosenPlanet.currfloor.seqID
+        );
+      ADOBase.controller.lastCamPulseFloor = player.planetarySystem.chosenPlanet.currfloor.seqID;
+
+      scrCamera camera = ADOBase.controller.camy;
+      if (shouldPulseCamera)
+      {
+        camera.UpdateFollowCam();
+      }
+
+      if (camera.isPulsingOnHit && shouldPulseCamera)
+      {
+        camera.Pulse();
+      }
+
+      bool shouldHitAvatar = true;
+      if (ADOBase.lm != null && ADOBase.controller.gameworld)
+      {
+        if (
+          player.currFloor.midSpin
+          || (player.currFloor.seqID > 0 && ADOBase.lm.listFloors[player.currFloor.seqID - 1].holdLength > -1)
+        )
+        {
+          shouldHitAvatar = false;
+        }
+
+        if (
+          player.currFloor.seqID > 1
+          && ADOBase.lm.listFloors[player.currFloor.seqID - 1].midSpin
+          && ADOBase.lm.listFloors[player.currFloor.seqID - 2].holdLength > -1
+        )
+        {
+          shouldHitAvatar = false;
+        }
+      }
+
+      if (shouldHitAvatar)
+      {
+        if (scnEditor.instance != null)
+        {
+          scnEditor.instance.OttoBlink();
+        }
+
+        if (VirtualAvatarCanvas.instance != null)
+        {
+          VirtualAvatarCanvas.instance.Hit(player.playerID);
+        }
+      }
+
+      if (player.currFloor.midSpin)
+      {
+        player.midspinInfiniteMargin = true;
+      }
+      else
+      {
+        player.midspinInfiniteMargin = false;
+      }
+
+      player.planetarySystem.chosenPlanet.Update_RefreshAngles();
       return result;
     }
-
-    bool shouldPulseCamera =
-      player.planetarySystem.chosenPlanet.currfloor.holdLength == -1
-      || (
-        player.planetarySystem.chosenPlanet.currfloor.holdLength > -1
-        && ADOBase.controller.lastCamPulseFloor < player.planetarySystem.chosenPlanet.currfloor.seqID
-      );
-    ADOBase.controller.lastCamPulseFloor = player.planetarySystem.chosenPlanet.currfloor.seqID;
-
-    scrCamera camera = ADOBase.controller.camy;
-    if (shouldPulseCamera)
+    finally
     {
-      camera.UpdateFollowCam();
+      RDC.auto = previousRdcAuto;
+      ReplaySessionService.SuppressReplayMarkFail();
     }
-
-    if (camera.isPulsingOnHit && shouldPulseCamera)
-    {
-      camera.Pulse();
-    }
-
-    bool shouldHitAvatar = true;
-    if (ADOBase.lm != null && ADOBase.controller.gameworld)
-    {
-      if (
-        player.currFloor.midSpin
-        || (player.currFloor.seqID > 0 && ADOBase.lm.listFloors[player.currFloor.seqID - 1].holdLength > -1)
-      )
-      {
-        shouldHitAvatar = false;
-      }
-
-      if (
-        player.currFloor.seqID > 1
-        && ADOBase.lm.listFloors[player.currFloor.seqID - 1].midSpin
-        && ADOBase.lm.listFloors[player.currFloor.seqID - 2].holdLength > -1
-      )
-      {
-        shouldHitAvatar = false;
-      }
-    }
-
-    if (shouldHitAvatar)
-    {
-      if (scnEditor.instance != null)
-      {
-        scnEditor.instance.OttoBlink();
-      }
-
-      if (VirtualAvatarCanvas.instance != null)
-      {
-        VirtualAvatarCanvas.instance.Hit(player.playerID);
-      }
-    }
-
-    if (player.currFloor.midSpin)
-    {
-      player.midspinInfiniteMargin = true;
-      player.keyTimes.Add(Time.unscaledTimeAsDouble);
-    }
-    else
-    {
-      player.midspinInfiniteMargin = false;
-    }
-
-    player.planetarySystem.chosenPlanet.Update_RefreshAngles();
-    ReplaySessionService.SuppressReplayMarkFail();
-    return result;
   }
 
   private static float GetCurrentAngle(scrController controller)

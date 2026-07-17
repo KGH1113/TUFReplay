@@ -20,6 +20,7 @@ public class ActiveReplayContext
   public ReplayNativeInputPlayer NativeInputPlayer;
   public ReplayHitContextPlayer HitContextPlayer;
   public ReplayMetadata Meta;
+  public ReplayPlaybackPhase Phase = ReplayPlaybackPhase.Prepared;
   public bool RunStarted;
   public bool WonClockStarted;
   public double WonClockStartedAt;

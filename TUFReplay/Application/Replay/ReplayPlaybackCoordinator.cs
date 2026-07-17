@@ -175,7 +175,17 @@ public static class ReplayPlaybackCoordinator
     _forcedFail = true;
     ReplayFailPolicy.ApplyReplayNoFail(false);
     if (ADOBase.controller?.playerOne != null)
-      ADOBase.controller.playerOne.Die();
+    {
+      ReplaySessionService.AllowReplayMarkFailOnce();
+      try
+      {
+        ADOBase.controller.playerOne.Die();
+      }
+      finally
+      {
+        ReplaySessionService.SuppressReplayMarkFail();
+      }
+    }
     else
       Fail("controller_missing", "ADOFAI controller disappeared before the recorded fail.");
   }

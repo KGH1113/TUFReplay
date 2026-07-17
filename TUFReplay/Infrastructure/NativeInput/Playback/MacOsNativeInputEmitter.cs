@@ -40,29 +40,42 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
   [DllImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]
   private static extern void CFRelease(IntPtr cf);
 
-  public bool Emit(int key, bool down)
+  public bool IsSupported(int key)
   {
-    if (key < 0 || key > 0x7F)
-      return false;
-    if (IsBlockedKey(key))
-      return false;
+    return key >= 0 && key <= 0x7F && !IsBlockedKey(key);
+  }
 
-    CGEventFlags nextFlags = GetNextModifierFlags(key, down);
-    IntPtr ev = CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)key, down);
-    if (ev == IntPtr.Zero)
+  public bool EmitBatch(NativeInputEmission[] emissions, int count)
+  {
+    if (emissions == null || count < 0 || count > emissions.Length)
       return false;
-
-    try
-    {
-      CGEventSetFlags(ev, nextFlags);
-      CGEventPost(CGEventTapLocation.HID, ev);
-      _modifierFlags = nextFlags;
+    if (count == 0)
       return true;
-    }
-    finally
+
+    for (int i = 0; i < count; i++)
     {
-      CFRelease(ev);
+      NativeInputEmission emission = emissions[i];
+      if (!IsSupported(emission.Key))
+        return false;
+
+      CGEventFlags nextFlags = GetNextModifierFlags(emission.Key, emission.Down);
+      IntPtr ev = CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)emission.Key, emission.Down);
+      if (ev == IntPtr.Zero)
+        return false;
+
+      try
+      {
+        CGEventSetFlags(ev, nextFlags);
+        CGEventPost(CGEventTapLocation.HID, ev);
+        _modifierFlags = nextFlags;
+      }
+      finally
+      {
+        CFRelease(ev);
+      }
     }
+
+    return true;
   }
 
   private static bool IsBlockedKey(int key)
