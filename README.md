@@ -71,6 +71,8 @@ TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded lev
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
 - `TUFReplay.Unity/`: Unity UI AssetBundle project for the in-game save/discard toast.
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
+- `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
+- `scripts/workflows/`, `scripts/tasks/`, `scripts/lib/`: workflow orchestration, independently runnable tasks, and shared shell utilities.
 
 ## Build
 
@@ -83,14 +85,14 @@ cp .env.example .env
 Build and install the mod:
 
 ```bash
-./build.sh
+./scripts/run.sh build
 ```
 
 ### Unity UI AssetBundles
 
 The in-game UI prefab is maintained in `TUFReplay.Unity`, using Unity 6.3.10f1. Before the first mod build, open that project and use `TUFReplay > Build > Build All UI Bundles`. The editor builds `tufreplay_ui.bundle` for macOS, Windows, and Linux, then copies the files into `TUFReplay/Assets/{mac,win,linux}`.
 
-For a local macOS-only UI iteration, use `TUFReplay > Build > Build macOS UI Bundle`. After rebuilding the bundle, run `./build.sh` to copy the current platform assets into the installed mod.
+For a local macOS-only UI iteration, use `TUFReplay > Build > Build macOS UI Bundle`. After rebuilding the bundle, run `./scripts/run.sh build` to copy the current platform assets into the installed mod.
 
 The temporary `UI Test` section in the Unity Mod Manager GUI can display the microphone recording save toast without recording microphone audio.
 
@@ -115,16 +117,25 @@ Important environment variables:
 - `DOTNET_EXE`: .NET SDK executable.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
-- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by `package.sh` for version verification.
+- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
 Create a clean shareable package:
 
 ```bash
-./package.sh
+./scripts/run.sh package
 ```
 
 The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates the release assets `build/TUFReplay.version` and `build/TUFReplay.zip.sha256`; all three files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+
+Build only the macOS helper or validate the shell layer with:
+
+```bash
+./scripts/run.sh mac-helper
+./scripts/run.sh check
+```
+
+The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
 Beta releases use the same three assets and must be marked as a prerelease on GitHub.
 
@@ -154,7 +165,7 @@ bun run web:typecheck
 bun run web:build
 ```
 
-The web UI is built and deployed independently. `build.sh` and `package.sh` continue to build and package only the ADOFAI mod.
+The web UI is built and deployed independently. The `build` and `package` workflows continue to build and package only the ADOFAI mod.
 
 The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
 
