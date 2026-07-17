@@ -1,6 +1,5 @@
 using System;
 using TUFReplay.Infrastructure.Settings;
-using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Application.Microphone;
 
@@ -10,7 +9,7 @@ public static class MicrophoneDeviceService
   {
     return new MicrophoneDevicesState
     {
-      Devices = UnityMicrophoneDeviceProvider.ListDevices(),
+      Devices = MicrophoneCaptureRuntime.ListDevices(),
       SelectedDeviceId = TUFReplaySettingStore.Current.MicrophoneDeviceId,
     };
   }

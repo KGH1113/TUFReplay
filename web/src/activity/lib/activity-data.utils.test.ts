@@ -43,6 +43,11 @@ const run = (id: string, start: number, last: number, result = "failed"): Activi
   FloorCount: 100,
   InputBytes: 0,
   HitContextBytes: 0,
+  HasMicrophoneRecording: false,
+  MicrophoneRecordingBytes: 0,
+  MicrophoneDurationSeconds: null,
+  MicrophoneSampleRate: null,
+  MicrophoneChannels: null,
 });
 
 describe("activity data", () => {

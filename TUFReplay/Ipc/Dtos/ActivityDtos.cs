@@ -86,6 +86,11 @@ public sealed class ActivityRunDto
   public int HitContextCount;
   public long InputBytes;
   public long HitContextBytes;
+  public bool HasMicrophoneRecording;
+  public long MicrophoneRecordingBytes;
+  public double? MicrophoneDurationSeconds;
+  public int? MicrophoneSampleRate;
+  public int? MicrophoneChannels;
 
   public static ActivityRunDto From(RunRecord r) =>
     new ActivityRunDto
@@ -111,6 +116,14 @@ public sealed class ActivityRunDto
       HitContextCount = r.HitContextCount,
       InputBytes = r.InputCsvBytes,
       HitContextBytes = r.HitContextCsvBytes,
+      HasMicrophoneRecording = r.MicrophoneRecordingBytes > 0,
+      MicrophoneRecordingBytes = r.MicrophoneRecordingBytes,
+      MicrophoneDurationSeconds =
+        r.MicrophoneFrameCount.HasValue && r.MicrophoneSampleRate > 0
+          ? (double?)r.MicrophoneFrameCount.Value / r.MicrophoneSampleRate.Value
+          : null,
+      MicrophoneSampleRate = r.MicrophoneSampleRate,
+      MicrophoneChannels = r.MicrophoneChannels,
     };
 }
 

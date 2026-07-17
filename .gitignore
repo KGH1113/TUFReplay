@@ -26,3 +26,8 @@ TUFReplay.Unity/[Ll]ogs/
 TUFReplay.Unity/[Uu]ser[Ss]ettings/
 TUFReplay.Unity/MemoryCaptures/
 TUFReplay.Unity/Recordings/
+
+# Xcode local state and build products
+TUFReplay.MicrophoneCapture.Mac/**/xcuserdata/
+TUFReplay.MicrophoneCapture.Mac/**/*.xcuserstate
+TUFReplay.MicrophoneCapture.Mac/DerivedData/
