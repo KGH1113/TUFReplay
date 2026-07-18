@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Newtonsoft.Json;
+using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Recording;
+using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Database.Repositories;
@@ -22,6 +25,7 @@ public static class ReplayPlaybackCoordinator
 
   private static ReplayPlaybackStatus _status = ReplayPlaybackStatus.Idle();
   private static PendingReplay _operation;
+  private static PendingReplay _preparingOperation;
   private static bool _waitingForEditor;
   private static bool _returnRequested;
   private static string _returnTerminalState;
@@ -71,7 +75,10 @@ public static class ReplayPlaybackCoordinator
         return GetStatus();
       }
 
-      UnityMainThread.Post(() => BeginOnMainThread(pending));
+      CancelPendingPreparation();
+      _preparingOperation = pending;
+      UnityMainThread.Post(() => CancelCurrentReplayForReplacement(operationId));
+      QueueMicrophonePreparation(pending);
       return GetStatus();
     }
   }
@@ -213,6 +220,7 @@ public static class ReplayPlaybackCoordinator
     {
       ReplaySessionService.ClearActiveContext();
       SetTerminal(operation, ReplayPlaybackStates.Cancelled, "Replay cancelled with Escape.");
+      operation.CleanupPreparedMicrophone();
       _operation = null;
     }
   }
@@ -224,6 +232,7 @@ public static class ReplayPlaybackCoordinator
       return;
 
     ReplaySessionService.ClearActiveContext();
+    operation.CleanupPreparedMicrophone();
     _returnRequested = false;
     _waitingForEditor = false;
     SetError(operation.OperationId, operation.Run.Id, errorCode, message);
@@ -232,12 +241,75 @@ public static class ReplayPlaybackCoordinator
 
   public static void Shutdown()
   {
+    CancelPendingPreparation();
     ReplaySessionService.ClearActiveContext();
+    _operation?.CleanupPreparedMicrophone();
     _operation = null;
     _waitingForEditor = false;
     _returnRequested = false;
     _forcedFail = false;
     SetStatus(ReplayPlaybackStatus.Idle());
+  }
+
+  private static void QueueMicrophonePreparation(PendingReplay operation)
+  {
+    ThreadPool.QueueUserWorkItem(_ =>
+    {
+      string path = ReplayMicrophonePlaybackFiles.ForOperation(operation.OperationId);
+      try
+      {
+        StoredMicrophoneRecording recording = MicrophoneRecordingRepository.CopyForPlayback(
+          operation.Run.Id,
+          path,
+          operation.PreparationCancellation.Token
+        );
+        if (recording != null)
+        {
+          Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
+          operation.PreparationCancellation.Token.ThrowIfCancellationRequested();
+          operation.MicrophoneRecording = recording;
+          operation.MicrophoneWave = wave;
+        }
+      }
+      catch (OperationCanceledException)
+      {
+        ReplayMicrophonePlaybackFiles.Delete(path);
+        ReplayMicrophonePlaybackFiles.Delete(path + ".copying");
+      }
+      catch (Exception exception)
+      {
+        ReplayMicrophonePlaybackFiles.Delete(path);
+        ReplayMicrophonePlaybackFiles.Delete(path + ".copying");
+        Main.Instance?.Log(
+          "[Replay/Microphone] Recording unavailable; replay will continue without it. error=" + exception.Message
+        );
+      }
+      finally
+      {
+        UnityMainThread.Post(() => BeginOnMainThread(operation));
+      }
+    });
+  }
+
+  private static void CancelPendingPreparation()
+  {
+    PendingReplay preparing = _preparingOperation;
+    _preparingOperation = null;
+    preparing?.PreparationCancellation.Cancel();
+  }
+
+  private static void CancelCurrentReplayForReplacement(string replacementOperationId)
+  {
+    if (!IsCurrent(replacementOperationId))
+      return;
+
+    PendingReplay previous = _operation;
+    ReplaySessionService.ClearActiveContext();
+    previous?.CleanupPreparedMicrophone();
+    _operation = null;
+    _waitingForEditor = false;
+    _returnRequested = false;
+    _forcedFail = false;
   }
 
   private static bool TryPrepare(
@@ -311,8 +383,17 @@ public static class ReplayPlaybackCoordinator
 
   private static void BeginOnMainThread(PendingReplay operation)
   {
-    if (!IsCurrent(operation.OperationId))
+    if (!IsCurrent(operation.OperationId) || operation.PreparationCancellation.IsCancellationRequested)
+    {
+      operation.CleanupPreparedMicrophone();
       return;
+    }
+
+    lock (CommandGate)
+    {
+      if (ReferenceEquals(_preparingOperation, operation))
+        _preparingOperation = null;
+    }
 
     if (
       !ReplayLevelHashValidator.ValidateTarget(
@@ -324,6 +405,7 @@ public static class ReplayPlaybackCoordinator
       )
     )
     {
+      operation.CleanupPreparedMicrophone();
       SetError(operation.OperationId, operation.Run.Id, validationCode, validationMessage);
       return;
     }
@@ -409,6 +491,24 @@ public static class ReplayPlaybackCoordinator
     INativeInputFocusGuard focusGuard =
       operation.NativeInputFocusGuard
       ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
+    IReplayMicrophonePlayer microphonePlayer = null;
+    if (operation.MicrophoneRecording != null && operation.MicrophoneWave != null)
+    {
+      try
+      {
+        microphonePlayer = new ReplayMicrophonePlayer(operation.MicrophoneRecording, operation.MicrophoneWave);
+        operation.TransferMicrophoneOwnership();
+      }
+      catch (Exception exception)
+      {
+        operation.CleanupPreparedMicrophone();
+        Main.Instance?.Log(
+          "[Replay/Microphone] Playback initialization failed; replay will continue without it. error="
+            + exception.Message
+        );
+      }
+    }
+
     ActiveReplayContext context = new ActiveReplayContext
     {
       OperationId = operation.OperationId,
@@ -427,6 +527,7 @@ public static class ReplayPlaybackCoordinator
         focusGuard
       ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
+      MicrophonePlayer = microphonePlayer,
       Meta = operation.Meta,
     };
 
@@ -466,6 +567,7 @@ public static class ReplayPlaybackCoordinator
       return;
 
     ReplaySessionService.ClearActiveContext();
+    operation.CleanupPreparedMicrophone();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
     _returnRequested = false;
     _waitingForEditor = false;
@@ -490,6 +592,7 @@ public static class ReplayPlaybackCoordinator
   private static void FinishReturn(PendingReplay operation)
   {
     ReplaySessionService.ClearActiveContext();
+    operation.CleanupPreparedMicrophone();
     string terminalState = _returnTerminalState ?? ReplayPlaybackStates.Completed;
     SetTerminal(
       operation,
@@ -656,8 +759,11 @@ public static class ReplayPlaybackCoordinator
     public readonly List<RecordedInput> Inputs;
     public readonly List<ReplayHitContext> HitContexts;
     public readonly long TerminalTimeUs;
+    public readonly CancellationTokenSource PreparationCancellation = new CancellationTokenSource();
     public double LevelOpenStartedAt;
     public INativeInputFocusGuard NativeInputFocusGuard;
+    public StoredMicrophoneRecording MicrophoneRecording;
+    public Pcm16WaveInfo MicrophoneWave;
 
     public PendingReplay(
       string operationId,
@@ -676,6 +782,20 @@ public static class ReplayPlaybackCoordinator
       Inputs = inputs;
       HitContexts = hitContexts;
       TerminalTimeUs = terminalTimeUs;
+    }
+
+    public void TransferMicrophoneOwnership()
+    {
+      MicrophoneRecording = null;
+      MicrophoneWave = null;
+    }
+
+    public void CleanupPreparedMicrophone()
+    {
+      string path = MicrophoneRecording?.FilePath;
+      MicrophoneRecording = null;
+      MicrophoneWave = null;
+      ReplayMicrophonePlaybackFiles.Delete(path);
     }
   }
 }

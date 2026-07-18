@@ -20,6 +20,8 @@ internal static class Program
     {
       NativeSqliteLoader.Initialize();
       TestWavWriter(root);
+      TestPlaybackWaveReader(root);
+      TestReplayMicrophoneClock();
       TestSchemaMigrationAndBlob(root);
       TestReplayInputStableOrder();
       TestReplaySchedulerChord();
@@ -159,6 +161,69 @@ internal static class Program
     Assert(BitConverter.ToInt16(wav, 48) == short.MinValue, "Negative clipping is incorrect.");
   }
 
+  private static void TestPlaybackWaveReader(string root)
+  {
+    string sourcePath = Path.Combine(root, "playback-source.wav");
+    using (var writer = new Pcm16WavWriter(sourcePath))
+    {
+      Assert(writer.TryEnqueue(new[] { 0f, 0.25f, -0.25f, 1f }, 4, 1), "Playback WAV was not queued.");
+      Assert(writer.Complete() == 4, "Playback WAV frame count is incorrect.");
+    }
+
+    StoredMicrophoneRecording source = PlaybackRecording(sourcePath, 4);
+    Pcm16WaveInfo info = Pcm16WaveFile.ReadAndValidate(source);
+    Assert(info.DataOffset == 44 && info.DataLength == 8, "Playback WAV data location is incorrect.");
+
+    byte[] original = File.ReadAllBytes(sourcePath);
+    byte[] withUnknownChunk = new byte[original.Length + 10];
+    Array.Copy(original, 0, withUnknownChunk, 0, 12);
+    System.Text.Encoding.ASCII.GetBytes("JUNK").CopyTo(withUnknownChunk, 12);
+    BitConverter.GetBytes(1).CopyTo(withUnknownChunk, 16);
+    withUnknownChunk[20] = 0x7f;
+    Array.Copy(original, 12, withUnknownChunk, 22, original.Length - 12);
+    BitConverter.GetBytes(withUnknownChunk.Length - 8).CopyTo(withUnknownChunk, 4);
+    string unknownChunkPath = Path.Combine(root, "playback-unknown-chunk.wav");
+    File.WriteAllBytes(unknownChunkPath, withUnknownChunk);
+    info = Pcm16WaveFile.ReadAndValidate(PlaybackRecording(unknownChunkPath, 4));
+    Assert(info.DataLength == 8, "Playback WAV reader did not skip an unknown chunk.");
+
+    StoredMicrophoneRecording mismatch = PlaybackRecording(sourcePath, 4);
+    mismatch.SampleRate = 44100;
+    AssertThrows<InvalidDataException>(
+      () => Pcm16WaveFile.ReadAndValidate(mismatch),
+      "Playback WAV metadata mismatch was accepted."
+    );
+
+    string truncatedPath = Path.Combine(root, "playback-truncated.wav");
+    File.WriteAllBytes(truncatedPath, new byte[8]);
+    AssertThrows<InvalidDataException>(
+      () => Pcm16WaveFile.ReadAndValidate(PlaybackRecording(truncatedPath, 0)),
+      "Truncated playback WAV was accepted."
+    );
+
+    byte[] floatFormat = (byte[])original.Clone();
+    floatFormat[20] = 3;
+    string floatPath = Path.Combine(root, "playback-float.wav");
+    File.WriteAllBytes(floatPath, floatFormat);
+    AssertThrows<InvalidDataException>(
+      () => Pcm16WaveFile.ReadAndValidate(PlaybackRecording(floatPath, 4)),
+      "Non-PCM16 playback WAV was accepted."
+    );
+  }
+
+  private static void TestReplayMicrophoneClock()
+  {
+    Assert(ReplayMicrophoneClock.ToFrame(500_000, 1d, 0L, 48000, 100000) == 24000, "100% mic clock is wrong.");
+    Assert(ReplayMicrophoneClock.ToFrame(500_000, 2d, 0L, 48000, 100000) == 12000, "Pitched mic clock is wrong.");
+    Assert(
+      ReplayMicrophoneClock.ToFrame(500_000, 1d, 100_000L, 48000, 100000) == 19200,
+      "Mic capture offset is wrong."
+    );
+    Assert(ReplayMicrophoneClock.ToFrame(50_000, 1d, 100_000L, 48000, 100000) == 0, "Pre-roll was not clamped.");
+    Assert(ReplayMicrophoneClock.ToFrame(5_000_000, 1d, 0L, 48000, 1000) == 1000, "Mic end was not clamped.");
+    Assert(ReplayMicrophoneClock.ToFrame(500_000, 0d, 0L, 48000, 100000) == 24000, "Invalid pitch fallback is wrong.");
+  }
+
   private static void TestSchemaMigrationAndBlob(string root)
   {
     string path = Path.Combine(root, "activity.sqlite");
@@ -189,6 +254,42 @@ internal static class Program
       CaptureStartOffsetUs = 123,
     };
     MicrophoneRecordingRepository.Save(recording);
+
+    string playbackPath = Path.Combine(root, "blob-playback.wav");
+    StoredMicrophoneRecording copied = MicrophoneRecordingRepository.CopyForPlayback(
+      "run",
+      playbackPath,
+      System.Threading.CancellationToken.None
+    );
+    Assert(copied != null, "Microphone BLOB was not available for playback.");
+    Assert(
+      File.ReadAllBytes(playbackPath).SequenceEqual(File.ReadAllBytes(wavPath)),
+      "Playback BLOB copy changed bytes."
+    );
+    Pcm16WaveInfo copiedWave = Pcm16WaveFile.ReadAndValidate(copied);
+    Assert(copiedWave.FrameCount == 3, "Copied playback WAV metadata is incorrect.");
+    Assert(
+      MicrophoneRecordingRepository.CopyForPlayback(
+        "missing-run",
+        Path.Combine(root, "missing.wav"),
+        System.Threading.CancellationToken.None
+      ) == null,
+      "Missing microphone recording did not return null."
+    );
+
+    using (var cancelled = new System.Threading.CancellationTokenSource())
+    {
+      cancelled.Cancel();
+      string cancelledPath = Path.Combine(root, "cancelled.wav");
+      AssertThrows<OperationCanceledException>(
+        () => MicrophoneRecordingRepository.CopyForPlayback("run", cancelledPath, cancelled.Token),
+        "Cancelled microphone BLOB copy completed."
+      );
+      Assert(
+        !File.Exists(cancelledPath) && !File.Exists(cancelledPath + ".copying"),
+        "Cancelled BLOB copy leaked a file."
+      );
+    }
 
     using (SqliteConnection connection = Database.OpenConnection())
     {
@@ -248,6 +349,35 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
   {
     if (!condition)
       throw new InvalidOperationException(message);
+  }
+
+  private static void AssertThrows<TException>(Action action, string message)
+    where TException : Exception
+  {
+    try
+    {
+      action();
+    }
+    catch (TException)
+    {
+      return;
+    }
+    throw new InvalidOperationException(message);
+  }
+
+  private static StoredMicrophoneRecording PlaybackRecording(string path, long frameCount)
+  {
+    return new StoredMicrophoneRecording
+    {
+      RunId = "test-run",
+      FilePath = path,
+      Format = "wav/pcm16",
+      SampleRate = 48000,
+      Channels = 1,
+      FrameCount = frameCount,
+      CaptureStartOffsetUs = 0L,
+      ByteLength = new FileInfo(path).Length,
+    };
   }
 
   private sealed class CapturingEmitter : INativeInputEmitter

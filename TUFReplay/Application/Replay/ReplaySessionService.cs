@@ -114,6 +114,7 @@ public static class ReplaySessionService
       LogLifecycleTransition(context.Phase, ReplayPlaybackPhase.Stopped, "context_cleared");
       context.Phase = ReplayPlaybackPhase.Stopped;
       context.NativeInputPlayer?.Dispose();
+      context.MicrophonePlayer?.Dispose();
     }
     RestoreReplayPitch();
     _activeContext = null;
@@ -159,6 +160,12 @@ public static class ReplaySessionService
           TransitionTo(ReplayPlaybackPhase.Running, "state_player_control");
         break;
 
+      case States.Won:
+      case States.Fail:
+      case States.Fail2:
+        _activeContext.MicrophonePlayer?.Stop();
+        break;
+
       case States.Start:
         if (_activeContext.RunStarted)
           PrepareReplayRunRestart("state_start_after_replay_run");
@@ -189,6 +196,7 @@ public static class ReplaySessionService
 
     ReplayPlaybackPhase previous = _activeContext.Phase;
     ReplayRunController.MarkRestartPrepared(_activeContext);
+    _activeContext.MicrophonePlayer?.Stop();
     LogLifecycleTransition(previous, ReplayPlaybackPhase.Prepared, reason);
     _suppressReplayMarkFail = false;
 
@@ -211,10 +219,12 @@ public static class ReplaySessionService
     if (hasReplayTime)
     {
       restoredNativeKeys = _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate()) ?? 0;
+      _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentTimelineRate());
     }
     else
     {
       _activeContext.NativeInputPlayer?.Reset();
+      _activeContext.MicrophonePlayer?.ResetTo(0L, CurrentTimelineRate());
     }
 
     bool skipPassedAngles = TryGetControllerState(out States state) && state == States.PlayerControl;
@@ -366,6 +376,19 @@ public static class ReplaySessionService
 
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
     return emitted;
+  }
+
+  public static void TickMicrophonePlayback()
+  {
+    IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
+    if (player == null)
+      return;
+    if (!TryGetControllerState(out States state) || state != States.PlayerControl)
+      return;
+    if (!TryComputeReplayTimeUs(out long nowUs, out _))
+      return;
+
+    player.Tick(nowUs, CurrentTimelineRate(), ADOBase.controller.paused);
   }
 
   public static void ApplyReplayPitchNow()
