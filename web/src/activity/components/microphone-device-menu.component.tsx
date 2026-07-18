@@ -1,4 +1,10 @@
-import { ArrowDown01Icon, Loading03Icon, Mic01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  Loading03Icon,
+  Mic01Icon,
+  Tick02Icon,
+  WaveSquareIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 
@@ -14,8 +20,10 @@ export function MicrophoneDeviceMenu({
   loading,
   pendingDeviceId,
   error,
+  showOffsetCalibration,
   onRefresh,
   onSelect,
+  onAdjustOffset,
 }: {
   connectionStatus: ConnectionStatus;
   devices: MicrophoneDevice[];
@@ -23,8 +31,10 @@ export function MicrophoneDeviceMenu({
   loading: boolean;
   pendingDeviceId: string | null | undefined;
   error: string;
+  showOffsetCalibration: boolean;
   onRefresh: () => void;
   onSelect: (deviceId: string | null) => void;
+  onAdjustOffset: () => void;
 }) {
   const connected = connectionStatus === "online";
   const selectedName =
@@ -117,6 +127,30 @@ export function MicrophoneDeviceMenu({
             >
               {error}
             </p>
+          ) : null}
+          {showOffsetCalibration ? (
+            <>
+              <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
+              <DropdownMenuPrimitive.Item
+                onSelect={onAdjustOffset}
+                className="flex cursor-default select-none items-center gap-3 rounded-lg px-2.5 py-2 outline-none transition-colors data-[highlighted]:bg-muted/70"
+              >
+                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={WaveSquareIcon}
+                    size={16}
+                    strokeWidth={2}
+                  />
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-medium">Adjust timing offset</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    Align microphone and game audio
+                  </span>
+                </span>
+              </DropdownMenuPrimitive.Item>
+            </>
           ) : null}
         </DropdownMenuPrimitive.Content>
       </DropdownMenuPrimitive.Portal>

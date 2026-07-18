@@ -11,8 +11,10 @@ export function DashboardHeader({
   microphoneLoading,
   pendingMicrophoneDeviceId,
   microphoneError,
+  showMicrophoneOffsetCalibration,
   onRefreshMicrophones,
   onSelectMicrophone,
+  onAdjustMicrophoneOffset,
 }: {
   status: ConnectionStatus;
   onRetry: () => void;
@@ -21,8 +23,10 @@ export function DashboardHeader({
   microphoneLoading: boolean;
   pendingMicrophoneDeviceId: string | null | undefined;
   microphoneError: string;
+  showMicrophoneOffsetCalibration: boolean;
   onRefreshMicrophones: () => void;
   onSelectMicrophone: (deviceId: string | null) => void;
+  onAdjustMicrophoneOffset: () => void;
 }) {
   return (
     <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 py-2">
@@ -35,8 +39,10 @@ export function DashboardHeader({
           loading={microphoneLoading}
           pendingDeviceId={pendingMicrophoneDeviceId}
           error={microphoneError}
+          showOffsetCalibration={showMicrophoneOffsetCalibration}
           onRefresh={onRefreshMicrophones}
           onSelect={onSelectMicrophone}
+          onAdjustOffset={onAdjustMicrophoneOffset}
         />
         <span
           role="status"
