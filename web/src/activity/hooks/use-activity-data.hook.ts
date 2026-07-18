@@ -41,5 +41,5 @@ export function useActivityData() {
   }, []);
 
   useVisiblePolling(() => void refresh());
-  return { sessions, status, error, retry: refresh, gatewayRef };
+  return { sessions, status, error, retry: refresh, gatewayRef, mockEnabled: mockActivityEnabled };
 }

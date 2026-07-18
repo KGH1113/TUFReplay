@@ -5,11 +5,13 @@ import { ActivityWorkspace } from "./components/activity-workspace.component";
 import { DashboardHeader } from "./components/dashboard-header.component";
 import { DayRail } from "./components/day-rail.component";
 import { LevelStrip } from "./components/level-strip.component";
+import { MicrophoneOffsetCalibrationDialog } from "./components/microphone-offset-calibration-dialog.component";
 import { ReplayLevelChoiceDialog } from "./components/replay-level-choice-dialog.component";
 import { useActivityData } from "./hooks/use-activity-data.hook";
 import { useLevelMetadata } from "./hooks/use-level-metadata.hook";
 import { useLevelSessionData } from "./hooks/use-level-session-data.hook";
 import { useMicrophoneDevices } from "./hooks/use-microphone-devices.hook";
+import { useMicrophoneOffsetCalibration } from "./hooks/use-microphone-offset-calibration.hook";
 import { useReplayControl } from "./hooks/use-replay-control.hook";
 import { aggregateRunMarkers, groupSessionsByDay } from "./lib/activity-data.utils";
 
@@ -17,6 +19,7 @@ export function ActivityDashboard() {
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
   const microphones = useMicrophoneDevices(activity.gatewayRef, activity.status);
+  const microphoneOffset = useMicrophoneOffsetCalibration();
   const clearLevelFilePicker = replay.clearLevelFilePicker;
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
@@ -110,8 +113,10 @@ export function ActivityDashboard() {
               microphoneLoading={microphones.loading}
               pendingMicrophoneDeviceId={microphones.pendingDeviceId}
               microphoneError={microphones.error}
+              showMicrophoneOffsetCalibration={activity.mockEnabled}
               onRefreshMicrophones={() => void microphones.refresh()}
               onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
+              onAdjustMicrophoneOffset={microphoneOffset.start}
             />
             {activity.error && !activity.sessions.length ? (
               <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
@@ -163,6 +168,18 @@ export function ActivityDashboard() {
         onPlay={replay.play}
         onChooseAnother={replay.startLevelFilePicker}
         onResetPicker={replay.clearLevelFilePicker}
+      />
+      <MicrophoneOffsetCalibrationDialog
+        data={microphoneOffset.data}
+        phase={microphoneOffset.phase}
+        offsetMs={microphoneOffset.offsetMs}
+        playing={microphoneOffset.playing}
+        playbackPositionMs={microphoneOffset.playbackPositionMs}
+        audioError={microphoneOffset.audioError}
+        onClose={microphoneOffset.close}
+        onCommitOffset={microphoneOffset.commitOffset}
+        onResetOffset={microphoneOffset.resetOffset}
+        onTogglePlayback={() => void microphoneOffset.togglePlayback()}
       />
     </>
   );
