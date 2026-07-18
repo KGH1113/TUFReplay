@@ -10,6 +10,9 @@
     <Reference Include="TUFReplay">
       <HintPath>$(TUFReplayDll)</HintPath>
     </Reference>
+    <Reference Include="Newtonsoft.Json">
+      <HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath>
+    </Reference>
     <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.6" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.*" />
   </ItemGroup>

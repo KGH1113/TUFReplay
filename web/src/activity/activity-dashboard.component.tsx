@@ -19,7 +19,11 @@ export function ActivityDashboard() {
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
   const microphones = useMicrophoneDevices(activity.gatewayRef, activity.status);
-  const microphoneOffset = useMicrophoneOffsetCalibration();
+  const microphoneOffset = useMicrophoneOffsetCalibration(
+    activity.gatewayRef,
+    activity.status,
+    activity.mockEnabled,
+  );
   const clearLevelFilePicker = replay.clearLevelFilePicker;
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
@@ -113,7 +117,7 @@ export function ActivityDashboard() {
               microphoneLoading={microphones.loading}
               pendingMicrophoneDeviceId={microphones.pendingDeviceId}
               microphoneError={microphones.error}
-              showMicrophoneOffsetCalibration={activity.mockEnabled}
+              showMicrophoneOffsetCalibration={activity.status === "online"}
               onRefreshMicrophones={() => void microphones.refresh()}
               onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
               onAdjustMicrophoneOffset={microphoneOffset.start}
@@ -173,11 +177,13 @@ export function ActivityDashboard() {
         data={microphoneOffset.data}
         phase={microphoneOffset.phase}
         offsetMs={microphoneOffset.offsetMs}
+        microphoneVolumeDb={microphoneOffset.microphoneVolumeDb}
         playing={microphoneOffset.playing}
         playbackPositionMs={microphoneOffset.playbackPositionMs}
         audioError={microphoneOffset.audioError}
         onClose={microphoneOffset.close}
         onCommitOffset={microphoneOffset.commitOffset}
+        onCommitMicrophoneVolume={microphoneOffset.commitMicrophoneVolume}
         onResetOffset={microphoneOffset.resetOffset}
         onTogglePlayback={() => void microphoneOffset.togglePlayback()}
       />

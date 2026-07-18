@@ -41,6 +41,14 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("replay.level-file.pick.status", ReplayIpcHandlers.GetLevelFilePickerStatus);
     ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
     ipc.RegisterMainThread("microphone.device.select", MicrophoneIpcHandlers.SelectDevice);
+    ipc.RegisterMainThread("microphone.calibration.start", MicrophoneCalibrationIpcHandlers.Start);
+    ipc.RegisterMainThread("microphone.calibration.status.get", MicrophoneCalibrationIpcHandlers.GetStatus);
+    ipc.RegisterMainThread("microphone.calibration.result.get", MicrophoneCalibrationIpcHandlers.GetResult);
+    ipc.RegisterMainThread("microphone.calibration.preview.play", MicrophoneCalibrationIpcHandlers.PlayPreview);
+    ipc.RegisterMainThread("microphone.calibration.preview.stop", MicrophoneCalibrationIpcHandlers.StopPreview);
+    ipc.RegisterMainThread("microphone.calibration.offset.set", MicrophoneCalibrationIpcHandlers.SetOffset);
+    ipc.RegisterMainThread("microphone.calibration.volume.set", MicrophoneCalibrationIpcHandlers.SetVolume);
+    ipc.RegisterMainThread("microphone.calibration.close", MicrophoneCalibrationIpcHandlers.Close);
 
     Main.Instance.Log("[IPC] Registered namespace: " + Namespace);
   }

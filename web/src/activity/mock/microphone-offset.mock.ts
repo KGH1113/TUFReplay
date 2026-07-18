@@ -1,4 +1,6 @@
-export interface MockMicrophoneOffsetCalibrationData {
+import type { MicrophoneOffsetCalibrationData } from "../activity.model";
+
+export interface MockMicrophoneOffsetCalibrationData extends MicrophoneOffsetCalibrationData {
   durationMs: number;
   initialOffsetMs: number;
   suggestedOffsetMs: number;

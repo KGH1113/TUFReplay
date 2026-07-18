@@ -378,17 +378,29 @@ public static class ReplaySessionService
     return emitted;
   }
 
-  public static void TickMicrophonePlayback()
+  public static void TickMicrophonePlayback(long nowUs)
   {
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null)
       return;
     if (!TryGetControllerState(out States state) || state != States.PlayerControl)
       return;
-    if (!TryComputeReplayTimeUs(out long nowUs, out _))
-      return;
 
     player.Tick(nowUs, CurrentTimelineRate(), ADOBase.controller.paused);
+  }
+
+  public static bool TryGetPlaybackSnapshot(out long replayTimeUs, out double timelineRate)
+  {
+    timelineRate = CurrentTimelineRate();
+    return TryComputeReplayTimeUs(out replayTimeUs, out _);
+  }
+
+  public static void UpdateActiveMicrophoneSettings(int offsetMs, int volumeDb)
+  {
+    IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
+    if (player == null || !TryComputeReplayTimeUs(out long replayTimeUs, out _))
+      return;
+    player.UpdateUserSettings(offsetMs, volumeDb, replayTimeUs, CurrentTimelineRate());
   }
 
   public static void ApplyReplayPitchNow()

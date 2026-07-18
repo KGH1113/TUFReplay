@@ -140,3 +140,41 @@ export interface MicrophoneDevicesState {
   Devices: MicrophoneDevice[];
   SelectedDeviceId: string | null;
 }
+
+export type MicrophoneCalibrationState =
+  | "idle"
+  | "arming"
+  | "opening_level"
+  | "waiting_for_run"
+  | "recording"
+  | "processing"
+  | "editing"
+  | "preview_starting"
+  | "preview_playing"
+  | "error";
+
+export interface MicrophoneCalibrationStatus {
+  OperationId: string | null;
+  State: MicrophoneCalibrationState;
+  ErrorCode: string | null;
+  Message: string | null;
+  DurationMs: number;
+  PlaybackPositionMs: number;
+  ResultRevision: number;
+  MicrophoneOffsetMs: number;
+  MicrophoneVolumeDb: number;
+}
+
+export interface MicrophoneCalibrationResult {
+  OperationId: string;
+  Revision: number;
+  DurationMs: number;
+  GameWaveform: number[];
+  MicrophoneWaveform: number[];
+}
+
+export interface MicrophoneOffsetCalibrationData {
+  durationMs: number;
+  gameWaveform: number[];
+  microphoneWaveform: number[];
+}

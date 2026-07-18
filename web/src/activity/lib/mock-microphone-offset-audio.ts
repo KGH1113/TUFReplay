@@ -1,6 +1,14 @@
 import type { MockMicrophoneOffsetCalibrationData } from "../mock/microphone-offset.mock";
+import {
+  clampMicrophoneVolumeDb,
+  DEFAULT_MICROPHONE_VOLUME_DB,
+  microphoneDbToGain,
+} from "./microphone-volume.utils";
 
 type AudioContextConstructor = new (contextOptions?: AudioContextOptions) => AudioContext;
+
+const GAME_PREVIEW_GAIN = 0.18;
+const MICROPHONE_PREVIEW_GAIN = 0.28;
 
 export class MockMicrophoneOffsetAudioPlayer {
   private context: AudioContext | null = null;
@@ -11,10 +19,12 @@ export class MockMicrophoneOffsetAudioPlayer {
   private gameSource: AudioBufferSourceNode | null = null;
   private microphoneSource: AudioBufferSourceNode | null = null;
   private timelineStartedAt = 0;
+  private microphoneVolumeDb = DEFAULT_MICROPHONE_VOLUME_DB;
 
   constructor(private readonly data: MockMicrophoneOffsetCalibrationData) {}
 
-  async play(offsetMs: number) {
+  async play(offsetMs: number, microphoneVolumeDb: number) {
+    this.updateMicrophoneVolume(microphoneVolumeDb);
     const context = await this.ensureContext();
     this.stopSources();
 
@@ -34,6 +44,15 @@ export class MockMicrophoneOffsetAudioPlayer {
     const timelinePositionSeconds = Math.max(0, context.currentTime - this.timelineStartedAt);
     if (timelinePositionSeconds >= this.data.durationMs / 1_000) return;
     this.scheduleMicrophone(offsetMs, timelinePositionSeconds, context.currentTime);
+  }
+
+  updateMicrophoneVolume(volumeDb: number) {
+    this.microphoneVolumeDb = clampMicrophoneVolumeDb(volumeDb);
+    const context = this.context;
+    const microphoneGain = this.microphoneGain;
+    if (!context || !microphoneGain) return;
+    const gain = MICROPHONE_PREVIEW_GAIN * microphoneDbToGain(this.microphoneVolumeDb);
+    microphoneGain.gain.setTargetAtTime(gain, context.currentTime, 0.012);
   }
 
   stop() {
@@ -67,8 +86,9 @@ export class MockMicrophoneOffsetAudioPlayer {
     this.context = context;
     this.gameGain = context.createGain();
     this.microphoneGain = context.createGain();
-    this.gameGain.gain.value = 0.18;
-    this.microphoneGain.gain.value = 0.28;
+    this.gameGain.gain.value = GAME_PREVIEW_GAIN;
+    this.microphoneGain.gain.value =
+      MICROPHONE_PREVIEW_GAIN * microphoneDbToGain(this.microphoneVolumeDb);
     this.gameGain.connect(context.destination);
     this.microphoneGain.connect(context.destination);
     this.gameBuffer = createMockAudioBuffer(

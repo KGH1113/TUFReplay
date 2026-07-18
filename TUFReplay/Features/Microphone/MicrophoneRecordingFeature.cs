@@ -100,6 +100,31 @@ public sealed class MicrophoneRecordingFeature
     }
   }
 
+  public bool ArmForCalibration(out string error)
+  {
+    error = null;
+    if (_backend == null)
+    {
+      error = "Microphone capture is unavailable.";
+      return false;
+    }
+
+    try
+    {
+      _backend.RequestPermission();
+      return _backend.Arm(TUFReplaySettingStore.Current.MicrophoneDeviceId, out error);
+    }
+    catch (Exception exception)
+    {
+      error = exception.Message;
+      return false;
+    }
+  }
+
+  public MicrophoneArmStatus GetArmStatus() =>
+    _backend?.GetArmStatus()
+    ?? new MicrophoneArmStatus { State = MicrophoneArmState.Failed, Error = "Microphone capture is unavailable." };
+
   public void Disarm()
   {
     try

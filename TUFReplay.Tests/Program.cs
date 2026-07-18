@@ -1,5 +1,7 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
+using TUFReplay;
+using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Microphone;
@@ -22,6 +24,8 @@ internal static class Program
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
       TestReplayMicrophoneClock();
+      TestCalibrationSettings(root);
+      TestCalibrationWaveforms(root);
       TestSchemaMigrationAndBlob(root);
       TestReplayInputStableOrder();
       TestReplaySchedulerChord();
@@ -222,6 +226,63 @@ internal static class Program
     Assert(ReplayMicrophoneClock.ToFrame(50_000, 1d, 100_000L, 48000, 100000) == 0, "Pre-roll was not clamped.");
     Assert(ReplayMicrophoneClock.ToFrame(5_000_000, 1d, 0L, 48000, 1000) == 1000, "Mic end was not clamped.");
     Assert(ReplayMicrophoneClock.ToFrame(500_000, 0d, 0L, 48000, 100000) == 24000, "Invalid pitch fallback is wrong.");
+  }
+
+  private static void TestCalibrationSettings(string root)
+  {
+    string legacyPath = Path.Combine(root, "legacy-settings.json");
+    File.WriteAllText(legacyPath, "{\"Setting\":{\"AutoRecord\":false}}");
+    TUFReplaySetting legacy = TUFReplaySetting.Load(legacyPath);
+    Assert(!legacy.AutoRecord, "Legacy AutoRecord setting was not loaded.");
+    Assert(legacy.MicrophoneOffsetMs == 0, "Legacy calibration offset default is incorrect.");
+    Assert(legacy.MicrophoneVolumeDb == 0, "Legacy calibration volume default is incorrect.");
+
+    string percentPath = Path.Combine(root, "percent-settings.json");
+    File.WriteAllText(percentPath, "{\"Setting\":{\"MicrophoneVolumePercent\":200}}");
+    Assert(TUFReplaySetting.Load(percentPath).MicrophoneVolumeDb == 6, "Legacy percent volume was not migrated.");
+
+    legacy.MicrophoneOffsetMs = 999;
+    legacy.MicrophoneVolumeDb = -50;
+    legacy.Normalize();
+    Assert(legacy.MicrophoneOffsetMs == TUFReplaySetting.MaxMicrophoneOffsetMs, "Calibration offset was not clamped.");
+    Assert(legacy.MicrophoneVolumeDb == TUFReplaySetting.MinMicrophoneVolumeDb, "Calibration volume was not clamped.");
+    Assert(Math.Abs(MicrophoneGain.FromDecibels(-20) - 0.1f) < 0.0001f, "-20 dB gain is incorrect.");
+    Assert(Math.Abs(MicrophoneGain.FromDecibels(0) - 1f) < 0.0001f, "0 dB gain is incorrect.");
+    Assert(Math.Abs(MicrophoneGain.FromDecibels(20) - 10f) < 0.0001f, "+20 dB gain is incorrect.");
+  }
+
+  private static void TestCalibrationWaveforms(string root)
+  {
+    string path = Path.Combine(root, "calibration-waveform.wav");
+    using (var writer = new Pcm16WavWriter(path))
+    {
+      Assert(writer.TryEnqueue(new[] { 0.25f, -1f, 0.5f, 0f }, 4, 1), "Calibration WAV was not queued.");
+      Assert(writer.Complete() == 4, "Calibration WAV frame count is incorrect.");
+    }
+    var recording = new CapturedMicrophoneRecording
+    {
+      RunId = "calibration",
+      TempPath = path,
+      SampleRate = 48000,
+      Channels = 1,
+      FrameCount = 4,
+      CaptureStartOffsetUs = 500_000,
+    };
+    float[] microphone = CalibrationWaveformBuilder.FromPcm16(recording, 1000d);
+    Assert(microphone.Length == CalibrationWaveformBuilder.BinCount, "Microphone waveform bin count is wrong.");
+    Assert(microphone[240] > 0.99f, "Microphone waveform did not apply the capture start offset.");
+    Assert(microphone[0] == 0f, "Microphone waveform leaked before its capture start.");
+
+    float[] game = CalibrationWaveformBuilder.FromTimedPeaks(
+      new[] { 0.5f, 1f },
+      new long[] { 100, 600 },
+      2,
+      1000,
+      1000d
+    );
+    Assert(game.Length == CalibrationWaveformBuilder.BinCount, "Game waveform bin count is wrong.");
+    Assert(Math.Abs(game[10] - 0.5f) < 0.001f, "Game waveform peak normalization is wrong.");
+    Assert(game[200] > 0.99f && game[400] == 0f, "Game waveform timing aggregation is wrong.");
   }
 
   private static void TestSchemaMigrationAndBlob(string root)

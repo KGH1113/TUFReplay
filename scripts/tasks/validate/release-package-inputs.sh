@@ -25,5 +25,7 @@ require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 for bundle in "${TUFREPLAY_UI_BUNDLES[@]}"; do
   require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/$bundle"
 done
+require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/level.adofai"
+require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.ogg"
 
 sourcegear_sqlite3_version >/dev/null

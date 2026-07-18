@@ -1,5 +1,11 @@
 export const MIN_MICROPHONE_OFFSET_MS = -500;
 export const MAX_MICROPHONE_OFFSET_MS = 500;
+export const CALIBRATION_TIMELINE_VISIBLE_MS = 2_000;
+export const MIN_CALIBRATION_TIMELINE_VISIBLE_MS = 500;
+
+function clampMicrophoneOffsetDraft(offsetMs: number) {
+  return Math.min(MAX_MICROPHONE_OFFSET_MS, Math.max(MIN_MICROPHONE_OFFSET_MS, offsetMs));
+}
 
 export function clampMicrophoneOffset(offsetMs: number) {
   return Math.min(
@@ -15,7 +21,32 @@ export function offsetFromPointerDelta(
   durationMs: number,
 ) {
   if (timelineWidthPixels <= 0 || durationMs <= 0) return clampMicrophoneOffset(startOffsetMs);
-  return clampMicrophoneOffset(startOffsetMs + (deltaPixels / timelineWidthPixels) * durationMs);
+  return clampMicrophoneOffsetDraft(
+    startOffsetMs + (deltaPixels / timelineWidthPixels) * durationMs,
+  );
+}
+
+export function clampCalibrationTimelineVisibleMs(durationMs: number, visibleMs: number) {
+  if (durationMs <= 0) return 1;
+  const minimumVisibleMs = Math.min(durationMs, MIN_CALIBRATION_TIMELINE_VISIBLE_MS);
+  return Math.min(durationMs, Math.max(minimumVisibleMs, visibleMs));
+}
+
+export function calibrationTimelineScale(
+  durationMs: number,
+  visibleMs = CALIBRATION_TIMELINE_VISIBLE_MS,
+) {
+  if (durationMs <= 0) return 1;
+  return Math.max(1, durationMs / clampCalibrationTimelineVisibleMs(durationMs, visibleMs));
+}
+
+export function zoomCalibrationTimelineVisibleMs(
+  durationMs: number,
+  visibleMs: number,
+  direction: "in" | "out",
+) {
+  const factor = direction === "in" ? 0.5 : 2;
+  return clampCalibrationTimelineVisibleMs(durationMs, visibleMs * factor);
 }
 
 export function keyboardOffsetAdjustment(offsetMs: number, key: string, largeStep: boolean) {
@@ -26,8 +57,9 @@ export function keyboardOffsetAdjustment(offsetMs: number, key: string, largeSte
 }
 
 export function formatMicrophoneOffset(offsetMs: number) {
-  if (offsetMs === 0) return "0 ms";
-  return `${offsetMs > 0 ? "+" : "−"}${Math.abs(offsetMs)} ms`;
+  const roundedOffsetMs = Math.round(offsetMs);
+  if (roundedOffsetMs === 0) return "0 ms";
+  return `${roundedOffsetMs > 0 ? "+" : "−"}${Math.abs(roundedOffsetMs)} ms`;
 }
 
 export function buildWaveformAreaPath(samples: number[], width = 1_000, height = 100) {

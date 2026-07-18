@@ -102,6 +102,7 @@ The build script:
 - Builds the TUFReplay payload and its small auto-update bootstrap.
 - Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
 - Copies the platform UI AssetBundles and third-party notices into `Mods/TUFReplay`.
+- Copies the bundled microphone calibration chart and `calibration_old.ogg` into `Assets/calibration`; packaging fails if either file is missing.
 - On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
 - Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
@@ -244,6 +245,16 @@ Registered methods:
 - `replay.level-file.pick.status`
 - `microphone.devices.get`
 - `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
+- `microphone.calibration.start`
+- `microphone.calibration.status.get`
+- `microphone.calibration.result.get`
+- `microphone.calibration.preview.play`
+- `microphone.calibration.preview.stop`
+- `microphone.calibration.offset.set`
+- `microphone.calibration.volume.set`
+- `microphone.calibration.close`
+
+Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes one 480-bin game waveform and one 480-bin microphone waveform to the web editor. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
 
 ## Tech Stack
 
