@@ -9,42 +9,56 @@ import {
   WaveSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/ui/button.component";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog.component";
 import { cn } from "@/ui/ui-class.utils";
+import type { MicrophoneOffsetCalibrationData } from "../activity.model";
 import {
   buildWaveformAreaPath,
+  CALIBRATION_TIMELINE_VISIBLE_MS,
+  calibrationTimelineScale,
+  clampCalibrationTimelineVisibleMs,
   formatMicrophoneOffset,
   keyboardOffsetAdjustment,
   MAX_MICROPHONE_OFFSET_MS,
+  MIN_CALIBRATION_TIMELINE_VISIBLE_MS,
   MIN_MICROPHONE_OFFSET_MS,
   offsetFromPointerDelta,
+  zoomCalibrationTimelineVisibleMs,
 } from "../lib/microphone-offset.utils";
 import type { MicrophoneOffsetCalibrationPhase } from "../lib/microphone-offset-calibration.reducer";
-import type { MockMicrophoneOffsetCalibrationData } from "../mock/microphone-offset.mock";
+import {
+  formatMicrophoneVolumeDb,
+  MAX_MICROPHONE_VOLUME_DB,
+  MIN_MICROPHONE_VOLUME_DB,
+} from "../lib/microphone-volume.utils";
 
 export function MicrophoneOffsetCalibrationDialog({
   data,
   phase,
   offsetMs,
+  microphoneVolumeDb,
   playing,
   playbackPositionMs,
   audioError,
   onClose,
   onCommitOffset,
+  onCommitMicrophoneVolume,
   onResetOffset,
   onTogglePlayback,
 }: {
-  data: MockMicrophoneOffsetCalibrationData;
+  data: MicrophoneOffsetCalibrationData;
   phase: MicrophoneOffsetCalibrationPhase;
   offsetMs: number;
+  microphoneVolumeDb: number;
   playing: boolean;
   playbackPositionMs: number;
   audioError: string;
   onClose: () => void;
   onCommitOffset: (offsetMs: number) => void;
+  onCommitMicrophoneVolume: (volumeDb: number) => void;
   onResetOffset: () => void;
   onTogglePlayback: () => void;
 }) {
@@ -71,6 +85,7 @@ export function MicrophoneOffsetCalibrationDialog({
           <OffsetEditor
             data={data}
             offsetMs={offsetMs}
+            microphoneVolumeDb={microphoneVolumeDb}
             draftOffsetMs={draftOffsetMs}
             dragging={dragging}
             playing={playing}
@@ -79,12 +94,13 @@ export function MicrophoneOffsetCalibrationDialog({
             onDraftOffset={setDraftOffsetMs}
             onDraggingChange={setDragging}
             onCommitOffset={onCommitOffset}
+            onCommitMicrophoneVolume={onCommitMicrophoneVolume}
             onResetOffset={onResetOffset}
             onTogglePlayback={onTogglePlayback}
             onClose={onClose}
           />
         ) : (
-          <CalibrationProgress phase={phase} onClose={onClose} />
+          <CalibrationProgress phase={phase} error={audioError} onClose={onClose} />
         )}
       </DialogContent>
     </Dialog>
@@ -93,22 +109,31 @@ export function MicrophoneOffsetCalibrationDialog({
 
 function CalibrationProgress({
   phase,
+  error,
   onClose,
 }: {
   phase: MicrophoneOffsetCalibrationPhase;
+  error: string;
   onClose: () => void;
 }) {
   const waiting = phase === "waiting_for_clear";
+  const failed = phase === "error";
   return (
     <section className="p-6 sm:p-8">
       <div className="flex items-start gap-4">
         <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
           <HugeiconsIcon
             aria-hidden="true"
-            icon={waiting ? WaveSquareIcon : Loading03Icon}
+            icon={waiting || failed ? WaveSquareIcon : Loading03Icon}
             size={21}
             strokeWidth={2}
-            className={waiting ? "animate-pulse motion-reduce:animate-none" : "animate-spin"}
+            className={
+              failed
+                ? undefined
+                : waiting
+                  ? "animate-pulse motion-reduce:animate-none"
+                  : "animate-spin"
+            }
           />
         </span>
         <div className="min-w-0">
@@ -118,9 +143,11 @@ function CalibrationProgress({
             aria-live="polite"
             className="mt-1 text-sm text-muted-foreground"
           >
-            {waiting
-              ? "Playing the calibration run and waiting for its clear."
-              : "Opening the built-in calibration level."}
+            {failed
+              ? error || "Calibration could not be started."
+              : waiting
+                ? "Playing the calibration run and waiting for its clear."
+                : "Opening the built-in calibration level."}
           </p>
         </div>
       </div>
@@ -128,7 +155,7 @@ function CalibrationProgress({
       <div className="mt-8 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
           className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out motion-reduce:transition-none"
-          style={{ width: waiting ? "72%" : "34%" }}
+          style={{ width: failed ? "100%" : waiting ? "72%" : "34%" }}
         />
       </div>
       <ol className="mt-5 grid grid-cols-3 gap-3 text-xs">
@@ -183,6 +210,7 @@ function ProgressStep({
 function OffsetEditor({
   data,
   offsetMs,
+  microphoneVolumeDb,
   draftOffsetMs,
   dragging,
   playing,
@@ -191,12 +219,14 @@ function OffsetEditor({
   onDraftOffset,
   onDraggingChange,
   onCommitOffset,
+  onCommitMicrophoneVolume,
   onResetOffset,
   onTogglePlayback,
   onClose,
 }: {
-  data: MockMicrophoneOffsetCalibrationData;
+  data: MicrophoneOffsetCalibrationData;
   offsetMs: number;
+  microphoneVolumeDb: number;
   draftOffsetMs: number;
   dragging: boolean;
   playing: boolean;
@@ -205,6 +235,7 @@ function OffsetEditor({
   onDraftOffset: (offsetMs: number) => void;
   onDraggingChange: (dragging: boolean) => void;
   onCommitOffset: (offsetMs: number) => void;
+  onCommitMicrophoneVolume: (volumeDb: number) => void;
   onResetOffset: () => void;
   onTogglePlayback: () => void;
   onClose: () => void;
@@ -214,7 +245,39 @@ function OffsetEditor({
     () => buildWaveformAreaPath(data.microphoneWaveform),
     [data.microphoneWaveform],
   );
+  const timelineViewportRef = useRef<HTMLDivElement>(null);
+  const pendingZoomCenterRef = useRef<number | null>(null);
+  const [timelineVisibleMs, setTimelineVisibleMs] = useState(() =>
+    clampCalibrationTimelineVisibleMs(data.durationMs, CALIBRATION_TIMELINE_VISIBLE_MS),
+  );
   const playheadPercent = Math.min(100, (playbackPositionMs / data.durationMs) * 100);
+  const timelineScale = calibrationTimelineScale(data.durationMs, timelineVisibleMs);
+
+  useEffect(() => {
+    pendingZoomCenterRef.current = null;
+    setTimelineVisibleMs(
+      clampCalibrationTimelineVisibleMs(data.durationMs, CALIBRATION_TIMELINE_VISIBLE_MS),
+    );
+    if (timelineViewportRef.current) timelineViewportRef.current.scrollLeft = 0;
+  }, [data.durationMs]);
+
+  useLayoutEffect(() => {
+    const viewport = timelineViewportRef.current;
+    const centerRatio = pendingZoomCenterRef.current;
+    if (!viewport || centerRatio === null || timelineScale <= 0) return;
+    viewport.scrollLeft = centerRatio * viewport.scrollWidth - viewport.clientWidth / 2;
+    pendingZoomCenterRef.current = null;
+  }, [timelineScale]);
+
+  const changeTimelineZoom = (direction: "in" | "out") => {
+    const viewport = timelineViewportRef.current;
+    if (viewport?.scrollWidth)
+      pendingZoomCenterRef.current =
+        (viewport.scrollLeft + viewport.clientWidth / 2) / viewport.scrollWidth;
+    setTimelineVisibleMs((currentVisibleMs) =>
+      zoomCalibrationTimelineVisibleMs(data.durationMs, currentVisibleMs, direction),
+    );
+  };
 
   return (
     <section className="flex max-h-[calc(100svh-2rem)] min-h-0 flex-col">
@@ -240,47 +303,92 @@ function OffsetEditor({
           <p className="text-xs text-muted-foreground">
             Positive values delay the microphone. Use arrow keys for 1ms or Shift for 10ms.
           </p>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={offsetMs === 0 && draftOffsetMs === 0}
-            onClick={() => {
-              onDraftOffset(0);
-              onResetOffset();
-            }}
-          >
-            <HugeiconsIcon data-icon="inline-start" icon={RefreshIcon} size={14} strokeWidth={2} />
-            Reset to 0
-          </Button>
+          <div className="flex items-center gap-2">
+            <fieldset className="flex items-center rounded-full border border-border bg-muted/20 p-0.5">
+              <legend className="sr-only">Timeline zoom</legend>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Zoom out timeline"
+                disabled={timelineVisibleMs >= data.durationMs}
+                onClick={() => changeTimelineZoom("out")}
+              >
+                <span aria-hidden="true" className="text-base leading-none">
+                  −
+                </span>
+              </Button>
+              <output className="w-12 text-center text-[10px] font-semibold tabular-nums text-muted-foreground">
+                {formatTimelineDuration(timelineVisibleMs)}
+              </output>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                aria-label="Zoom in timeline"
+                disabled={
+                  timelineVisibleMs <=
+                  Math.min(data.durationMs, MIN_CALIBRATION_TIMELINE_VISIBLE_MS)
+                }
+                onClick={() => changeTimelineZoom("in")}
+              >
+                <span aria-hidden="true" className="text-base leading-none">
+                  +
+                </span>
+              </Button>
+            </fieldset>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={offsetMs === 0 && draftOffsetMs === 0}
+              onClick={() => {
+                onDraftOffset(0);
+                onResetOffset();
+              }}
+            >
+              <HugeiconsIcon
+                data-icon="inline-start"
+                icon={RefreshIcon}
+                size={14}
+                strokeWidth={2}
+              />
+              Reset to 0
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-hidden rounded-xl border border-border bg-background shadow-inner">
           <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] sm:grid-cols-[7.25rem_minmax(0,1fr)]">
-            <div className="border-b border-border bg-muted/25" />
-            <TimelineRuler durationMs={data.durationMs} />
+            <div className="grid grid-rows-[2.25rem_7rem_7rem]">
+              <div className="border-b border-border bg-muted/25" />
+              <TrackLabel icon={MusicNote01Icon} label="Game audio" description="Reference" />
+              <TrackLabel icon={Mic02Icon} label="Microphone" description="Drag to align" />
+            </div>
 
-            <TrackLabel icon={MusicNote01Icon} label="Game audio" description="Reference" />
-            <WaveformTrack
-              path={gamePath}
-              colorClassName="fill-foreground/55"
-              playheadPercent={playheadPercent}
-              playing={playing}
-            />
-
-            <TrackLabel icon={Mic02Icon} label="Microphone" description="Drag to align" />
-            <MicrophoneWaveformTrack
-              path={microphonePath}
-              durationMs={data.durationMs}
-              committedOffsetMs={offsetMs}
-              draftOffsetMs={draftOffsetMs}
-              dragging={dragging}
-              playheadPercent={playheadPercent}
-              playing={playing}
-              onDraftOffset={onDraftOffset}
-              onDraggingChange={onDraggingChange}
-              onCommitOffset={onCommitOffset}
-            />
+            <div ref={timelineViewportRef} className="min-w-0 overflow-x-auto overscroll-x-contain">
+              <div className="min-w-full" style={{ width: `${timelineScale * 100}%` }}>
+                <TimelineRuler durationMs={data.durationMs} visibleMs={timelineVisibleMs} />
+                <WaveformTrack
+                  path={gamePath}
+                  colorClassName="fill-foreground/55"
+                  playheadPercent={playheadPercent}
+                  playing={playing}
+                />
+                <MicrophoneWaveformTrack
+                  path={microphonePath}
+                  durationMs={data.durationMs}
+                  committedOffsetMs={offsetMs}
+                  draftOffsetMs={draftOffsetMs}
+                  dragging={dragging}
+                  playheadPercent={playheadPercent}
+                  playing={playing}
+                  onDraftOffset={onDraftOffset}
+                  onDraggingChange={onDraggingChange}
+                  onCommitOffset={onCommitOffset}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -289,24 +397,30 @@ function OffsetEditor({
             role="alert"
             className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive"
           >
-            {audioError} The visual preview is still running.
+            {audioError}
           </p>
         ) : null}
       </div>
 
-      <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border bg-muted/15 px-5 py-4 sm:px-7">
-        <Button type="button" variant="outline" onClick={onTogglePlayback}>
-          <HugeiconsIcon
-            data-icon="inline-start"
-            icon={playing ? StopIcon : PlayIcon}
-            size={15}
-            strokeWidth={2}
+      <footer className="flex shrink-0 flex-col gap-3 border-t border-border bg-muted/15 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+        <div className="flex w-full flex-wrap items-center gap-x-5 gap-y-3 sm:w-auto">
+          <Button type="button" variant="outline" onClick={onTogglePlayback}>
+            <HugeiconsIcon
+              data-icon="inline-start"
+              icon={playing ? StopIcon : PlayIcon}
+              size={15}
+              strokeWidth={2}
+            />
+            {playing ? "Stop" : playbackPositionMs >= data.durationMs ? "Replay test" : "Play test"}
+          </Button>
+          <MicrophoneVolumeControl
+            volumeDb={microphoneVolumeDb}
+            onChange={onCommitMicrophoneVolume}
           />
-          {playing ? "Stop" : playbackPositionMs >= data.durationMs ? "Replay test" : "Play test"}
-        </Button>
+        </div>
         <Button
           type="button"
-          className="bg-primary text-primary-foreground hover:bg-primary/90"
+          className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
           onClick={onClose}
         >
           Done
@@ -316,14 +430,57 @@ function OffsetEditor({
   );
 }
 
-function TimelineRuler({ durationMs }: { durationMs: number }) {
-  const seconds = Math.round(durationMs / 1_000);
+function MicrophoneVolumeControl({
+  volumeDb,
+  onChange,
+}: {
+  volumeDb: number;
+  onChange: (volumeDb: number) => void;
+}) {
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:min-w-64 sm:flex-none">
+      <HugeiconsIcon
+        aria-hidden="true"
+        icon={Mic02Icon}
+        size={15}
+        strokeWidth={2}
+        className="shrink-0 text-muted-foreground"
+      />
+      <label
+        htmlFor="microphone-preview-volume"
+        className="shrink-0 text-xs font-medium text-muted-foreground"
+      >
+        Mic gain
+      </label>
+      <input
+        id="microphone-preview-volume"
+        type="range"
+        min={MIN_MICROPHONE_VOLUME_DB}
+        max={MAX_MICROPHONE_VOLUME_DB}
+        step={1}
+        value={volumeDb}
+        aria-valuetext={formatMicrophoneVolumeDb(volumeDb)}
+        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+        className="h-1.5 min-w-20 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-28 sm:flex-none"
+      />
+      <output
+        htmlFor="microphone-preview-volume"
+        className="w-14 shrink-0 text-right text-xs font-semibold tabular-nums"
+      >
+        {formatMicrophoneVolumeDb(volumeDb)}
+      </output>
+    </div>
+  );
+}
+
+function TimelineRuler({ durationMs, visibleMs }: { durationMs: number; visibleMs: number }) {
+  const tickIntervalMs = visibleMs <= 1_000 ? 250 : visibleMs <= 2_000 ? 500 : 1_000;
   const ticks: Array<{ id: string; label: string; position: number }> = [];
-  for (let elapsedSeconds = 0; elapsedSeconds <= seconds; elapsedSeconds += 1) {
+  for (let elapsedMs = 0; elapsedMs <= durationMs; elapsedMs += tickIntervalMs) {
     ticks.push({
-      id: `time-${elapsedSeconds}s`,
-      label: `${elapsedSeconds}s`,
-      position: (elapsedSeconds / seconds) * 100,
+      id: `time-${elapsedMs}ms`,
+      label: formatTimelineTimestamp(elapsedMs),
+      position: (elapsedMs / durationMs) * 100,
     });
   }
   return (
@@ -346,6 +503,15 @@ function TimelineRuler({ durationMs }: { durationMs: number }) {
       ))}
     </div>
   );
+}
+
+function formatTimelineDuration(durationMs: number) {
+  if (durationMs >= 1_000) return `${Number((durationMs / 1_000).toFixed(1))} s`;
+  return `${Math.round(durationMs)} ms`;
+}
+
+function formatTimelineTimestamp(elapsedMs: number) {
+  return `${Number((elapsedMs / 1_000).toFixed(2))}s`;
 }
 
 function TrackLabel({
@@ -523,11 +689,7 @@ function MicrophoneWaveformTrack({
         preserveAspectRatio="none"
         className="absolute inset-0 h-full w-full py-4"
       >
-        <path
-          d={path}
-          transform={`translate(${translation} 0)`}
-          className="fill-primary/75 transition-transform duration-75 motion-reduce:transition-none"
-        />
+        <path d={path} transform={`translate(${translation} 0)`} className="fill-primary/75" />
       </svg>
       <Playhead percent={playheadPercent} visible={playing || playheadPercent > 0} />
     </div>

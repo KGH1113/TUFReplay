@@ -92,6 +92,22 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     return true;
   }
 
+  public MicrophoneArmStatus GetArmStatus()
+  {
+    lock (_stateGate)
+    {
+      return new MicrophoneArmStatus
+      {
+        State =
+          _armState == ArmState.Arming ? MicrophoneArmState.Arming
+          : _armState == ArmState.Armed ? MicrophoneArmState.Armed
+          : _armState == ArmState.Failed ? MicrophoneArmState.Failed
+          : MicrophoneArmState.Idle,
+        Error = _armError,
+      };
+    }
+  }
+
   public bool BeginRun(string runId, string tempPath, out string error)
   {
     lock (_stateGate)

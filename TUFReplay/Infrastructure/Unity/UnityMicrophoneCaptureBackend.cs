@@ -50,6 +50,13 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     }
   }
 
+  public MicrophoneArmStatus GetArmStatus() =>
+    new MicrophoneArmStatus
+    {
+      State = _clip == null ? MicrophoneArmState.Idle : MicrophoneArmState.Armed,
+      Error = null,
+    };
+
   public bool BeginRun(string runId, string tempPath, out string error)
   {
     error = null;

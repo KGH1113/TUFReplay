@@ -83,10 +83,81 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
+  public static ReplayPlaybackStatus PlayEphemeral(
+    StoredReplayRun run,
+    string levelPath,
+    StoredMicrophoneRecording microphoneRecording
+  )
+  {
+    lock (CommandGate)
+    {
+      string operationId = Guid.NewGuid().ToString("N");
+      SetStatus(
+        new ReplayPlaybackStatus
+        {
+          OperationId = operationId,
+          RunId = run?.Id,
+          State = ReplayPlaybackStates.Preparing,
+          Message = "Preparing calibration replay.",
+        }
+      );
+      try
+      {
+        if (run == null)
+          throw new InvalidDataException("The calibration replay is unavailable.");
+        ReplayMetadata meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
+        if (meta?.gameplayStartSongPosition == null)
+          throw new InvalidDataException("The calibration replay timing metadata is missing.");
+        List<RecordedInput> inputs = ReplayInputParser.Parse(run.InputCsv);
+        List<ReplayHitContext> hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
+        if (hitContexts.Count == 0)
+          throw new InvalidDataException("The calibration replay has no hit contexts.");
+        long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
+        long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
+        var pending = new PendingReplay(operationId, run, levelPath, meta, inputs, hitContexts, terminalTimeUs)
+        {
+          AllowBackground = true,
+          MicrophoneRecording = microphoneRecording,
+          MicrophoneWave = microphoneRecording == null ? null : Pcm16WaveFile.ReadAndValidate(microphoneRecording),
+        };
+        CancelPendingPreparation();
+        CancelCurrentReplayForReplacement(operationId);
+        BeginOnMainThread(pending);
+      }
+      catch (Exception exception)
+      {
+        ReplayMicrophonePlaybackFiles.Delete(microphoneRecording?.FilePath);
+        SetError(operationId, run?.Id, "calibration_preview_invalid", exception.Message);
+      }
+      return GetStatus();
+    }
+  }
+
   public static ReplayPlaybackStatus GetStatus()
   {
     lock (Gate)
       return Clone(_status);
+  }
+
+  public static void Cancel(string reason = "cancelled")
+  {
+    lock (CommandGate)
+    {
+      CancelPendingPreparation();
+      PendingReplay operation = _operation;
+      ReplaySessionService.ClearActiveContext();
+      operation?.CleanupPreparedMicrophone();
+      if (scnEditor.instance != null && scnEditor.instance.playMode)
+        scnEditor.instance.SwitchToEditMode();
+      if (operation != null)
+        SetTerminal(operation, ReplayPlaybackStates.Cancelled, reason);
+      else
+        SetStatus(ReplayPlaybackStatus.Idle());
+      _operation = null;
+      _waitingForEditor = false;
+      _returnRequested = false;
+      _forcedFail = false;
+    }
   }
 
   public static void Tick()
@@ -445,6 +516,12 @@ public static class ReplayPlaybackCoordinator
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
+    if (operation.AllowBackground)
+    {
+      operation.NativeInputFocusGuard = AlwaysReadyFocusGuard.Instance;
+      StartReplay(operation);
+      return;
+    }
     if (operation.NativeInputFocusGuard == null)
       operation.NativeInputFocusGuard = NativeInputFocusGuardFactory.Create();
 
@@ -496,7 +573,13 @@ public static class ReplayPlaybackCoordinator
     {
       try
       {
-        microphonePlayer = new ReplayMicrophonePlayer(operation.MicrophoneRecording, operation.MicrophoneWave);
+        TUFReplaySetting settings = Infrastructure.Settings.TUFReplaySettingStore.Current;
+        microphonePlayer = new ReplayMicrophonePlayer(
+          operation.MicrophoneRecording,
+          operation.MicrophoneWave,
+          settings?.MicrophoneOffsetMs ?? 0,
+          settings?.MicrophoneVolumeDb ?? 0
+        );
         operation.TransferMicrophoneOwnership();
       }
       catch (Exception exception)
@@ -523,7 +606,7 @@ public static class ReplayPlaybackCoordinator
       NativeInputScheduler = scheduler,
       NativeInputPlayer = new ReplayNativeInputPlayer(
         scheduler,
-        NativeInputEmitterFactory.Create(focusGuard),
+        operation.AllowBackground ? NullNativeInputEmitter.Instance : NativeInputEmitterFactory.Create(focusGuard),
         focusGuard
       ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
@@ -764,6 +847,7 @@ public static class ReplayPlaybackCoordinator
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
+    public bool AllowBackground;
 
     public PendingReplay(
       string operationId,
@@ -797,5 +881,29 @@ public static class ReplayPlaybackCoordinator
       MicrophoneWave = null;
       ReplayMicrophonePlaybackFiles.Delete(path);
     }
+  }
+
+  private sealed class AlwaysReadyFocusGuard : INativeInputFocusGuard
+  {
+    public static readonly AlwaysReadyFocusGuard Instance = new AlwaysReadyFocusGuard();
+
+    public bool IsStable(out string reason)
+    {
+      reason = null;
+      return true;
+    }
+
+    public bool IsForegroundTarget(out string reason) => IsStable(out reason);
+
+    public string Describe() => "calibration-background";
+  }
+
+  private sealed class NullNativeInputEmitter : INativeInputEmitter
+  {
+    public static readonly NullNativeInputEmitter Instance = new NullNativeInputEmitter();
+
+    public bool IsSupported(int key) => true;
+
+    public bool EmitBatch(NativeInputEmission[] emissions, int count) => true;
   }
 }

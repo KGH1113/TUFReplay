@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 
 import type {
+  MicrophoneCalibrationResult,
+  MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
   ReplayLevelFilePickerStatus,
   ReplayStatus,
@@ -107,6 +109,76 @@ describe("activity IPC contract", () => {
       { method: "microphone.devices.get", params: {} },
       { method: "microphone.device.select", params: { deviceId: "USB Audio Device" } },
       { method: "microphone.device.select", params: { deviceId: null } },
+    ]);
+  });
+
+  test("uses the exact microphone calibration command names and operation guards", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const status = {
+      OperationId: "calibration-1",
+      State: "editing",
+      ErrorCode: null,
+      Message: null,
+      DurationMs: 6000,
+      PlaybackPositionMs: 0,
+      ResultRevision: 1,
+      MicrophoneOffsetMs: 24,
+      MicrophoneVolumeDb: 6,
+    } satisfies MicrophoneCalibrationStatus;
+    const result = {
+      OperationId: "calibration-1",
+      Revision: 1,
+      DurationMs: 6000,
+      GameWaveform: [0, 1],
+      MicrophoneWaveform: [1, 0],
+    } satisfies MicrophoneCalibrationResult;
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return method === "microphone.calibration.result.get" ? result : status;
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    await gateway.startMicrophoneCalibration();
+    await gateway.getMicrophoneCalibrationStatus("calibration-1");
+    await gateway.getMicrophoneCalibrationResult("calibration-1", 1);
+    await gateway.playMicrophoneCalibrationPreview("calibration-1");
+    await gateway.stopMicrophoneCalibrationPreview("calibration-1");
+    await gateway.setMicrophoneCalibrationOffset("calibration-1", 24);
+    await gateway.setMicrophoneCalibrationVolume("calibration-1", 6);
+    await gateway.closeMicrophoneCalibration("calibration-1");
+
+    expect(calls).toEqual([
+      { method: "microphone.calibration.start", params: {} },
+      {
+        method: "microphone.calibration.status.get",
+        params: { operationId: "calibration-1" },
+      },
+      {
+        method: "microphone.calibration.result.get",
+        params: { operationId: "calibration-1", revision: 1 },
+      },
+      {
+        method: "microphone.calibration.preview.play",
+        params: { operationId: "calibration-1" },
+      },
+      {
+        method: "microphone.calibration.preview.stop",
+        params: { operationId: "calibration-1" },
+      },
+      {
+        method: "microphone.calibration.offset.set",
+        params: { operationId: "calibration-1", offsetMs: 24 },
+      },
+      {
+        method: "microphone.calibration.volume.set",
+        params: { operationId: "calibration-1", volumeDb: 6 },
+      },
+      {
+        method: "microphone.calibration.close",
+        params: { operationId: "calibration-1" },
+      },
     ]);
   });
 });

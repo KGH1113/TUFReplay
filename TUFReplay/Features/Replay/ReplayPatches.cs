@@ -80,6 +80,7 @@ public static class ReplayInputPatches
         return;
 
       ReplaySessionService.TickNativeVisual(nowUs);
+      ReplaySessionService.TickMicrophonePlayback(nowUs);
     }
     catch (Exception exception)
     {

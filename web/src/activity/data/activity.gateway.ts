@@ -5,6 +5,8 @@ import type {
   ActivityChart,
   ActivityLevelSessionOverview,
   ActivityRun,
+  MicrophoneCalibrationResult,
+  MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
   ReplayLevelFilePickerStatus,
   ReplayStatus,
@@ -43,6 +45,23 @@ export interface ActivityGateway {
   getReplayLevelFilePickerStatus(operationId: string): Promise<ReplayLevelFilePickerStatus>;
   getMicrophoneDevices(): Promise<MicrophoneDevicesState>;
   selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
+  startMicrophoneCalibration(): Promise<MicrophoneCalibrationStatus>;
+  getMicrophoneCalibrationStatus(operationId: string): Promise<MicrophoneCalibrationStatus>;
+  getMicrophoneCalibrationResult(
+    operationId: string,
+    revision: number,
+  ): Promise<MicrophoneCalibrationResult>;
+  playMicrophoneCalibrationPreview(operationId: string): Promise<MicrophoneCalibrationStatus>;
+  stopMicrophoneCalibrationPreview(operationId: string): Promise<MicrophoneCalibrationStatus>;
+  setMicrophoneCalibrationOffset(
+    operationId: string,
+    offsetMs: number,
+  ): Promise<MicrophoneCalibrationStatus>;
+  setMicrophoneCalibrationVolume(
+    operationId: string,
+    volumeDb: number,
+  ): Promise<MicrophoneCalibrationStatus>;
+  closeMicrophoneCalibration(operationId: string): Promise<MicrophoneCalibrationStatus>;
 }
 
 export async function connectActivityGateway(): Promise<ActivityGateway> {
@@ -88,6 +107,21 @@ export function createActivityGateway(
     getMicrophoneDevices: () => callDomain(namespace, "microphone.devices.get", {}),
     selectMicrophoneDevice: (deviceId) =>
       callDomain(namespace, "microphone.device.select", { deviceId }),
+    startMicrophoneCalibration: () => callDomain(namespace, "microphone.calibration.start", {}),
+    getMicrophoneCalibrationStatus: (operationId) =>
+      callDomain(namespace, "microphone.calibration.status.get", { operationId }),
+    getMicrophoneCalibrationResult: (operationId, revision) =>
+      callDomain(namespace, "microphone.calibration.result.get", { operationId, revision }),
+    playMicrophoneCalibrationPreview: (operationId) =>
+      callDomain(namespace, "microphone.calibration.preview.play", { operationId }),
+    stopMicrophoneCalibrationPreview: (operationId) =>
+      callDomain(namespace, "microphone.calibration.preview.stop", { operationId }),
+    setMicrophoneCalibrationOffset: (operationId, offsetMs) =>
+      callDomain(namespace, "microphone.calibration.offset.set", { operationId, offsetMs }),
+    setMicrophoneCalibrationVolume: (operationId, volumeDb) =>
+      callDomain(namespace, "microphone.calibration.volume.set", { operationId, volumeDb }),
+    closeMicrophoneCalibration: (operationId) =>
+      callDomain(namespace, "microphone.calibration.close", { operationId }),
   };
 }
 

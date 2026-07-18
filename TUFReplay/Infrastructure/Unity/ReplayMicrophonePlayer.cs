@@ -23,13 +23,21 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private long _readerFrame;
   private bool _started;
   private bool _paused;
+  private long _userOffsetUs;
+  private volatile float _gain;
   private volatile bool _failed;
   private bool _disposed;
 
-  public ReplayMicrophonePlayer(StoredMicrophoneRecording recording, Pcm16WaveInfo wave)
+  public ReplayMicrophonePlayer(
+    StoredMicrophoneRecording recording,
+    Pcm16WaveInfo wave,
+    int userOffsetMs = 0,
+    int volumeDb = 0
+  )
   {
     _recording = recording ?? throw new ArgumentNullException(nameof(recording));
     _wave = wave ?? throw new ArgumentNullException(nameof(wave));
+    SetUserSettings(userOffsetMs, volumeDb);
     if (wave.FrameCount > int.MaxValue)
       throw new InvalidDataException("The microphone recording is too long for Unity audio playback.");
 
@@ -49,6 +57,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       _source.spatialBlend = 0f;
       _source.volume = 1f;
       _source.pitch = 1f;
+      _source.priority = 0;
       _clip = AudioClip.Create(
         "TUFReplay Replay Microphone",
         checked((int)wave.FrameCount),
@@ -60,6 +69,16 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       );
       _source.clip = _clip;
       SetReaderPosition(0);
+      Main.Instance?.Log(
+        "[Replay/Microphone] Player ready. frames="
+          + wave.FrameCount
+          + ", sampleRate="
+          + wave.SampleRate
+          + ", captureOffsetUs="
+          + recording.CaptureStartOffsetUs
+          + ", volumeDb="
+          + volumeDb
+      );
     }
     catch
     {
@@ -109,7 +128,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       double microphoneTimeUs = ReplayMicrophoneClock.ToMicrophoneTimeUs(
         replayTimeUs,
         timelineRate,
-        _recording.CaptureStartOffsetUs
+        EffectiveCaptureOffsetUs()
       );
       if (microphoneTimeUs < 0d)
       {
@@ -141,6 +160,14 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         _source.Play();
         _started = true;
         _paused = false;
+        Main.Instance?.Log(
+          "[Replay/Microphone] Playback started. replayTimeUs="
+            + replayTimeUs
+            + ", targetFrame="
+            + targetFrame
+            + ", gain="
+            + _gain
+        );
         return;
       }
 
@@ -163,6 +190,15 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     {
       Fail(exception);
     }
+  }
+
+  public void UpdateUserSettings(int offsetMs, int volumeDb, long replayTimeUs, double timelineRate)
+  {
+    if (_disposed)
+      return;
+    SetUserSettings(offsetMs, volumeDb);
+    if (_started || _paused)
+      SetPlaybackPosition(TargetFrame(replayTimeUs, timelineRate));
   }
 
   public void Stop()
@@ -201,10 +237,26 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     return ReplayMicrophoneClock.ToFrame(
       replayTimeUs,
       timelineRate,
-      _recording.CaptureStartOffsetUs,
+      EffectiveCaptureOffsetUs(),
       _wave.SampleRate,
       _wave.FrameCount
     );
+  }
+
+  private long EffectiveCaptureOffsetUs() => _recording.CaptureStartOffsetUs + _userOffsetUs;
+
+  private void SetUserSettings(int offsetMs, int volumeDb)
+  {
+    int clampedOffset = Math.Max(
+      TUFReplaySetting.MinMicrophoneOffsetMs,
+      Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, offsetMs)
+    );
+    int clampedVolumeDb = Math.Max(
+      TUFReplaySetting.MinMicrophoneVolumeDb,
+      Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
+    );
+    _userOffsetUs = clampedOffset * 1000L;
+    _gain = MicrophoneGain.FromDecibels(clampedVolumeDb);
   }
 
   private void SetPlaybackPosition(long frame)
@@ -245,7 +297,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           {
             int byteIndex = index * 2;
             short sample = (short)(_readBuffer[byteIndex] | (_readBuffer[byteIndex + 1] << 8));
-            data[outputOffset + index] = sample / 32768f;
+            data[outputOffset + index] = Mathf.Clamp(sample / 32768f * _gain, -1f, 1f);
           }
 
           outputOffset += samplesRead;
