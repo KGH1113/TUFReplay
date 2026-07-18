@@ -49,6 +49,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from gameplay start to clear, fail, or abort and asks whether to keep it after each valid run.
 - Streams accepted microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries.
+- Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 

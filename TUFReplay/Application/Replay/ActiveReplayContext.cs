@@ -19,6 +19,7 @@ public class ActiveReplayContext
   public ReplayInputScheduler NativeInputScheduler;
   public ReplayNativeInputPlayer NativeInputPlayer;
   public ReplayHitContextPlayer HitContextPlayer;
+  public IReplayMicrophonePlayer MicrophonePlayer;
   public ReplayMetadata Meta;
   public ReplayPlaybackPhase Phase = ReplayPlaybackPhase.Prepared;
   public bool RunStarted;
