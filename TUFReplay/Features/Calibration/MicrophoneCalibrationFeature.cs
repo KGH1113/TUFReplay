@@ -92,7 +92,9 @@ public sealed class MicrophoneCalibrationFeature
 
   public void Tick()
   {
-    string state = GetStatus().State;
+    string state;
+    lock (_gate)
+      state = _status.State;
     if (state == MicrophoneCalibrationStates.Arming)
     {
       MicrophoneArmStatus arm = FeatureRegistry.MicrophoneRecording?.GetArmStatus();
