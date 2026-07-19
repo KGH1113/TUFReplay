@@ -31,6 +31,7 @@ export function ActivityDashboard() {
   const [selectedLevelSessionId, setSelectedLevelSessionId] = useState<string | null>(null);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [firstMarkerLevelSessionId, setFirstMarkerLevelSessionId] = useState<string | null>(null);
   const [replayChoiceRun, setReplayChoiceRun] = useState<ActivityRun | null>(null);
   const days = useMemo(
     () => groupSessionsByDay(activity.sessions, timeZone),
@@ -78,6 +79,24 @@ export function ActivityDashboard() {
     }
   }, [markers, selectedMarkerId]);
   useEffect(() => {
+    if (!firstMarkerLevelSessionId || selectedLevel?.Id !== firstMarkerLevelSessionId) return;
+    if (levelData.loading) return;
+    if (levelData.overview?.Id === firstMarkerLevelSessionId) {
+      setSelectedMarkerId(markers[0]?.id ?? null);
+      setSelectedRunId(null);
+      setFirstMarkerLevelSessionId(null);
+      return;
+    }
+    if (levelData.error) setFirstMarkerLevelSessionId(null);
+  }, [
+    firstMarkerLevelSessionId,
+    levelData.error,
+    levelData.loading,
+    levelData.overview?.Id,
+    markers,
+    selectedLevel?.Id,
+  ]);
+  useEffect(() => {
     if (selectedRunId && !selectedRun) setSelectedRunId(null);
   }, [selectedRun, selectedRunId]);
   useEffect(() => {
@@ -94,14 +113,17 @@ export function ActivityDashboard() {
   const handleRun = (run: ActivityRun) =>
     setSelectedRunId((current) => (current === run.Id ? null : run.Id));
   const handleDate = (date: string) => {
+    const firstLevelSessionId = days.find((day) => day.date === date)?.levelSessions[0]?.Id ?? null;
     setSelectedDate(date);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
+    setFirstMarkerLevelSessionId(firstLevelSessionId);
   };
   const handleLevel = (id: string) => {
     setSelectedLevelSessionId(id);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
+    setFirstMarkerLevelSessionId(id);
   };
   return (
     <>
