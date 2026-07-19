@@ -3,6 +3,7 @@ using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database.Repositories;
+using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Application.Activity;
 
@@ -12,6 +13,8 @@ public sealed class RecordingActivityTracker
   public string LevelSessionId { get; private set; }
   public int? TufLevelId { get; private set; }
   public string LevelPath { get; private set; }
+  private byte[] _gameplayHash;
+  private int? _gameplayHashVersion;
 
   public void StartAppSession()
   {
@@ -42,11 +45,23 @@ public sealed class RecordingActivityTracker
     AppSessionId = null;
   }
 
-  public void OpenLevel(string levelPath, int? tufLevelId, int levelTileCount)
+  public void OpenLevel(
+    string levelPath,
+    int? tufLevelId,
+    int levelTileCount,
+    byte[] gameplayHash,
+    int? gameplayHashVersion
+  )
   {
     StartAppSession();
 
-    if (LevelSessionId != null && string.Equals(LevelPath, levelPath, StringComparison.OrdinalIgnoreCase))
+    if (
+      LevelSessionId != null
+      && LevelPathIdentity.Equals(LevelPath, levelPath)
+      && GameplayChartHash.IsSupported(_gameplayHashVersion, _gameplayHash)
+      && GameplayChartHash.IsSupported(gameplayHashVersion, gameplayHash)
+      && GameplayChartHash.Equals(_gameplayHash, gameplayHash)
+    )
       return;
 
     CloseLevel();
@@ -54,7 +69,10 @@ public sealed class RecordingActivityTracker
     LevelSessionId = Guid.NewGuid().ToString("N");
     TufLevelId = tufLevelId;
     LevelPath = levelPath;
+    _gameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone();
+    _gameplayHashVersion = gameplayHashVersion;
     bool metadataAvailable = AdofaiLevelMetadataReader.TryRead(levelPath, out LevelMetadataSnapshot metadata);
+    AdofaiLevelFileHash.TryCompute(levelPath, out byte[] levelFileHash);
     LevelSessionRepository.Save(
       new LevelSession
       {
@@ -64,6 +82,7 @@ public sealed class RecordingActivityTracker
         LevelPath = levelPath,
         OpenedAtUtc = DateTime.UtcNow.ToString("O"),
         LevelTileCount = levelTileCount,
+        LevelFileHash = levelFileHash,
         Song = metadata?.Song,
         Author = metadata?.Author,
         Artist = metadata?.Artist,
@@ -81,6 +100,8 @@ public sealed class RecordingActivityTracker
     LevelSessionId = null;
     TufLevelId = null;
     LevelPath = null;
+    _gameplayHash = null;
+    _gameplayHashVersion = null;
   }
 
   public RunRecord CreateRunDraft(RecordedRunPayload data, int startTile, int levelTileCount)
