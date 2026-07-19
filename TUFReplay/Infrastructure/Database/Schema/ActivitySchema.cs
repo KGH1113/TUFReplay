@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 7;
+  public const int Version = 9;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -81,6 +81,32 @@ PRAGMA user_version = 6;"
       version = 7;
     }
 
+    if (version == 7)
+    {
+      Migrate(
+        connection,
+        @"
+CREATE TABLE microphone_recordings (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  audio_wav BLOB NOT NULL,
+  format TEXT NOT NULL,
+  sample_rate INTEGER NOT NULL,
+  channels INTEGER NOT NULL,
+  frame_count INTEGER NOT NULL,
+  device_id TEXT,
+  capture_start_offset_us INTEGER NOT NULL DEFAULT 0
+);
+PRAGMA user_version = 8;"
+      );
+      version = 8;
+    }
+
+    if (version == 8)
+    {
+      Migrate(connection, "ALTER TABLE level_sessions ADD COLUMN level_file_hash BLOB; PRAGMA user_version = 9;");
+      version = 9;
+    }
+
     if (version != 0 && version != Version)
     {
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -104,6 +130,7 @@ CREATE TABLE IF NOT EXISTS level_sessions (
   opened_at_utc TEXT NOT NULL,
   closed_at_utc TEXT,
   level_tile_count INTEGER NOT NULL DEFAULT 0,
+  level_file_hash BLOB,
   song TEXT,
   author TEXT,
   artist TEXT,
@@ -142,11 +169,21 @@ CREATE TABLE IF NOT EXISTS runs (
   meta_json TEXT NOT NULL DEFAULT '{}',
   UNIQUE(level_session_id, run_index)
 );
+CREATE TABLE IF NOT EXISTS microphone_recordings (
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  audio_wav BLOB NOT NULL,
+  format TEXT NOT NULL,
+  sample_rate INTEGER NOT NULL,
+  channels INTEGER NOT NULL,
+  frame_count INTEGER NOT NULL,
+  device_id TEXT,
+  capture_start_offset_us INTEGER NOT NULL DEFAULT 0
+);
 CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc DESC, id);
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 7;";
+PRAGMA user_version = 9;";
     command.ExecuteNonQuery();
   }
 

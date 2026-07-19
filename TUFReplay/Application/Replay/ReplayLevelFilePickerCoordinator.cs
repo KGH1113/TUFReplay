@@ -96,11 +96,6 @@ public static class ReplayLevelFilePickerCoordinator
   {
     if (!IsCurrent(operationId))
       return;
-    if (!ReplayLevelHashValidator.EnsureExpectedHash(run, out string hashCode, out string hashMessage))
-    {
-      SetError(operationId, hashCode, hashMessage);
-      return;
-    }
 
     if (UnityEngine.Application.platform == RuntimePlatform.OSXPlayer)
     {
@@ -219,7 +214,7 @@ public static class ReplayLevelFilePickerCoordinator
         RunId = run.Id,
         State = ReplayLevelFilePickerStates.Selected,
         LevelPath = canonicalPath,
-        Message = "Matching level file selected.",
+        Message = "Level file selected. It will be verified after loading.",
       }
     );
   }

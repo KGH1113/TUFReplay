@@ -3,6 +3,8 @@ import type {
   ActivityChart,
   ActivityLevelSessionOverview,
   ActivityRun,
+  MicrophoneCalibrationResult,
+  MicrophoneCalibrationStatus,
   ReplayLevelFilePickerStatus,
   ReplayStatus,
 } from "../activity.model";
@@ -11,6 +13,7 @@ import type { ActivityGateway } from "../data/activity.gateway";
 import level5Text from "./levels/tuf-5.adofai?raw";
 import level303Text from "./levels/tuf-303.adofai?raw";
 import level871Text from "./levels/tuf-871.adofai?raw";
+import { mockMicrophoneOffsetCalibration } from "./microphone-offset.mock";
 
 interface MockLevel {
   session: ActivityLevelSessionOverview;
@@ -51,6 +54,21 @@ const appSessions: ActivityAppSession[] = [
 ];
 
 export function createMockActivityGateway(): ActivityGateway {
+  let selectedMicrophoneDeviceId: string | null = null;
+  const microphoneDevices = [
+    {
+      Id: "MacBook Pro Microphone",
+      Name: "MacBook Pro Microphone",
+      MinFrequency: 48_000,
+      MaxFrequency: 48_000,
+    },
+    {
+      Id: "USB Audio Device",
+      Name: "USB Audio Device",
+      MinFrequency: 44_100,
+      MaxFrequency: 48_000,
+    },
+  ];
   let replayStatus: ReplayStatus = {
     OperationId: null,
     RunId: null,
@@ -59,6 +77,17 @@ export function createMockActivityGateway(): ActivityGateway {
     Message: null,
   };
   let pickerStatus: ReplayLevelFilePickerStatus | null = null;
+  let calibrationStatus: MicrophoneCalibrationStatus = {
+    OperationId: null,
+    State: "idle",
+    ErrorCode: null,
+    Message: null,
+    DurationMs: 0,
+    PlaybackPositionMs: 0,
+    ResultRevision: 0,
+    MicrophoneOffsetMs: mockMicrophoneOffsetCalibration.initialOffsetMs,
+    MicrophoneVolumeDb: 0,
+  };
   return {
     health: async () => ({ Status: "mock" }),
     listAllAppSessions: async (onPage) => {
@@ -98,6 +127,54 @@ export function createMockActivityGateway(): ActivityGateway {
       if (!pickerStatus || pickerStatus.OperationId !== operationId)
         throw new Error("Mock picker operation was not found");
       return pickerStatus;
+    },
+    getMicrophoneDevices: async () => ({
+      Devices: microphoneDevices,
+      SelectedDeviceId: selectedMicrophoneDeviceId,
+    }),
+    selectMicrophoneDevice: async (deviceId) => {
+      selectedMicrophoneDeviceId = deviceId;
+      return {
+        Devices: microphoneDevices,
+        SelectedDeviceId: selectedMicrophoneDeviceId,
+      };
+    },
+    startMicrophoneCalibration: async () => {
+      calibrationStatus = {
+        ...calibrationStatus,
+        OperationId: "mock-calibration",
+        State: "arming",
+        Message: "Preparing microphone access.",
+      };
+      return calibrationStatus;
+    },
+    getMicrophoneCalibrationStatus: async () => calibrationStatus,
+    getMicrophoneCalibrationResult: async (): Promise<MicrophoneCalibrationResult> => ({
+      OperationId: "mock-calibration",
+      Revision: 1,
+      DurationMs: mockMicrophoneOffsetCalibration.durationMs,
+      GameWaveform: mockMicrophoneOffsetCalibration.gameWaveform,
+      MicrophoneWaveform: mockMicrophoneOffsetCalibration.microphoneWaveform,
+    }),
+    playMicrophoneCalibrationPreview: async () => {
+      calibrationStatus = { ...calibrationStatus, State: "preview_playing" };
+      return calibrationStatus;
+    },
+    stopMicrophoneCalibrationPreview: async () => {
+      calibrationStatus = { ...calibrationStatus, State: "editing", PlaybackPositionMs: 0 };
+      return calibrationStatus;
+    },
+    setMicrophoneCalibrationOffset: async (_operationId, offsetMs) => {
+      calibrationStatus = { ...calibrationStatus, MicrophoneOffsetMs: offsetMs };
+      return calibrationStatus;
+    },
+    setMicrophoneCalibrationVolume: async (_operationId, volumeDb) => {
+      calibrationStatus = { ...calibrationStatus, MicrophoneVolumeDb: volumeDb };
+      return calibrationStatus;
+    },
+    closeMicrophoneCalibration: async () => {
+      calibrationStatus = { ...calibrationStatus, OperationId: null, State: "idle" };
+      return calibrationStatus;
     },
   };
 }
@@ -191,6 +268,11 @@ function createRun(
     FloorCount: floorCount,
     InputBytes: 0,
     HitContextBytes: 0,
+    HasMicrophoneRecording: false,
+    MicrophoneRecordingBytes: 0,
+    MicrophoneDurationSeconds: null,
+    MicrophoneSampleRate: null,
+    MicrophoneChannels: null,
   };
 }
 

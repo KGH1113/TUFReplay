@@ -9,6 +9,8 @@ public class ActiveReplayContext
   public string OperationId;
   public string RunId;
   public string LevelPath;
+  public byte[] GameplayHash;
+  public int GameplayHashVersion;
   public string Result;
   public int? TufLevelId;
   public int StartTile;
@@ -19,7 +21,9 @@ public class ActiveReplayContext
   public ReplayInputScheduler NativeInputScheduler;
   public ReplayNativeInputPlayer NativeInputPlayer;
   public ReplayHitContextPlayer HitContextPlayer;
+  public IReplayMicrophonePlayer MicrophonePlayer;
   public ReplayMetadata Meta;
+  public ReplayPlaybackPhase Phase = ReplayPlaybackPhase.Prepared;
   public bool RunStarted;
   public bool WonClockStarted;
   public double WonClockStartedAt;

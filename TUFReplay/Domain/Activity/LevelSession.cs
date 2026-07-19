@@ -9,6 +9,7 @@ public class LevelSession
   public string OpenedAtUtc;
   public string ClosedAtUtc;
   public int LevelTileCount;
+  public byte[] LevelFileHash;
   public string Song;
   public string Author;
   public string Artist;

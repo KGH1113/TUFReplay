@@ -7,7 +7,7 @@
 - If there is outdated thing in README.md, edit README.md to bring up to date.
 
 # Extra rules
-- If you want to build the project, use build.sh instead of manually executing dotnet commands.
+- If you want to build the project, use `./scripts/run.sh build` instead of manually executing dotnet commands.
 - Always think about the performance and do not make ADOFAI laggy.
 - You can use `ilspycmd` and `assetripper(headless)` to inspect ADOFAI's code. Use it unless you really don't need to.
 - If you need TUFHelper source code, use this repository:

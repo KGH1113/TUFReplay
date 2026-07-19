@@ -1,15 +1,14 @@
-using System.Collections.Generic;
-using TUFReplay.Domain.ReplayData;
+using System;
 using TUFReplay.Infrastructure.NativeInput;
 
 namespace TUFReplay.Features.Replay;
 
-public sealed class ReplayNativeInputPlayer
+public sealed class ReplayNativeInputPlayer : IDisposable
 {
   private readonly ReplayInputScheduler _scheduler;
-  private readonly INativeInputEmitter _emitter;
   private readonly INativeInputFocusGuard _focusGuard;
-  private readonly HashSet<int> _heldKeys = new HashSet<int>();
+  private readonly ReplayNativeInputPump _pump;
+  private long _lastReportedEmitted;
 
   internal ReplayNativeInputPlayer(
     ReplayInputScheduler scheduler,
@@ -18,65 +17,35 @@ public sealed class ReplayNativeInputPlayer
   )
   {
     _scheduler = scheduler ?? throw new System.ArgumentNullException(nameof(scheduler));
-    _emitter = emitter ?? throw new System.ArgumentNullException(nameof(emitter));
     _focusGuard = focusGuard ?? throw new System.ArgumentNullException(nameof(focusGuard));
+    _pump = new ReplayNativeInputPump(scheduler, emitter ?? throw new ArgumentNullException(nameof(emitter)));
   }
+
+  public bool Finished => _scheduler.Finished;
+  public ReplayNativeInputStats Stats => _pump.Snapshot;
 
   public void Reset()
   {
-    ReleaseAll();
-    _scheduler.Reset();
+    _pump.Reset();
+    _lastReportedEmitted = _pump.Snapshot.Emitted;
   }
 
-  public int ResetTo(long nowUs)
+  public int ResetTo(long nowUs, double timelineRate)
   {
-    ReleaseAll();
-    List<int> heldKeys = _scheduler.SeekTo(nowUs);
-
-    if (!_focusGuard.IsStable(out _))
-      return 0;
-
-    int restored = 0;
-
-    foreach (int key in heldKeys)
-    {
-      if (!_emitter.Emit(key, true))
-        continue;
-
-      _heldKeys.Add(key);
-      restored++;
-    }
-
+    bool focusReady = _focusGuard.IsStable(out _);
+    int restored = _pump.ResetTo(nowUs, timelineRate, focusReady);
+    _lastReportedEmitted = _pump.Snapshot.Emitted;
     return restored;
   }
 
-  public int Tick(long nowUs)
+  public int Tick(long nowUs, double timelineRate)
   {
-    if (!_focusGuard.IsStable(out _))
-    {
-      SkipTo(nowUs);
-      return 0;
-    }
-
-    List<RecordedInput> due = _scheduler.PopDue(nowUs);
-    int emitted = 0;
-
-    foreach (RecordedInput input in due)
-    {
-      if (!input.Async)
-        continue;
-      if (!_emitter.Emit(input.Key, input.Down))
-        continue;
-
-      if (input.Down)
-        _heldKeys.Add(input.Key);
-      else
-        _heldKeys.Remove(input.Key);
-
-      emitted++;
-    }
-
-    return emitted;
+    bool focusReady = _focusGuard.IsStable(out _);
+    _pump.Synchronize(nowUs, timelineRate, focusReady);
+    ReplayNativeInputStats stats = _pump.Snapshot;
+    long emitted = Math.Max(0L, stats.Emitted - _lastReportedEmitted);
+    _lastReportedEmitted = stats.Emitted;
+    return emitted > int.MaxValue ? int.MaxValue : (int)emitted;
   }
 
   public bool CanEmit(out string reason)
@@ -86,8 +55,7 @@ public sealed class ReplayNativeInputPlayer
 
   public int SkipTo(long nowUs)
   {
-    ReleaseAll();
-    return _scheduler.SkipDue(nowUs);
+    return _pump.SuspendAt(nowUs);
   }
 
   public string DescribeFocus()
@@ -97,11 +65,11 @@ public sealed class ReplayNativeInputPlayer
 
   public void ReleaseAll()
   {
-    foreach (int key in _heldKeys)
-    {
-      _emitter.Emit(key, false);
-    }
+    _pump.ReleaseAll();
+  }
 
-    _heldKeys.Clear();
+  public void Dispose()
+  {
+    _pump.Dispose();
   }
 }

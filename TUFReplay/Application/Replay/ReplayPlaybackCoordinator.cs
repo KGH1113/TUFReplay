@@ -3,8 +3,11 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Newtonsoft.Json;
+using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Recording;
+using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Database.Repositories;
@@ -22,6 +25,7 @@ public static class ReplayPlaybackCoordinator
 
   private static ReplayPlaybackStatus _status = ReplayPlaybackStatus.Idle();
   private static PendingReplay _operation;
+  private static PendingReplay _preparingOperation;
   private static bool _waitingForEditor;
   private static bool _returnRequested;
   private static string _returnTerminalState;
@@ -71,7 +75,60 @@ public static class ReplayPlaybackCoordinator
         return GetStatus();
       }
 
-      UnityMainThread.Post(() => BeginOnMainThread(pending));
+      CancelPendingPreparation();
+      _preparingOperation = pending;
+      UnityMainThread.Post(() => CancelCurrentReplayForReplacement(operationId));
+      QueueMicrophonePreparation(pending);
+      return GetStatus();
+    }
+  }
+
+  public static ReplayPlaybackStatus PlayEphemeral(
+    StoredReplayRun run,
+    string levelPath,
+    StoredMicrophoneRecording microphoneRecording
+  )
+  {
+    lock (CommandGate)
+    {
+      string operationId = Guid.NewGuid().ToString("N");
+      SetStatus(
+        new ReplayPlaybackStatus
+        {
+          OperationId = operationId,
+          RunId = run?.Id,
+          State = ReplayPlaybackStates.Preparing,
+          Message = "Preparing calibration replay.",
+        }
+      );
+      try
+      {
+        if (run == null)
+          throw new InvalidDataException("The calibration replay is unavailable.");
+        ReplayMetadata meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
+        if (meta?.gameplayStartSongPosition == null)
+          throw new InvalidDataException("The calibration replay timing metadata is missing.");
+        List<RecordedInput> inputs = ReplayInputParser.Parse(run.InputCsv);
+        List<ReplayHitContext> hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
+        if (hitContexts.Count == 0)
+          throw new InvalidDataException("The calibration replay has no hit contexts.");
+        long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
+        long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
+        var pending = new PendingReplay(operationId, run, levelPath, meta, inputs, hitContexts, terminalTimeUs)
+        {
+          AllowBackground = true,
+          MicrophoneRecording = microphoneRecording,
+          MicrophoneWave = microphoneRecording == null ? null : Pcm16WaveFile.ReadAndValidate(microphoneRecording),
+        };
+        CancelPendingPreparation();
+        CancelCurrentReplayForReplacement(operationId);
+        BeginOnMainThread(pending);
+      }
+      catch (Exception exception)
+      {
+        ReplayMicrophonePlaybackFiles.Delete(microphoneRecording?.FilePath);
+        SetError(operationId, run?.Id, "calibration_preview_invalid", exception.Message);
+      }
       return GetStatus();
     }
   }
@@ -80,6 +137,27 @@ public static class ReplayPlaybackCoordinator
   {
     lock (Gate)
       return Clone(_status);
+  }
+
+  public static void Cancel(string reason = "cancelled")
+  {
+    lock (CommandGate)
+    {
+      CancelPendingPreparation();
+      PendingReplay operation = _operation;
+      ReplaySessionService.ClearActiveContext();
+      operation?.CleanupPreparedMicrophone();
+      if (scnEditor.instance != null && scnEditor.instance.playMode)
+        scnEditor.instance.SwitchToEditMode();
+      if (operation != null)
+        SetTerminal(operation, ReplayPlaybackStates.Cancelled, reason);
+      else
+        SetStatus(ReplayPlaybackStatus.Idle());
+      _operation = null;
+      _waitingForEditor = false;
+      _returnRequested = false;
+      _forcedFail = false;
+    }
   }
 
   public static void Tick()
@@ -106,13 +184,29 @@ public static class ReplayPlaybackCoordinator
     string state = GetStatus().State;
     if (state == ReplayPlaybackStates.OpeningLevel)
     {
+      if (!IsEditorReady())
+        operation.LevelOpenObservedTransition = true;
       if (IsExpectedLevelReady(operation))
       {
         WaitForFocusOrStart(operation);
       }
       else if (Time.realtimeSinceStartupAsDouble - operation.LevelOpenStartedAt > LevelOpenTimeoutSeconds)
       {
-        Fail("level_open_timeout", "ADOFAI did not finish opening the recorded level.");
+        scnEditor editor = scnEditor.instance;
+        if (
+          IsEditorReady()
+          && operation.Run.GameplayHash != null
+          && !ReplayLevelHashValidator.ValidateLoaded(
+            operation.Run,
+            editor.levelData,
+            LevelPathIdentity.Current(),
+            out string validationCode,
+            out string validationMessage
+          )
+        )
+          Fail(validationCode, validationMessage);
+        else
+          Fail("level_open_timeout", "ADOFAI did not finish opening the recorded level.");
       }
       return;
     }
@@ -175,7 +269,17 @@ public static class ReplayPlaybackCoordinator
     _forcedFail = true;
     ReplayFailPolicy.ApplyReplayNoFail(false);
     if (ADOBase.controller?.playerOne != null)
-      ADOBase.controller.playerOne.Die();
+    {
+      ReplaySessionService.AllowReplayMarkFailOnce();
+      try
+      {
+        ADOBase.controller.playerOne.Die();
+      }
+      finally
+      {
+        ReplaySessionService.SuppressReplayMarkFail();
+      }
+    }
     else
       Fail("controller_missing", "ADOFAI controller disappeared before the recorded fail.");
   }
@@ -203,6 +307,7 @@ public static class ReplayPlaybackCoordinator
     {
       ReplaySessionService.ClearActiveContext();
       SetTerminal(operation, ReplayPlaybackStates.Cancelled, "Replay cancelled with Escape.");
+      operation.CleanupPreparedMicrophone();
       _operation = null;
     }
   }
@@ -214,6 +319,7 @@ public static class ReplayPlaybackCoordinator
       return;
 
     ReplaySessionService.ClearActiveContext();
+    operation.CleanupPreparedMicrophone();
     _returnRequested = false;
     _waitingForEditor = false;
     SetError(operation.OperationId, operation.Run.Id, errorCode, message);
@@ -222,12 +328,75 @@ public static class ReplayPlaybackCoordinator
 
   public static void Shutdown()
   {
+    CancelPendingPreparation();
     ReplaySessionService.ClearActiveContext();
+    _operation?.CleanupPreparedMicrophone();
     _operation = null;
     _waitingForEditor = false;
     _returnRequested = false;
     _forcedFail = false;
     SetStatus(ReplayPlaybackStatus.Idle());
+  }
+
+  private static void QueueMicrophonePreparation(PendingReplay operation)
+  {
+    ThreadPool.QueueUserWorkItem(_ =>
+    {
+      string path = ReplayMicrophonePlaybackFiles.ForOperation(operation.OperationId);
+      try
+      {
+        StoredMicrophoneRecording recording = MicrophoneRecordingRepository.CopyForPlayback(
+          operation.Run.Id,
+          path,
+          operation.PreparationCancellation.Token
+        );
+        if (recording != null)
+        {
+          Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
+          operation.PreparationCancellation.Token.ThrowIfCancellationRequested();
+          operation.MicrophoneRecording = recording;
+          operation.MicrophoneWave = wave;
+        }
+      }
+      catch (OperationCanceledException)
+      {
+        ReplayMicrophonePlaybackFiles.Delete(path);
+        ReplayMicrophonePlaybackFiles.Delete(path + ".copying");
+      }
+      catch (Exception exception)
+      {
+        ReplayMicrophonePlaybackFiles.Delete(path);
+        ReplayMicrophonePlaybackFiles.Delete(path + ".copying");
+        Main.Instance?.Log(
+          "[Replay/Microphone] Recording unavailable; replay will continue without it. error=" + exception.Message
+        );
+      }
+      finally
+      {
+        UnityMainThread.Post(() => BeginOnMainThread(operation));
+      }
+    });
+  }
+
+  private static void CancelPendingPreparation()
+  {
+    PendingReplay preparing = _preparingOperation;
+    _preparingOperation = null;
+    preparing?.PreparationCancellation.Cancel();
+  }
+
+  private static void CancelCurrentReplayForReplacement(string replacementOperationId)
+  {
+    if (!IsCurrent(replacementOperationId))
+      return;
+
+    PendingReplay previous = _operation;
+    ReplaySessionService.ClearActiveContext();
+    previous?.CleanupPreparedMicrophone();
+    _operation = null;
+    _waitingForEditor = false;
+    _returnRequested = false;
+    _forcedFail = false;
   }
 
   private static bool TryPrepare(
@@ -301,8 +470,17 @@ public static class ReplayPlaybackCoordinator
 
   private static void BeginOnMainThread(PendingReplay operation)
   {
-    if (!IsCurrent(operation.OperationId))
+    if (!IsCurrent(operation.OperationId) || operation.PreparationCancellation.IsCancellationRequested)
+    {
+      operation.CleanupPreparedMicrophone();
       return;
+    }
+
+    lock (CommandGate)
+    {
+      if (ReferenceEquals(_preparingOperation, operation))
+        _preparingOperation = null;
+    }
 
     if (
       !ReplayLevelHashValidator.ValidateTarget(
@@ -314,6 +492,7 @@ public static class ReplayPlaybackCoordinator
       )
     )
     {
+      operation.CleanupPreparedMicrophone();
       SetError(operation.OperationId, operation.Run.Id, validationCode, validationMessage);
       return;
     }
@@ -347,12 +526,21 @@ public static class ReplayPlaybackCoordinator
     }
 
     operation.LevelOpenStartedAt = Time.realtimeSinceStartupAsDouble;
+    operation.LevelDataBeforeOpen = scnEditor.instance?.levelData;
+    operation.LevelOpenRequested = true;
+    operation.LevelOpenObservedTransition = false;
     SetOperationState(operation, ReplayPlaybackStates.OpeningLevel, "Opening recorded level in ADOFAI.");
     ReplayLevelOpenService.OpenEditor(operation.PlaybackLevelPath);
   }
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
+    if (operation.AllowBackground)
+    {
+      operation.NativeInputFocusGuard = AlwaysReadyFocusGuard.Instance;
+      StartReplay(operation);
+      return;
+    }
     if (operation.NativeInputFocusGuard == null)
       operation.NativeInputFocusGuard = NativeInputFocusGuardFactory.Create();
 
@@ -379,6 +567,7 @@ public static class ReplayPlaybackCoordinator
       !ReplayLevelHashValidator.ValidateLoaded(
         operation.Run,
         editor.levelData,
+        LevelPathIdentity.Current(),
         out string validationCode,
         out string validationMessage
       )
@@ -387,6 +576,10 @@ public static class ReplayPlaybackCoordinator
       Fail(validationCode, validationMessage);
       return;
     }
+
+    string loadedLevelPath = LevelPathIdentity.Current();
+    if (loadedLevelPath != null)
+      operation.PlaybackLevelPath = loadedLevelPath;
 
     if (operation.Run.StartTile >= editor.floors.Count)
     {
@@ -398,11 +591,37 @@ public static class ReplayPlaybackCoordinator
     INativeInputFocusGuard focusGuard =
       operation.NativeInputFocusGuard
       ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
+    IReplayMicrophonePlayer microphonePlayer = null;
+    if (operation.MicrophoneRecording != null && operation.MicrophoneWave != null)
+    {
+      try
+      {
+        TUFReplaySetting settings = Infrastructure.Settings.TUFReplaySettingStore.Current;
+        microphonePlayer = new ReplayMicrophonePlayer(
+          operation.MicrophoneRecording,
+          operation.MicrophoneWave,
+          settings?.MicrophoneOffsetMs ?? 0,
+          settings?.MicrophoneVolumeDb ?? 0
+        );
+        operation.TransferMicrophoneOwnership();
+      }
+      catch (Exception exception)
+      {
+        operation.CleanupPreparedMicrophone();
+        Main.Instance?.Log(
+          "[Replay/Microphone] Playback initialization failed; replay will continue without it. error="
+            + exception.Message
+        );
+      }
+    }
+
     ActiveReplayContext context = new ActiveReplayContext
     {
       OperationId = operation.OperationId,
       RunId = operation.Run.Id,
       LevelPath = operation.PlaybackLevelPath,
+      GameplayHash = (byte[])operation.Run.GameplayHash.Clone(),
+      GameplayHashVersion = operation.Run.GameplayHashVersion.Value,
       Result = operation.Run.Result,
       TufLevelId = operation.Run.TufLevelId,
       StartTile = operation.Run.StartTile,
@@ -412,10 +631,11 @@ public static class ReplayPlaybackCoordinator
       NativeInputScheduler = scheduler,
       NativeInputPlayer = new ReplayNativeInputPlayer(
         scheduler,
-        NativeInputEmitterFactory.Create(focusGuard),
+        operation.AllowBackground ? NullNativeInputEmitter.Instance : NativeInputEmitterFactory.Create(focusGuard),
         focusGuard
       ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
+      MicrophonePlayer = microphonePlayer,
       Meta = operation.Meta,
     };
 
@@ -429,12 +649,36 @@ public static class ReplayPlaybackCoordinator
   private static bool IsExpectedLevelReady(PendingReplay operation)
   {
     scnEditor editor = scnEditor.instance;
-    return editor != null
-      && editor.initialized
-      && !editor.isLoading
-      && !editor.playMode
-      && editor.floors != null
-      && LevelPathIdentity.Equals(operation.PlaybackLevelPath, LevelPathIdentity.Current());
+    if (!IsEditorReady())
+      return false;
+
+    if (operation.Run.GameplayHash == null)
+    {
+      if (
+        !operation.LevelOpenRequested
+        || !LevelPathIdentity.Equals(operation.PlaybackLevelPath, LevelPathIdentity.Current())
+        || (!operation.LevelOpenObservedTransition && ReferenceEquals(operation.LevelDataBeforeOpen, editor.levelData))
+      )
+        return false;
+
+      return ReplayLevelHashValidator.ValidateLoaded(
+        operation.Run,
+        editor.levelData,
+        LevelPathIdentity.Current(),
+        out _,
+        out _
+      );
+    }
+
+    return GameplayChartHash.IsSupported(operation.Run.GameplayHashVersion, operation.Run.GameplayHash)
+      && GameplayChartHash.TryCompute(editor.levelData, out byte[] currentHash, out _)
+      && GameplayChartHash.Equals(operation.Run.GameplayHash, currentHash);
+  }
+
+  private static bool IsEditorReady()
+  {
+    scnEditor editor = scnEditor.instance;
+    return editor != null && editor.initialized && !editor.isLoading && !editor.playMode && editor.floors != null;
   }
 
   private static void RequestReturn(PendingReplay operation, string terminalState, string message)
@@ -455,6 +699,7 @@ public static class ReplayPlaybackCoordinator
       return;
 
     ReplaySessionService.ClearActiveContext();
+    operation.CleanupPreparedMicrophone();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
     _returnRequested = false;
     _waitingForEditor = false;
@@ -479,6 +724,7 @@ public static class ReplayPlaybackCoordinator
   private static void FinishReturn(PendingReplay operation)
   {
     ReplaySessionService.ClearActiveContext();
+    operation.CleanupPreparedMicrophone();
     string terminalState = _returnTerminalState ?? ReplayPlaybackStates.Completed;
     SetTerminal(
       operation,
@@ -645,8 +891,15 @@ public static class ReplayPlaybackCoordinator
     public readonly List<RecordedInput> Inputs;
     public readonly List<ReplayHitContext> HitContexts;
     public readonly long TerminalTimeUs;
+    public readonly CancellationTokenSource PreparationCancellation = new CancellationTokenSource();
     public double LevelOpenStartedAt;
+    public object LevelDataBeforeOpen;
+    public bool LevelOpenRequested;
+    public bool LevelOpenObservedTransition;
     public INativeInputFocusGuard NativeInputFocusGuard;
+    public StoredMicrophoneRecording MicrophoneRecording;
+    public Pcm16WaveInfo MicrophoneWave;
+    public bool AllowBackground;
 
     public PendingReplay(
       string operationId,
@@ -666,5 +919,43 @@ public static class ReplayPlaybackCoordinator
       HitContexts = hitContexts;
       TerminalTimeUs = terminalTimeUs;
     }
+
+    public void TransferMicrophoneOwnership()
+    {
+      MicrophoneRecording = null;
+      MicrophoneWave = null;
+    }
+
+    public void CleanupPreparedMicrophone()
+    {
+      string path = MicrophoneRecording?.FilePath;
+      MicrophoneRecording = null;
+      MicrophoneWave = null;
+      ReplayMicrophonePlaybackFiles.Delete(path);
+    }
+  }
+
+  private sealed class AlwaysReadyFocusGuard : INativeInputFocusGuard
+  {
+    public static readonly AlwaysReadyFocusGuard Instance = new AlwaysReadyFocusGuard();
+
+    public bool IsStable(out string reason)
+    {
+      reason = null;
+      return true;
+    }
+
+    public bool IsForegroundTarget(out string reason) => IsStable(out reason);
+
+    public string Describe() => "calibration-background";
+  }
+
+  private sealed class NullNativeInputEmitter : INativeInputEmitter
+  {
+    public static readonly NullNativeInputEmitter Instance = new NullNativeInputEmitter();
+
+    public bool IsSupported(int key) => true;
+
+    public bool EmitBatch(NativeInputEmission[] emissions, int count) => true;
   }
 }

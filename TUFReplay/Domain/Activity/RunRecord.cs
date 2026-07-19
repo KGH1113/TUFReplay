@@ -34,5 +34,9 @@ public class RunRecord
   public byte[] HitContextCsv;
   public long InputCsvBytes;
   public long HitContextCsvBytes;
+  public long MicrophoneRecordingBytes;
+  public int? MicrophoneSampleRate;
+  public int? MicrophoneChannels;
+  public long? MicrophoneFrameCount;
   public string MetaJson;
 }

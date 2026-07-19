@@ -31,23 +31,26 @@
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
-The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows.
+The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
 ## Features
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
-- Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
+- Stores lean activity records, replay payloads, level paths, level-file fingerprints, and recorder timezone context in SQLite.
 - Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
-- Serves the current chart text to the companion web UI without exposing local file paths.
-- Opens a saved run's recorded level, reuses an already-open matching editor level, and replays it from its recorded start tile.
+- Serves chart text to the companion web UI only while the local file still matches the recorded level-session fingerprint; pre-v9 sessions without a fingerprint retain legacy path-based access.
+- Opens a saved run's recorded level, reuses an already-open gameplay-hash match regardless of path, and replays it from its recorded start tile.
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
-- Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
+- Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and asks whether to keep it after each valid run.
+- Streams accepted microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries.
+- Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
+- Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 
 ## Runtime
@@ -67,6 +70,10 @@ TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded lev
 
 - `TUFReplay/`: UnityModManager mod source.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
+- `TUFReplay.Unity/`: Unity UI AssetBundle project for the in-game save/discard toast.
+- `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
+- `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
+- `scripts/workflows/`, `scripts/tasks/`, `scripts/lib/`: workflow orchestration, independently runnable tasks, and shared shell utilities.
 
 ## Build
 
@@ -79,13 +86,25 @@ cp .env.example .env
 Build and install the mod:
 
 ```bash
-./build.sh
+./scripts/run.sh build
 ```
+
+### Unity UI AssetBundles
+
+The in-game UI prefab is maintained in `TUFReplay.Unity`, using Unity 6.3.10f1. Before the first mod build, open that project and use `TUFReplay > Build > Build All UI Bundles`. The editor builds `tufreplay_ui.bundle` for macOS, Windows, and Linux, then copies the files into `TUFReplay/Assets/{mac,win,linux}`.
+
+For a local macOS-only UI iteration, use `TUFReplay > Build > Build macOS UI Bundle`. After rebuilding the bundle, run `./scripts/run.sh build` to copy the current platform assets into the installed mod.
+
+The temporary `UI Test` section in the Unity Mod Manager GUI can display the microphone recording save toast without recording microphone audio.
 
 The build script:
 
 - Builds the TUFReplay payload and its small auto-update bootstrap.
 - Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
+- Copies the platform UI AssetBundles and third-party notices into `Mods/TUFReplay`.
+- Copies the bundled microphone calibration chart and `calibration_old.ogg` into `Assets/calibration`; packaging fails if either file is missing.
+- On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
+- Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
 The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the TUFReplay bootstrap checks the latest TUFReplay release before loading the payload. Network work has a single 20-second deadline; timeout or any update error emits an `AutoUpdate` warning and loads the installed or last-known-good payload. A verified update is loaded immediately from the versioned cache during the same ADOFAI launch.
@@ -100,16 +119,25 @@ Important environment variables:
 - `DOTNET_EXE`: .NET SDK executable.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
-- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by `package.sh` for version verification.
+- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
 Create a clean shareable package:
 
 ```bash
-./package.sh
+./scripts/run.sh package
 ```
 
 The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates the release assets `build/TUFReplay.version` and `build/TUFReplay.zip.sha256`; all three files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+
+Build only the macOS helper or validate the shell layer with:
+
+```bash
+./scripts/run.sh mac-helper
+./scripts/run.sh check
+```
+
+The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
 Beta releases use the same three assets and must be marked as a prerelease on GitHub.
 
@@ -139,7 +167,7 @@ bun run web:typecheck
 bun run web:build
 ```
 
-The web UI is built and deployed independently. `build.sh` and `package.sh` continue to build and package only the ADOFAI mod.
+The web UI is built and deployed independently. The `build` and `package` workflows continue to build and package only the ADOFAI mod.
 
 The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
 
@@ -215,6 +243,18 @@ Registered methods:
 - `replay.status.get`
 - `replay.level-file.pick.start`
 - `replay.level-file.pick.status`
+- `microphone.devices.get`
+- `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
+- `microphone.calibration.start`
+- `microphone.calibration.status.get`
+- `microphone.calibration.result.get`
+- `microphone.calibration.preview.play`
+- `microphone.calibration.preview.stop`
+- `microphone.calibration.offset.set`
+- `microphone.calibration.volume.set`
+- `microphone.calibration.close`
+
+Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes one 480-bin game waveform and one 480-bin microphone waveform to the web editor. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
 
 ## Tech Stack
 
