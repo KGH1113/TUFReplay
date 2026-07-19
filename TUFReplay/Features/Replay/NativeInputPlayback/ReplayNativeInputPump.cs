@@ -10,7 +10,7 @@ namespace TUFReplay.Features.Replay;
 internal sealed class ReplayNativeInputPump : IDisposable
 {
   private const long ClockDiscontinuityUs = 50_000L;
-  private const int CoarseWaitThresholdMs = 2;
+  private const long FineWaitThresholdUs = 500L;
 
   private readonly object _gate = new object();
   private readonly ReplayInputScheduler _scheduler;
@@ -212,8 +212,16 @@ internal sealed class ReplayNativeInputPump : IDisposable
               continue;
             }
 
-            long remainingMs = remainingTicks * 1000L / Stopwatch.Frequency;
-            waitMilliseconds = remainingMs > CoarseWaitThresholdMs ? (int)Math.Min(remainingMs - 1L, 1000L) : 0;
+            long remainingUs = TicksToMicroseconds(remainingTicks);
+            if (remainingUs > FineWaitThresholdUs)
+            {
+              long remainingMs = remainingTicks * 1000L / Stopwatch.Frequency;
+              waitMilliseconds = (int)Math.Min(Math.Max(1L, remainingMs - 1L), 1000L);
+            }
+            else
+            {
+              waitMilliseconds = 0;
+            }
           }
         }
       }

@@ -3,6 +3,7 @@ using System.IO;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database.Repositories;
+using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Application.Activity;
 
@@ -23,6 +24,7 @@ public static class ActivityQueryService
     var levelsBySession = new Dictionary<string, List<LevelSessionOverview>>(sessions.Count);
     foreach (LevelSessionOverview level in levels)
     {
+      EnsureTufLevelId(level);
       EnsureLevelMetadata(level);
       if (!levelsBySession.TryGetValue(level.AppSessionId, out List<LevelSessionOverview> sessionLevels))
       {
@@ -44,6 +46,7 @@ public static class ActivityQueryService
   public static LevelSessionOverview GetLevelSessionOverview(string id)
   {
     LevelSessionOverview level = ActivityRepository.GetLevelSessionOverview(id);
+    EnsureTufLevelId(level);
     EnsureLevelMetadata(level);
     return level;
   }
@@ -93,6 +96,19 @@ public static class ActivityQueryService
     level.Author = metadata?.Author;
     level.Artist = metadata?.Artist;
     level.MetadataState = state;
+  }
+
+  private static void EnsureTufLevelId(LevelSessionOverview level)
+  {
+    if (level == null || level.TufLevelId.HasValue)
+      return;
+
+    int? tufLevelId = TufHelperGateway.ResolveTufLevelId(level.LevelPath);
+    if (!tufLevelId.HasValue)
+      return;
+
+    LevelSessionRepository.UpdateTufLevelIdIfMissing(level.Id, tufLevelId.Value);
+    level.TufLevelId = tufLevelId;
   }
 }
 
