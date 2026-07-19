@@ -5,7 +5,11 @@ namespace TUFReplay.Infrastructure.Unity;
 
 public static class TufHelperGateway
 {
-  private const string ResolverTypeName = "TUFHelperLite.Integration.LevelContextResolver, TUFHelperLite";
+  private static readonly string[] ResolverTypeNames =
+  {
+    "TUFHelperLite.Integration.LevelContextResolver, TUFHelperLite.Core",
+    "TUFHelperLite.Integration.LevelContextResolver, TUFHelperLite",
+  };
 
   public static int? ResolveTufLevelId(string levelPath)
   {
@@ -14,7 +18,13 @@ public static class TufHelperGateway
 
     try
     {
-      Type resolver = Type.GetType(ResolverTypeName, false);
+      Type resolver = null;
+      foreach (string resolverTypeName in ResolverTypeNames)
+      {
+        resolver = Type.GetType(resolverTypeName, false);
+        if (resolver != null)
+          break;
+      }
       MethodInfo method = resolver?.GetMethod(
         "ResolveTufLevelId",
         BindingFlags.Public | BindingFlags.Static,
