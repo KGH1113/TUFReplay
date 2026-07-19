@@ -90,7 +90,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
   }
 
-  public void ResetTo(long replayTimeUs, double timelineRate)
+  public void ResetTo(long replayTimeUs, double gameplayRate, long? wonTimeUs)
   {
     if (_disposed)
       return;
@@ -105,7 +105,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       _source.Stop();
       _started = false;
       _paused = false;
-      SetPlaybackPosition(TargetFrame(replayTimeUs, timelineRate));
+      SetPlaybackPosition(TargetFrame(replayTimeUs, gameplayRate, wonTimeUs));
     }
     catch (Exception exception)
     {
@@ -113,7 +113,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
   }
 
-  public void Tick(long replayTimeUs, double timelineRate, bool paused)
+  public void Tick(long replayTimeUs, double gameplayRate, long? wonTimeUs, bool paused)
   {
     if (_disposed)
       return;
@@ -127,17 +127,18 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     {
       double microphoneTimeUs = ReplayMicrophoneClock.ToMicrophoneTimeUs(
         replayTimeUs,
-        timelineRate,
-        EffectiveCaptureOffsetUs()
+        gameplayRate,
+        EffectiveCaptureOffsetUs(),
+        wonTimeUs
       );
       if (microphoneTimeUs < 0d)
       {
         if (_started)
-          ResetTo(replayTimeUs, timelineRate);
+          ResetTo(replayTimeUs, gameplayRate, wonTimeUs);
         return;
       }
 
-      long targetFrame = TargetFrame(replayTimeUs, timelineRate);
+      long targetFrame = TargetFrame(replayTimeUs, gameplayRate, wonTimeUs);
       if (targetFrame >= _wave.FrameCount)
       {
         Stop();
@@ -192,13 +193,19 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
   }
 
-  public void UpdateUserSettings(int offsetMs, int volumeDb, long replayTimeUs, double timelineRate)
+  public void UpdateUserSettings(
+    int offsetMs,
+    int volumeDb,
+    long replayTimeUs,
+    double gameplayRate,
+    long? wonTimeUs
+  )
   {
     if (_disposed)
       return;
     SetUserSettings(offsetMs, volumeDb);
     if (_started || _paused)
-      SetPlaybackPosition(TargetFrame(replayTimeUs, timelineRate));
+      SetPlaybackPosition(TargetFrame(replayTimeUs, gameplayRate, wonTimeUs));
   }
 
   public void Stop()
@@ -232,14 +239,15 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     DeletePlaybackFile();
   }
 
-  private long TargetFrame(long replayTimeUs, double timelineRate)
+  private long TargetFrame(long replayTimeUs, double gameplayRate, long? wonTimeUs)
   {
     return ReplayMicrophoneClock.ToFrame(
       replayTimeUs,
-      timelineRate,
+      gameplayRate,
       EffectiveCaptureOffsetUs(),
       _wave.SampleRate,
-      _wave.FrameCount
+      _wave.FrameCount,
+      wonTimeUs
     );
   }
 

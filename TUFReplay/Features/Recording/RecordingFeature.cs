@@ -26,6 +26,10 @@ public class RecordingFeature
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
   private bool _microphoneCaptureStarted;
+  private double? _microphoneCaptureStartedAt;
+  private long _microphonePrerollUs;
+  private bool _microphoneGameplayStartAnchored;
+  private CapturedMicrophoneRecording _pendingEditorRecording;
   private bool _calibrationRun;
 
   private readonly RecordingActivityTracker _activity = new RecordingActivityTracker();
@@ -53,12 +57,7 @@ public class RecordingFeature
       Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
       return;
     }
-    CapturedMicrophoneRecording recording = EndMicrophoneRun();
-    if (_currentRun != null && RecordingSession.GetLevelTileCount() > _currentRun.StartTile)
-      FeatureRegistry.MicrophoneRecording?.Present(recording);
-    else
-      FeatureRegistry.MicrophoneRecording?.Discard(recording);
-    Main.Instance.Log("[Recording] Clear reached; input capture continues until editor return.");
+    Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
   }
 
   public void OnRunFailed()
@@ -114,6 +113,8 @@ public class RecordingFeature
         else
           FeatureRegistry.MicrophoneRecording?.Discard(recording);
       }
+      else if (saved)
+        QueueEditorRecording(recording);
       else
         FeatureRegistry.MicrophoneRecording?.Discard(recording);
     }
@@ -127,6 +128,18 @@ public class RecordingFeature
         "[Recording] Clear data captured. inputs=" + Session.InputCount + ", hitContexts=" + Session.HitContextCount
       );
     }
+  }
+
+  public void OnEditorReturnCompleted()
+  {
+    CapturedMicrophoneRecording recording = _pendingEditorRecording;
+    _pendingEditorRecording = null;
+    FeatureRegistry.MicrophoneRecording?.Present(recording);
+  }
+
+  public void OnEditorReturnFailed()
+  {
+    DiscardPendingEditorRecording();
   }
 
   public void Enable()
@@ -146,6 +159,7 @@ public class RecordingFeature
     Active = false;
 
     StopSession();
+    DiscardPendingEditorRecording();
     RecordInputTracker.Reset();
     _activity.CloseLevel();
     _activity.StopAppSession();
@@ -278,11 +292,17 @@ public class RecordingFeature
     PrepareActivityRun(RecordingSession.GetLevelTileCount());
     if (_calibrationRun)
       FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
-    if (_currentRun != null && !_microphoneCaptureStarted)
-    {
-      FeatureRegistry.MicrophoneRecording?.BeginRun(_currentRun.Id);
-      _microphoneCaptureStarted = true;
-    }
+    StartMicrophoneRun();
+    AnchorMicrophoneToGameplayStart();
+  }
+
+  public void OnInputCaptureStarted()
+  {
+    if (_calibrationRun || !Session.IsRecording)
+      return;
+
+    PrepareActivityRun(RecordingSession.GetLevelTileCount());
+    StartMicrophoneRun();
   }
 
   private void PrepareActivityRun(int levelTileCount)
@@ -369,11 +389,15 @@ public class RecordingFeature
 
   private void ResetRunState()
   {
+    DiscardPendingEditorRecording();
     _clearReached = false;
     _failed = false;
     _runSaved = false;
     _currentRun = null;
     _microphoneCaptureStarted = false;
+    _microphoneCaptureStartedAt = null;
+    _microphonePrerollUs = 0L;
+    _microphoneGameplayStartAnchored = false;
   }
 
   private CapturedMicrophoneRecording EndMicrophoneRun()
@@ -381,6 +405,46 @@ public class RecordingFeature
     if (!_microphoneCaptureStarted)
       return null;
     _microphoneCaptureStarted = false;
-    return FeatureRegistry.MicrophoneRecording?.EndRun();
+    CapturedMicrophoneRecording recording = FeatureRegistry.MicrophoneRecording?.EndRun();
+    if (recording != null && _microphoneGameplayStartAnchored)
+      recording.CaptureStartOffsetUs -= _microphonePrerollUs;
+    _microphoneCaptureStartedAt = null;
+    _microphonePrerollUs = 0L;
+    _microphoneGameplayStartAnchored = false;
+    return recording;
+  }
+
+  private void StartMicrophoneRun()
+  {
+    if (_currentRun == null || _microphoneCaptureStarted)
+      return;
+
+    FeatureRegistry.MicrophoneRecording?.BeginRun(_currentRun.Id);
+    _microphoneCaptureStarted = true;
+    _microphoneCaptureStartedAt = RecordingClock.CurrentUnscaledTime();
+  }
+
+  private void AnchorMicrophoneToGameplayStart()
+  {
+    if (_calibrationRun || !_microphoneCaptureStarted || _microphoneGameplayStartAnchored)
+      return;
+
+    double startedAt = _microphoneCaptureStartedAt ?? RecordingClock.CurrentUnscaledTime();
+    double elapsedSeconds = Math.Max(0d, RecordingClock.CurrentUnscaledTime() - startedAt);
+    _microphonePrerollUs = (long)(elapsedSeconds * 1_000_000d);
+    _microphoneGameplayStartAnchored = true;
+  }
+
+  private void QueueEditorRecording(CapturedMicrophoneRecording recording)
+  {
+    DiscardPendingEditorRecording();
+    _pendingEditorRecording = recording;
+  }
+
+  private void DiscardPendingEditorRecording()
+  {
+    CapturedMicrophoneRecording recording = _pendingEditorRecording;
+    _pendingEditorRecording = null;
+    FeatureRegistry.MicrophoneRecording?.Discard(recording);
   }
 }

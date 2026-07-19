@@ -47,7 +47,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
-- Captures microphone audio from gameplay start to clear, fail, or abort and asks whether to keep it after each valid run.
+- Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and asks whether to keep it after each valid run.
 - Streams accepted microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.

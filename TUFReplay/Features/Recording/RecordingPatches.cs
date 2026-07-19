@@ -147,6 +147,7 @@ public static class RecordingPatches
           return;
         recording.Session.StartInputCapture();
         RecordInputTracker.SetCaptureWindowActive(UnityEngine.Application.isFocused);
+        recording.OnInputCaptureStarted();
         ResetHitContextState();
         break;
 
@@ -208,6 +209,39 @@ public static class RecordingPatches
     {
       Main.Instance?.LogException(nameof(OnSwitchToEditModePrefix), exception);
     }
+  }
+
+  [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]
+  [HarmonyPostfix]
+  private static void OnSwitchToEditModePostfix()
+  {
+    try
+    {
+      if (IsActive)
+        RecordingFeature.Instance?.OnEditorReturnCompleted();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnSwitchToEditModePostfix), exception);
+    }
+  }
+
+  [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]
+  [HarmonyFinalizer]
+  private static Exception OnSwitchToEditModeFinalizer(Exception __exception)
+  {
+    if (__exception == null)
+      return null;
+
+    try
+    {
+      RecordingFeature.Instance?.OnEditorReturnFailed();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnSwitchToEditModeFinalizer), exception);
+    }
+    return __exception;
   }
 
   private static bool ShouldCaptureHitContext(scrPlayer player)
