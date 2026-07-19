@@ -9,7 +9,7 @@ namespace TUFReplay.Features.Ui;
 internal sealed class MicrophoneRecordingToastView : IDisposable
 {
   private const string BundleName = "tufreplay_ui.bundle";
-  private const float DurationSeconds = 10f;
+  private const float DurationSeconds = 5f;
 
   private readonly AssetBundle _bundle;
   private readonly GameObject _root;
