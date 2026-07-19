@@ -7,6 +7,7 @@ using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
+using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Database.Schema;
@@ -26,6 +27,7 @@ internal static class Program
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
       TestCalibrationWaveforms(root);
+      TestAdofaiLevelFileHash(root);
       TestSchemaMigrationAndBlob(root);
       TestReplayInputStableOrder();
       TestReplaySchedulerChord();
@@ -314,7 +316,7 @@ internal static class Program
       ActivitySchema.Ensure(connection);
       using SqliteCommand version = connection.CreateCommand();
       version.CommandText = "PRAGMA user_version";
-      Assert(Convert.ToInt32(version.ExecuteScalar()) == 8, "Fresh schema version is not 8.");
+      Assert(Convert.ToInt32(version.ExecuteScalar()) == 9, "Fresh schema version is not 9.");
       InsertRun(connection);
     }
 
@@ -400,13 +402,28 @@ internal static class Program
     migration.Open();
     using (SqliteCommand setup = migration.CreateCommand())
     {
-      setup.CommandText = "DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
+      setup.CommandText =
+        "ALTER TABLE level_sessions DROP COLUMN level_file_hash; DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
       setup.ExecuteNonQuery();
     }
     ActivitySchema.Ensure(migration);
     using SqliteCommand migrated = migration.CreateCommand();
     migrated.CommandText = "SELECT user_version FROM pragma_user_version";
-    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 8, "Schema 7 to 8 migration failed.");
+    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 9, "Schema 7 to 9 migration failed.");
+  }
+
+  private static void TestAdofaiLevelFileHash(string root)
+  {
+    string path = Path.Combine(root, "level-hash.adofai");
+    File.WriteAllText(path, "{\"angleData\":[0,90]}");
+    Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] first), "Level file hash was not computed.");
+    Assert(first.Length == AdofaiLevelFileHash.Size, "Level file hash length is invalid.");
+    Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] same), "Repeated level file hash failed.");
+    Assert(AdofaiLevelFileHash.Equals(first, same), "Unchanged level file hash changed.");
+
+    File.WriteAllText(path, "{\"angleData\":[0,180]}");
+    Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] changed), "Changed level file hash failed.");
+    Assert(!AdofaiLevelFileHash.Equals(first, changed), "Changed level file was treated as identical.");
   }
 
   private static void InsertRun(SqliteConnection connection)

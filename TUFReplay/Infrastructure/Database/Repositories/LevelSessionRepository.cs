@@ -13,8 +13,8 @@ public static class LevelSessionRepository
     q.CommandText =
       @"INSERT INTO level_sessions(
 id,app_session_id,tuf_level_id,level_path,opened_at_utc,closed_at_utc,level_tile_count,
-song,author,artist,metadata_state
-) VALUES(@id,@app,@tuf,@path,@open,@close,@tiles,@song,@author,@artist,@metadataState)";
+level_file_hash,song,author,artist,metadata_state
+) VALUES(@id,@app,@tuf,@path,@open,@close,@tiles,@levelFileHash,@song,@author,@artist,@metadataState)";
     q.Parameters.AddWithValue("@id", s.Id);
     q.Parameters.AddWithValue("@app", s.AppSessionId);
     q.Parameters.AddWithValue("@tuf", DbValue.From(s.TufLevelId));
@@ -22,6 +22,7 @@ song,author,artist,metadata_state
     q.Parameters.AddWithValue("@open", s.OpenedAtUtc);
     q.Parameters.AddWithValue("@close", DbValue.From(s.ClosedAtUtc));
     q.Parameters.AddWithValue("@tiles", s.LevelTileCount);
+    q.Parameters.AddWithValue("@levelFileHash", (object)s.LevelFileHash ?? System.DBNull.Value);
     q.Parameters.AddWithValue("@song", DbValue.From(s.Song));
     q.Parameters.AddWithValue("@author", DbValue.From(s.Author));
     q.Parameters.AddWithValue("@artist", DbValue.From(s.Artist));
@@ -60,7 +61,7 @@ WHERE id=@id
     using SqliteCommand q = c.CreateCommand();
     q.CommandText =
       @"SELECT id,app_session_id,tuf_level_id,level_path,opened_at_utc,closed_at_utc,level_tile_count,
-song,author,artist,metadata_state FROM level_sessions WHERE id=@id";
+level_file_hash,song,author,artist,metadata_state FROM level_sessions WHERE id=@id";
     q.Parameters.AddWithValue("@id", id);
     using SqliteDataReader r = q.ExecuteReader();
     return r.Read()
@@ -73,10 +74,11 @@ song,author,artist,metadata_state FROM level_sessions WHERE id=@id";
         OpenedAtUtc = r.GetString(4),
         ClosedAtUtc = DbValue.NullableString(r, 5),
         LevelTileCount = r.GetInt32(6),
-        Song = DbValue.NullableString(r, 7),
-        Author = DbValue.NullableString(r, 8),
-        Artist = DbValue.NullableString(r, 9),
-        MetadataState = (LevelMetadataState)r.GetInt32(10),
+        LevelFileHash = r.IsDBNull(7) ? null : (byte[])r.GetValue(7),
+        Song = DbValue.NullableString(r, 8),
+        Author = DbValue.NullableString(r, 9),
+        Artist = DbValue.NullableString(r, 10),
+        MetadataState = (LevelMetadataState)r.GetInt32(11),
       }
       : null;
   }

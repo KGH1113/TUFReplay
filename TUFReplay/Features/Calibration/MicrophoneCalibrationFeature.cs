@@ -27,6 +27,9 @@ public sealed class MicrophoneCalibrationFeature
   private CalibrationGameAudioTap _audioTap;
   private MicrophoneCalibrationTicker _ticker;
   private string _levelPath;
+  private byte[] _levelGameplayHash;
+  private object _levelDataBeforeOpen;
+  private bool _levelOpenObservedTransition;
   private string _previewReplayOperationId;
   private bool _originalRunInBackground;
   private bool _changedRunInBackground;
@@ -70,8 +73,10 @@ public sealed class MicrophoneCalibrationFeature
     if (!File.Exists(levelPath) || !File.Exists(songPath))
       return Error("calibration_assets_missing", "The packaged calibration level or song is missing.");
 
-    _levelPath = LevelPathIdentity.Canonicalize(levelPath);
     string operationId = Guid.NewGuid().ToString("N");
+    _levelPath = LevelPathIdentity.Canonicalize(levelPath);
+    if (!GameplayChartHash.TryLoad(_levelPath, out _, out _levelGameplayHash, out string hashError))
+      return Error("calibration_level_hash_failed", hashError, operationId);
     SetStatus(
       new MicrophoneCalibrationStatus
       {
@@ -104,6 +109,8 @@ public sealed class MicrophoneCalibrationFeature
 
     if (state == MicrophoneCalibrationStates.OpeningLevel)
     {
+      if (!IsCalibrationEditorBaseReady())
+        _levelOpenObservedTransition = true;
       if (IsCalibrationEditorReady())
       {
         Main.Instance?.Log("[Calibration] Calibration level opened automatically.");
@@ -122,9 +129,12 @@ public sealed class MicrophoneCalibrationFeature
       TickPreview();
   }
 
-  public bool IsCalibrationLevel(string levelPath)
+  public bool IsCalibrationLevel()
   {
-    return Active && _levelPath != null && LevelPathIdentity.Equals(_levelPath, levelPath);
+    return Active
+      && GameplayChartHash.IsSupported(GameplayChartHash.Version, _levelGameplayHash)
+      && GameplayChartHash.TryComputeCurrent(out byte[] currentHash, out _)
+      && GameplayChartHash.Equals(_levelGameplayHash, currentHash);
   }
 
   public void OnRunStarted()
@@ -410,6 +420,9 @@ public sealed class MicrophoneCalibrationFeature
     _run = null;
     _result = null;
     _levelPath = null;
+    _levelGameplayHash = null;
+    _levelDataBeforeOpen = null;
+    _levelOpenObservedTransition = false;
     _levelOpenStartedAt = 0d;
     FeatureRegistry.MicrophoneRecording?.Disarm();
   }
@@ -421,6 +434,8 @@ public sealed class MicrophoneCalibrationFeature
     {
       UpdateState(MicrophoneCalibrationStates.OpeningLevel, "Opening the calibration level automatically.");
       _levelOpenStartedAt = Time.realtimeSinceStartupAsDouble;
+      _levelDataBeforeOpen = scnEditor.instance?.levelData;
+      _levelOpenObservedTransition = false;
       Main.Instance?.Log("[Calibration] Opening packaged calibration level: " + _levelPath);
       ReplayLevelOpenService.OpenEditor(_levelPath);
     }
@@ -447,10 +462,16 @@ public sealed class MicrophoneCalibrationFeature
   private bool IsCalibrationEditorReady()
   {
     scnEditor editor = scnEditor.instance;
-    return editor != null
-      && editor.initialized
-      && !editor.isLoading
-      && LevelPathIdentity.Equals(_levelPath, LevelPathIdentity.Current());
+    return IsCalibrationEditorBaseReady()
+      && (_levelOpenObservedTransition || !ReferenceEquals(_levelDataBeforeOpen, editor.levelData))
+      && GameplayChartHash.TryCompute(editor.levelData, out byte[] currentHash, out _)
+      && GameplayChartHash.Equals(_levelGameplayHash, currentHash);
+  }
+
+  private static bool IsCalibrationEditorBaseReady()
+  {
+    scnEditor editor = scnEditor.instance;
+    return editor != null && editor.initialized && !editor.isLoading;
   }
 
   private static bool IsGameplayActive()

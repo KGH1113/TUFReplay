@@ -9,6 +9,8 @@ public class ActiveReplayContext
   public string OperationId;
   public string RunId;
   public string LevelPath;
+  public byte[] GameplayHash;
+  public int GameplayHashVersion;
   public string Result;
   public int? TufLevelId;
   public int StartTile;

@@ -65,6 +65,14 @@ public static class ActivityQueryService
       return null;
     if (string.IsNullOrEmpty(s.LevelPath) || !File.Exists(s.LevelPath))
       return new ChartData { id = id, floorCount = s.LevelTileCount };
+    if (
+      s.LevelFileHash != null
+      && (
+        !AdofaiLevelFileHash.TryCompute(s.LevelPath, out byte[] currentFileHash)
+        || !AdofaiLevelFileHash.Equals(s.LevelFileHash, currentFileHash)
+      )
+    )
+      return new ChartData { id = id, floorCount = s.LevelTileCount };
     return new ChartData
     {
       id = id,

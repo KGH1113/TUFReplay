@@ -64,7 +64,7 @@ public static class ActivityIpcHandlers
       if (chart == null)
         return IpcDomainError.Create("level_session_not_found", "Level session was not found.");
       if (chart.levelText == null)
-        return IpcDomainError.Create("chart_unavailable", "The recorded chart path is unavailable.");
+        return IpcDomainError.Create("chart_unavailable", "The recorded chart file is unavailable or has changed.");
       return new ActivityChartDto
       {
         LevelSessionId = chart.id,

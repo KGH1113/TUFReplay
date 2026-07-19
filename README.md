@@ -38,19 +38,19 @@ The project is built around preserving low-level play data instead of trusting f
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
-- Stores lean activity records, replay payloads, level paths, and recorder timezone context in SQLite.
+- Stores lean activity records, replay payloads, level paths, level-file fingerprints, and recorder timezone context in SQLite.
 - Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
-- Serves the current chart text to the companion web UI without exposing local file paths.
-- Opens a saved run's recorded level, reuses an already-open matching editor level, and replays it from its recorded start tile.
+- Serves chart text to the companion web UI only while the local file still matches the recorded level-session fingerprint; pre-v9 sessions without a fingerprint retain legacy path-based access.
+- Opens a saved run's recorded level, reuses an already-open gameplay-hash match regardless of path, and replays it from its recorded start tile.
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and asks whether to keep it after each valid run.
 - Streams accepted microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
-- Optionally identifies TUFHelperLite-downloaded levels for future TUF submission workflows.
+- Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 
 ## Runtime

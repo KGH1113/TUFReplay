@@ -184,13 +184,29 @@ public static class ReplayPlaybackCoordinator
     string state = GetStatus().State;
     if (state == ReplayPlaybackStates.OpeningLevel)
     {
+      if (!IsEditorReady())
+        operation.LevelOpenObservedTransition = true;
       if (IsExpectedLevelReady(operation))
       {
         WaitForFocusOrStart(operation);
       }
       else if (Time.realtimeSinceStartupAsDouble - operation.LevelOpenStartedAt > LevelOpenTimeoutSeconds)
       {
-        Fail("level_open_timeout", "ADOFAI did not finish opening the recorded level.");
+        scnEditor editor = scnEditor.instance;
+        if (
+          IsEditorReady()
+          && operation.Run.GameplayHash != null
+          && !ReplayLevelHashValidator.ValidateLoaded(
+            operation.Run,
+            editor.levelData,
+            LevelPathIdentity.Current(),
+            out string validationCode,
+            out string validationMessage
+          )
+        )
+          Fail(validationCode, validationMessage);
+        else
+          Fail("level_open_timeout", "ADOFAI did not finish opening the recorded level.");
       }
       return;
     }
@@ -510,6 +526,9 @@ public static class ReplayPlaybackCoordinator
     }
 
     operation.LevelOpenStartedAt = Time.realtimeSinceStartupAsDouble;
+    operation.LevelDataBeforeOpen = scnEditor.instance?.levelData;
+    operation.LevelOpenRequested = true;
+    operation.LevelOpenObservedTransition = false;
     SetOperationState(operation, ReplayPlaybackStates.OpeningLevel, "Opening recorded level in ADOFAI.");
     ReplayLevelOpenService.OpenEditor(operation.PlaybackLevelPath);
   }
@@ -548,7 +567,7 @@ public static class ReplayPlaybackCoordinator
       !ReplayLevelHashValidator.ValidateLoaded(
         operation.Run,
         editor.levelData,
-        operation.PlaybackLevelPath,
+        LevelPathIdentity.Current(),
         out string validationCode,
         out string validationMessage
       )
@@ -557,6 +576,10 @@ public static class ReplayPlaybackCoordinator
       Fail(validationCode, validationMessage);
       return;
     }
+
+    string loadedLevelPath = LevelPathIdentity.Current();
+    if (loadedLevelPath != null)
+      operation.PlaybackLevelPath = loadedLevelPath;
 
     if (operation.Run.StartTile >= editor.floors.Count)
     {
@@ -597,6 +620,8 @@ public static class ReplayPlaybackCoordinator
       OperationId = operation.OperationId,
       RunId = operation.Run.Id,
       LevelPath = operation.PlaybackLevelPath,
+      GameplayHash = (byte[])operation.Run.GameplayHash.Clone(),
+      GameplayHashVersion = operation.Run.GameplayHashVersion.Value,
       Result = operation.Run.Result,
       TufLevelId = operation.Run.TufLevelId,
       StartTile = operation.Run.StartTile,
@@ -624,12 +649,36 @@ public static class ReplayPlaybackCoordinator
   private static bool IsExpectedLevelReady(PendingReplay operation)
   {
     scnEditor editor = scnEditor.instance;
-    return editor != null
-      && editor.initialized
-      && !editor.isLoading
-      && !editor.playMode
-      && editor.floors != null
-      && LevelPathIdentity.Equals(operation.PlaybackLevelPath, LevelPathIdentity.Current());
+    if (!IsEditorReady())
+      return false;
+
+    if (operation.Run.GameplayHash == null)
+    {
+      if (
+        !operation.LevelOpenRequested
+        || !LevelPathIdentity.Equals(operation.PlaybackLevelPath, LevelPathIdentity.Current())
+        || (!operation.LevelOpenObservedTransition && ReferenceEquals(operation.LevelDataBeforeOpen, editor.levelData))
+      )
+        return false;
+
+      return ReplayLevelHashValidator.ValidateLoaded(
+        operation.Run,
+        editor.levelData,
+        LevelPathIdentity.Current(),
+        out _,
+        out _
+      );
+    }
+
+    return GameplayChartHash.IsSupported(operation.Run.GameplayHashVersion, operation.Run.GameplayHash)
+      && GameplayChartHash.TryCompute(editor.levelData, out byte[] currentHash, out _)
+      && GameplayChartHash.Equals(operation.Run.GameplayHash, currentHash);
+  }
+
+  private static bool IsEditorReady()
+  {
+    scnEditor editor = scnEditor.instance;
+    return editor != null && editor.initialized && !editor.isLoading && !editor.playMode && editor.floors != null;
   }
 
   private static void RequestReturn(PendingReplay operation, string terminalState, string message)
@@ -844,6 +893,9 @@ public static class ReplayPlaybackCoordinator
     public readonly long TerminalTimeUs;
     public readonly CancellationTokenSource PreparationCancellation = new CancellationTokenSource();
     public double LevelOpenStartedAt;
+    public object LevelDataBeforeOpen;
+    public bool LevelOpenRequested;
+    public bool LevelOpenObservedTransition;
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;

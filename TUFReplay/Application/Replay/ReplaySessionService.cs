@@ -28,16 +28,16 @@ public static class ReplaySessionService
   public static string ActiveResult => _activeContext?.Result;
   public static long ActiveTerminalTimeUs => _activeContext?.TerminalTimeUs ?? 0L;
 
-  public static bool IsActiveReplayLevel(string levelPath)
+  public static bool IsActiveReplayLevel()
   {
-    return _activeContext != null && LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath);
+    return _activeContext != null && IsActiveReplayHashCurrent();
   }
 
-  public static void ClearActiveContextIfLevelChanged(string levelPath)
+  public static void ClearActiveContextIfLevelChanged()
   {
     if (_activeContext == null)
       return;
-    if (!LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath))
+    if (!IsActiveReplayHashCurrent())
       StopActiveReplay("different_level_opened");
   }
 
@@ -178,8 +178,7 @@ public static class ReplaySessionService
     if (_activeContext == null)
       return false;
 
-    string levelPath = LevelPathIdentity.Current();
-    if (!LevelPathIdentity.Equals(_activeContext.LevelPath, levelPath))
+    if (!IsActiveReplayHashCurrent())
     {
       StopActiveReplay("different_level_current");
       ReplayPlaybackCoordinator.Fail("different_level_current", "The open level changed during replay.");
@@ -187,6 +186,14 @@ public static class ReplaySessionService
     }
 
     return true;
+  }
+
+  private static bool IsActiveReplayHashCurrent()
+  {
+    return _activeContext != null
+      && GameplayChartHash.IsSupported(_activeContext.GameplayHashVersion, _activeContext.GameplayHash)
+      && GameplayChartHash.TryComputeCurrent(out byte[] currentHash, out _)
+      && GameplayChartHash.Equals(_activeContext.GameplayHash, currentHash);
   }
 
   private static void PrepareReplayRunRestart(string reason)
@@ -386,10 +393,7 @@ public static class ReplaySessionService
     if (
       !TryGetControllerState(out States state)
       || (
-        state != States.Countdown
-        && state != States.Checkpoint
-        && state != States.PlayerControl
-        && state != States.Won
+        state != States.Countdown && state != States.Checkpoint && state != States.PlayerControl && state != States.Won
       )
     )
       return;

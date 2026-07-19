@@ -182,7 +182,7 @@ public class RecordingFeature
       return;
     }
 
-    if (FeatureRegistry.MicrophoneCalibration?.IsCalibrationLevel(levelPath) == true)
+    if (FeatureRegistry.MicrophoneCalibration?.IsCalibrationLevel() == true)
     {
       ResetRunState();
       _calibrationRun = true;
@@ -195,8 +195,8 @@ public class RecordingFeature
     _calibrationRun = false;
 
     int? tufLevelId = TufHelperGateway.ResolveTufLevelId(levelPath);
-    ReplaySessionService.ClearActiveContextIfLevelChanged(levelPath);
-    if (ReplaySessionService.IsActiveReplayLevel(levelPath))
+    ReplaySessionService.ClearActiveContextIfLevelChanged();
+    if (ReplaySessionService.IsActiveReplayLevel())
       return;
 
     if (!RecordingGuard.CanRecord(out string reason))
@@ -209,9 +209,9 @@ public class RecordingFeature
     ResetRunState();
 
     int levelTileCount = RecordingSession.GetLevelTileCount();
-    _activity.OpenLevel(levelPath, tufLevelId, levelTileCount);
-    RecordingPatches.ResetHitContextState();
     CaptureGameplayHash();
+    _activity.OpenLevel(levelPath, tufLevelId, levelTileCount, _gameplayHash, _gameplayHashVersion);
+    RecordingPatches.ResetHitContextState();
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
     if (Session.IsRecording)
       FeatureRegistry.MicrophoneRecording?.ArmForLevel();
