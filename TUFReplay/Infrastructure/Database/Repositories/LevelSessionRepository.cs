@@ -108,4 +108,14 @@ WHERE id=@id AND metadata_state=@pending";
     q.Parameters.AddWithValue("@pending", (int)LevelMetadataState.Pending);
     q.ExecuteNonQuery();
   }
+
+  public static void UpdateTufLevelIdIfMissing(string id, int tufLevelId)
+  {
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "UPDATE level_sessions SET tuf_level_id=@tuf WHERE id=@id AND tuf_level_id IS NULL";
+    q.Parameters.AddWithValue("@tuf", tufLevelId);
+    q.Parameters.AddWithValue("@id", id);
+    q.ExecuteNonQuery();
+  }
 }
