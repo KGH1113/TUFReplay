@@ -1,4 +1,5 @@
 using TUFReplay.Application.Replay;
+using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Features.Replay;
 
@@ -17,6 +18,7 @@ public class ReplayFeature
     if (Active)
       return;
     Active = true;
+    ReplayMicrophonePlaybackFiles.Initialize();
   }
 
   public void Disable()

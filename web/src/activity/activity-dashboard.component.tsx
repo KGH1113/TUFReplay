@@ -5,16 +5,25 @@ import { ActivityWorkspace } from "./components/activity-workspace.component";
 import { DashboardHeader } from "./components/dashboard-header.component";
 import { DayRail } from "./components/day-rail.component";
 import { LevelStrip } from "./components/level-strip.component";
+import { MicrophoneOffsetCalibrationDialog } from "./components/microphone-offset-calibration-dialog.component";
 import { ReplayLevelChoiceDialog } from "./components/replay-level-choice-dialog.component";
 import { useActivityData } from "./hooks/use-activity-data.hook";
 import { useLevelMetadata } from "./hooks/use-level-metadata.hook";
 import { useLevelSessionData } from "./hooks/use-level-session-data.hook";
+import { useMicrophoneDevices } from "./hooks/use-microphone-devices.hook";
+import { useMicrophoneOffsetCalibration } from "./hooks/use-microphone-offset-calibration.hook";
 import { useReplayControl } from "./hooks/use-replay-control.hook";
 import { aggregateRunMarkers, groupSessionsByDay } from "./lib/activity-data.utils";
 
 export function ActivityDashboard() {
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
+  const microphones = useMicrophoneDevices(activity.gatewayRef, activity.status);
+  const microphoneOffset = useMicrophoneOffsetCalibration(
+    activity.gatewayRef,
+    activity.status,
+    activity.mockEnabled,
+  );
   const clearLevelFilePicker = replay.clearLevelFilePicker;
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
@@ -22,6 +31,7 @@ export function ActivityDashboard() {
   const [selectedLevelSessionId, setSelectedLevelSessionId] = useState<string | null>(null);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [firstMarkerLevelSessionId, setFirstMarkerLevelSessionId] = useState<string | null>(null);
   const [replayChoiceRun, setReplayChoiceRun] = useState<ActivityRun | null>(null);
   const days = useMemo(
     () => groupSessionsByDay(activity.sessions, timeZone),
@@ -69,6 +79,24 @@ export function ActivityDashboard() {
     }
   }, [markers, selectedMarkerId]);
   useEffect(() => {
+    if (!firstMarkerLevelSessionId || selectedLevel?.Id !== firstMarkerLevelSessionId) return;
+    if (levelData.loading) return;
+    if (levelData.overview?.Id === firstMarkerLevelSessionId) {
+      setSelectedMarkerId(markers[0]?.id ?? null);
+      setSelectedRunId(null);
+      setFirstMarkerLevelSessionId(null);
+      return;
+    }
+    if (levelData.error) setFirstMarkerLevelSessionId(null);
+  }, [
+    firstMarkerLevelSessionId,
+    levelData.error,
+    levelData.loading,
+    levelData.overview?.Id,
+    markers,
+    selectedLevel?.Id,
+  ]);
+  useEffect(() => {
     if (selectedRunId && !selectedRun) setSelectedRunId(null);
   }, [selectedRun, selectedRunId]);
   useEffect(() => {
@@ -85,14 +113,17 @@ export function ActivityDashboard() {
   const handleRun = (run: ActivityRun) =>
     setSelectedRunId((current) => (current === run.Id ? null : run.Id));
   const handleDate = (date: string) => {
+    const firstLevelSessionId = days.find((day) => day.date === date)?.levelSessions[0]?.Id ?? null;
     setSelectedDate(date);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
+    setFirstMarkerLevelSessionId(firstLevelSessionId);
   };
   const handleLevel = (id: string) => {
     setSelectedLevelSessionId(id);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
+    setFirstMarkerLevelSessionId(id);
   };
   return (
     <>
@@ -100,7 +131,19 @@ export function ActivityDashboard() {
         <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)]">
           <DayRail days={days} selectedDate={selectedDay?.date ?? null} onSelectDate={handleDate} />
           <section className="flex min-h-0 min-w-0 flex-col border-l border-border">
-            <DashboardHeader status={activity.status} onRetry={() => void activity.retry()} />
+            <DashboardHeader
+              status={activity.status}
+              onRetry={() => void activity.retry()}
+              microphoneDevices={microphones.devices}
+              selectedMicrophoneDeviceId={microphones.selectedDeviceId}
+              microphoneLoading={microphones.loading}
+              pendingMicrophoneDeviceId={microphones.pendingDeviceId}
+              microphoneError={microphones.error}
+              showMicrophoneOffsetCalibration={activity.status === "online"}
+              onRefreshMicrophones={() => void microphones.refresh()}
+              onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
+              onAdjustMicrophoneOffset={microphoneOffset.start}
+            />
             {activity.error && !activity.sessions.length ? (
               <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
                 {activity.error}
@@ -151,6 +194,20 @@ export function ActivityDashboard() {
         onPlay={replay.play}
         onChooseAnother={replay.startLevelFilePicker}
         onResetPicker={replay.clearLevelFilePicker}
+      />
+      <MicrophoneOffsetCalibrationDialog
+        data={microphoneOffset.data}
+        phase={microphoneOffset.phase}
+        offsetMs={microphoneOffset.offsetMs}
+        microphoneVolumeDb={microphoneOffset.microphoneVolumeDb}
+        playing={microphoneOffset.playing}
+        playbackPositionMs={microphoneOffset.playbackPositionMs}
+        audioError={microphoneOffset.audioError}
+        onClose={microphoneOffset.close}
+        onCommitOffset={microphoneOffset.commitOffset}
+        onCommitMicrophoneVolume={microphoneOffset.commitMicrophoneVolume}
+        onResetOffset={microphoneOffset.resetOffset}
+        onTogglePlayback={() => void microphoneOffset.togglePlayback()}
       />
     </>
   );

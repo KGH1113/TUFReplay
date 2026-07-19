@@ -2,7 +2,9 @@ using System;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
+using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Activity;
+using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Unity;
@@ -23,6 +25,12 @@ public class RecordingFeature
   private RunRecord _currentRun;
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
+  private bool _microphoneCaptureStarted;
+  private double? _microphoneCaptureStartedAt;
+  private long _microphonePrerollUs;
+  private bool _microphoneGameplayStartAnchored;
+  private CapturedMicrophoneRecording _pendingEditorRecording;
+  private bool _calibrationRun;
 
   private readonly RecordingActivityTracker _activity = new RecordingActivityTracker();
 
@@ -39,7 +47,17 @@ public class RecordingFeature
       return;
     _clearReached = true;
     Session.MarkWonReached();
-    Main.Instance.Log("[Recording] Clear reached; input capture continues until editor return.");
+    if (_calibrationRun)
+    {
+      Session.MarkTerminal();
+      Session.StopInputCapture("calibration_cleared");
+      CapturedMicrophoneRecording calibrationRecording = EndMicrophoneRun();
+      RunRecord calibrationRun = CompleteCalibrationRun("cleared", RecordingSession.GetLevelTileCount());
+      FeatureRegistry.MicrophoneCalibration?.OnRunCleared(calibrationRun, calibrationRecording);
+      Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
+      return;
+    }
+    Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
   }
 
   public void OnRunFailed()
@@ -50,7 +68,18 @@ public class RecordingFeature
     _failed = true;
     Session.MarkTerminal();
     Session.StopInputCapture("failed");
-    SaveActivityRun("failed", Session.GetLastReachedTile());
+    CapturedMicrophoneRecording recording = EndMicrophoneRun();
+    if (_calibrationRun)
+    {
+      _runSaved = true;
+      FeatureRegistry.MicrophoneCalibration?.OnRunDiscarded(recording, "Calibration failed. Try again.");
+      Main.Instance.Log("[Recording] Calibration attempt failed; waiting for retry.");
+      return;
+    }
+    if (SaveActivityRun("failed", Session.GetLastReachedTile()))
+      FeatureRegistry.MicrophoneRecording?.Present(recording);
+    else
+      FeatureRegistry.MicrophoneRecording?.Discard(recording);
     Main.Instance.Log("[Recording] Run failed.");
   }
 
@@ -61,13 +90,36 @@ public class RecordingFeature
 
     Session.MarkTerminal();
     Session.StopInputCapture("editor");
+    CapturedMicrophoneRecording recording = EndMicrophoneRun();
+    if (_calibrationRun)
+    {
+      if (!_clearReached)
+        FeatureRegistry.MicrophoneCalibration?.OnRunDiscarded(recording, "Calibration stopped. Try again.");
+      else
+        FeatureRegistry.MicrophoneRecording?.Discard(recording);
+      StopSession();
+      return;
+    }
     if (!_runSaved)
     {
-      SaveActivityRun(
+      bool saved = SaveActivityRun(
         _clearReached ? "cleared" : "aborted",
         _clearReached ? RecordingSession.GetLevelTileCount() : Session.GetLastReachedTile()
       );
+      if (!_clearReached)
+      {
+        if (saved)
+          FeatureRegistry.MicrophoneRecording?.Present(recording);
+        else
+          FeatureRegistry.MicrophoneRecording?.Discard(recording);
+      }
+      else if (saved)
+        QueueEditorRecording(recording);
+      else
+        FeatureRegistry.MicrophoneRecording?.Discard(recording);
     }
+    else
+      FeatureRegistry.MicrophoneRecording?.Discard(recording);
     StopSession();
 
     if (_clearReached && !_failed && Session.HasRecordableData)
@@ -76,6 +128,18 @@ public class RecordingFeature
         "[Recording] Clear data captured. inputs=" + Session.InputCount + ", hitContexts=" + Session.HitContextCount
       );
     }
+  }
+
+  public void OnEditorReturnCompleted()
+  {
+    CapturedMicrophoneRecording recording = _pendingEditorRecording;
+    _pendingEditorRecording = null;
+    FeatureRegistry.MicrophoneRecording?.Present(recording);
+  }
+
+  public void OnEditorReturnFailed()
+  {
+    DiscardPendingEditorRecording();
   }
 
   public void Enable()
@@ -95,6 +159,7 @@ public class RecordingFeature
     Active = false;
 
     StopSession();
+    DiscardPendingEditorRecording();
     RecordInputTracker.Reset();
     _activity.CloseLevel();
     _activity.StopAppSession();
@@ -102,6 +167,13 @@ public class RecordingFeature
 
   public void OnEditorPlay()
   {
+    if (ReplaySessionService.HasActiveContext)
+    {
+      StopSession();
+      Main.Instance.Log("[Recording] Skipped replay playback run.");
+      return;
+    }
+
     string levelPath = CanonicalLevelPath();
     if (levelPath == null)
     {
@@ -110,9 +182,21 @@ public class RecordingFeature
       return;
     }
 
+    if (FeatureRegistry.MicrophoneCalibration?.IsCalibrationLevel() == true)
+    {
+      ResetRunState();
+      _calibrationRun = true;
+      RecordingPatches.ResetHitContextState();
+      CaptureGameplayHash();
+      Session.Start(null, true, _gameplayHash, _gameplayHashVersion);
+      Main.Instance.Log("[Recording] Calibration level opened in transient recording mode.");
+      return;
+    }
+    _calibrationRun = false;
+
     int? tufLevelId = TufHelperGateway.ResolveTufLevelId(levelPath);
-    ReplaySessionService.ClearActiveContextIfLevelChanged(levelPath);
-    if (ReplaySessionService.IsActiveReplayLevel(levelPath))
+    ReplaySessionService.ClearActiveContextIfLevelChanged();
+    if (ReplaySessionService.IsActiveReplayLevel())
       return;
 
     if (!RecordingGuard.CanRecord(out string reason))
@@ -125,15 +209,19 @@ public class RecordingFeature
     ResetRunState();
 
     int levelTileCount = RecordingSession.GetLevelTileCount();
-    _activity.OpenLevel(levelPath, tufLevelId, levelTileCount);
-    RecordingPatches.ResetHitContextState();
     CaptureGameplayHash();
+    _activity.OpenLevel(levelPath, tufLevelId, levelTileCount, _gameplayHash, _gameplayHashVersion);
+    RecordingPatches.ResetHitContextState();
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
+    if (Session.IsRecording)
+      FeatureRegistry.MicrophoneRecording?.ArmForLevel();
     Main.Instance.Log("[Recording] Custom level opened. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
   }
 
   public bool PrepareRunForInputCapture()
   {
+    if (ReplaySessionService.HasActiveContext)
+      return false;
     if (!Session.IsRecording)
       return false;
     if (!_runSaved)
@@ -142,7 +230,12 @@ public class RecordingFeature
     int? tufLevelId = Session.TufLevelId;
     ResetRunState();
     RecordingPatches.ResetHitContextState();
-    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
+    Session.Start(
+      tufLevelId,
+      _calibrationRun || Settings == null || Settings.AutoRecord,
+      _gameplayHash,
+      _gameplayHashVersion
+    );
 
     Main.Instance.Log("[Recording] Prepared retry run. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
     return Session.IsRecording;
@@ -169,6 +262,14 @@ public class RecordingFeature
 
   public void StopSession()
   {
+    if (_calibrationRun)
+    {
+      FeatureRegistry.MicrophoneRecording?.Discard(EndMicrophoneRun());
+      Session.Stop();
+      RecordingPatches.ResetHitContextState();
+      _calibrationRun = false;
+      return;
+    }
     if (Session.IsRecording && _clearReached && !_runSaved)
     {
       Session.MarkTerminal();
@@ -176,14 +277,32 @@ public class RecordingFeature
       SaveActivityRun("cleared", RecordingSession.GetLevelTileCount());
     }
 
+    FeatureRegistry.MicrophoneRecording?.Discard(EndMicrophoneRun());
+    FeatureRegistry.MicrophoneRecording?.Disarm();
     Session.Stop();
     RecordingPatches.ResetHitContextState();
   }
 
   public void OnGameplayStarted()
   {
+    if (ReplaySessionService.HasActiveContext)
+      return;
+
     Session.MarkGameplayStarted();
     PrepareActivityRun(RecordingSession.GetLevelTileCount());
+    if (_calibrationRun)
+      FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
+    StartMicrophoneRun();
+    AnchorMicrophoneToGameplayStart();
+  }
+
+  public void OnInputCaptureStarted()
+  {
+    if (_calibrationRun || !Session.IsRecording)
+      return;
+
+    PrepareActivityRun(RecordingSession.GetLevelTileCount());
+    StartMicrophoneRun();
   }
 
   private void PrepareActivityRun(int levelTileCount)
@@ -194,15 +313,45 @@ public class RecordingFeature
       return;
 
     int startTile = RecordingSession.GetCurrentTile();
-    _currentRun = _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
+    _currentRun = _calibrationRun
+      ? CreateCalibrationRunDraft(Session.Data, startTile, levelTileCount)
+      : _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
   }
 
-  private void SaveActivityRun(string result, int? lastTile)
+  private static RunRecord CreateCalibrationRunDraft(RecordedRunPayload data, int startTile, int levelTileCount)
+  {
+    return new RunRecord
+    {
+      Id = Guid.NewGuid().ToString("N"),
+      RunIndex = 0,
+      SegmentGroupIndex = 0,
+      StartedAtUtc = data.StartedAtUtc,
+      LevelTileCount = levelTileCount,
+      StartTile = startTile,
+      NoFailMode = data.NoFailMode,
+      GameplayStartSongPosition = data.GameplayStartSongPosition,
+      LevelPitchPercent = data.LevelPitchPercent,
+      EffectivePitch = data.EffectivePitch,
+      GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone(),
+      GameplayHashVersion = data.GameplayHashVersion,
+      MetaJson = data.ToActivityMetaJson(),
+    };
+  }
+
+  private RunRecord CompleteCalibrationRun(string result, int? lastTile)
+  {
+    if (_currentRun == null || _runSaved)
+      return null;
+    _runSaved = true;
+    return Session.CompleteRunRecord(_currentRun, lastTile, result);
+  }
+
+  private bool SaveActivityRun(string result, int? lastTile)
   {
     if (_runSaved)
-      return;
+      return false;
     if (_currentRun == null)
-      return;
+      return false;
 
     RunRecord run = Session.CompleteRunRecord(_currentRun, lastTile, result);
     _runSaved = true;
@@ -217,10 +366,11 @@ public class RecordingFeature
           + ", lastTile="
           + (run.LastTile.HasValue ? run.LastTile.Value.ToString() : "null")
       );
-      return;
+      return false;
     }
 
     _activity.SaveRun(run);
+    FeatureRegistry.MicrophoneRecording?.NotifyRunPersisted(run.Id);
 
     Main.Instance.Log(
       "[Recording] Saved activity run. result="
@@ -234,13 +384,67 @@ public class RecordingFeature
         + ", hitContexts="
         + run.HitContextCount
     );
+    return true;
   }
 
   private void ResetRunState()
   {
+    DiscardPendingEditorRecording();
     _clearReached = false;
     _failed = false;
     _runSaved = false;
     _currentRun = null;
+    _microphoneCaptureStarted = false;
+    _microphoneCaptureStartedAt = null;
+    _microphonePrerollUs = 0L;
+    _microphoneGameplayStartAnchored = false;
+  }
+
+  private CapturedMicrophoneRecording EndMicrophoneRun()
+  {
+    if (!_microphoneCaptureStarted)
+      return null;
+    _microphoneCaptureStarted = false;
+    CapturedMicrophoneRecording recording = FeatureRegistry.MicrophoneRecording?.EndRun();
+    if (recording != null && _microphoneGameplayStartAnchored)
+      recording.CaptureStartOffsetUs -= _microphonePrerollUs;
+    _microphoneCaptureStartedAt = null;
+    _microphonePrerollUs = 0L;
+    _microphoneGameplayStartAnchored = false;
+    return recording;
+  }
+
+  private void StartMicrophoneRun()
+  {
+    if (_currentRun == null || _microphoneCaptureStarted)
+      return;
+
+    FeatureRegistry.MicrophoneRecording?.BeginRun(_currentRun.Id);
+    _microphoneCaptureStarted = true;
+    _microphoneCaptureStartedAt = RecordingClock.CurrentUnscaledTime();
+  }
+
+  private void AnchorMicrophoneToGameplayStart()
+  {
+    if (_calibrationRun || !_microphoneCaptureStarted || _microphoneGameplayStartAnchored)
+      return;
+
+    double startedAt = _microphoneCaptureStartedAt ?? RecordingClock.CurrentUnscaledTime();
+    double elapsedSeconds = Math.Max(0d, RecordingClock.CurrentUnscaledTime() - startedAt);
+    _microphonePrerollUs = (long)(elapsedSeconds * 1_000_000d);
+    _microphoneGameplayStartAnchored = true;
+  }
+
+  private void QueueEditorRecording(CapturedMicrophoneRecording recording)
+  {
+    DiscardPendingEditorRecording();
+    _pendingEditorRecording = recording;
+  }
+
+  private void DiscardPendingEditorRecording()
+  {
+    CapturedMicrophoneRecording recording = _pendingEditorRecording;
+    _pendingEditorRecording = null;
+    FeatureRegistry.MicrophoneRecording?.Discard(recording);
   }
 }

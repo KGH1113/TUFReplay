@@ -2,9 +2,9 @@ namespace TUFReplay.Application.Replay;
 
 public static class ReplayFailPolicy
 {
-  public static bool ShouldUseReplayNoFail(ActiveReplayContext context, bool usesHitContextPlayback)
+  public static bool ShouldUseReplayNoFail(ActiveReplayContext context)
   {
-    return usesHitContextPlayback || context?.Meta?.noFailMode == true;
+    return context != null;
   }
 
   public static void ApplyReplayNoFail(bool enabled)

@@ -24,16 +24,35 @@ FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id ";
     return r.Read() ? Read(r) : null;
   }
 
-  public static List<LevelSessionOverview> ListLevelSessionOverviewsByAppSession(string id)
+  public static List<LevelSessionOverview> ListLevelSessionOverviewsByAppSessions(IReadOnlyList<string> appSessionIds)
   {
     var result = new List<LevelSessionOverview>();
+    if (appSessionIds == null || appSessionIds.Count == 0)
+      return result;
+
     using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteCommand q = c.CreateCommand();
-    q.CommandText = Select + " WHERE l.app_session_id=@id GROUP BY l.id ORDER BY l.opened_at_utc ASC";
-    q.Parameters.AddWithValue("@id", id);
-    using SqliteDataReader r = q.ExecuteReader();
-    while (r.Read())
-      result.Add(Read(r));
+    const int batchSize = 900;
+    for (int batchStart = 0; batchStart < appSessionIds.Count; batchStart += batchSize)
+    {
+      int count = System.Math.Min(batchSize, appSessionIds.Count - batchStart);
+      using SqliteCommand q = c.CreateCommand();
+      var parameterNames = new string[count];
+      for (int i = 0; i < count; i++)
+      {
+        string parameterName = "@app" + i;
+        parameterNames[i] = parameterName;
+        q.Parameters.AddWithValue(parameterName, appSessionIds[batchStart + i]);
+      }
+
+      q.CommandText =
+        Select
+        + " WHERE l.app_session_id IN ("
+        + string.Join(",", parameterNames)
+        + ") GROUP BY l.id ORDER BY l.app_session_id,l.opened_at_utc ASC";
+      using SqliteDataReader r = q.ExecuteReader();
+      while (r.Read())
+        result.Add(Read(r));
+    }
     return result;
   }
 

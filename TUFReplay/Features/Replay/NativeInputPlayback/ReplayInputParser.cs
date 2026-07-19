@@ -10,22 +10,44 @@ public static class ReplayInputParser
 {
   public static List<RecordedInput> Parse(byte[] inputCsv)
   {
-    List<RecordedInput> events = new List<RecordedInput>();
+    List<ParsedInput> parsed = new List<ParsedInput>();
     if (inputCsv == null || inputCsv.Length == 0)
-      return events;
+      return new List<RecordedInput>();
 
     string text = Encoding.UTF8.GetString(inputCsv);
     string[] lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
 
-    foreach (string line in lines)
+    for (int sequence = 0; sequence < lines.Length; sequence++)
     {
-      if (!TryParseLine(line, out RecordedInput input))
+      if (!TryParseLine(lines[sequence], out RecordedInput input))
         continue;
-      events.Add(input);
+      parsed.Add(new ParsedInput(input, sequence));
     }
 
-    events.Sort((a, b) => a.TimeUs.CompareTo(b.TimeUs));
+    parsed.Sort(
+      (a, b) =>
+      {
+        int timeOrder = a.Input.TimeUs.CompareTo(b.Input.TimeUs);
+        return timeOrder != 0 ? timeOrder : a.Sequence.CompareTo(b.Sequence);
+      }
+    );
+
+    List<RecordedInput> events = new List<RecordedInput>(parsed.Count);
+    for (int i = 0; i < parsed.Count; i++)
+      events.Add(parsed[i].Input);
     return events;
+  }
+
+  private readonly struct ParsedInput
+  {
+    public readonly RecordedInput Input;
+    public readonly int Sequence;
+
+    public ParsedInput(RecordedInput input, int sequence)
+    {
+      Input = input;
+      Sequence = sequence;
+    }
   }
 
   public static bool TryParseLine(string line, out RecordedInput input)

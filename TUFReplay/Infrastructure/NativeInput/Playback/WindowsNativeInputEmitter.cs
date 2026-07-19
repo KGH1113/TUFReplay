@@ -5,37 +5,84 @@ namespace TUFReplay.Infrastructure.NativeInput;
 
 public sealed class WindowsNativeInputEmitter : INativeInputEmitter
 {
+  private const uint InputKeyboard = 1;
   private const uint KeyEventExtendedKey = 0x0001;
   private const uint KeyEventKeyUp = 0x0002;
 
-  [DllImport("user32.dll")]
-  private static extern void keybd_event(byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
-
-  private readonly INativeInputFocusGuard _focusGuard;
-
-  public WindowsNativeInputEmitter()
-    : this(NativeInputFocusGuardFactory.Create()) { }
-
-  internal WindowsNativeInputEmitter(INativeInputFocusGuard focusGuard)
+  [StructLayout(LayoutKind.Sequential)]
+  private struct Input
   {
-    _focusGuard = focusGuard ?? throw new ArgumentNullException(nameof(focusGuard));
+    public uint Type;
+    public InputUnion Union;
   }
 
-  public bool Emit(int key, bool down)
+  [StructLayout(LayoutKind.Explicit)]
+  private struct InputUnion
   {
-    if (key <= 0 || key > 255)
-      return false;
-    if (IsBlockedKey((ushort)key))
-      return false;
-    if (down && !_focusGuard.IsForegroundTarget(out _))
-      return false;
+    [FieldOffset(0)]
+    public KeyboardInput Keyboard;
+  }
 
-    uint flags = down ? 0u : KeyEventKeyUp;
-    if (IsExtendedKey((ushort)key))
-      flags |= KeyEventExtendedKey;
+  [StructLayout(LayoutKind.Sequential)]
+  private struct KeyboardInput
+  {
+    public ushort VirtualKey;
+    public ushort ScanCode;
+    public uint Flags;
+    public uint Time;
+    public UIntPtr ExtraInfo;
+  }
 
-    keybd_event((byte)key, 0, flags, UIntPtr.Zero);
-    return true;
+  [DllImport("user32.dll", SetLastError = true)]
+  private static extern uint SendInput(uint inputCount, Input[] inputs, int inputSize);
+
+  private Input[] _inputBuffer = new Input[32];
+
+  public bool IsSupported(int key)
+  {
+    return key > 0 && key <= 255 && !IsBlockedKey((ushort)key);
+  }
+
+  public bool EmitBatch(NativeInputEmission[] emissions, int count)
+  {
+    if (emissions == null || count < 0 || count > emissions.Length)
+      return false;
+    if (count == 0)
+      return true;
+
+    EnsureCapacity(count);
+    for (int i = 0; i < count; i++)
+    {
+      NativeInputEmission emission = emissions[i];
+      if (!IsSupported(emission.Key))
+        return false;
+
+      uint flags = emission.Down ? 0u : KeyEventKeyUp;
+      if (IsExtendedKey((ushort)emission.Key))
+        flags |= KeyEventExtendedKey;
+
+      _inputBuffer[i] = new Input
+      {
+        Type = InputKeyboard,
+        Union = new InputUnion
+        {
+          Keyboard = new KeyboardInput { VirtualKey = (ushort)emission.Key, Flags = flags },
+        },
+      };
+    }
+
+    return SendInput((uint)count, _inputBuffer, Marshal.SizeOf(typeof(Input))) == (uint)count;
+  }
+
+  private void EnsureCapacity(int count)
+  {
+    if (_inputBuffer.Length >= count)
+      return;
+
+    int capacity = _inputBuffer.Length;
+    while (capacity < count)
+      capacity *= 2;
+    _inputBuffer = new Input[capacity];
   }
 
   private static bool IsBlockedKey(ushort virtualKey)

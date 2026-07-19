@@ -5,6 +5,7 @@ namespace TUFReplay.Features.Replay;
 
 public class ReplayInputScheduler
 {
+  private readonly object _gate = new object();
   private readonly List<RecordedInput> _events;
   private int _nextIndex;
 
@@ -15,73 +16,91 @@ public class ReplayInputScheduler
   }
 
   public int Count => _events.Count;
-  public int NextIndex => _nextIndex;
-  public bool Finished => _nextIndex >= _events.Count;
+  public int NextIndex
+  {
+    get
+    {
+      lock (_gate)
+        return _nextIndex;
+    }
+  }
+  public bool Finished
+  {
+    get
+    {
+      lock (_gate)
+        return _nextIndex >= _events.Count;
+    }
+  }
 
   public void Reset()
   {
-    _nextIndex = 0;
+    lock (_gate)
+      _nextIndex = 0;
   }
 
-  public List<int> SeekTo(long nowUs)
+  public List<int> SeekToState(long nowUs)
   {
-    _nextIndex = 0;
-
-    List<int> heldKeys = new List<int>();
-    HashSet<int> heldSet = new HashSet<int>();
-
-    while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
+    lock (_gate)
     {
-      RecordedInput input = _events[_nextIndex];
+      _nextIndex = 0;
 
-      if (input.Async)
+      List<int> heldKeys = new List<int>();
+      HashSet<int> heldSet = new HashSet<int>();
+
+      while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
       {
-        if (input.Down)
+        RecordedInput input = _events[_nextIndex];
+
+        if (input.Async)
         {
-          if (heldSet.Add(input.Key))
+          if (input.Down)
           {
-            heldKeys.Add(input.Key);
+            if (heldSet.Add(input.Key))
+              heldKeys.Add(input.Key);
+          }
+          else if (heldSet.Remove(input.Key))
+          {
+            heldKeys.Remove(input.Key);
           }
         }
-        else if (heldSet.Remove(input.Key))
-        {
-          heldKeys.Remove(input.Key);
-        }
+
+        _nextIndex++;
       }
 
-      _nextIndex++;
+      return heldKeys;
     }
-
-    return heldKeys;
   }
 
-  public List<RecordedInput> PopDue(long nowUs)
+  public int CopyNextTimestampGroup(List<RecordedInput> destination)
   {
-    List<RecordedInput> due = new List<RecordedInput>();
+    if (destination == null)
+      throw new System.ArgumentNullException(nameof(destination));
 
-    while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
+    lock (_gate)
     {
-      due.Add(_events[_nextIndex]);
-      _nextIndex++;
+      destination.Clear();
+      if (_nextIndex >= _events.Count)
+        return 0;
+
+      long timestamp = _events[_nextIndex].TimeUs;
+      while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs == timestamp)
+      {
+        destination.Add(_events[_nextIndex]);
+        _nextIndex++;
+      }
+
+      return destination.Count;
     }
-
-    return due;
-  }
-
-  public int SkipDue(long nowUs)
-  {
-    int startIndex = _nextIndex;
-
-    while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
-      _nextIndex++;
-
-    return _nextIndex - startIndex;
   }
 
   public RecordedInput? PeekNext()
   {
-    if (_nextIndex >= _events.Count)
-      return null;
-    return _events[_nextIndex];
+    lock (_gate)
+    {
+      if (_nextIndex >= _events.Count)
+        return null;
+      return _events[_nextIndex];
+    }
   }
 }

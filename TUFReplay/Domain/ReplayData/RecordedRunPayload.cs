@@ -16,6 +16,7 @@ public class RecordedRunPayload
   public long? WonTimeUs;
   public long? TerminalTimeUs;
   public string InputTimeBase = TUFReplay.Application.Recording.RecordingClock.HybridInputTimeBase;
+  public string InputCapture = "skyhook-events-high-resolution";
   public bool NoFailMode;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
@@ -47,7 +48,7 @@ public class RecordedRunPayload
       pitchSource = PitchSource,
       inputFormat = "csv-conductor-timeus-key-flags",
       inputTimeBase = InputTimeBase,
-      inputCapture = "skyhook-native-events-with-state-polling-fallback",
+      inputCapture = InputCapture,
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = Inputs.Count,

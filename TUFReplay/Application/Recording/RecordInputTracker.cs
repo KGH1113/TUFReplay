@@ -35,6 +35,15 @@ public static class RecordInputTracker
   private static long _resyncs;
   private static int _maxQueueDepth;
 
+  public static string CaptureMode
+  {
+    get
+    {
+      lock (StateLock)
+        return _usingEvents ? "skyhook-events-high-resolution" : "native-state-polling-low-resolution";
+    }
+  }
+
   public static void StartCapture()
   {
     Reset();
@@ -62,7 +71,10 @@ public static class RecordInputTracker
 
     if (startFailure != null)
     {
-      Main.Instance?.Log("[Recording/Input] SkyHook unavailable; using state polling. error=" + startFailure.Message);
+      Main.Instance?.Log(
+        "[Recording/Input] LOW_RESOLUTION fallback: SkyHook unavailable; using state polling. error="
+          + startFailure.Message
+      );
     }
 
     Main.Instance?.Log(
@@ -385,7 +397,9 @@ public static class RecordInputTracker
     }
 
     StopEventSourceNoThrow();
-    Main.Instance?.Log("[Recording/Input] SkyHook stopped; using state polling. error=" + exception.Message);
+    Main.Instance?.Log(
+      "[Recording/Input] LOW_RESOLUTION fallback: SkyHook stopped; using state polling. error=" + exception.Message
+    );
   }
 
   private static void RecoverFromOverflow()

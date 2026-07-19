@@ -30,15 +30,25 @@ public sealed class TUFReplayIpcFeature
       }
     );
 
-    ipc.Register("health.get", TUFReplayIpcHandlers.Health);
-    ipc.Register("activity.app-sessions.list", TUFReplayIpcHandlers.ListAppSessions);
-    ipc.Register("activity.level-session.get", TUFReplayIpcHandlers.GetLevelSession);
-    ipc.Register("activity.level-session.runs.list", TUFReplayIpcHandlers.ListRuns);
-    ipc.Register("activity.level-session.chart.get", TUFReplayIpcHandlers.GetChart);
-    ipc.Register("replay.play", TUFReplayIpcHandlers.PlayReplay);
-    ipc.Register("replay.status.get", TUFReplayIpcHandlers.GetReplayStatus);
-    ipc.Register("replay.level-file.pick.start", TUFReplayIpcHandlers.StartReplayLevelFilePicker);
-    ipc.Register("replay.level-file.pick.status", TUFReplayIpcHandlers.GetReplayLevelFilePickerStatus);
+    ipc.Register("health.get", HealthIpcHandlers.Get);
+    ipc.Register("activity.app-sessions.list", ActivityIpcHandlers.ListAppSessions);
+    ipc.Register("activity.level-session.get", ActivityIpcHandlers.GetLevelSession);
+    ipc.Register("activity.level-session.runs.list", ActivityIpcHandlers.ListRuns);
+    ipc.Register("activity.level-session.chart.get", ActivityIpcHandlers.GetChart);
+    ipc.Register("replay.play", ReplayIpcHandlers.Play);
+    ipc.Register("replay.status.get", ReplayIpcHandlers.GetStatus);
+    ipc.Register("replay.level-file.pick.start", ReplayIpcHandlers.StartLevelFilePicker);
+    ipc.Register("replay.level-file.pick.status", ReplayIpcHandlers.GetLevelFilePickerStatus);
+    ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
+    ipc.RegisterMainThread("microphone.device.select", MicrophoneIpcHandlers.SelectDevice);
+    ipc.RegisterMainThread("microphone.calibration.start", MicrophoneCalibrationIpcHandlers.Start);
+    ipc.RegisterMainThread("microphone.calibration.status.get", MicrophoneCalibrationIpcHandlers.GetStatus);
+    ipc.RegisterMainThread("microphone.calibration.result.get", MicrophoneCalibrationIpcHandlers.GetResult);
+    ipc.RegisterMainThread("microphone.calibration.preview.play", MicrophoneCalibrationIpcHandlers.PlayPreview);
+    ipc.RegisterMainThread("microphone.calibration.preview.stop", MicrophoneCalibrationIpcHandlers.StopPreview);
+    ipc.RegisterMainThread("microphone.calibration.offset.set", MicrophoneCalibrationIpcHandlers.SetOffset);
+    ipc.RegisterMainThread("microphone.calibration.volume.set", MicrophoneCalibrationIpcHandlers.SetVolume);
+    ipc.RegisterMainThread("microphone.calibration.close", MicrophoneCalibrationIpcHandlers.Close);
 
     Main.Instance.Log("[IPC] Registered namespace: " + Namespace);
   }
