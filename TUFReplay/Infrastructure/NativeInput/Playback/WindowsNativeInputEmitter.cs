@@ -21,6 +21,12 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
   {
     [FieldOffset(0)]
     public KeyboardInput Keyboard;
+
+    // INPUT's native union is sized by MOUSEINPUT, which is larger than
+    // KEYBDINPUT on both 32-bit and 64-bit Windows. Keeping this field in the
+    // managed union makes Marshal.SizeOf<Input>() match sizeof(INPUT).
+    [FieldOffset(0)]
+    public MouseInput Mouse;
   }
 
   [StructLayout(LayoutKind.Sequential)]
@@ -33,9 +39,21 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     public UIntPtr ExtraInfo;
   }
 
+  [StructLayout(LayoutKind.Sequential)]
+  private struct MouseInput
+  {
+    public int X;
+    public int Y;
+    public uint MouseData;
+    public uint Flags;
+    public uint Time;
+    public UIntPtr ExtraInfo;
+  }
+
   [DllImport("user32.dll", SetLastError = true)]
   private static extern uint SendInput(uint inputCount, Input[] inputs, int inputSize);
 
+  private static readonly int InputSize = Marshal.SizeOf(typeof(Input));
   private Input[] _inputBuffer = new Input[32];
 
   public bool IsSupported(int key)
@@ -71,7 +89,7 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
       };
     }
 
-    return SendInput((uint)count, _inputBuffer, Marshal.SizeOf(typeof(Input))) == (uint)count;
+    return SendInput((uint)count, _inputBuffer, InputSize) == (uint)count;
   }
 
   private void EnsureCapacity(int count)

@@ -10,12 +10,6 @@ namespace TUFReplay.Application.Replay;
 public static class ReplaySessionService
 {
   private static ActiveReplayContext _activeContext;
-  private static string _lastNativeGateLogKey;
-  private static int _lastNativeGateLogFrame = -100000;
-  private static int _lastHitContextTickLogFrame = -100000;
-  private static bool _nativeFocusBlocked;
-  private static string _nativeFocusBlockReason;
-  private static long _nativeFocusSkippedEvents;
   private static int _pendingReplayPitchApplyFrame = -1;
   private static bool _suppressReplayMarkFail;
 
@@ -50,10 +44,6 @@ public static class ReplaySessionService
     _activeContext = context;
     _activeContext.Phase = ReplayPlaybackPhase.Prepared;
     LogLifecycleTransition(ReplayPlaybackPhase.Stopped, ReplayPlaybackPhase.Prepared, "context_installed");
-    _lastNativeGateLogKey = null;
-    _lastNativeGateLogFrame = -100000;
-    _lastHitContextTickLogFrame = -100000;
-    ResetNativeFocusTracking();
     _suppressReplayMarkFail = false;
   }
 
@@ -220,12 +210,11 @@ public static class ReplaySessionService
     if (_activeContext == null)
       return;
 
-    bool hasReplayTime = TryComputeReplayTimeUs(out long nowUs, out string timeReason);
-    int restoredNativeKeys = 0;
+    bool hasReplayTime = TryComputeReplayTimeUs(out long nowUs, out _);
 
     if (hasReplayTime)
     {
-      restoredNativeKeys = _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate()) ?? 0;
+      _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate());
       _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentGameplayRate(), CurrentWonTimeUs());
     }
     else
@@ -235,7 +224,7 @@ public static class ReplaySessionService
     }
 
     bool skipPassedAngles = TryGetControllerState(out States state) && state == States.PlayerControl;
-    int skippedHitContexts = _activeContext.HitContextPlayer?.ResetTo(ADOBase.controller, skipPassedAngles) ?? 0;
+    _activeContext.HitContextPlayer?.ResetTo(ADOBase.controller, skipPassedAngles);
     ResetReplayHeldInputState();
 
     _activeContext.RunStarted = true;
@@ -246,32 +235,6 @@ public static class ReplaySessionService
     {
       ReplayFailPolicy.ApplyReplayNoFail(ShouldUseReplayNoFail());
     }
-
-    _lastNativeGateLogKey = null;
-    _lastNativeGateLogFrame = -100000;
-    _lastHitContextTickLogFrame = -100000;
-    ResetNativeFocusTracking();
-
-    Main.Instance?.Log(
-      "[ReplaySessionService] Replay run reset. reason="
-        + reason
-        + ", nowUs="
-        + (hasReplayTime ? nowUs.ToString() : "unavailable:" + timeReason)
-        + ", restoredNativeKeys="
-        + restoredNativeKeys
-        + ", skippedHitContexts="
-        + skippedHitContexts
-        + ", skipPassedAngles="
-        + skipPassedAngles
-        + ", noFail="
-        + ShouldUseReplayNoFail()
-        + ", native="
-        + SchedulerSnapshot(_activeContext.NativeInputScheduler)
-        + ", hitContext="
-        + HitContextSnapshot(_activeContext.HitContextPlayer)
-        + ", "
-        + DescribeControllerState()
-    );
   }
 
   public static bool ShouldBlockOriginalHit()
@@ -345,28 +308,6 @@ public static class ReplaySessionService
       );
       StopActiveReplay("hit_context_error");
       return;
-    }
-
-    if (result.PlayedAny)
-    {
-      Main.Instance?.Log(
-        "[Replay/HitContext] Played hits="
-          + result.PlayedCount
-          + ", ignoredFalseResults="
-          + result.IgnoredFalseResultCount
-          + ", before="
-          + before
-          + ", after="
-          + after
-          + ", hitContext="
-          + HitContextSnapshot(_activeContext.HitContextPlayer)
-          + ", "
-          + DescribeControllerState()
-      );
-    }
-    else
-    {
-      LogHitContextIdle(before, after);
     }
 
     if (_activeContext?.HitContextPlayer != null && _activeContext.HitContextPlayer.Finished)
@@ -459,100 +400,33 @@ public static class ReplaySessionService
 
     ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
     if (player == null)
-    {
-      LogGateBlocked("Native", "native_player_missing", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
       return false;
-    }
 
     ReplayPlaybackPhase phase = _activeContext.Phase;
     if (phase != ReplayPlaybackPhase.Armed && phase != ReplayPlaybackPhase.Running && phase != ReplayPlaybackPhase.Won)
-    {
-      LogGateBlocked("Native", "phase_" + phase, ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
       return false;
-    }
 
-    bool focusReady = player.CanEmit(out string focusReason);
+    bool focusReady = player.CanEmit(out _);
     if (!focusReady)
       player.ReleaseAll();
 
     if (!TryGetControllerState(out States state))
-    {
-      LogGateBlocked("Native", "controller_missing", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
       return false;
-    }
 
     if (state != States.Countdown && state != States.PlayerControl && state != States.Won)
-    {
-      LogGateBlocked("Native", "state_not_replay_window", ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
       return false;
-    }
 
-    if (!TryComputeReplayTimeUs(out nowUs, out string reason))
-    {
-      LogGateBlocked("Native", reason, ref _lastNativeGateLogKey, ref _lastNativeGateLogFrame);
+    if (!TryComputeReplayTimeUs(out nowUs, out _))
       return false;
-    }
 
     if (!focusReady)
     {
-      int skipped = player.SkipTo(nowUs);
-      LogNativeFocusBlocked(focusReason, skipped, nowUs, player);
+      player.SkipTo(nowUs);
       ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
       return false;
     }
 
-    LogNativeFocusResumed(nowUs, player);
-
     return true;
-  }
-
-  private static void LogNativeFocusBlocked(string reason, int skipped, long nowUs, ReplayNativeInputPlayer player)
-  {
-    _nativeFocusSkippedEvents += skipped;
-    if (_nativeFocusBlocked)
-      return;
-
-    _nativeFocusBlocked = true;
-    _nativeFocusBlockReason = reason;
-    Main.Instance?.Log(
-      "[Replay/InputDebug] Native focus blocked. reason="
-        + reason
-        + ", nowUs="
-        + nowUs
-        + ", skipped="
-        + skipped
-        + ", "
-        + player.DescribeFocus()
-        + ", scheduler="
-        + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
-    );
-  }
-
-  private static void LogNativeFocusResumed(long nowUs, ReplayNativeInputPlayer player)
-  {
-    if (!_nativeFocusBlocked)
-      return;
-
-    Main.Instance?.Log(
-      "[Replay/InputDebug] Native focus resumed. previousReason="
-        + _nativeFocusBlockReason
-        + ", nowUs="
-        + nowUs
-        + ", skipped="
-        + _nativeFocusSkippedEvents
-        + ", "
-        + player.DescribeFocus()
-        + ", scheduler="
-        + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
-    );
-    ResetNativeFocusTracking();
-  }
-
-  private static void ResetNativeFocusTracking()
-  {
-    _nativeFocusBlocked = false;
-    _nativeFocusBlockReason = null;
-    _nativeFocusSkippedEvents = 0L;
   }
 
   private static double CurrentTimelineRate()
@@ -624,64 +498,6 @@ public static class ReplaySessionService
     );
   }
 
-  private static void LogGateBlocked(string channel, string reason, ref string lastKey, ref int lastFrame)
-  {
-    int frame = Time.frameCount;
-    string key = reason + "|" + DescribeControllerState();
-    if (key == lastKey && frame - lastFrame < 120)
-      return;
-
-    lastKey = key;
-    lastFrame = frame;
-
-    Main.Instance?.Log(
-      "[Replay/InputDebug] "
-        + channel
-        + " gate blocked. reason="
-        + reason
-        + ", frame="
-        + frame
-        + ", "
-        + DescribeControllerState()
-        + ", conductor="
-        + DescribeConductor()
-        + ", scheduler="
-        + SchedulerSnapshot(_activeContext?.NativeInputScheduler)
-    );
-  }
-
-  private static void LogHitContextIdle(int before, int after)
-  {
-    int frame = Time.frameCount;
-    bool advanced = before != after;
-    if (!advanced && frame - _lastHitContextTickLogFrame < 120)
-      return;
-
-    _lastHitContextTickLogFrame = frame;
-    Main.Instance?.Log(
-      "[Replay/HitContext] Tick. played=0"
-        + ", before="
-        + before
-        + ", after="
-        + after
-        + ", hitContext="
-        + HitContextSnapshot(_activeContext?.HitContextPlayer)
-        + ", "
-        + DescribeControllerState()
-    );
-  }
-
-  private static string SchedulerSnapshot(ReplayInputScheduler scheduler)
-  {
-    if (scheduler == null)
-      return "null";
-
-    RecordedInput? next = scheduler.PeekNext();
-    string nextText = next.HasValue ? next.Value.TimeUs + "/" + next.Value.Key + "/" + next.Value.Flags : "none";
-
-    return scheduler.NextIndex + "/" + scheduler.Count + ", next=" + nextText;
-  }
-
   private static string HitContextSnapshot(ReplayHitContextPlayer player)
   {
     if (player == null)
@@ -722,15 +538,6 @@ public static class ReplaySessionService
       + machineState
       + ", paused="
       + ADOBase.controller.paused;
-  }
-
-  private static string DescribeConductor()
-  {
-    if (ADOBase.conductor == null)
-      return "null";
-
-    string start = _activeContext?.Meta?.gameplayStartSongPosition?.ToString("F6") ?? "null";
-    return "songposition_minusi=" + ADOBase.conductor.songposition_minusi.ToString("F6") + ", start=" + start;
   }
 
   private static bool TryGetControllerState(out States state)
