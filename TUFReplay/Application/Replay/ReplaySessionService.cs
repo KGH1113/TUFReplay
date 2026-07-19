@@ -219,12 +219,12 @@ public static class ReplaySessionService
     if (hasReplayTime)
     {
       restoredNativeKeys = _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate()) ?? 0;
-      _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentTimelineRate());
+      _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentGameplayRate(), CurrentWonTimeUs());
     }
     else
     {
       _activeContext.NativeInputPlayer?.Reset();
-      _activeContext.MicrophonePlayer?.ResetTo(0L, CurrentTimelineRate());
+      _activeContext.MicrophonePlayer?.ResetTo(0L, CurrentGameplayRate(), CurrentWonTimeUs());
     }
 
     bool skipPassedAngles = TryGetControllerState(out States state) && state == States.PlayerControl;
@@ -383,10 +383,18 @@ public static class ReplaySessionService
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null)
       return;
-    if (!TryGetControllerState(out States state) || state != States.PlayerControl)
+    if (
+      !TryGetControllerState(out States state)
+      || (
+        state != States.Countdown
+        && state != States.Checkpoint
+        && state != States.PlayerControl
+        && state != States.Won
+      )
+    )
       return;
 
-    player.Tick(nowUs, CurrentTimelineRate(), ADOBase.controller.paused);
+    player.Tick(nowUs, CurrentGameplayRate(), CurrentWonTimeUs(), ADOBase.controller.paused);
   }
 
   public static bool TryGetPlaybackSnapshot(out long replayTimeUs, out double timelineRate)
@@ -400,7 +408,7 @@ public static class ReplaySessionService
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null || !TryComputeReplayTimeUs(out long replayTimeUs, out _))
       return;
-    player.UpdateUserSettings(offsetMs, volumeDb, replayTimeUs, CurrentTimelineRate());
+    player.UpdateUserSettings(offsetMs, volumeDb, replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
   }
 
   public static void ApplyReplayPitchNow()
@@ -551,6 +559,14 @@ public static class ReplaySessionService
     float? effectivePitch = _activeContext?.Meta?.effectivePitch;
     return effectivePitch.HasValue && effectivePitch.Value > 0f ? effectivePitch.Value : 1d;
   }
+
+  private static double CurrentGameplayRate()
+  {
+    float? effectivePitch = _activeContext?.Meta?.effectivePitch;
+    return effectivePitch.HasValue && effectivePitch.Value > 0f ? effectivePitch.Value : 1d;
+  }
+
+  private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
 
   private static void ResetReplayHeldInputState()
   {

@@ -226,6 +226,26 @@ internal static class Program
     Assert(ReplayMicrophoneClock.ToFrame(50_000, 1d, 100_000L, 48000, 100000) == 0, "Pre-roll was not clamped.");
     Assert(ReplayMicrophoneClock.ToFrame(5_000_000, 1d, 0L, 48000, 1000) == 1000, "Mic end was not clamped.");
     Assert(ReplayMicrophoneClock.ToFrame(500_000, 0d, 0L, 48000, 100000) == 24000, "Invalid pitch fallback is wrong.");
+    Assert(
+      ReplayMicrophoneClock.ToFrame(-500_000, 1d, -1_000_000L, 48000, 100000) == 24000,
+      "Countdown microphone pre-roll is wrong."
+    );
+    Assert(
+      ReplayMicrophoneClock.ToFrame(0L, 2d, -1_000_000L, 48000, 100000) == 48000,
+      "Pitched gameplay start did not preserve microphone pre-roll."
+    );
+    Assert(
+      ReplayMicrophoneClock.ToFrame(2_000_000L, 2d, -1_000_000L, 48000, 200000, 2_000_000L) == 96000,
+      "Won transition microphone frame is wrong."
+    );
+    Assert(
+      ReplayMicrophoneClock.ToFrame(2_500_000L, 2d, -1_000_000L, 48000, 200000, 2_000_000L) == 120000,
+      "Won microphone clock was not continuous."
+    );
+    Assert(
+      ReplayMicrophoneClock.ToFrame(0L, 1d, -900_000L, 48000, 100000) == 43200,
+      "User offset and microphone pre-roll composition is wrong."
+    );
   }
 
   private static void TestCalibrationSettings(string root)
