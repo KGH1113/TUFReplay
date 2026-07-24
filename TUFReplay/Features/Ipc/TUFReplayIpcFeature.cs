@@ -39,8 +39,7 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("microphone.recording.keep", MicrophoneRecordingIpcHandlers.KeepPermanently);
     ipc.Register("replay.play", ReplayIpcHandlers.Play);
     ipc.Register("replay.status.get", ReplayIpcHandlers.GetStatus);
-    ipc.Register("replay.level-file.pick.start", ReplayIpcHandlers.StartLevelFilePicker);
-    ipc.Register("replay.level-file.pick.status", ReplayIpcHandlers.GetLevelFilePickerStatus);
+    ipc.Register("replay.level-file.pick", ReplayIpcHandlers.PickLevelFile);
     ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
     ipc.RegisterMainThread("microphone.device.select", MicrophoneIpcHandlers.SelectDevice);
     ipc.RegisterMainThread("microphone.calibration.start", MicrophoneCalibrationIpcHandlers.Start);

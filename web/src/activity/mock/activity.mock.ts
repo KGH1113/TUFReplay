@@ -5,7 +5,7 @@ import type {
   ActivityRun,
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
-  ReplayLevelFilePickerStatus,
+  ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
 import { ActivityDomainError, type ActivityGateway } from "../data/activity.gateway";
@@ -76,7 +76,6 @@ export function createMockActivityGateway(): ActivityGateway {
     ErrorCode: null,
     Message: null,
   };
-  let pickerStatus: ReplayLevelFilePickerStatus | null = null;
   let calibrationStatus: MicrophoneCalibrationStatus = {
     OperationId: null,
     State: "idle",
@@ -141,21 +140,14 @@ export function createMockActivityGateway(): ActivityGateway {
       return replayStatus;
     },
     getReplayStatus: async () => replayStatus,
-    startReplayLevelFilePicker: async (runId) => {
-      pickerStatus = {
-        OperationId: `mock-picker-${runId}`,
+    pickReplayLevelFile: async (runId): Promise<ReplayLevelFilePickerResult> => {
+      return {
         RunId: runId,
-        State: "selected",
+        Outcome: "selected",
         LevelPath: `/mock/${runId}.adofai`,
         ErrorCode: null,
         Message: "Matching level file selected.",
       };
-      return pickerStatus;
-    },
-    getReplayLevelFilePickerStatus: async (operationId) => {
-      if (!pickerStatus || pickerStatus.OperationId !== operationId)
-        throw new Error("Mock picker operation was not found");
-      return pickerStatus;
     },
     getMicrophoneDevices: async () => ({
       Devices: microphoneDevices,

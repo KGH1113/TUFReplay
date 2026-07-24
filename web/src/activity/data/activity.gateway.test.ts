@@ -4,7 +4,7 @@ import type {
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
-  ReplayLevelFilePickerStatus,
+  ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
 import { ActivityDomainError, createActivityGateway, loadAllPages } from "./activity.gateway";
@@ -79,18 +79,17 @@ describe("activity IPC contract", () => {
       ErrorCode: null,
       Message: null,
     } satisfies ReplayStatus;
-    const pickerStatus = {
-      OperationId: "picker-1",
+    const pickerResult = {
       RunId: "run-1",
-      State: "picking",
-      LevelPath: null,
+      Outcome: "selected",
+      LevelPath: "/levels/replay.adofai",
       ErrorCode: null,
       Message: null,
-    } satisfies ReplayLevelFilePickerStatus;
+    } satisfies ReplayLevelFilePickerResult;
     const namespace = {
       call: async (method: string, params: unknown) => {
         calls.push({ method, params });
-        return method.includes("level-file") ? pickerStatus : status;
+        return method.includes("level-file") ? pickerResult : status;
       },
     };
     const gateway = createActivityGateway(namespace as never);
@@ -98,8 +97,7 @@ describe("activity IPC contract", () => {
     expect(await gateway.playReplay("run-1")).toBe(status);
     expect(await gateway.playReplay("run-1", "/levels/replay.adofai")).toBe(status);
     expect(await gateway.getReplayStatus()).toBe(status);
-    expect(await gateway.startReplayLevelFilePicker("run-1")).toBe(pickerStatus);
-    expect(await gateway.getReplayLevelFilePickerStatus("picker-1")).toBe(pickerStatus);
+    expect(await gateway.pickReplayLevelFile("run-1")).toBe(pickerResult);
     expect(calls).toEqual([
       { method: "replay.play", params: { runId: "run-1" } },
       {
@@ -107,11 +105,7 @@ describe("activity IPC contract", () => {
         params: { runId: "run-1", levelPath: "/levels/replay.adofai" },
       },
       { method: "replay.status.get", params: {} },
-      { method: "replay.level-file.pick.start", params: { runId: "run-1" } },
-      {
-        method: "replay.level-file.pick.status",
-        params: { operationId: "picker-1" },
-      },
+      { method: "replay.level-file.pick", params: { runId: "run-1" } },
     ]);
   });
 

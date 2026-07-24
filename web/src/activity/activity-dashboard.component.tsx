@@ -212,12 +212,13 @@ export function ActivityDashboard() {
       </main>
       <ReplayLevelChoiceDialog
         run={replayChoiceRun}
-        pickerStatus={replay.pickerStatus}
+        pickerResult={replay.pickerResult}
+        pickingRunId={replay.pickingRunId}
         playError={replay.error}
         playErrorRunId={replay.errorRunId}
         onClose={() => setReplayChoiceRun(null)}
         onPlay={replay.play}
-        onChooseAnother={replay.startLevelFilePicker}
+        onChooseAnother={replay.pickLevelFile}
         onResetPicker={replay.clearLevelFilePicker}
       />
       <MicrophoneOffsetCalibrationDialog

@@ -24,25 +24,23 @@ public sealed class ReplayPlaybackStatusDto
   }
 }
 
-public sealed class ReplayLevelFilePickerStatusDto
+public sealed class ReplayLevelFilePickerResultDto
 {
-  public string OperationId;
   public string RunId;
-  public string State;
+  public string Outcome;
   public string LevelPath;
   public string ErrorCode;
   public string Message;
 
-  public static ReplayLevelFilePickerStatusDto From(ReplayLevelFilePickerStatus status)
+  public static ReplayLevelFilePickerResultDto From(ReplayLevelFilePickerResult result)
   {
-    return new ReplayLevelFilePickerStatusDto
+    return new ReplayLevelFilePickerResultDto
     {
-      OperationId = status.OperationId,
-      RunId = status.RunId,
-      State = status.State,
-      LevelPath = status.LevelPath,
-      ErrorCode = status.ErrorCode,
-      Message = status.Message,
+      RunId = result.RunId,
+      Outcome = result.Outcome,
+      LevelPath = result.LevelPath,
+      ErrorCode = result.ErrorCode,
+      Message = result.Message,
     };
   }
 }

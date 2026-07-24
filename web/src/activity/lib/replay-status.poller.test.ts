@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ReplayLevelFilePickerStatus, ReplayStatus } from "../activity.model";
-import {
-  shouldPollReplayLevelFilePicker,
-  shouldPollReplayStatus,
-} from "../hooks/use-replay-control.hook";
+import type { ReplayStatus } from "../activity.model";
+import { shouldPollReplayStatus } from "../hooks/use-replay-control.hook";
 import { ReplayStatusPoller } from "./replay-status.poller";
 
 const preparing: ReplayStatus = {
@@ -64,20 +61,5 @@ describe("replay status polling", () => {
     expect(shouldPollReplayStatus({ ...preparing, State: "completed" })).toBe(false);
     expect(shouldPollReplayStatus({ ...preparing, State: "cancelled" })).toBe(false);
     expect(shouldPollReplayStatus({ ...preparing, State: "error" })).toBe(false);
-  });
-
-  test("polls only while the native level picker is open", () => {
-    const picker = {
-      OperationId: "picker-1",
-      RunId: "run-1",
-      State: "picking",
-      LevelPath: null,
-      ErrorCode: null,
-      Message: null,
-    } satisfies ReplayLevelFilePickerStatus;
-    expect(shouldPollReplayLevelFilePicker(picker)).toBe(true);
-    expect(shouldPollReplayLevelFilePicker({ ...picker, State: "selected" })).toBe(false);
-    expect(shouldPollReplayLevelFilePicker({ ...picker, State: "cancelled" })).toBe(false);
-    expect(shouldPollReplayLevelFilePicker({ ...picker, State: "error" })).toBe(false);
   });
 });
