@@ -47,8 +47,8 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
-- Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and asks whether to keep it after each valid run.
-- Streams accepted microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries.
+- Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run.
+- Streams microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries; temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
@@ -70,7 +70,6 @@ TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded lev
 
 - `TUFReplay/`: UnityModManager mod source.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
-- `TUFReplay.Unity/`: Unity UI AssetBundle project for the in-game save/discard toast.
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
 - `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
 - `scripts/workflows/`, `scripts/tasks/`, `scripts/lib/`: workflow orchestration, independently runnable tasks, and shared shell utilities.
@@ -88,14 +87,6 @@ Build and install the mod:
 ```bash
 ./scripts/run.sh build
 ```
-
-### Unity UI AssetBundles
-
-The in-game UI prefab is maintained in `TUFReplay.Unity`, using Unity 6.3.10f1. Before the first mod build, open that project and use `TUFReplay > Build > Build All UI Bundles`. The editor builds `tufreplay_ui.bundle` for macOS, Windows, and Linux, then copies the files into `TUFReplay/Assets/{mac,win,linux}`.
-
-For a local macOS-only UI iteration, use `TUFReplay > Build > Build macOS UI Bundle`. After rebuilding the bundle, run `./scripts/run.sh build` to copy the current platform assets into the installed mod.
-
-The temporary `UI Test` section in the Unity Mod Manager GUI can display the microphone recording save toast without recording microphone audio.
 
 The build script:
 

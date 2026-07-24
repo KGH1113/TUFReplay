@@ -48,6 +48,18 @@ export interface ActivityRun {
   MicrophoneDurationSeconds: number | null;
   MicrophoneSampleRate: number | null;
   MicrophoneChannels: number | null;
+  MicrophoneRecordingPermanent: boolean;
+  MicrophoneRecordingExpiresAtUtc: string | null;
+}
+
+export interface MicrophoneRecordingDeleteResult {
+  RunId: string;
+  Deleted: boolean;
+}
+
+export interface MicrophoneRecordingKeepResult {
+  RunId: string;
+  Permanent: boolean;
 }
 
 export type JudgmentDifficulty = "Lenient" | "Normal" | "Strict";

@@ -8,6 +8,8 @@ import type {
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
+  MicrophoneRecordingDeleteResult,
+  MicrophoneRecordingKeepResult,
   ReplayLevelFilePickerStatus,
   ReplayStatus,
 } from "../activity.model";
@@ -39,6 +41,8 @@ export interface ActivityGateway {
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   listAllRuns(id: string, onPage?: (items: ActivityRun[]) => void): Promise<ActivityRun[]>;
   getChart(id: string): Promise<ActivityChart>;
+  deleteMicrophoneRecording(runId: string): Promise<MicrophoneRecordingDeleteResult>;
+  keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getReplayStatus(): Promise<ReplayStatus>;
   startReplayLevelFilePicker(runId: string): Promise<ReplayLevelFilePickerStatus>;
@@ -97,6 +101,10 @@ export function createActivityGateway(
         onPage,
       ),
     getChart: (id) => callDomain(namespace, "activity.level-session.chart.get", { id }),
+    deleteMicrophoneRecording: (runId) =>
+      callDomain(namespace, "microphone.recording.delete", { runId }),
+    keepMicrophoneRecording: (runId) =>
+      callDomain(namespace, "microphone.recording.keep", { runId }),
     playReplay: (runId, levelPath) =>
       callDomain(namespace, "replay.play", levelPath ? { runId, levelPath } : { runId }),
     getReplayStatus: () => callDomain(namespace, "replay.status.get", {}),

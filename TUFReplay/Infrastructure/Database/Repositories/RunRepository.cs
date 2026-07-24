@@ -152,7 +152,7 @@ r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfe
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 r.gameplay_hash,r.gameplay_hash_version,
 r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json,
-coalesce(length(m.audio_wav),0),m.sample_rate,m.channels,m.frame_count
+coalesce(length(m.audio_wav),0),m.sample_rate,m.channels,m.frame_count,m.is_permanent,m.expires_at_utc
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 LEFT JOIN microphone_recordings m ON m.run_id=r.id";
@@ -200,6 +200,8 @@ LEFT JOIN microphone_recordings m ON m.run_id=r.id";
       MicrophoneSampleRate = DbValue.NullableInt(r, 34),
       MicrophoneChannels = DbValue.NullableInt(r, 35),
       MicrophoneFrameCount = r.IsDBNull(36) ? null : (long?)r.GetInt64(36),
+      MicrophoneRecordingPermanent = !r.IsDBNull(37) && r.GetInt32(37) != 0,
+      MicrophoneRecordingExpiresAtUtc = DbValue.NullableString(r, 38),
     };
 
   private static RunJudgmentDifficulty? ReadDifficulty(SqliteDataReader reader, int index)

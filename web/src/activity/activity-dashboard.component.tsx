@@ -125,6 +125,29 @@ export function ActivityDashboard() {
     setSelectedRunId(null);
     setFirstMarkerLevelSessionId(id);
   };
+  const handleDeleteMicrophoneRecording = async (run: ActivityRun) => {
+    const gateway = activity.gatewayRef.current;
+    if (!gateway) throw new Error("TUFReplay is not connected");
+    await gateway.deleteMicrophoneRecording(run.Id);
+    levelData.updateRun(run.Id, {
+      HasMicrophoneRecording: false,
+      MicrophoneRecordingBytes: 0,
+      MicrophoneDurationSeconds: null,
+      MicrophoneSampleRate: null,
+      MicrophoneChannels: null,
+      MicrophoneRecordingPermanent: false,
+      MicrophoneRecordingExpiresAtUtc: null,
+    });
+  };
+  const handleKeepMicrophoneRecording = async (run: ActivityRun) => {
+    const gateway = activity.gatewayRef.current;
+    if (!gateway) throw new Error("TUFReplay is not connected");
+    await gateway.keepMicrophoneRecording(run.Id);
+    levelData.updateRun(run.Id, {
+      MicrophoneRecordingPermanent: true,
+      MicrophoneRecordingExpiresAtUtc: null,
+    });
+  };
   return (
     <>
       <main className="h-screen overflow-hidden bg-background text-foreground">
@@ -180,6 +203,8 @@ export function ActivityDashboard() {
                 onSelectMarker={handleMarker}
                 onSelectRun={handleRun}
                 onPlayReplay={setReplayChoiceRun}
+                onDeleteMicrophoneRecording={handleDeleteMicrophoneRecording}
+                onKeepMicrophoneRecording={handleKeepMicrophoneRecording}
               />
             )}
           </section>

@@ -91,6 +91,8 @@ public sealed class ActivityRunDto
   public double? MicrophoneDurationSeconds;
   public int? MicrophoneSampleRate;
   public int? MicrophoneChannels;
+  public bool MicrophoneRecordingPermanent;
+  public string MicrophoneRecordingExpiresAtUtc;
 
   public static ActivityRunDto From(RunRecord r) =>
     new ActivityRunDto
@@ -124,6 +126,8 @@ public sealed class ActivityRunDto
           : null,
       MicrophoneSampleRate = r.MicrophoneSampleRate,
       MicrophoneChannels = r.MicrophoneChannels,
+      MicrophoneRecordingPermanent = r.MicrophoneRecordingPermanent,
+      MicrophoneRecordingExpiresAtUtc = r.MicrophoneRecordingExpiresAtUtc,
     };
 }
 

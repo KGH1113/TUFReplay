@@ -36,6 +36,40 @@ describe("activity IPC contract", () => {
     }
   });
 
+  test("deletes a microphone recording with the exact command and params", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return { RunId: "run-7", Deleted: true };
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.deleteMicrophoneRecording("run-7")).toEqual({
+      RunId: "run-7",
+      Deleted: true,
+    });
+    expect(calls).toEqual([{ method: "microphone.recording.delete", params: { runId: "run-7" } }]);
+  });
+
+  test("keeps a microphone recording permanently with the exact command and params", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return { RunId: "run-8", Permanent: true };
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.keepMicrophoneRecording("run-8")).toEqual({
+      RunId: "run-8",
+      Permanent: true,
+    });
+    expect(calls).toEqual([{ method: "microphone.recording.keep", params: { runId: "run-8" } }]);
+  });
+
   test("uses the exact replay command names and params", async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
     const status = {

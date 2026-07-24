@@ -19,6 +19,9 @@ for obsolete_dir in assembly_cache dependency .tufreplay-update; do
 done
 rm -f "$TUFREPLAY_INSTALL_PATH/JAModInfo.json" "$TUFREPLAY_INSTALL_PATH/JAMod.Bootstrap.dll"
 rm -f "$TUFREPLAY_INSTALL_PATH"/JAMod.Bootstrap.dll.*.cache
+for platform in mac win linux; do
+  rm -f "$TUFREPLAY_INSTALL_PATH/Assets/$platform/tufreplay_ui.bundle"
+done
 
 copy_core_payload "$TUFREPLAY_INSTALL_PATH"
 copy_assets "$TUFREPLAY_INSTALL_PATH" optional
