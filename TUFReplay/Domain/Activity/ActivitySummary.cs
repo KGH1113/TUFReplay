@@ -25,6 +25,7 @@ public class ActivityDaySummary
 public class LevelSessionOverview
 {
   public string Id;
+  public string LogicalLevelId;
   public string AppSessionId;
   public int? TufLevelId;
   public string LevelPath;

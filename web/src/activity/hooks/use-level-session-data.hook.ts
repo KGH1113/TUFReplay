@@ -1,6 +1,6 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
-import type { ActivityChart, ActivityLevelSessionOverview, ActivityRun } from "../activity.model";
+import type { ActivityChart, ActivityLogicalLevelOverview, ActivityRun } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
 
 export function useLevelSessionData(
@@ -9,7 +9,7 @@ export function useLevelSessionData(
   revision: number,
   gatewayRef: RefObject<ActivityGateway | null>,
 ) {
-  const [overview, setOverview] = useState<ActivityLevelSessionOverview | null>(null);
+  const [overview, setOverview] = useState<ActivityLogicalLevelOverview | null>(null);
   const [runs, setRuns] = useState<ActivityRun[]>([]);
   const [chart, setChart] = useState<ActivityChart | null>(null);
   const [loading, setLoading] = useState(false);
@@ -49,11 +49,11 @@ export function useLevelSessionData(
       setChart(null);
     }
     const tasks: Promise<unknown>[] = [
-      gateway.getLevelSession(id).then((value) => {
+      gateway.getLogicalLevel(id).then((value) => {
         if (active) setOverview(value);
       }),
       gateway
-        .listAllRuns(
+        .listAllLogicalLevelRuns(
           id,
           levelChanged
             ? (value) => {
@@ -67,7 +67,7 @@ export function useLevelSessionData(
     ];
     if (shouldLoadChart)
       tasks.push(
-        gateway.getChart(id).then((value) => {
+        gateway.getLogicalLevelChart(id).then((value) => {
           if (active) {
             loadedChartLevelIdRef.current = id;
             setChart(value);

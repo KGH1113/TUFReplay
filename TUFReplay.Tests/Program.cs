@@ -4,6 +4,7 @@ using TUFReplay;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
+using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
@@ -12,6 +13,7 @@ using TUFReplay.Infrastructure.Database;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Database.Schema;
 using TUFReplay.Infrastructure.NativeInput;
+using TUFReplay.Infrastructure.Unity;
 
 internal static class Program
 {
@@ -29,6 +31,7 @@ internal static class Program
       TestCalibrationWaveforms(root);
       TestAdofaiLevelFileHash(root);
       TestSchemaMigrationAndBlob(root);
+      TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
       TestReplaySchedulerChord();
       TestReplayPumpTimingAndBatching();
@@ -338,7 +341,7 @@ internal static class Program
       ActivitySchema.Ensure(connection);
       using SqliteCommand version = connection.CreateCommand();
       version.CommandText = "PRAGMA user_version";
-      Assert(Convert.ToInt32(version.ExecuteScalar()) == 10, "Fresh schema version is not 10.");
+      Assert(Convert.ToInt32(version.ExecuteScalar()) == 11, "Fresh schema version is not 11.");
       InsertRun(connection);
     }
 
@@ -457,13 +460,13 @@ internal static class Program
     using (SqliteCommand setup = migration.CreateCommand())
     {
       setup.CommandText =
-        "ALTER TABLE level_sessions DROP COLUMN level_file_hash; DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
+        "DROP INDEX idx_level_sessions_logical; ALTER TABLE level_sessions DROP COLUMN logical_level_id; ALTER TABLE level_sessions DROP COLUMN gameplay_hash; ALTER TABLE level_sessions DROP COLUMN gameplay_hash_version; DROP TABLE logical_levels; ALTER TABLE level_sessions DROP COLUMN level_file_hash; DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
       setup.ExecuteNonQuery();
     }
     ActivitySchema.Ensure(migration);
     using SqliteCommand migrated = migration.CreateCommand();
     migrated.CommandText = "SELECT user_version FROM pragma_user_version";
-    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 10, "Schema 7 to 10 migration failed.");
+    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 11, "Schema 7 to 11 migration failed.");
 
     string retentionMigrationPath = Path.Combine(root, "retention-migration.sqlite");
     using var retentionMigration = new SqliteConnection("Data Source=" + retentionMigrationPath);
@@ -474,10 +477,13 @@ internal static class Program
         @"
 CREATE TABLE app_sessions(id TEXT PRIMARY KEY,started_at_utc TEXT NOT NULL);
 CREATE TABLE level_sessions(
-  id TEXT PRIMARY KEY,app_session_id TEXT NOT NULL,opened_at_utc TEXT NOT NULL
+  id TEXT PRIMARY KEY,app_session_id TEXT NOT NULL,tuf_level_id INTEGER,level_path TEXT NOT NULL,
+  opened_at_utc TEXT NOT NULL,closed_at_utc TEXT,level_tile_count INTEGER NOT NULL DEFAULT 0,
+  level_file_hash BLOB,song TEXT,author TEXT,artist TEXT,metadata_state INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE runs(
-  id TEXT PRIMARY KEY,level_session_id TEXT NOT NULL,run_index INTEGER NOT NULL,start_tile INTEGER NOT NULL
+  id TEXT PRIMARY KEY,level_session_id TEXT NOT NULL,run_index INTEGER NOT NULL,start_tile INTEGER NOT NULL,
+  gameplay_hash BLOB,gameplay_hash_version INTEGER
 );
 CREATE TABLE microphone_recordings(
   run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
@@ -486,8 +492,8 @@ CREATE TABLE microphone_recordings(
   capture_start_offset_us INTEGER NOT NULL DEFAULT 0
 );
 INSERT INTO app_sessions(id,started_at_utc) VALUES('legacy-app','2026-01-01T00:00:00Z');
-INSERT INTO level_sessions(id,app_session_id,opened_at_utc)
-VALUES('legacy-level','legacy-app','2026-01-01T00:00:00Z');
+INSERT INTO level_sessions(id,app_session_id,level_path,opened_at_utc)
+VALUES('legacy-level','legacy-app','legacy.adofai','2026-01-01T00:00:00Z');
 INSERT INTO runs(id,level_session_id,run_index,start_tile) VALUES('legacy-run','legacy-level',0,0);
 INSERT INTO microphone_recordings(run_id,audio_wav,format,sample_rate,channels,frame_count)
 VALUES('legacy-run',X'00','wav/pcm16',48000,1,1);
@@ -520,13 +526,71 @@ PRAGMA user_version=9;";
     Assert(!AdofaiLevelFileHash.Equals(first, changed), "Changed level file was treated as identical.");
   }
 
+  private static void TestLogicalLevelIdentity(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "logical-levels.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "logical-app",
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+
+    LevelSession gameplayA = LogicalVisit("gameplay-a", "/tmp/a.adofai", null, new byte[16], new byte[] { 1 });
+    LevelSession gameplayB = LogicalVisit("gameplay-b", "/tmp/b.adofai", null, new byte[16], new byte[] { 2 });
+    LevelSessionRepository.Save(gameplayA);
+    LevelSessionRepository.Save(gameplayB);
+    Assert(gameplayA.LogicalLevelId == gameplayB.LogicalLevelId, "Equal gameplay hashes were not merged.");
+
+    LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[16], new byte[] { 3 });
+    LevelSession tufB = LogicalVisit("tuf-b", "/tmp/tuf-b.adofai", 77, Enumerable.Repeat((byte)9, 16).ToArray(), new byte[] { 4 });
+    LevelSessionRepository.Save(tufA);
+    LevelSessionRepository.Save(tufB);
+    Assert(tufA.LogicalLevelId == tufB.LogicalLevelId, "Equal TUF IDs were not merged after chart updates.");
+
+    LevelSession fileA = LogicalVisit("file-a", "/tmp/local.adofai", null, null, new byte[] { 5 });
+    LevelSession fileB = LogicalVisit("file-b", "/tmp/local.adofai", null, null, new byte[] { 5 });
+    LevelSession fileChanged = LogicalVisit("file-changed", "/tmp/local.adofai", null, null, new byte[] { 6 });
+    LevelSessionRepository.Save(fileA);
+    LevelSessionRepository.Save(fileB);
+    LevelSessionRepository.Save(fileChanged);
+    Assert(fileA.LogicalLevelId == fileB.LogicalLevelId, "Equal local file identities were not merged.");
+    Assert(fileA.LogicalLevelId != fileChanged.LogicalLevelId, "Changed local files were incorrectly merged.");
+  }
+
+  private static LevelSession LogicalVisit(
+    string id,
+    string path,
+    int? tufLevelId,
+    byte[] gameplayHash,
+    byte[] fileHash
+  ) =>
+    new LevelSession
+    {
+      Id = id,
+      AppSessionId = "logical-app",
+      TufLevelId = tufLevelId,
+      LevelPath = path,
+      OpenedAtUtc = "2026-01-01T00:00:00Z",
+      LevelTileCount = 100,
+      GameplayHash = gameplayHash,
+      GameplayHashVersion = gameplayHash == null ? null : (int?)GameplayChartHash.Version,
+      LevelFileHash = fileHash,
+      MetadataState = LevelMetadataState.Unavailable,
+    };
+
   private static void InsertRun(SqliteConnection connection)
   {
     using SqliteCommand command = connection.CreateCommand();
     command.CommandText =
       @"
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01',0);
-INSERT INTO level_sessions(id,app_session_id,level_path,opened_at_utc) VALUES('level','app','test.adofai','2026-01-01');
+INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test','2026-01-01','2026-01-01');
+INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc) VALUES('level','logical','app','test.adofai','2026-01-01');
 INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result) VALUES('run','level',0,'2026-01-01',0,'cleared');";
     command.ExecuteNonQuery();
   }

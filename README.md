@@ -38,7 +38,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
-- Stores lean activity records, replay payloads, level paths, level-file fingerprints, and recorder timezone context in SQLite.
+- Stores lean activity records, replay payloads, level paths, level-file fingerprints, and recorder timezone context in SQLite. Visits remain attached to their original app session, while the activity UI groups the same logical level across sessions by TUF ID, gameplay hash, or local path-and-file identity.
 - Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
@@ -230,6 +230,9 @@ Registered methods:
 - `activity.level-session.get`
 - `activity.level-session.runs.list`
 - `activity.level-session.chart.get`
+- `activity.logical-level.get`
+- `activity.logical-level.runs.list`
+- `activity.logical-level.chart.get`
 - `replay.play`
 - `replay.status.get`
 - `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)

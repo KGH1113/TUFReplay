@@ -24,9 +24,49 @@ public sealed class ActivityAppSessionDto
     };
 }
 
+public sealed class ActivityLogicalLevelOverviewDto
+{
+  public string Id;
+  public int? TufLevelId;
+  public string Song;
+  public string Author;
+  public string Artist;
+  public string FirstSeenAtUtc;
+  public string LastSeenAtUtc;
+  public int FloorCount;
+  public int VisitCount;
+  public int RunCount;
+  public int ClearRunCount;
+  public int NoFailRunCount;
+  public int? FirstStartTile;
+  public int? LastStartTile;
+  public bool ChartAvailable;
+
+  public static ActivityLogicalLevelOverviewDto From(LogicalLevelOverview level) =>
+    new ActivityLogicalLevelOverviewDto
+    {
+      Id = level.Id,
+      TufLevelId = level.TufLevelId,
+      Song = level.Song,
+      Author = level.Author,
+      Artist = level.Artist,
+      FirstSeenAtUtc = level.FirstSeenAtUtc,
+      LastSeenAtUtc = level.LastSeenAtUtc,
+      FloorCount = level.LevelTileCount,
+      VisitCount = level.VisitCount,
+      RunCount = level.RunCount,
+      ClearRunCount = level.ClearRunCount,
+      NoFailRunCount = level.NoFailRunCount,
+      FirstStartTile = level.FirstStartTile,
+      LastStartTile = level.LastStartTile,
+      ChartAvailable = level.ChartAvailable,
+    };
+}
+
 public sealed class ActivityLevelSessionOverviewDto
 {
   public string Id;
+  public string LogicalLevelId;
   public string AppSessionId;
   public int? TufLevelId;
   public string Song;
@@ -46,6 +86,7 @@ public sealed class ActivityLevelSessionOverviewDto
     new ActivityLevelSessionOverviewDto
     {
       Id = s.Id,
+      LogicalLevelId = s.LogicalLevelId,
       AppSessionId = s.AppSessionId,
       TufLevelId = s.TufLevelId,
       Song = s.Song,

@@ -79,6 +79,59 @@ public static class ActivityIpcHandlers
     }
   }
 
+  public static object GetLogicalLevel(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "id", out string id))
+      return InvalidLogicalLevelId();
+    LogicalLevelOverview level = ActivityQueryService.GetLogicalLevelOverview(id);
+    return level == null
+      ? IpcDomainError.Create("logical_level_not_found", "Logical level was not found.")
+      : ActivityLogicalLevelOverviewDto.From(level);
+  }
+
+  public static object ListLogicalLevelRuns(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "id", out string id))
+      return InvalidLogicalLevelId();
+    IpcPagination pagination = IpcPagination.Parse(request);
+    if (
+      !ActivityQueryService.TryListRunsByLogicalLevel(id, pagination.Offset, pagination.Limit, out List<RunRecord> runs)
+    )
+      return IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
+    var output = new List<ActivityRunDto>(runs.Count);
+    foreach (RunRecord run in runs)
+      output.Add(ActivityRunDto.From(run));
+    return output;
+  }
+
+  public static object GetLogicalLevelChart(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "id", out string id))
+      return InvalidLogicalLevelId();
+    try
+    {
+      ChartData chart = ActivityQueryService.GetLogicalLevelChart(id);
+      if (chart == null)
+        return IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
+      if (chart.levelText == null)
+        return IpcDomainError.Create("chart_unavailable", "The recorded chart file is unavailable or has changed.");
+      return new ActivityChartDto
+      {
+        LevelSessionId = chart.id,
+        LevelText = chart.levelText,
+        FloorCount = chart.floorCount,
+      };
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[IPC] Logical level chart read failed: " + exception.GetType().Name);
+      return IpcDomainError.Create("chart_read_failed", "The recorded chart could not be read.");
+    }
+  }
+
   private static object InvalidLevelSessionId() =>
     IpcDomainError.Create("invalid_level_session_id", "id must be a non-empty string.");
+
+  private static object InvalidLogicalLevelId() =>
+    IpcDomainError.Create("invalid_logical_level_id", "id must be a non-empty string.");
 }

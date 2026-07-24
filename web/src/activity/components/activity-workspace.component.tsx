@@ -1,12 +1,9 @@
 import {
   ArrowDown02Icon,
-  ArrowLeft02Icon,
-  ArrowRight02Icon,
   ArrowUp02Icon,
   ChartAverageIcon,
   Clock01Icon,
   DashboardSpeed01Icon,
-  FitToScreenIcon,
   Loading03Icon,
   PercentIcon,
   PlayIcon,
@@ -53,6 +50,7 @@ export function ActivityWorkspace({
   selectedRun,
   loading,
   error,
+  readOnly,
   timeZone,
   replayStatus,
   replayPendingRunId,
@@ -72,6 +70,7 @@ export function ActivityWorkspace({
   selectedRun: ActivityRun | null;
   loading: boolean;
   error: string;
+  readOnly: boolean;
   timeZone: string;
   replayStatus: ReplayStatus;
   replayPendingRunId: string | null;
@@ -133,14 +132,6 @@ export function ActivityWorkspace({
       onSelectMarker(markers.find((marker) => marker.floorIndex === floor) ?? null),
     [markers, onSelectMarker],
   );
-  const selectedMarkerIndex = selectedMarker
-    ? markers.findIndex((marker) => marker.id === selectedMarker.id)
-    : -1;
-  const previousMarker = selectedMarkerIndex > 0 ? markers[selectedMarkerIndex - 1] : null;
-  const nextMarker =
-    selectedMarkerIndex >= 0 && selectedMarkerIndex < markers.length - 1
-      ? markers[selectedMarkerIndex + 1]
-      : null;
   const selectedRuns = runsForMarker(runs, selectedMarker);
   const sortedRuns = sortRuns(selectedRuns, runSort, sortDirection);
   const selectedMarkerId = selectedMarker?.id ?? null;
@@ -227,48 +218,6 @@ export function ActivityWorkspace({
       >
         {selectedMarker ? (
           <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col">
-            <div className="mb-3 flex shrink-0 items-center justify-between border-b border-border pb-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Run start
-                </div>
-                <div className="mt-0.5 font-heading text-sm font-semibold tabular-nums">
-                  Floor {selectedMarker.floorIndex}
-                </div>
-              </div>
-              <fieldset
-                className="grid min-w-0 grid-cols-3 rounded-md border border-border bg-background/70 p-1"
-                aria-label="Run start navigation and camera controls"
-              >
-                <RunStartNavigationButton
-                  label="Previous run start"
-                  icon={ArrowLeft02Icon}
-                  marker={previousMarker}
-                  onSelect={onSelectMarker}
-                />
-                <RunStartNavigationButton
-                  label="Next run start"
-                  icon={ArrowRight02Icon}
-                  marker={nextMarker}
-                  onSelect={onSelectMarker}
-                />
-                <button
-                  type="button"
-                  aria-label="Fit entire run"
-                  title="Fit entire run"
-                  disabled={!selectedRun}
-                  onClick={() => chartRef.current?.fitEntireRun()}
-                  className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={FitToScreenIcon}
-                    size={16}
-                    strokeWidth={2}
-                  />
-                </button>
-              </fieldset>
-            </div>
             <div className="mb-3 shrink-0">
               <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Sort by
@@ -317,6 +266,7 @@ export function ActivityWorkspace({
                         key={run.Id}
                         run={run}
                         active={active}
+                        readOnly={readOnly}
                         timeZone={timeZone}
                         microphonePinnedRunId={microphonePinnedRunId}
                         replayStatus={replayStatus}
@@ -344,6 +294,7 @@ export function ActivityWorkspace({
 function RunCard({
   run,
   active,
+  readOnly,
   timeZone,
   microphonePinnedRunId,
   replayStatus,
@@ -358,6 +309,7 @@ function RunCard({
 }: {
   run: ActivityRun;
   active: boolean;
+  readOnly: boolean;
   timeZone: string;
   microphonePinnedRunId: string | null;
   replayStatus: ReplayStatus;
@@ -377,6 +329,7 @@ function RunCard({
       onPinnedRunChange={onPinnedRunChange}
       onKeep={onKeepMicrophoneRecording}
       onDelete={onDeleteMicrophoneRecording}
+      disabled={readOnly}
     />
   ) : null;
   const replayAction = (
@@ -387,6 +340,7 @@ function RunCard({
       error={replayError}
       errorRunId={replayErrorRunId}
       onPlay={onPlayReplay}
+      disabled={readOnly}
     />
   );
 
@@ -394,8 +348,7 @@ function RunCard({
     <div
       data-run-id={run.Id}
       className={cn(
-        "group/run relative rounded-md border border-border bg-background/60 text-xs transition-colors hover:border-primary/50",
-        active && "border-primary bg-primary/10 ring-1 ring-primary/40",
+        "group/run relative rounded-md border border-border bg-background/60 text-xs transition-colors hover:border-primary/60",
       )}
     >
       <button
@@ -505,6 +458,7 @@ function RunReplayButton({
   error,
   errorRunId,
   onPlay,
+  disabled,
 }: {
   run: ActivityRun;
   status: ReplayStatus;
@@ -512,6 +466,7 @@ function RunReplayButton({
   error: string;
   errorRunId: string | null;
   onPlay: (run: ActivityRun) => void;
+  disabled: boolean;
 }) {
   const message = describeReplay(run.Id, status, pendingRunId, error, errorRunId);
   const statusMatches = status.RunId === run.Id;
@@ -545,10 +500,11 @@ function RunReplayButton({
         <button
           type="button"
           aria-label={label}
-          aria-disabled={pendingRunId !== null}
-          onClick={() => pendingRunId === null && onPlay(run)}
+          aria-disabled={disabled || pendingRunId !== null}
+          disabled={disabled}
+          onClick={() => !disabled && pendingRunId === null && onPlay(run)}
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-[11px] font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:cursor-wait aria-disabled:opacity-60",
+            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-[11px] font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:cursor-wait aria-disabled:opacity-45",
             "min-w-16",
             (starting || playing) && "border-primary/70 bg-primary/25",
             playing && "bg-primary text-primary-foreground shadow-sm shadow-primary/20",
@@ -612,31 +568,6 @@ function SortDirectionButton({
         size={15}
         strokeWidth={2}
       />
-    </button>
-  );
-}
-
-function RunStartNavigationButton({
-  label,
-  icon,
-  marker,
-  onSelect,
-}: {
-  label: string;
-  icon: typeof ArrowLeft02Icon;
-  marker: RunMarker | null;
-  onSelect: (marker: RunMarker | null) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={!marker}
-      onClick={() => marker && onSelect(marker)}
-      className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={2} />
     </button>
   );
 }

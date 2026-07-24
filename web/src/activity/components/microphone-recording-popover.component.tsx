@@ -24,14 +24,17 @@ export function MicrophoneRecordingPopover({
   onPinnedRunChange,
   onKeep,
   onDelete,
+  disabled = false,
 }: {
   run: ActivityRun;
   pinnedRunId: string | null;
   onPinnedRunChange: (runId: string | null) => void;
   onKeep: (run: ActivityRun) => Promise<void>;
   onDelete: (run: ActivityRun) => Promise<void>;
+  disabled?: boolean;
 }) {
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hoverSessionActiveRef = useRef(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const contentId = useId();
@@ -60,16 +63,25 @@ export function MicrophoneRecordingPopover({
     return () => clearInterval(interval);
   }, [open, run.MicrophoneRecordingPermanent]);
 
-  const keepOpen = () => {
+  const startHoverSession = () => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = null;
-    if (!anotherPinned) setHoverOpen(true);
+    if (anotherPinned) return;
+    hoverSessionActiveRef.current = true;
+    setHoverOpen(true);
+  };
+
+  const continueHoverSession = () => {
+    if (!hoverSessionActiveRef.current && !pinned && !pendingAction) return;
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = null;
   };
 
   const scheduleClose = () => {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => {
       closeTimerRef.current = null;
+      hoverSessionActiveRef.current = false;
       setHoverOpen(false);
     }, CLOSE_DELAY_MS);
   };
@@ -78,13 +90,14 @@ export function MicrophoneRecordingPopover({
     if (pendingAction) return;
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = null;
+    hoverSessionActiveRef.current = false;
     setHoverOpen(false);
     setError("");
     if (pinned) onPinnedRunChange(null);
   };
 
   const keepPermanently = async () => {
-    if (pendingAction) return;
+    if (disabled || pendingAction) return;
     onPinnedRunChange(run.Id);
     setPendingAction("keep");
     setError("");
@@ -98,7 +111,7 @@ export function MicrophoneRecordingPopover({
   };
 
   const deleteRecording = async () => {
-    if (pendingAction) return;
+    if (disabled || pendingAction) return;
     onPinnedRunChange(run.Id);
     setPendingAction("delete");
     setError("");
@@ -116,10 +129,12 @@ export function MicrophoneRecordingPopover({
   const togglePinned = (event: MouseEvent<HTMLButtonElement>) => {
     setError("");
     if (pinned) {
+      hoverSessionActiveRef.current = false;
       setHoverOpen(false);
       onPinnedRunChange(null);
       return;
     }
+    hoverSessionActiveRef.current = true;
     setHoverOpen(true);
     onPinnedRunChange(run.Id);
     if (!pinned && event.detail === 0) {
@@ -130,8 +145,10 @@ export function MicrophoneRecordingPopover({
   };
 
   const openDeleteDialog = () => {
+    if (disabled) return;
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = null;
+    hoverSessionActiveRef.current = false;
     setHoverOpen(false);
     setError("");
     onPinnedRunChange(null);
@@ -149,9 +166,9 @@ export function MicrophoneRecordingPopover({
             aria-haspopup="dialog"
             aria-expanded={open}
             aria-controls={contentId}
-            onPointerEnter={keepOpen}
+            onPointerEnter={startHoverSession}
             onPointerLeave={scheduleClose}
-            onFocus={keepOpen}
+            onFocus={startHoverSession}
             onBlur={scheduleClose}
             onClick={togglePinned}
             className={cn(
@@ -172,8 +189,10 @@ export function MicrophoneRecordingPopover({
           id={contentId}
           role="dialog"
           aria-label={`Microphone recording controls for run ${run.RunIndex}`}
-          onPointerEnter={keepOpen}
+          onPointerEnter={continueHoverSession}
           onPointerLeave={scheduleClose}
+          onFocusCapture={continueHoverSession}
+          onBlurCapture={scheduleClose}
           onInteractOutside={(event) => {
             if (triggerRef.current?.contains(event.target as Node)) event.preventDefault();
           }}
@@ -212,19 +231,15 @@ export function MicrophoneRecordingPopover({
 
           <div className="mt-3 flex items-end justify-between gap-3">
             <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-              {run.MicrophoneRecordingPermanent ? (
-                "Permanent"
-              ) : (
-                <>
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={Clock01Icon}
-                    className="size-3.5 shrink-0"
-                    strokeWidth={2}
-                  />
-                  {formatRemaining(run.MicrophoneRecordingExpiresAtUtc, now)}
-                </>
-              )}
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={Clock01Icon}
+                className="size-3.5 shrink-0"
+                strokeWidth={2}
+              />
+              {run.MicrophoneRecordingPermanent
+                ? "Permanent"
+                : formatRemaining(run.MicrophoneRecordingExpiresAtUtc, now)}
             </p>
 
             <div className="flex shrink-0 items-center gap-1">
@@ -236,7 +251,7 @@ export function MicrophoneRecordingPopover({
                   aria-label="Keep microphone recording permanently"
                   title="Keep permanently"
                   className="text-primary hover:text-primary"
-                  disabled={pendingAction !== null}
+                  disabled={disabled || pendingAction !== null}
                   onClick={() => void keepPermanently()}
                 >
                   <HugeiconsIcon
@@ -254,7 +269,7 @@ export function MicrophoneRecordingPopover({
                 aria-label="Delete microphone recording"
                 title="Delete recording"
                 className="text-destructive hover:text-destructive"
-                disabled={pendingAction !== null}
+                disabled={disabled || pendingAction !== null}
                 onClick={openDeleteDialog}
               >
                 <HugeiconsIcon

@@ -46,17 +46,24 @@ export function DashboardHeader({
         />
         <span
           role="status"
-          aria-label={status}
-          title={status}
           className={cn(
-            "size-2 rounded-full bg-muted-foreground",
-            status === "online" && "bg-[#7DCF00]",
-            status === "error" && "bg-destructive",
+            "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium",
+            status === "online" && "border-primary/25 bg-primary/8 text-primary",
+            status === "connecting" && "border-border bg-muted/40 text-muted-foreground",
+            status === "error" && "border-amber-400/25 bg-amber-400/8 text-amber-300",
           )}
-        />
+        >
+          <span
+            className={cn(
+              "size-1.5 rounded-full bg-current",
+              status === "connecting" && "animate-pulse",
+            )}
+          />
+          {status === "online" ? "Online" : status === "connecting" ? "Connecting" : "Offline"}
+        </span>
         {status === "error" ? (
-          <Button size="sm" onClick={onRetry}>
-            Retry
+          <Button size="sm" variant="ghost" onClick={onRetry}>
+            Retry connection
           </Button>
         ) : null}
       </div>

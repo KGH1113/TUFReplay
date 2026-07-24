@@ -23,6 +23,7 @@ export function useActivityData() {
   const refresh = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    if (gatewayRef.current === null) setStatus("connecting");
     try {
       const gateway = gatewayRef.current ?? (await connectActivityGateway());
       await gateway.health();

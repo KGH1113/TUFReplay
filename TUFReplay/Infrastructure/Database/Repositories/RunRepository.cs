@@ -89,6 +89,23 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     return result;
   }
 
+  public static List<RunRecord> ListByLogicalLevel(string id, int offset, int limit)
+  {
+    var result = new List<RunRecord>();
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText =
+      Select
+      + " WHERE l.logical_level_id=@id ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
+    q.Parameters.AddWithValue("@id", id);
+    q.Parameters.AddWithValue("@limit", limit);
+    q.Parameters.AddWithValue("@offset", offset);
+    using SqliteDataReader x = q.ExecuteReader();
+    while (x.Read())
+      result.Add(Read(x));
+    return result;
+  }
+
   public static StoredReplayRun GetReplayRun(string runId)
   {
     if (string.IsNullOrWhiteSpace(runId))
