@@ -12,11 +12,13 @@ require_file "$TUFREPLAY_PACKAGE_ZIP_PATH"
 
 version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" | head -n 1)"
 [ -n "$version" ] || fail "TUFReplay version is missing from Info.json."
+package_bytes="$(wc -c < "$TUFREPLAY_PACKAGE_ZIP_PATH" | tr -d '[:space:]')"
+package_sha256="$(shasum -a 256 "$TUFREPLAY_PACKAGE_ZIP_PATH" | awk '{print $1}')"
 
-mkdir -p "$(dirname "$TUFREPLAY_VERSION_ASSET_PATH")"
-mkdir -p "$(dirname "$TUFREPLAY_CHECKSUM_ASSET_PATH")"
-printf '%s\n' "$version" > "$TUFREPLAY_VERSION_ASSET_PATH"
-shasum -a 256 "$TUFREPLAY_PACKAGE_ZIP_PATH" > "$TUFREPLAY_CHECKSUM_ASSET_PATH"
+rm -f "$TUFREPLAY_PROJECT_ROOT/build/TUFReplay.version" \
+  "$TUFREPLAY_PROJECT_ROOT/build/TUFReplay.zip.sha256"
+mkdir -p "$(dirname "$TUFREPLAY_UPDATE_MANIFEST_PATH")"
+printf '{\n  "schemaVersion": 1,\n  "version": "%s",\n  "packageAsset": "TUFReplay.zip",\n  "packageBytes": %s,\n  "packageSha256": "%s",\n  "runtimePath": "TUFReplay/Runtime/versions/%s"\n}\n' \
+  "$version" "$package_bytes" "$package_sha256" "$version" > "$TUFREPLAY_UPDATE_MANIFEST_PATH"
 
-printf 'Version asset: %s\n' "$TUFREPLAY_VERSION_ASSET_PATH"
-printf 'Checksum asset: %s\n' "$TUFREPLAY_CHECKSUM_ASSET_PATH"
+printf 'Update manifest: %s\n' "$TUFREPLAY_UPDATE_MANIFEST_PATH"

@@ -2,7 +2,10 @@ import { describe, expect, test } from "bun:test";
 
 import type { MicrophoneCalibrationStatus } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
-import { installCalibrationStatusPolling } from "./use-microphone-offset-calibration.hook";
+import {
+  extrapolateCalibrationPlaybackPosition,
+  installCalibrationStatusPolling,
+} from "./use-microphone-offset-calibration.hook";
 
 const waitingStatus: MicrophoneCalibrationStatus = {
   OperationId: "calibration-2",
@@ -17,6 +20,15 @@ const waitingStatus: MicrophoneCalibrationStatus = {
 };
 
 describe("microphone calibration status polling", () => {
+  test("keeps the playhead at zero until gameplay starts after countdown", () => {
+    expect(
+      extrapolateCalibrationPlaybackPosition({ positionMs: 0, sampledAtMs: 1_000 }, 2_500, 6_000),
+    ).toBe(0);
+    expect(
+      extrapolateCalibrationPlaybackPosition({ positionMs: 125, sampledAtMs: 1_000 }, 1_250, 6_000),
+    ).toBe(375);
+  });
+
   test("keeps polling when the shared IPC gateway temporarily disappears", async () => {
     const scheduled: Array<() => void> = [];
     let gateway: ActivityGateway | null = null;

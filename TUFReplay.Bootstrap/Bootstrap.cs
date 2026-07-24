@@ -6,101 +6,89 @@ namespace TUFReplay.Bootstrap;
 
 public static class Bootstrap
 {
-  private const string PayloadAssemblyName = "TUFReplay.dll";
   private const string PayloadEntryMethod = "TUFReplay.Main.Load";
 
   public static bool Load(UnityModManager.ModEntry modEntry)
   {
     string displayName = modEntry.Info.DisplayName;
-    string installedVersion = modEntry.Info.Version;
-    PayloadCandidate installed = new(
-      installedVersion,
-      Path.Combine(modEntry.Path, PayloadAssemblyName));
-
+    RuntimeStore store = new(modEntry.Path);
     try
     {
+      RuntimeState state = store.LoadAndRepair();
+      RuntimeCandidate current = store.GetCandidate(state.Current);
+      modEntry.Info.Version = current.Version;
       modEntry.Info.DisplayName = Status(modEntry, "Checking for updates...");
 
-      UpdateManager updateManager = new(modEntry.Path);
-      PayloadCandidate fallback = updateManager.GetActiveCandidate(installed) ?? installed;
-      PayloadCandidate candidate = fallback;
-
+      UpdateResolution resolution;
       try
       {
-        candidate = updateManager.GetLatestCandidate(fallback) ?? fallback;
-      }
-      catch (TimeoutException exception)
-      {
-        Warn(modEntry, "Update check exceeded 20 seconds. Loading the existing mod.", exception);
+        resolution = UpdateEngineLoader.Resolve(modEntry, current);
       }
       catch (Exception exception)
       {
-        Warn(modEntry, "Update check failed. Loading the existing mod.", exception);
+        Warn(modEntry, "Update check failed. Loading the current runtime.", exception);
+        resolution = UpdateResolution.None();
       }
 
       modEntry.Info.DisplayName = displayName;
+      if (!resolution.HasCandidate)
+        return TryLoadCurrent(modEntry, current);
 
-      if (TryLoad(modEntry, candidate, installedVersion, out Exception loadException))
+      RuntimeCandidate trial = store.ValidateCandidate(resolution.Version, resolution.RuntimePath);
+      state.Trial = trial.Version;
+      store.Save(state);
+      modEntry.Info.Version = trial.Version;
+      if (TryLoad(modEntry, trial, out Exception loadException))
       {
-        if (!PathsEqual(candidate.AssemblyPath, installed.AssemblyPath))
+        try
         {
-          try
-          {
-            updateManager.MarkActive(candidate);
-          }
-          catch (Exception exception)
-          {
-            Warn(modEntry, "The updated mod loaded, but its cache marker could not be saved.", exception);
-          }
+          store.Promote(state, trial.Version);
+        }
+        catch (Exception exception)
+        {
+          Warn(modEntry, "The updated runtime loaded, but its active marker could not be saved.", exception);
         }
         return true;
       }
 
-      if (!PathsEqual(candidate.AssemblyPath, installed.AssemblyPath))
-      {
-        Warn(modEntry, "The updated mod failed to load. Loading the installed version.", loadException);
-        return TryLoadInstalled(modEntry, installed, installedVersion);
-      }
-
-      modEntry.Logger.Error(loadException?.ToString() ?? "TUFReplay failed to load.");
+      state.Trial = null;
+      store.Save(state);
+      store.DeleteUnreferencedRuntime(trial.Version, state);
+      modEntry.Info.Version = current.Version;
+      modEntry.Info.DisplayName = displayName + " <color=red>[Failed to update!]</color>";
+      Warn(modEntry, "The updated runtime failed to initialize. It will be retried next launch.", loadException);
       return false;
     }
     catch (Exception exception)
     {
-      modEntry.Info.DisplayName = displayName;
-      Warn(modEntry, "The updater failed unexpectedly. Loading the installed version.", exception);
-      return TryLoadInstalled(modEntry, installed, installedVersion);
+      modEntry.Info.DisplayName = displayName + " <color=red>[Failed to update!]</color>";
+      Warn(modEntry, "The runtime launcher failed.", exception);
+      return false;
     }
   }
 
-  private static bool TryLoadInstalled(
-    UnityModManager.ModEntry modEntry,
-    PayloadCandidate installed,
-    string installedVersion)
+  private static bool TryLoadCurrent(UnityModManager.ModEntry modEntry, RuntimeCandidate current)
   {
-    if (TryLoad(modEntry, installed, installedVersion, out Exception exception))
+    modEntry.Info.Version = current.Version;
+    if (TryLoad(modEntry, current, out Exception exception))
       return true;
-
-    modEntry.Logger.Error(exception?.ToString() ?? "The installed TUFReplay payload failed to load.");
+    modEntry.Logger.Error(exception?.ToString() ?? "The current TUFReplay runtime failed to load.");
     return false;
   }
 
   private static bool TryLoad(
     UnityModManager.ModEntry modEntry,
-    PayloadCandidate candidate,
-    string installedVersion,
+    RuntimeCandidate candidate,
     out Exception exception)
   {
     try
     {
-      modEntry.Info.Version = candidate.Version;
       PayloadLoader.Load(candidate.AssemblyPath, PayloadEntryMethod, modEntry);
       exception = null;
       return true;
     }
     catch (Exception caught)
     {
-      modEntry.Info.Version = installedVersion;
       exception = caught;
       return false;
     }
@@ -116,13 +104,5 @@ public static class Bootstrap
   private static string Status(UnityModManager.ModEntry modEntry, string status)
   {
     return modEntry.Info.Id + " <color=grey>[" + status + "]</color>";
-  }
-
-  private static bool PathsEqual(string left, string right)
-  {
-    return string.Equals(
-      Path.GetFullPath(left),
-      Path.GetFullPath(right),
-      StringComparison.OrdinalIgnoreCase);
   }
 }

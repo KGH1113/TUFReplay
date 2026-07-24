@@ -204,11 +204,12 @@ export interface MicrophoneCalibrationResult {
   Revision: number;
   DurationMs: number;
   GameWaveform: number[];
+  SongWaveform?: number[];
   MicrophoneWaveform: number[];
 }
 
 export interface MicrophoneOffsetCalibrationData {
   durationMs: number;
-  gameWaveform: number[];
+  songWaveform: number[];
   microphoneWaveform: number[];
 }

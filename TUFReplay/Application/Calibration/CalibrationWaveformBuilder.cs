@@ -7,7 +7,7 @@ namespace TUFReplay.Application.Calibration;
 
 public static class CalibrationWaveformBuilder
 {
-  public const int BinCount = 480;
+  public const int BinCount = 2048;
 
   public static float[] FromPcm16(CapturedMicrophoneRecording recording, double durationMs)
   {
@@ -75,6 +75,57 @@ public static class CalibrationWaveformBuilder
         result[bin] = Math.Max(result[bin], peaks[i]);
     }
     return Normalize(result);
+  }
+
+  public static float[] FromReferenceWaveform(
+    CalibrationReferenceWaveform reference,
+    int sourceStartFrame,
+    int sourceSampleRate,
+    double durationMs
+  )
+  {
+    var result = new float[BinCount];
+    if (
+      reference?.Peaks == null
+      || reference.SampleRate <= 0
+      || reference.FramesPerPeak <= 0
+      || sourceSampleRate <= 0
+      || durationMs <= 0d
+    )
+      return result;
+
+    double sourceStartSeconds = Math.Max(0, sourceStartFrame) / (double)sourceSampleRate;
+    for (int peakIndex = 0; peakIndex < reference.Peaks.Length; peakIndex++)
+    {
+      double timeMs =
+        (peakIndex * reference.FramesPerPeak / (double)reference.SampleRate - sourceStartSeconds) * 1000d;
+      if (timeMs < 0d)
+        continue;
+      if (timeMs >= durationMs)
+        break;
+      int bin = Math.Min(BinCount - 1, (int)(timeMs / durationMs * BinCount));
+      result[bin] = Math.Max(result[bin], reference.Peaks[peakIndex] / 65535f);
+    }
+    return Normalize(result);
+  }
+
+  public static int ReferenceStartFrame(
+    double songPositionSeconds,
+    double levelOffsetSeconds,
+    double inputOffsetSeconds,
+    double pitch,
+    int sampleRate,
+    bool legacyConductor
+  )
+  {
+    if (sampleRate <= 0)
+      return 0;
+    pitch = Math.Max(0.0001d, pitch);
+    double sourceTimeSeconds = legacyConductor
+      ? songPositionSeconds + inputOffsetSeconds + levelOffsetSeconds / pitch
+      : songPositionSeconds + inputOffsetSeconds * pitch + levelOffsetSeconds;
+    double frame = Math.Max(0d, sourceTimeSeconds * sampleRate);
+    return frame >= int.MaxValue ? int.MaxValue : (int)Math.Round(frame);
   }
 
   private static float[] Normalize(float[] samples)

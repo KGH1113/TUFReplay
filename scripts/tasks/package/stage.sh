@@ -17,8 +17,17 @@ if [ -e "$TUFREPLAY_PACKAGE_STAGE" ]; then
 fi
 mkdir -p "$TUFREPLAY_PACKAGE_STAGE"
 
-copy_core_payload "$TUFREPLAY_PACKAGE_STAGE"
-copy_windows_sqlite "$TUFREPLAY_PACKAGE_STAGE"
-copy_assets "$TUFREPLAY_PACKAGE_STAGE" required
-copy_mac_helper "$TUFREPLAY_PACKAGE_STAGE" required
-copy_runtime_dependencies "$TUFREPLAY_PACKAGE_STAGE" required
+version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" | head -n 1)"
+[ -n "$version" ] || fail "TUFReplay version is missing from Info.json."
+runtime="$TUFREPLAY_PACKAGE_STAGE/Runtime/versions/$version"
+
+copy_launcher_payload "$TUFREPLAY_PACKAGE_STAGE"
+copy_runtime_core "$runtime"
+copy_windows_sqlite "$runtime"
+copy_assets "$runtime" required
+copy_mac_helper "$runtime" required
+copy_runtime_dependencies "$runtime" required
+
+mkdir -p "$TUFREPLAY_PACKAGE_STAGE/Runtime"
+printf '{\n  "SchemaVersion": 1,\n  "Current": "%s",\n  "Previous": null,\n  "Trial": null\n}\n' \
+  "$version" > "$TUFREPLAY_PACKAGE_STAGE/Runtime/state.json"

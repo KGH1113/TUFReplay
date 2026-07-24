@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 
-namespace TUFReplay.Bootstrap;
+namespace TUFReplay.UpdateEngine;
 
 internal sealed class SemanticVersion : IComparable<SemanticVersion>
 {
@@ -27,12 +27,10 @@ internal sealed class SemanticVersion : IComparable<SemanticVersion>
     version = null;
     if (string.IsNullOrWhiteSpace(value))
       return false;
-
     string normalized = value.Trim().TrimStart('v', 'V');
     int buildSeparator = normalized.IndexOf('+');
     if (buildSeparator >= 0)
       normalized = normalized.Substring(0, buildSeparator);
-
     string prereleaseText = null;
     int prereleaseSeparator = normalized.IndexOf('-');
     if (prereleaseSeparator >= 0)
@@ -40,19 +38,15 @@ internal sealed class SemanticVersion : IComparable<SemanticVersion>
       prereleaseText = normalized.Substring(prereleaseSeparator + 1);
       normalized = normalized.Substring(0, prereleaseSeparator);
     }
-
     string[] coreParts = normalized.Split('.');
     if (coreParts.Length is < 1 or > 4)
       return false;
-
     int[] core = new int[Math.Max(3, coreParts.Length)];
     for (int index = 0; index < coreParts.Length; index++)
     {
-      if (!int.TryParse(coreParts[index], NumberStyles.None, CultureInfo.InvariantCulture, out core[index]) ||
-          core[index] < 0)
+      if (!int.TryParse(coreParts[index], NumberStyles.None, CultureInfo.InvariantCulture, out core[index]) || core[index] < 0)
         return false;
     }
-
     string[] prerelease = Array.Empty<string>();
     if (prereleaseText != null)
     {
@@ -60,7 +54,6 @@ internal sealed class SemanticVersion : IComparable<SemanticVersion>
       if (prerelease.Length == 0 || prerelease.Any(identifier => !IsValidIdentifier(identifier)))
         return false;
     }
-
     version = new SemanticVersion(core, prerelease);
     return true;
   }
@@ -69,30 +62,23 @@ internal sealed class SemanticVersion : IComparable<SemanticVersion>
   {
     if (other == null)
       return 1;
-
     int coreLength = Math.Max(_core.Length, other._core.Length);
     for (int index = 0; index < coreLength; index++)
     {
-      int left = index < _core.Length ? _core[index] : 0;
-      int right = index < other._core.Length ? other._core[index] : 0;
-      int comparison = left.CompareTo(right);
+      int comparison = (index < _core.Length ? _core[index] : 0)
+        .CompareTo(index < other._core.Length ? other._core[index] : 0);
       if (comparison != 0)
         return comparison;
     }
-
     if (_prerelease.Length == 0 || other._prerelease.Length == 0)
-      return _prerelease.Length == other._prerelease.Length
-        ? 0
-        : (_prerelease.Length == 0 ? 1 : -1);
-
-    int prereleaseLength = Math.Min(_prerelease.Length, other._prerelease.Length);
-    for (int index = 0; index < prereleaseLength; index++)
+      return _prerelease.Length == other._prerelease.Length ? 0 : (_prerelease.Length == 0 ? 1 : -1);
+    int length = Math.Min(_prerelease.Length, other._prerelease.Length);
+    for (int index = 0; index < length; index++)
     {
       int comparison = CompareIdentifier(_prerelease[index], other._prerelease[index]);
       if (comparison != 0)
         return comparison;
     }
-
     return _prerelease.Length.CompareTo(other._prerelease.Length);
   }
 
@@ -104,16 +90,15 @@ internal sealed class SemanticVersion : IComparable<SemanticVersion>
 
   private static int CompareIdentifier(string left, string right)
   {
-    bool leftNumeric = IsNumeric(left);
-    bool rightNumeric = IsNumeric(right);
+    bool leftNumeric = left.All(char.IsDigit);
+    bool rightNumeric = right.All(char.IsDigit);
     if (leftNumeric && rightNumeric)
     {
-      int lengthComparison = left.TrimStart('0').Length.CompareTo(right.TrimStart('0').Length);
-      return lengthComparison != 0
-        ? lengthComparison
-        : string.CompareOrdinal(left.TrimStart('0'), right.TrimStart('0'));
+      string normalizedLeft = left.TrimStart('0');
+      string normalizedRight = right.TrimStart('0');
+      int comparison = normalizedLeft.Length.CompareTo(normalizedRight.Length);
+      return comparison != 0 ? comparison : string.CompareOrdinal(normalizedLeft, normalizedRight);
     }
-
     if (leftNumeric != rightNumeric)
       return leftNumeric ? -1 : 1;
     return string.CompareOrdinal(left, right);
@@ -121,19 +106,6 @@ internal sealed class SemanticVersion : IComparable<SemanticVersion>
 
   private static bool IsValidIdentifier(string value)
   {
-    if (string.IsNullOrEmpty(value))
-      return false;
-
-    foreach (char character in value)
-    {
-      if (!char.IsLetterOrDigit(character) && character != '-')
-        return false;
-    }
-    return true;
-  }
-
-  private static bool IsNumeric(string value)
-  {
-    return value.All(character => character is >= '0' and <= '9');
+    return !string.IsNullOrEmpty(value) && value.All(character => char.IsLetterOrDigit(character) || character == '-');
   }
 }

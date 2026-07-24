@@ -38,6 +38,7 @@ public sealed class MicrophoneCalibrationResultDto
   public int Revision;
   public double DurationMs;
   public float[] GameWaveform;
+  public float[] SongWaveform;
   public float[] MicrophoneWaveform;
 
   public static MicrophoneCalibrationResultDto From(MicrophoneCalibrationResult result) =>
@@ -47,6 +48,7 @@ public sealed class MicrophoneCalibrationResultDto
       Revision = result.Revision,
       DurationMs = result.DurationMs,
       GameWaveform = result.GameWaveform,
+      SongWaveform = result.SongWaveform,
       MicrophoneWaveform = result.MicrophoneWaveform,
     };
 }
