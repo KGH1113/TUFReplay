@@ -14,9 +14,3 @@ TUFREPLAY_RUNTIME_DLLS=(
   System.Numerics.Vectors.dll
   System.Runtime.CompilerServices.Unsafe.dll
 )
-
-TUFREPLAY_UI_BUNDLES=(
-  mac/tufreplay_ui.bundle
-  win/tufreplay_ui.bundle
-  linux/tufreplay_ui.bundle
-)

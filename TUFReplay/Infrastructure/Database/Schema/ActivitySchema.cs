@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 9;
+  public const int Version = 10;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -107,6 +107,18 @@ PRAGMA user_version = 8;"
       version = 9;
     }
 
+    if (version == 9)
+    {
+      Migrate(
+        connection,
+        @"
+ALTER TABLE microphone_recordings ADD COLUMN is_permanent INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE microphone_recordings ADD COLUMN expires_at_utc TEXT;
+PRAGMA user_version = 10;"
+      );
+      version = 10;
+    }
+
     if (version != 0 && version != Version)
     {
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -177,13 +189,15 @@ CREATE TABLE IF NOT EXISTS microphone_recordings (
   channels INTEGER NOT NULL,
   frame_count INTEGER NOT NULL,
   device_id TEXT,
-  capture_start_offset_us INTEGER NOT NULL DEFAULT 0
+  capture_start_offset_us INTEGER NOT NULL DEFAULT 0,
+  is_permanent INTEGER NOT NULL DEFAULT 0,
+  expires_at_utc TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_app_sessions_page ON app_sessions(started_at_utc DESC, id);
 CREATE INDEX IF NOT EXISTS idx_level_sessions_app ON level_sessions(app_session_id, opened_at_utc, id);
 CREATE INDEX IF NOT EXISTS idx_runs_level_index ON runs(level_session_id, run_index);
 CREATE INDEX IF NOT EXISTS idx_runs_start_tile ON runs(level_session_id, start_tile, run_index);
-PRAGMA user_version = 9;";
+PRAGMA user_version = 10;";
     command.ExecuteNonQuery();
   }
 

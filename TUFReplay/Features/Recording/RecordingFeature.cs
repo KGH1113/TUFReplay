@@ -77,7 +77,7 @@ public class RecordingFeature
       return;
     }
     if (SaveActivityRun("failed", Session.GetLastReachedTile()))
-      FeatureRegistry.MicrophoneRecording?.Present(recording);
+      FeatureRegistry.MicrophoneRecording?.Persist(recording);
     else
       FeatureRegistry.MicrophoneRecording?.Discard(recording);
     Main.Instance.Log("[Recording] Run failed.");
@@ -109,7 +109,7 @@ public class RecordingFeature
       if (!_clearReached)
       {
         if (saved)
-          FeatureRegistry.MicrophoneRecording?.Present(recording);
+          FeatureRegistry.MicrophoneRecording?.Persist(recording);
         else
           FeatureRegistry.MicrophoneRecording?.Discard(recording);
       }
@@ -134,7 +134,7 @@ public class RecordingFeature
   {
     CapturedMicrophoneRecording recording = _pendingEditorRecording;
     _pendingEditorRecording = null;
-    FeatureRegistry.MicrophoneRecording?.Present(recording);
+    FeatureRegistry.MicrophoneRecording?.Persist(recording);
   }
 
   public void OnEditorReturnFailed()

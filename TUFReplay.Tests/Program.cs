@@ -338,7 +338,7 @@ internal static class Program
       ActivitySchema.Ensure(connection);
       using SqliteCommand version = connection.CreateCommand();
       version.CommandText = "PRAGMA user_version";
-      Assert(Convert.ToInt32(version.ExecuteScalar()) == 9, "Fresh schema version is not 9.");
+      Assert(Convert.ToInt32(version.ExecuteScalar()) == 10, "Fresh schema version is not 10.");
       InsertRun(connection);
     }
 
@@ -358,7 +358,8 @@ internal static class Program
       DeviceId = "test-device",
       CaptureStartOffsetUs = 123,
     };
-    MicrophoneRecordingRepository.Save(recording);
+    DateTime retentionSavedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    MicrophoneRecordingRepository.Save(recording, retentionSavedAt);
 
     string playbackPath = Path.Combine(root, "blob-playback.wav");
     StoredMicrophoneRecording copied = MicrophoneRecordingRepository.CopyForPlayback(
@@ -381,6 +382,37 @@ internal static class Program
       ) == null,
       "Missing microphone recording did not return null."
     );
+    Assert(
+      MicrophoneRecordingRepository.DeleteExpired(retentionSavedAt.AddDays(2)) == 0,
+      "Temporary microphone recording expired too early."
+    );
+    Assert(MicrophoneRecordingRepository.KeepPermanently("run"), "Microphone recording was not kept permanently.");
+    Assert(
+      !MicrophoneRecordingRepository.KeepPermanently("run"),
+      "Repeated permanent microphone retention was not idempotent."
+    );
+    Assert(
+      MicrophoneRecordingRepository.DeleteExpired(retentionSavedAt.AddDays(30)) == 0,
+      "Permanent microphone recording expired."
+    );
+    Assert(MicrophoneRecordingRepository.Delete("run"), "Microphone recording was not deleted.");
+    Assert(!MicrophoneRecordingRepository.Delete("run"), "Repeated microphone recording deletion was not idempotent.");
+    Assert(MicrophoneRecordingRepository.RunExists("run"), "Microphone recording deletion removed its run.");
+    Assert(
+      MicrophoneRecordingRepository.CopyForPlayback(
+        "run",
+        Path.Combine(root, "deleted.wav"),
+        System.Threading.CancellationToken.None
+      ) == null,
+      "Deleted microphone recording remained available for playback."
+    );
+    MicrophoneRecordingRepository.Save(recording, retentionSavedAt);
+    Assert(
+      MicrophoneRecordingRepository.DeleteExpired(retentionSavedAt.AddDays(3)) == 1,
+      "Temporary microphone recording did not expire after three days."
+    );
+    Assert(MicrophoneRecordingRepository.RunExists("run"), "Expiration removed the microphone recording's run.");
+    MicrophoneRecordingRepository.Save(recording);
 
     using (var cancelled = new System.Threading.CancellationTokenSource())
     {
@@ -431,7 +463,47 @@ internal static class Program
     ActivitySchema.Ensure(migration);
     using SqliteCommand migrated = migration.CreateCommand();
     migrated.CommandText = "SELECT user_version FROM pragma_user_version";
-    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 9, "Schema 7 to 9 migration failed.");
+    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 10, "Schema 7 to 10 migration failed.");
+
+    string retentionMigrationPath = Path.Combine(root, "retention-migration.sqlite");
+    using var retentionMigration = new SqliteConnection("Data Source=" + retentionMigrationPath);
+    retentionMigration.Open();
+    using (SqliteCommand setup = retentionMigration.CreateCommand())
+    {
+      setup.CommandText =
+        @"
+CREATE TABLE app_sessions(id TEXT PRIMARY KEY,started_at_utc TEXT NOT NULL);
+CREATE TABLE level_sessions(
+  id TEXT PRIMARY KEY,app_session_id TEXT NOT NULL,opened_at_utc TEXT NOT NULL
+);
+CREATE TABLE runs(
+  id TEXT PRIMARY KEY,level_session_id TEXT NOT NULL,run_index INTEGER NOT NULL,start_tile INTEGER NOT NULL
+);
+CREATE TABLE microphone_recordings(
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  audio_wav BLOB NOT NULL,format TEXT NOT NULL,sample_rate INTEGER NOT NULL,
+  channels INTEGER NOT NULL,frame_count INTEGER NOT NULL,device_id TEXT,
+  capture_start_offset_us INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO app_sessions(id,started_at_utc) VALUES('legacy-app','2026-01-01T00:00:00Z');
+INSERT INTO level_sessions(id,app_session_id,opened_at_utc)
+VALUES('legacy-level','legacy-app','2026-01-01T00:00:00Z');
+INSERT INTO runs(id,level_session_id,run_index,start_tile) VALUES('legacy-run','legacy-level',0,0);
+INSERT INTO microphone_recordings(run_id,audio_wav,format,sample_rate,channels,frame_count)
+VALUES('legacy-run',X'00','wav/pcm16',48000,1,1);
+PRAGMA user_version=9;";
+      setup.ExecuteNonQuery();
+    }
+    ActivitySchema.Ensure(retentionMigration);
+    using SqliteCommand retention = retentionMigration.CreateCommand();
+    retention.CommandText =
+      "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
+    using SqliteDataReader retentionReader = retention.ExecuteReader();
+    Assert(retentionReader.Read(), "Legacy microphone recording was lost during retention migration.");
+    Assert(
+      retentionReader.GetInt32(0) == 1 && retentionReader.IsDBNull(1),
+      "Legacy microphone recording was not migrated as permanent."
+    );
   }
 
   private static void TestAdofaiLevelFileHash(string root)

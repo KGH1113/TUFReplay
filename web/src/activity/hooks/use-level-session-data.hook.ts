@@ -1,4 +1,4 @@
-import { type RefObject, useEffect, useRef, useState } from "react";
+import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import type { ActivityChart, ActivityLevelSessionOverview, ActivityRun } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
@@ -87,7 +87,11 @@ export function useLevelSessionData(
     };
   }, [chartAvailable, gatewayRef, id, revision]);
 
-  return { overview, runs, chart, loading, error };
+  const updateRun = useCallback((runId: string, update: Partial<ActivityRun>) => {
+    setRuns((current) => current.map((run) => (run.Id === runId ? { ...run, ...update } : run)));
+  }, []);
+
+  return { overview, runs, chart, loading, error, updateRun };
 }
 
 export function planLevelSessionRefresh(

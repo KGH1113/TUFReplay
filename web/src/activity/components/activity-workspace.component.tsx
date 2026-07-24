@@ -7,6 +7,7 @@ import {
   Clock01Icon,
   DashboardSpeed01Icon,
   FitToScreenIcon,
+  Mic01Icon,
   PercentIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -17,6 +18,7 @@ import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../act
 import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
 import { runsForMarker } from "../lib/activity-data.utils";
 import { formatTimeWithOffset } from "../lib/activity-date.utils";
+import { formatFileSize } from "../lib/file-size.format";
 import { formatXAccuracy } from "../lib/x-accuracy.format";
 import { RunDifficultyIcon } from "./run-difficulty-icon.component";
 import { RunJudgmentStrip } from "./run-judgment-strip.component";
@@ -53,6 +55,8 @@ export function ActivityWorkspace({
   onSelectMarker,
   onSelectRun,
   onPlayReplay,
+  onDeleteMicrophoneRecording,
+  onKeepMicrophoneRecording,
 }: {
   chartAvailable: boolean;
   chart: ActivityChart | null;
@@ -70,12 +74,71 @@ export function ActivityWorkspace({
   onSelectMarker: (marker: RunMarker | null) => void;
   onSelectRun: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const chartRef = useRef<EmbeddedChartHandle>(null);
   const runListRef = useRef<HTMLDivElement>(null);
   const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
   const [runSort, setRunSort] = useState<RunSortKey>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [microphoneDeleteConfirmRunId, setMicrophoneDeleteConfirmRunId] = useState<string | null>(
+    null,
+  );
+  const [microphoneDeletePendingRunId, setMicrophoneDeletePendingRunId] = useState<string | null>(
+    null,
+  );
+  const [microphoneDeleteError, setMicrophoneDeleteError] = useState("");
+  const [microphoneDeleteErrorRunId, setMicrophoneDeleteErrorRunId] = useState<string | null>(null);
+  const [microphoneKeepPendingRunId, setMicrophoneKeepPendingRunId] = useState<string | null>(null);
+  const [microphoneKeepError, setMicrophoneKeepError] = useState("");
+  const [microphoneKeepErrorRunId, setMicrophoneKeepErrorRunId] = useState<string | null>(null);
+  const selectRun = (run: ActivityRun) => {
+    setMicrophoneDeleteConfirmRunId(null);
+    setMicrophoneDeleteError("");
+    setMicrophoneDeleteErrorRunId(null);
+    setMicrophoneKeepError("");
+    setMicrophoneKeepErrorRunId(null);
+    onSelectRun(run);
+  };
+  const keepMicrophoneRecording = async () => {
+    if (!selectedRun || microphoneKeepPendingRunId || microphoneDeletePendingRunId) return;
+    setMicrophoneKeepPendingRunId(selectedRun.Id);
+    setMicrophoneKeepError("");
+    setMicrophoneKeepErrorRunId(null);
+    try {
+      await onKeepMicrophoneRecording(selectedRun);
+    } catch (cause) {
+      setMicrophoneKeepError(
+        cause instanceof Error ? cause.message : "Could not keep microphone recording",
+      );
+      setMicrophoneKeepErrorRunId(selectedRun.Id);
+    } finally {
+      setMicrophoneKeepPendingRunId(null);
+    }
+  };
+  const cancelMicrophoneRecordingDelete = () => {
+    setMicrophoneDeleteConfirmRunId(null);
+    setMicrophoneDeleteError("");
+    setMicrophoneDeleteErrorRunId(null);
+  };
+  const deleteMicrophoneRecording = async () => {
+    if (!selectedRun || microphoneDeletePendingRunId) return;
+    setMicrophoneDeletePendingRunId(selectedRun.Id);
+    setMicrophoneDeleteError("");
+    setMicrophoneDeleteErrorRunId(null);
+    try {
+      await onDeleteMicrophoneRecording(selectedRun);
+      setMicrophoneDeleteConfirmRunId(null);
+    } catch (cause) {
+      setMicrophoneDeleteError(
+        cause instanceof Error ? cause.message : "Could not delete microphone recording",
+      );
+      setMicrophoneDeleteErrorRunId(selectedRun.Id);
+    } finally {
+      setMicrophoneDeletePendingRunId(null);
+    }
+  };
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
     if (!runList) return;
@@ -308,7 +371,7 @@ export function ActivityWorkspace({
                       data-run-id={run.Id}
                       type="button"
                       aria-pressed={active}
-                      onClick={() => onSelectRun(run)}
+                      onClick={() => selectRun(run)}
                       className={cn(
                         "block w-full rounded-md border border-border bg-background/60 p-3 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         active && "border-primary bg-primary/10 ring-1 ring-primary/40",
@@ -319,6 +382,20 @@ export function ActivityWorkspace({
                           #{run.RunIndex}
                         </span>
                         <span className="inline-flex items-center gap-1">
+                          {run.HasMicrophoneRecording ? (
+                            <span
+                              title={`Microphone recording: ${formatFileSize(run.MicrophoneRecordingBytes)}`}
+                              className="inline-flex items-center gap-1 rounded-sm bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-primary"
+                            >
+                              <HugeiconsIcon
+                                aria-hidden="true"
+                                icon={Mic01Icon}
+                                className="size-3"
+                                strokeWidth={2}
+                              />
+                              {formatFileSize(run.MicrophoneRecordingBytes)}
+                            </span>
+                          ) : null}
                           <RunNoFailIcon enabled={run.NoFailMode} />
                           <RunDifficultyIcon difficulty={run.JudgmentDifficulty} />
                         </span>
@@ -374,6 +451,102 @@ export function ActivityWorkspace({
                   >
                     {replayMessage}
                   </p>
+                ) : null}
+                {selectedRun.HasMicrophoneRecording ? (
+                  <div className="mt-3 border-t border-border pt-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+                          <HugeiconsIcon
+                            aria-hidden="true"
+                            icon={Mic01Icon}
+                            className="size-3.5"
+                            strokeWidth={2}
+                          />
+                          Microphone recording
+                        </p>
+                        <p className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">
+                          {formatFileSize(selectedRun.MicrophoneRecordingBytes)}
+                          {selectedRun.MicrophoneRecordingPermanent
+                            ? " · Kept permanently"
+                            : ` · Temporary until ${formatExpiration(selectedRun.MicrophoneRecordingExpiresAtUtc, timeZone)}`}
+                        </p>
+                      </div>
+                      {microphoneDeleteConfirmRunId === selectedRun.Id ? (
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="mr-1 text-[11px] text-muted-foreground">
+                            Delete permanently?
+                          </span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            disabled={microphoneDeletePendingRunId === selectedRun.Id}
+                            onClick={cancelMicrophoneRecordingDelete}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="destructive"
+                            size="xs"
+                            disabled={microphoneDeletePendingRunId === selectedRun.Id}
+                            onClick={() => void deleteMicrophoneRecording()}
+                          >
+                            {microphoneDeletePendingRunId === selectedRun.Id
+                              ? "Deleting…"
+                              : "Delete"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {!selectedRun.MicrophoneRecordingPermanent ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="xs"
+                              disabled={
+                                microphoneKeepPendingRunId !== null ||
+                                microphoneDeletePendingRunId !== null
+                              }
+                              onClick={() => void keepMicrophoneRecording()}
+                            >
+                              {microphoneKeepPendingRunId === selectedRun.Id
+                                ? "Keeping…"
+                                : "Keep permanently"}
+                            </Button>
+                          ) : null}
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="xs"
+                            className="text-destructive hover:text-destructive"
+                            disabled={
+                              microphoneDeletePendingRunId !== null ||
+                              microphoneKeepPendingRunId !== null
+                            }
+                            onClick={() => {
+                              setMicrophoneDeleteConfirmRunId(selectedRun.Id);
+                              setMicrophoneDeleteError("");
+                              setMicrophoneDeleteErrorRunId(null);
+                            }}
+                          >
+                            Delete recording
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                    {microphoneDeleteError && microphoneDeleteErrorRunId === selectedRun.Id ? (
+                      <p aria-live="polite" className="mt-2 text-xs text-destructive">
+                        {microphoneDeleteError}
+                      </p>
+                    ) : null}
+                    {microphoneKeepError && microphoneKeepErrorRunId === selectedRun.Id ? (
+                      <p aria-live="polite" className="mt-2 text-xs text-destructive">
+                        {microphoneKeepError}
+                      </p>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -502,6 +675,19 @@ function runSortValue(run: ActivityRun, sort: RunSortKey) {
 function runProgressPercent(run: ActivityRun) {
   const lastTile = Math.max(run.StartTile, run.LastTile ?? run.StartTile);
   return Math.round(Math.min(1, lastTile / Math.max(1, run.FloorCount)) * 100);
+}
+
+function formatExpiration(value: string | null, timeZone: string) {
+  if (!value) return "soon";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "soon";
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+  }).format(date);
 }
 
 function describeReplay(

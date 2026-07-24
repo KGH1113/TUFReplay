@@ -8,7 +8,7 @@ import type {
   ReplayLevelFilePickerStatus,
   ReplayStatus,
 } from "../activity.model";
-import type { ActivityGateway } from "../data/activity.gateway";
+import { ActivityDomainError, type ActivityGateway } from "../data/activity.gateway";
 
 import level5Text from "./levels/tuf-5.adofai?raw";
 import level303Text from "./levels/tuf-303.adofai?raw";
@@ -101,6 +101,35 @@ export function createMockActivityGateway(): ActivityGateway {
       return runs;
     },
     getChart: async (id) => findLevel(id).chart,
+    deleteMicrophoneRecording: async (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        const deleted = run.HasMicrophoneRecording;
+        run.HasMicrophoneRecording = false;
+        run.MicrophoneRecordingBytes = 0;
+        run.MicrophoneDurationSeconds = null;
+        run.MicrophoneRecordingPermanent = false;
+        run.MicrophoneRecordingExpiresAtUtc = null;
+        return { RunId: runId, Deleted: deleted };
+      }
+      throw new ActivityDomainError("run_not_found", "Run was not found");
+    },
+    keepMicrophoneRecording: async (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        if (!run.HasMicrophoneRecording)
+          throw new ActivityDomainError(
+            "microphone_recording_not_found",
+            "Microphone recording was not found",
+          );
+        run.MicrophoneRecordingPermanent = true;
+        run.MicrophoneRecordingExpiresAtUtc = null;
+        return { RunId: runId, Permanent: true };
+      }
+      throw new ActivityDomainError("run_not_found", "Run was not found");
+    },
     playReplay: async (runId) => {
       replayStatus = {
         OperationId: `mock-${runId}`,
@@ -236,6 +265,8 @@ function createRun(
   const startedAt = new Date(new Date(openedAtUtc).getTime() + (index + 1) * 75_000);
   const cleared = index === 0 && startTile === 0;
   const lastTile = cleared ? floorCount - 1 : Math.min(floorCount - 1, startTile + 35 + index * 19);
+  const hasMicrophoneRecording = index % 2 === 0;
+  const microphoneDurationSeconds = 42 + index * 6;
   return {
     Id: `${levelSessionId}-run-${index + 1}`,
     LevelSessionId: levelSessionId,
@@ -268,11 +299,15 @@ function createRun(
     FloorCount: floorCount,
     InputBytes: 0,
     HitContextBytes: 0,
-    HasMicrophoneRecording: false,
-    MicrophoneRecordingBytes: 0,
-    MicrophoneDurationSeconds: null,
-    MicrophoneSampleRate: null,
-    MicrophoneChannels: null,
+    HasMicrophoneRecording: hasMicrophoneRecording,
+    MicrophoneRecordingBytes: hasMicrophoneRecording
+      ? microphoneDurationSeconds * 48_000 * 2 + 44
+      : 0,
+    MicrophoneDurationSeconds: hasMicrophoneRecording ? microphoneDurationSeconds : null,
+    MicrophoneSampleRate: hasMicrophoneRecording ? 48_000 : null,
+    MicrophoneChannels: hasMicrophoneRecording ? 1 : null,
+    MicrophoneRecordingPermanent: false,
+    MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
   };
 }
 
