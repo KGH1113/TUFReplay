@@ -39,6 +39,7 @@ internal static class Program
       TestReplayPumpClockJumpSeeksState();
       TestPreparedReplayDoesNotEmit();
       TestMiddleStartReplayInitializesFromPlayerControl();
+      UpdaterTests.RunAll();
       Console.WriteLine("TUFReplay C# tests passed.");
       return 0;
     }

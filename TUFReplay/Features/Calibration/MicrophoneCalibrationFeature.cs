@@ -66,7 +66,7 @@ public sealed class MicrophoneCalibrationFeature
       return Rejected("gameplay_active", "Finish the current gameplay run before starting calibration.");
 
     CleanupSession();
-    string levelPath = Path.Combine(Main.Instance.Path, "Assets", "calibration", "level.adofai");
+    string levelPath = Path.Combine(Main.Instance.PayloadPath, "Assets", "calibration", "level.adofai");
     string songPath = Path.Combine(Path.GetDirectoryName(levelPath) ?? string.Empty, "calibration_old.ogg");
     if (!File.Exists(levelPath) || !File.Exists(songPath))
       return Error("calibration_assets_missing", "The packaged calibration level or song is missing.");

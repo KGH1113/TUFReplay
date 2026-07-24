@@ -7,6 +7,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TUFReplay", "TUFReplay\TUFR
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TUFReplay.Bootstrap", "TUFReplay.Bootstrap\TUFReplay.Bootstrap.csproj", "{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "TUFReplay.UpdateEngine", "TUFReplay.UpdateEngine\TUFReplay.UpdateEngine.csproj", "{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -41,6 +43,18 @@ Global
 		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x64.Build.0 = Release|Any CPU
 		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x86.ActiveCfg = Release|Any CPU
 		{10A8FC2C-A3CB-4E2E-A629-77505539ABAA}.Release|x86.Build.0 = Release|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Debug|x64.Build.0 = Debug|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Debug|x86.Build.0 = Debug|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Release|x64.ActiveCfg = Release|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Release|x64.Build.0 = Release|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Release|x86.ActiveCfg = Release|Any CPU
+		{2D8A0D76-9AA1-4A08-BF3A-4A59FB63D074}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
