@@ -92,7 +92,7 @@ The build script:
 
 - Builds the fixed launcher, versioned update engine, and TUFReplay payload.
 - Installs DLLs, native libraries, helpers, and assets under `Runtime/versions/<version>` while keeping settings and `Data/` at the mod root.
-- Copies the bundled microphone calibration chart and `calibration_old.ogg` into `Assets/calibration`; packaging fails if either file is missing.
+- Copies the bundled microphone calibration chart, `calibration_old.ogg`, and its precomputed waveform into `Assets/calibration`; packaging fails if any calibration asset is missing.
 - On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
 - Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
@@ -246,7 +246,7 @@ Registered methods:
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
 
-Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes one 480-bin game waveform and one 480-bin microphone waveform to the web editor. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
+Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin song and microphone waveforms to the web editor. The precomputed song reference is aligned from ADOFAI's actual playback sample position on the recorded run timeline. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
 
 ## Tech Stack
 

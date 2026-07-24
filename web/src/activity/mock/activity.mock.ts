@@ -201,6 +201,7 @@ export function createMockActivityGateway(): ActivityGateway {
       Revision: 1,
       DurationMs: mockMicrophoneOffsetCalibration.durationMs,
       GameWaveform: mockMicrophoneOffsetCalibration.gameWaveform,
+      SongWaveform: mockMicrophoneOffsetCalibration.songWaveform,
       MicrophoneWaveform: mockMicrophoneOffsetCalibration.microphoneWaveform,
     }),
     playMicrophoneCalibrationPreview: async () => {

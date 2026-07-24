@@ -118,7 +118,7 @@ export function useMicrophoneOffsetCalibration(
     durationRef.current = Math.max(1, result.DurationMs);
     setData({
       durationMs: durationRef.current,
-      gameWaveform: result.GameWaveform,
+      songWaveform: result.SongWaveform ?? result.GameWaveform,
       microphoneWaveform: result.MicrophoneWaveform,
     });
   }, []);
@@ -182,8 +182,8 @@ export function useMicrophoneOffsetCalibration(
     durationRef.current = 1;
     setData({
       durationMs: 1,
-      gameWaveform: new Array(480).fill(0),
-      microphoneWaveform: new Array(480).fill(0),
+      songWaveform: new Array(2048).fill(0),
+      microphoneWaveform: new Array(2048).fill(0),
     });
 
     const gateway = gatewayRef.current;
@@ -398,7 +398,7 @@ export function useMicrophoneOffsetCalibration(
       if (playingRef.current && backendStateRef.current === "preview_playing") {
         const anchor = positionAnchorRef.current;
         setPlaybackPositionMs(
-          Math.min(durationRef.current, anchor.positionMs + Math.max(0, now - anchor.sampledAtMs)),
+          extrapolateCalibrationPlaybackPosition(anchor, now, durationRef.current),
         );
       }
       frame = requestAnimationFrame(animate);
@@ -453,6 +453,15 @@ function phaseFromBackendState(
   if (state === "waiting_for_run" || state === "recording" || state === "processing")
     return "waiting_for_clear";
   return "editing";
+}
+
+export function extrapolateCalibrationPlaybackPosition(
+  anchor: { positionMs: number; sampledAtMs: number },
+  nowMs: number,
+  durationMs: number,
+) {
+  if (anchor.positionMs <= 0) return 0;
+  return Math.min(durationMs, anchor.positionMs + Math.max(0, nowMs - anchor.sampledAtMs));
 }
 
 function errorMessage(cause: unknown, fallback: string) {
