@@ -137,6 +137,8 @@ public static class ReplaySessionService
     }
 
     ReplayPlaybackCoordinator.OnGameStateChanged(newState);
+    if (_activeContext == null)
+      return;
 
     switch (newState)
     {
@@ -146,7 +148,9 @@ public static class ReplaySessionService
         break;
 
       case States.PlayerControl:
-        if (_activeContext.Phase == ReplayPlaybackPhase.Armed)
+        if (ReplayRunController.ShouldInitializeFromPlayerControl(_activeContext))
+          EnsurePlayerControlRunStarted();
+        else if (_activeContext.Phase == ReplayPlaybackPhase.Armed)
           TransitionTo(ReplayPlaybackPhase.Running, "state_player_control");
         break;
 
@@ -244,8 +248,15 @@ public static class ReplaySessionService
 
   public static bool ShouldSuppressGameplayInput()
   {
-    if (_activeContext?.RunStarted != true)
+    if (_activeContext == null)
       return false;
+
+    if (!_activeContext.RunStarted)
+    {
+      return ReplayRunController.ShouldInitializeFromPlayerControl(_activeContext)
+        && TryGetControllerState(out States state)
+        && state == States.PlayerControl;
+    }
 
     ReplayPlaybackPhase phase = _activeContext.Phase;
     return phase == ReplayPlaybackPhase.Armed
@@ -286,6 +297,8 @@ public static class ReplaySessionService
     if (controller.paused)
       return;
     if (!TryGetControllerState(out States state) || state != States.PlayerControl)
+      return;
+    if (!EnsurePlayerControlRunStarted())
       return;
 
     int before = _activeContext.HitContextPlayer.NextIndex;
@@ -398,6 +411,9 @@ public static class ReplaySessionService
   {
     nowUs = 0L;
 
+    if (!EnsurePlayerControlRunStarted())
+      return false;
+
     ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
     if (player == null)
       return false;
@@ -427,6 +443,23 @@ public static class ReplaySessionService
     }
 
     return true;
+  }
+
+  private static bool EnsurePlayerControlRunStarted()
+  {
+    if (_activeContext == null)
+      return false;
+    if (_activeContext.RunStarted)
+      return true;
+    if (!ReplayRunController.ShouldInitializeFromPlayerControl(_activeContext))
+      return false;
+    if (!TryGetControllerState(out States state) || state != States.PlayerControl)
+      return false;
+    if (!TryComputeReplayTimeUs(out _, out _))
+      return false;
+
+    ResetReplayRun("player_control_without_countdown", ReplayPlaybackPhase.Running);
+    return _activeContext?.RunStarted == true;
   }
 
   private static double CurrentTimelineRate()

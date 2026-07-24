@@ -24,6 +24,54 @@ const MOCK_CLEAR_DELAY_MS = 1_350;
 const STATUS_POLL_INTERVAL_MS = 100;
 const VOLUME_UPDATE_INTERVAL_MS = 50;
 
+type CalibrationPollTimer = ReturnType<typeof setTimeout>;
+
+interface CalibrationStatusPollingOptions {
+  getGateway: () => ActivityGateway | null;
+  getOperationId: () => string | null;
+  onStatus: (status: MicrophoneCalibrationStatus, operationId: string) => Promise<void> | void;
+  onError: (cause: unknown) => void;
+  intervalMs?: number;
+  schedule?: (callback: () => void, delayMs: number) => CalibrationPollTimer;
+  cancelSchedule?: (timer: CalibrationPollTimer) => void;
+}
+
+export function installCalibrationStatusPolling({
+  getGateway,
+  getOperationId,
+  onStatus,
+  onError,
+  intervalMs = STATUS_POLL_INTERVAL_MS,
+  schedule = (callback, delayMs) => setTimeout(callback, delayMs),
+  cancelSchedule = (timer) => clearTimeout(timer),
+}: CalibrationStatusPollingOptions) {
+  let cancelled = false;
+  let timer: CalibrationPollTimer | null = null;
+
+  const poll = async () => {
+    if (cancelled) return;
+    const gateway = getGateway();
+    const operationId = getOperationId();
+    try {
+      if (gateway && operationId) {
+        const status = await gateway.getMicrophoneCalibrationStatus(operationId);
+        if (!cancelled && status.OperationId === operationId && getOperationId() === operationId)
+          await onStatus(status, operationId);
+      }
+    } catch (cause) {
+      if (!cancelled) onError(cause);
+    } finally {
+      if (!cancelled) timer = schedule(() => void poll(), intervalMs);
+    }
+  };
+
+  timer = schedule(() => void poll(), intervalMs);
+  return () => {
+    cancelled = true;
+    if (timer !== null) cancelSchedule(timer);
+  };
+}
+
 export function useMicrophoneOffsetCalibration(
   gatewayRef: RefObject<ActivityGateway | null>,
   connectionStatus: ConnectionStatus,
@@ -45,6 +93,7 @@ export function useMicrophoneOffsetCalibration(
   const playbackStartedAtRef = useRef(0);
   const playingRef = useRef(false);
   const operationIdRef = useRef<string | null>(null);
+  const activeGatewayRef = useRef<ActivityGateway | null>(null);
   const backendStateRef = useRef<MicrophoneCalibrationState>("idle");
   const resultRevisionRef = useRef(0);
   const positionAnchorRef = useRef({ positionMs: 0, sampledAtMs: 0 });
@@ -100,7 +149,7 @@ export function useMicrophoneOffsetCalibration(
 
   const loadBackendResult = useCallback(
     async (status: MicrophoneCalibrationStatus) => {
-      const gateway = gatewayRef.current;
+      const gateway = gatewayRef.current ?? activeGatewayRef.current;
       const operationId = operationIdRef.current;
       if (
         !gateway ||
@@ -148,6 +197,7 @@ export function useMicrophoneOffsetCalibration(
       });
       return;
     }
+    activeGatewayRef.current = gateway;
     try {
       const status = await gateway.startMicrophoneCalibration();
       if (generation !== requestGenerationRef.current) {
@@ -179,7 +229,7 @@ export function useMicrophoneOffsetCalibration(
 
   const close = useCallback(() => {
     requestGenerationRef.current += 1;
-    const gateway = gatewayRef.current;
+    const gateway = gatewayRef.current ?? activeGatewayRef.current;
     const operationId = operationIdRef.current;
     const pendingVolume = pendingVolumeRef.current;
     pendingVolumeRef.current = null;
@@ -190,6 +240,7 @@ export function useMicrophoneOffsetCalibration(
     stopLocalPlayback();
     setAudioError("");
     operationIdRef.current = null;
+    activeGatewayRef.current = null;
     backendStateRef.current = "idle";
     resultRevisionRef.current = 0;
     dispatch({ type: "close" });
@@ -327,28 +378,17 @@ export function useMicrophoneOffsetCalibration(
 
   useEffect(() => {
     if (mockEnabled || state.phase === "closed" || state.phase === "error") return undefined;
-    let cancelled = false;
-    let timeout: number | null = null;
-    const poll = async () => {
-      const gateway = gatewayRef.current;
-      const operationId = operationIdRef.current;
-      if (!gateway || !operationId || cancelled) return;
-      try {
-        const status = await gateway.getMicrophoneCalibrationStatus(operationId);
-        if (cancelled || status.OperationId !== operationId) return;
+    return installCalibrationStatusPolling({
+      getGateway: () => gatewayRef.current ?? activeGatewayRef.current,
+      getOperationId: () => operationIdRef.current,
+      onStatus: async (status, operationId) => {
         await loadBackendResult(status);
-        if (cancelled || operationIdRef.current !== operationId) return;
+        if (operationIdRef.current !== operationId) return;
         applyBackendStatus(status);
-      } catch (cause) {
-        if (!cancelled) setAudioError(errorMessage(cause, "Could not refresh calibration status."));
-      }
-      if (!cancelled) timeout = window.setTimeout(poll, STATUS_POLL_INTERVAL_MS);
-    };
-    timeout = window.setTimeout(poll, STATUS_POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      if (timeout !== null) window.clearTimeout(timeout);
-    };
+      },
+      onError: (cause) =>
+        setAudioError(errorMessage(cause, "Could not refresh calibration status.")),
+    });
   }, [applyBackendStatus, gatewayRef, loadBackendResult, mockEnabled, state.phase]);
 
   useEffect(() => {
@@ -380,7 +420,7 @@ export function useMicrophoneOffsetCalibration(
     () => () => {
       requestGenerationRef.current += 1;
       const operationId = operationIdRef.current;
-      const gateway = gatewayRef.current;
+      const gateway = gatewayRef.current ?? activeGatewayRef.current;
       if (!mockEnabled && operationId && gateway)
         void gateway.closeMicrophoneCalibration(operationId).catch(() => undefined);
     },
