@@ -30,7 +30,7 @@ public sealed class MicrophoneRecordingFeature
       return;
     try
     {
-      _tempDirectory = Path.Combine(Main.Instance.Path, "Data", "MicrophoneTemp");
+      _tempDirectory = Path.Combine(Main.Instance.InstallPath, "Data", "MicrophoneTemp");
       Directory.CreateDirectory(_tempDirectory);
       DeleteStalePartials();
       _backend = MicrophoneCaptureBackendFactory.Create();

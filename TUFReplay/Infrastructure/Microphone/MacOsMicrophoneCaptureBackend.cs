@@ -306,7 +306,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     if (_client != null)
       return;
 
-    string appPath = Path.Combine(Main.Instance.Path, "Helpers", "mac", "TUFReplayMicrophoneCapture.app");
+    string appPath = Path.Combine(Main.Instance.PayloadPath, "Helpers", "mac", "TUFReplayMicrophoneCapture.app");
     if (!Directory.Exists(appPath))
       throw new DirectoryNotFoundException("macOS microphone helper app is missing: " + appPath);
 

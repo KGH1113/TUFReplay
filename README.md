@@ -90,15 +90,14 @@ Build and install the mod:
 
 The build script:
 
-- Builds the TUFReplay payload and its small auto-update bootstrap.
-- Copies `Info.json`, both bootstraps, `TUFReplay.dll`, and managed dependencies into `Mods/TUFReplay`.
-- Copies the platform UI AssetBundles and third-party notices into `Mods/TUFReplay`.
+- Builds the fixed launcher, versioned update engine, and TUFReplay payload.
+- Installs DLLs, native libraries, helpers, and assets under `Runtime/versions/<version>` while keeping settings and `Data/` at the mod root.
 - Copies the bundled microphone calibration chart and `calibration_old.ogg` into `Assets/calibration`; packaging fails if either file is missing.
 - On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
 - Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
-The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the TUFReplay bootstrap checks the latest TUFReplay release before loading the payload. Network work has a single 20-second deadline; timeout or any update error emits an `AutoUpdate` warning and loads the installed or last-known-good payload. A verified update is loaded immediately from the versioned cache during the same ADOFAI launch.
+The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the fixed TUFReplay launcher runs the current version's update engine before loading the payload. The engine verifies `TUFReplay.update.json`, downloads the complete ZIP, and activates its DLLs, native libraries, helpers, and assets together. Timeout or package errors load the current runtime. An initialization failure leaves the current pointer unchanged, displays `Failed to update!`, and retries the latest release on the next launch. Only the current and previous successful runtimes are retained.
 
 The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
@@ -119,7 +118,7 @@ Create a clean shareable package:
 ./scripts/run.sh package
 ```
 
-The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates the release assets `build/TUFReplay.version` and `build/TUFReplay.zip.sha256`; all three files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates `build/TUFReplay.update.json`, containing the version, package size, SHA-256, and packaged runtime path. Both files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
 
 Build only the macOS helper or validate the shell layer with:
 
@@ -130,7 +129,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same three assets and must be marked as a prerelease on GitHub.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline and must be installed manually once; later releases can update it in place.
 
 ## Web Development
 
