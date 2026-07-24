@@ -43,7 +43,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves chart text to the companion web UI only while the local file still matches the recorded level-session fingerprint; pre-v9 sessions without a fingerprint retain legacy path-based access.
-- Opens a saved run's recorded level, reuses an already-open gameplay-hash match regardless of path, and replays it from its recorded start tile.
+- Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels continue directly into replay from the run's recorded start tile.
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
@@ -232,8 +232,7 @@ Registered methods:
 - `activity.level-session.chart.get`
 - `replay.play`
 - `replay.status.get`
-- `replay.level-file.pick.start`
-- `replay.level-file.pick.status`
+- `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
 - `microphone.devices.get`
 - `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
 - `microphone.calibration.start`

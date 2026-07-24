@@ -110,12 +110,11 @@ export interface ReplayStatus {
   Message: string | null;
 }
 
-export type ReplayLevelFilePickerState = "picking" | "selected" | "cancelled" | "error";
+export type ReplayLevelFilePickerOutcome = "selected" | "mismatch" | "cancelled" | "error";
 
-export interface ReplayLevelFilePickerStatus {
-  OperationId: string;
+export interface ReplayLevelFilePickerResult {
   RunId: string;
-  State: ReplayLevelFilePickerState;
+  Outcome: ReplayLevelFilePickerOutcome;
   LevelPath: string | null;
   ErrorCode: string | null;
   Message: string | null;

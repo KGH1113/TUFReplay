@@ -143,6 +143,7 @@ public static class ReplayPlaybackCoordinator
   {
     lock (CommandGate)
     {
+      ReplayLevelOpenService.ReleaseHeldBlack();
       CancelPendingPreparation();
       PendingReplay operation = _operation;
       ReplaySessionService.ClearActiveContext();
@@ -328,6 +329,7 @@ public static class ReplayPlaybackCoordinator
 
   public static void Shutdown()
   {
+    ReplayLevelOpenService.ReleaseHeldBlack();
     CancelPendingPreparation();
     ReplaySessionService.ClearActiveContext();
     _operation?.CleanupPreparedMicrophone();
@@ -521,6 +523,7 @@ public static class ReplayPlaybackCoordinator
 
     if (IsExpectedLevelReady(operation))
     {
+      ReplayLevelOpenService.ReleaseHeldBlack();
       WaitForFocusOrStart(operation);
       return;
     }
@@ -767,6 +770,7 @@ public static class ReplayPlaybackCoordinator
 
   private static void SetError(string operationId, string runId, string code, string message)
   {
+    ReplayLevelOpenService.ReleaseHeldBlack();
     SetStatus(
       new ReplayPlaybackStatus
       {

@@ -1,4 +1,4 @@
-import { type AdofaiIpcNamespaceClient, tryConnect } from "@adofai-ipc/client";
+import { AdofaiIpcClient, type AdofaiIpcNamespaceClient, tryConnect } from "@adofai-ipc/client";
 
 import type {
   ActivityAppSession,
@@ -10,13 +10,14 @@ import type {
   MicrophoneDevicesState,
   MicrophoneRecordingDeleteResult,
   MicrophoneRecordingKeepResult,
-  ReplayLevelFilePickerStatus,
+  ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
 import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
+const FILE_PICKER_TIMEOUT_MS = 24 * 60 * 60 * 1000;
 
 interface DomainErrorPayload {
   error: {
@@ -45,8 +46,7 @@ export interface ActivityGateway {
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getReplayStatus(): Promise<ReplayStatus>;
-  startReplayLevelFilePicker(runId: string): Promise<ReplayLevelFilePickerStatus>;
-  getReplayLevelFilePickerStatus(operationId: string): Promise<ReplayLevelFilePickerStatus>;
+  pickReplayLevelFile(runId: string): Promise<ReplayLevelFilePickerResult>;
   getMicrophoneDevices(): Promise<MicrophoneDevicesState>;
   selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
   startMicrophoneCalibration(): Promise<MicrophoneCalibrationStatus>;
@@ -72,11 +72,17 @@ export async function connectActivityGateway(): Promise<ActivityGateway> {
   const client = await tryConnect({
     fetch: adofaiIpcFetch,
   });
-  return createActivityGateway(client.namespace(NAMESPACE));
+  const pickerClient = new AdofaiIpcClient({
+    baseUrl: client.baseUrl,
+    fetch: adofaiIpcFetch,
+    timeoutMs: FILE_PICKER_TIMEOUT_MS,
+  });
+  return createActivityGateway(client.namespace(NAMESPACE), pickerClient.namespace(NAMESPACE));
 }
 
 export function createActivityGateway(
   namespace: Pick<AdofaiIpcNamespaceClient, "call">,
+  pickerNamespace: Pick<AdofaiIpcNamespaceClient, "call"> = namespace,
 ): ActivityGateway {
   return {
     health: () => callDomain(namespace, "health.get", {}),
@@ -108,10 +114,8 @@ export function createActivityGateway(
     playReplay: (runId, levelPath) =>
       callDomain(namespace, "replay.play", levelPath ? { runId, levelPath } : { runId }),
     getReplayStatus: () => callDomain(namespace, "replay.status.get", {}),
-    startReplayLevelFilePicker: (runId) =>
-      callDomain(namespace, "replay.level-file.pick.start", { runId }),
-    getReplayLevelFilePickerStatus: (operationId) =>
-      callDomain(namespace, "replay.level-file.pick.status", { operationId }),
+    pickReplayLevelFile: (runId) =>
+      callDomain(pickerNamespace, "replay.level-file.pick", { runId }),
     getMicrophoneDevices: () => callDomain(namespace, "microphone.devices.get", {}),
     selectMicrophoneDevice: (deviceId) =>
       callDomain(namespace, "microphone.device.select", { deviceId }),

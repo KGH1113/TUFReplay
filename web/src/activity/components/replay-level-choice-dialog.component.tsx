@@ -10,11 +10,12 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/ui/button.component";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog.component";
 
-import type { ActivityRun, ReplayLevelFilePickerStatus } from "../activity.model";
+import type { ActivityRun, ReplayLevelFilePickerResult } from "../activity.model";
 
 export function ReplayLevelChoiceDialog({
   run,
-  pickerStatus,
+  pickerResult,
+  pickingRunId,
   playError,
   playErrorRunId,
   onClose,
@@ -23,7 +24,8 @@ export function ReplayLevelChoiceDialog({
   onResetPicker,
 }: {
   run: ActivityRun | null;
-  pickerStatus: ReplayLevelFilePickerStatus | null;
+  pickerResult: ReplayLevelFilePickerResult | null;
+  pickingRunId: string | null;
   playError: string;
   playErrorRunId: string | null;
   onClose: () => void;
@@ -33,12 +35,12 @@ export function ReplayLevelChoiceDialog({
 }) {
   const autoPlayKeyRef = useRef("");
   const [startingAction, setStartingAction] = useState<"original" | "picker" | null>(null);
-  const currentPicker = pickerStatus?.RunId === run?.Id ? pickerStatus : null;
-  const isPicking = currentPicker?.State === "picking";
+  const currentPicker = pickerResult?.RunId === run?.Id ? pickerResult : null;
+  const isPicking = pickingRunId === run?.Id;
 
   useEffect(() => {
-    if (!run || currentPicker?.State !== "selected" || !currentPicker.LevelPath) return;
-    const key = `${currentPicker.OperationId}:${currentPicker.LevelPath}`;
+    if (!run || currentPicker?.Outcome !== "selected" || !currentPicker.LevelPath) return;
+    const key = `${run.Id}:${currentPicker.LevelPath}`;
     if (autoPlayKeyRef.current === key) return;
     autoPlayKeyRef.current = key;
     setStartingAction("picker");
@@ -47,8 +49,6 @@ export function ReplayLevelChoiceDialog({
       if (started) {
         onResetPicker();
         onClose();
-      } else {
-        autoPlayKeyRef.current = "";
       }
     });
   }, [currentPicker, onClose, onPlay, onResetPicker, run]);
@@ -72,14 +72,19 @@ export function ReplayLevelChoiceDialog({
   const chooseAnother = async () => {
     if (!run || isPicking || startingAction) return;
     autoPlayKeyRef.current = "";
-    setStartingAction("picker");
     await onChooseAnother(run.Id);
-    setStartingAction(null);
   };
 
   const currentPlayError = playErrorRunId === run?.Id ? playError : "";
-  const pickerMessage = currentPlayError || currentPicker?.Message;
-  const pickerFailed = Boolean(currentPlayError) || currentPicker?.State === "error";
+  const pickerMessage =
+    currentPlayError ||
+    (currentPicker?.Outcome === "mismatch" || currentPicker?.Outcome === "error"
+      ? currentPicker.Message
+      : null);
+  const pickerFailed =
+    Boolean(currentPlayError) ||
+    currentPicker?.Outcome === "mismatch" ||
+    currentPicker?.Outcome === "error";
   const busy = isPicking || startingAction !== null;
   const originalBusy = startingAction === "original";
   const pickerBusy = isPicking || startingAction === "picker";
@@ -155,9 +160,9 @@ export function ReplayLevelChoiceDialog({
               <span className="block text-sm font-medium">Choose matching level…</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 {isPicking
-                  ? "Waiting for file selection…"
+                  ? "Choose a file, then verifying gameplay…"
                   : startingAction === "picker"
-                    ? currentPicker?.State === "selected"
+                    ? currentPicker?.Outcome === "selected"
                       ? "Starting replay…"
                       : "Opening file picker…"
                     : "Use another file with identical gameplay"}
