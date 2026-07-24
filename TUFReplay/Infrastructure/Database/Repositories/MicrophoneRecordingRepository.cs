@@ -10,6 +10,7 @@ namespace TUFReplay.Infrastructure.Database.Repositories;
 public static class MicrophoneRecordingRepository
 {
   private const int BlobBufferSize = 65536;
+  public static readonly TimeSpan TemporaryRetention = TimeSpan.FromDays(3);
 
   public static bool RunExists(string runId)
   {
@@ -20,9 +21,48 @@ public static class MicrophoneRecordingRepository
     return Convert.ToInt32(command.ExecuteScalar()) != 0;
   }
 
-  public static void Save(CapturedMicrophoneRecording recording)
+  public static bool Delete(string runId)
+  {
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "DELETE FROM microphone_recordings WHERE run_id=@run";
+    command.Parameters.AddWithValue("@run", runId);
+    return command.ExecuteNonQuery() != 0;
+  }
+
+  public static bool Exists(string runId)
+  {
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT EXISTS(SELECT 1 FROM microphone_recordings WHERE run_id=@run)";
+    command.Parameters.AddWithValue("@run", runId);
+    return Convert.ToInt32(command.ExecuteScalar()) != 0;
+  }
+
+  public static bool KeepPermanently(string runId)
+  {
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      "UPDATE microphone_recordings SET is_permanent=1,expires_at_utc=NULL WHERE run_id=@run AND is_permanent=0";
+    command.Parameters.AddWithValue("@run", runId);
+    return command.ExecuteNonQuery() != 0;
+  }
+
+  public static int DeleteExpired(DateTime nowUtc)
+  {
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      "DELETE FROM microphone_recordings WHERE is_permanent=0 AND expires_at_utc IS NOT NULL AND expires_at_utc<=@now";
+    command.Parameters.AddWithValue("@now", nowUtc.ToUniversalTime().ToString("O"));
+    return command.ExecuteNonQuery();
+  }
+
+  public static void Save(CapturedMicrophoneRecording recording, DateTime? savedAtUtc = null)
   {
     long length = new FileInfo(recording.TempPath).Length;
+    string expiresAtUtc = (savedAtUtc ?? DateTime.UtcNow).ToUniversalTime().Add(TemporaryRetention).ToString("O");
     using SqliteConnection connection = DatabaseStore.OpenConnection();
     using SqliteTransaction transaction = connection.BeginTransaction();
     long rowId;
@@ -31,8 +71,8 @@ public static class MicrophoneRecordingRepository
       command.Transaction = transaction;
       command.CommandText =
         @"INSERT OR REPLACE INTO microphone_recordings(
-run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us
-) VALUES(@run,zeroblob(@length),'wav/pcm16',@rate,@channels,@frames,@device,@offset);
+run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,is_permanent,expires_at_utc
+) VALUES(@run,zeroblob(@length),'wav/pcm16',@rate,@channels,@frames,@device,@offset,0,@expires);
 SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
       command.Parameters.AddWithValue("@run", recording.RunId);
       command.Parameters.AddWithValue("@length", length);
@@ -41,6 +81,7 @@ SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
       command.Parameters.AddWithValue("@frames", recording.FrameCount);
       command.Parameters.AddWithValue("@device", (object)recording.DeviceId ?? DBNull.Value);
       command.Parameters.AddWithValue("@offset", recording.CaptureStartOffsetUs);
+      command.Parameters.AddWithValue("@expires", expiresAtUtc);
       rowId = Convert.ToInt64(command.ExecuteScalar());
     }
 

@@ -4,7 +4,7 @@ import type {
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
-  ReplayLevelFilePickerStatus,
+  ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
 import { ActivityDomainError, createActivityGateway, loadAllPages } from "./activity.gateway";
@@ -36,6 +36,62 @@ describe("activity IPC contract", () => {
     }
   });
 
+  test("uses logical-level endpoints for cross-visit activity", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return method.endsWith("runs.list") ? [] : {};
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+    await gateway.getLogicalLevel("logical-1");
+    await gateway.listAllLogicalLevelRuns("logical-1");
+    await gateway.getLogicalLevelChart("logical-1");
+    expect(calls).toEqual([
+      { method: "activity.logical-level.get", params: { id: "logical-1" } },
+      {
+        method: "activity.logical-level.runs.list",
+        params: { id: "logical-1", offset: 0, limit: 200 },
+      },
+      { method: "activity.logical-level.chart.get", params: { id: "logical-1" } },
+    ]);
+  });
+
+  test("deletes a microphone recording with the exact command and params", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return { RunId: "run-7", Deleted: true };
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.deleteMicrophoneRecording("run-7")).toEqual({
+      RunId: "run-7",
+      Deleted: true,
+    });
+    expect(calls).toEqual([{ method: "microphone.recording.delete", params: { runId: "run-7" } }]);
+  });
+
+  test("keeps a microphone recording permanently with the exact command and params", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return { RunId: "run-8", Permanent: true };
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.keepMicrophoneRecording("run-8")).toEqual({
+      RunId: "run-8",
+      Permanent: true,
+    });
+    expect(calls).toEqual([{ method: "microphone.recording.keep", params: { runId: "run-8" } }]);
+  });
+
   test("uses the exact replay command names and params", async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
     const status = {
@@ -45,18 +101,17 @@ describe("activity IPC contract", () => {
       ErrorCode: null,
       Message: null,
     } satisfies ReplayStatus;
-    const pickerStatus = {
-      OperationId: "picker-1",
+    const pickerResult = {
       RunId: "run-1",
-      State: "picking",
-      LevelPath: null,
+      Outcome: "selected",
+      LevelPath: "/levels/replay.adofai",
       ErrorCode: null,
       Message: null,
-    } satisfies ReplayLevelFilePickerStatus;
+    } satisfies ReplayLevelFilePickerResult;
     const namespace = {
       call: async (method: string, params: unknown) => {
         calls.push({ method, params });
-        return method.includes("level-file") ? pickerStatus : status;
+        return method.includes("level-file") ? pickerResult : status;
       },
     };
     const gateway = createActivityGateway(namespace as never);
@@ -64,8 +119,7 @@ describe("activity IPC contract", () => {
     expect(await gateway.playReplay("run-1")).toBe(status);
     expect(await gateway.playReplay("run-1", "/levels/replay.adofai")).toBe(status);
     expect(await gateway.getReplayStatus()).toBe(status);
-    expect(await gateway.startReplayLevelFilePicker("run-1")).toBe(pickerStatus);
-    expect(await gateway.getReplayLevelFilePickerStatus("picker-1")).toBe(pickerStatus);
+    expect(await gateway.pickReplayLevelFile("run-1")).toBe(pickerResult);
     expect(calls).toEqual([
       { method: "replay.play", params: { runId: "run-1" } },
       {
@@ -73,11 +127,7 @@ describe("activity IPC contract", () => {
         params: { runId: "run-1", levelPath: "/levels/replay.adofai" },
       },
       { method: "replay.status.get", params: {} },
-      { method: "replay.level-file.pick.start", params: { runId: "run-1" } },
-      {
-        method: "replay.level-file.pick.status",
-        params: { operationId: "picker-1" },
-      },
+      { method: "replay.level-file.pick", params: { runId: "run-1" } },
     ]);
   });
 

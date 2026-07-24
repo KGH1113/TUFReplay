@@ -89,6 +89,23 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     return result;
   }
 
+  public static List<RunRecord> ListByLogicalLevel(string id, int offset, int limit)
+  {
+    var result = new List<RunRecord>();
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText =
+      Select
+      + " WHERE l.logical_level_id=@id ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
+    q.Parameters.AddWithValue("@id", id);
+    q.Parameters.AddWithValue("@limit", limit);
+    q.Parameters.AddWithValue("@offset", offset);
+    using SqliteDataReader x = q.ExecuteReader();
+    while (x.Read())
+      result.Add(Read(x));
+    return result;
+  }
+
   public static StoredReplayRun GetReplayRun(string runId)
   {
     if (string.IsNullOrWhiteSpace(runId))
@@ -152,7 +169,7 @@ r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfe
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 r.gameplay_hash,r.gameplay_hash_version,
 r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json,
-coalesce(length(m.audio_wav),0),m.sample_rate,m.channels,m.frame_count
+coalesce(length(m.audio_wav),0),m.sample_rate,m.channels,m.frame_count,m.is_permanent,m.expires_at_utc
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 LEFT JOIN microphone_recordings m ON m.run_id=r.id";
@@ -200,6 +217,8 @@ LEFT JOIN microphone_recordings m ON m.run_id=r.id";
       MicrophoneSampleRate = DbValue.NullableInt(r, 34),
       MicrophoneChannels = DbValue.NullableInt(r, 35),
       MicrophoneFrameCount = r.IsDBNull(36) ? null : (long?)r.GetInt64(36),
+      MicrophoneRecordingPermanent = !r.IsDBNull(37) && r.GetInt32(37) != 0,
+      MicrophoneRecordingExpiresAtUtc = DbValue.NullableString(r, 38),
     };
 
   private static RunJudgmentDifficulty? ReadDifficulty(SqliteDataReader reader, int index)

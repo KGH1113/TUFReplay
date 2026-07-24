@@ -10,7 +10,7 @@ interface Envelope {
 }
 
 export interface ChartBridgeCallbacks {
-  onReady(): void;
+  onReady(capabilities: readonly string[]): void;
   onLoaded(): void;
   onError(message: string): void;
   onFloorSelected(floorIndex: number): void;
@@ -41,7 +41,7 @@ export class ChartBridge {
     const message = event.data;
     if (isReadyMessage(message)) {
       this.ready = true;
-      this.callbacks.onReady();
+      this.callbacks.onReady(message.capabilities ?? []);
       this.sendChart();
       return;
     }
@@ -81,14 +81,6 @@ export class ChartBridge {
     if (!this.ready) return;
     this.frame.contentWindow?.postMessage(
       envelope("run.focus", { startFloorIndex, endFloorIndex }),
-      this.origin,
-    );
-  }
-
-  fitEntireRun(startFloorIndex: number, endFloorIndex: number) {
-    if (!this.ready) return;
-    this.frame.contentWindow?.postMessage(
-      envelope("run.fit-all", { startFloorIndex, endFloorIndex }),
       this.origin,
     );
   }
@@ -145,8 +137,15 @@ function envelope(type: string, payload: object) {
   return { protocol: PROTOCOL, version: VERSION, type, ...payload };
 }
 
-function isReadyMessage(message: Envelope & Record<string, unknown>) {
-  return message.type === "chart.ready";
+function isReadyMessage(
+  message: Envelope & Record<string, unknown>,
+): message is Envelope & Record<string, unknown> & { capabilities?: string[] } {
+  return (
+    message.type === "chart.ready" &&
+    (message.capabilities === undefined ||
+      (Array.isArray(message.capabilities) &&
+        message.capabilities.every((capability) => typeof capability === "string")))
+  );
 }
 
 function isLoadedMessage(

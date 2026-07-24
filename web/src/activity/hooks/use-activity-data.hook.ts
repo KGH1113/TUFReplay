@@ -23,14 +23,20 @@ export function useActivityData() {
   const refresh = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    if (gatewayRef.current === null) setStatus("connecting");
     try {
       const gateway = gatewayRef.current ?? (await connectActivityGateway());
-      gatewayRef.current = gateway;
       await gateway.health();
-      const next = await gateway.listAllAppSessions(setSessions);
-      setSessions(next);
+      gatewayRef.current = gateway;
       setStatus("online");
       setError("");
+
+      try {
+        const next = await gateway.listAllAppSessions(setSessions);
+        setSessions(next);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not load TUFReplay activity");
+      }
     } catch (cause) {
       gatewayRef.current = null;
       setStatus("error");

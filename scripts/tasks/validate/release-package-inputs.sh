@@ -22,9 +22,6 @@ require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_INFO_JSON"
 require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 
-for bundle in "${TUFREPLAY_UI_BUNDLES[@]}"; do
-  require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/$bundle"
-done
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/level.adofai"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.ogg"
 

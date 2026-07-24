@@ -5,7 +5,6 @@ using System.Threading;
 using Newtonsoft.Json;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Domain.Microphone;
-using TUFReplay.Features.Ui;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Microphone;
 using TUFReplay.Infrastructure.Settings;
@@ -21,7 +20,8 @@ public sealed class MicrophoneRecordingFeature
   private readonly ManualResetEventSlim _savesIdle = new ManualResetEventSlim(true);
   private IMicrophoneCaptureBackend _backend;
   private MicrophoneCaptureTicker _ticker;
-  private CapturedMicrophoneRecording _awaitingDecision;
+  private System.Threading.Timer _retentionTimer;
+  private int _retentionCleanupRunning;
   private string _tempDirectory;
 
   public void Enable()
@@ -49,10 +49,18 @@ public sealed class MicrophoneRecordingFeature
       {
         Main.Instance?.LogException("Microphone/Recovery", exception);
       }
+      _retentionTimer = new System.Threading.Timer(
+        _ => DeleteExpiredRecordings(),
+        null,
+        TimeSpan.Zero,
+        TimeSpan.FromHours(1)
+      );
     }
     catch (Exception exception)
     {
       Main.Instance?.LogException("Microphone/Initialize", exception);
+      _retentionTimer?.Dispose();
+      _retentionTimer = null;
       _backend?.Dispose();
       _backend = null;
       MicrophoneCaptureRuntime.Backend = null;
@@ -64,7 +72,8 @@ public sealed class MicrophoneRecordingFeature
 
   public void Disable()
   {
-    DiscardAwaitingDecision();
+    _retentionTimer?.Dispose();
+    _retentionTimer = null;
     Disarm();
     try
     {
@@ -168,55 +177,10 @@ public sealed class MicrophoneRecordingFeature
     }
   }
 
-  public void Present(CapturedMicrophoneRecording recording)
+  public void Persist(CapturedMicrophoneRecording recording)
   {
     if (recording == null)
       return;
-    DiscardAwaitingDecision();
-    _awaitingDecision = recording;
-    if (
-      Bootstrap.FeatureRegistry.MicrophoneRecordingToast == null
-      || !Bootstrap.FeatureRegistry.MicrophoneRecordingToast.Show(result => Resolve(recording, result))
-    )
-    {
-      _awaitingDecision = null;
-      Delete(recording.TempPath);
-    }
-  }
-
-  public void Discard(CapturedMicrophoneRecording recording)
-  {
-    if (recording == null)
-      return;
-    if (ReferenceEquals(_awaitingDecision, recording))
-      _awaitingDecision = null;
-    Delete(recording.TempPath);
-  }
-
-  public void NotifyRunPersisted(string runId)
-  {
-    lock (_gate)
-      _persistedRuns.Add(runId);
-    string path = PendingPath(runId);
-    if (File.Exists(path))
-      QueueSave(ReadMetadata(path));
-  }
-
-  private void Resolve(CapturedMicrophoneRecording recording, MicrophoneRecordingToastResult result)
-  {
-    if (!ReferenceEquals(_awaitingDecision, recording))
-      return;
-    _awaitingDecision = null;
-    if (result.Decision == MicrophoneRecordingToastDecision.Discard)
-    {
-      Delete(recording.TempPath);
-      Main.Instance?.Log(
-        result.Reason == MicrophoneRecordingToastReason.Timeout
-          ? "[Microphone] Recording discarded by timeout."
-          : "[Microphone] Recording discarded."
-      );
-      return;
-    }
 
     string pending = PendingPath(recording.RunId);
     try
@@ -234,6 +198,22 @@ public sealed class MicrophoneRecordingFeature
       Delete(recording.TempPath);
       Delete(MetadataPath(pending));
     }
+  }
+
+  public void Discard(CapturedMicrophoneRecording recording)
+  {
+    if (recording == null)
+      return;
+    Delete(recording.TempPath);
+  }
+
+  public void NotifyRunPersisted(string runId)
+  {
+    lock (_gate)
+      _persistedRuns.Add(runId);
+    string path = PendingPath(runId);
+    if (File.Exists(path))
+      QueueSave(ReadMetadata(path));
   }
 
   private void QueueSave(CapturedMicrophoneRecording recording)
@@ -326,12 +306,24 @@ public sealed class MicrophoneRecordingFeature
       Delete(path);
   }
 
-  private void DiscardAwaitingDecision()
+  private void DeleteExpiredRecordings()
   {
-    CapturedMicrophoneRecording previous = _awaitingDecision;
-    _awaitingDecision = null;
-    if (previous != null)
-      Delete(previous.TempPath);
+    if (Interlocked.Exchange(ref _retentionCleanupRunning, 1) != 0)
+      return;
+    try
+    {
+      int deleted = MicrophoneRecordingRepository.DeleteExpired(DateTime.UtcNow);
+      if (deleted > 0)
+        Main.Instance?.Log("[Microphone] Deleted expired temporary recordings. count=" + deleted);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Expired recording cleanup failed. error=" + exception.Message);
+    }
+    finally
+    {
+      Interlocked.Exchange(ref _retentionCleanupRunning, 0);
+    }
   }
 
   private string PendingPath(string runId) => Path.Combine(_tempDirectory, runId + ".wav.save-pending");

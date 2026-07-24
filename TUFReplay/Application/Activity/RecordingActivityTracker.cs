@@ -73,9 +73,8 @@ public sealed class RecordingActivityTracker
     _gameplayHashVersion = gameplayHashVersion;
     bool metadataAvailable = AdofaiLevelMetadataReader.TryRead(levelPath, out LevelMetadataSnapshot metadata);
     AdofaiLevelFileHash.TryCompute(levelPath, out byte[] levelFileHash);
-    LevelSessionRepository.Save(
-      new LevelSession
-      {
+    var levelSession = new LevelSession
+    {
         Id = LevelSessionId,
         AppSessionId = AppSessionId,
         TufLevelId = tufLevelId,
@@ -83,12 +82,15 @@ public sealed class RecordingActivityTracker
         OpenedAtUtc = DateTime.UtcNow.ToString("O"),
         LevelTileCount = levelTileCount,
         LevelFileHash = levelFileHash,
+        GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
+        GameplayHashVersion = gameplayHashVersion,
         Song = metadata?.Song,
         Author = metadata?.Author,
         Artist = metadata?.Artist,
         MetadataState = metadataAvailable ? LevelMetadataState.Captured : LevelMetadataState.Unavailable,
-      }
-    );
+    };
+    levelSession.LogicalLevelId = LogicalLevelRepository.ResolveOrCreate(levelSession);
+    LevelSessionRepository.Save(levelSession);
   }
 
   public void CloseLevel()

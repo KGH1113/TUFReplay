@@ -74,6 +74,7 @@ public static class ReplayInputPatches
         return;
 
       UnityMainThread.DrainPending();
+      ReplayLevelOpenService.Tick();
       if (!ReplaySessionService.HasActiveContext)
         return;
       if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs))

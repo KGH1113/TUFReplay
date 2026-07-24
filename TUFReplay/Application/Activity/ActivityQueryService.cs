@@ -61,6 +61,47 @@ public static class ActivityQueryService
     return true;
   }
 
+  public static LogicalLevelOverview GetLogicalLevelOverview(string id) =>
+    ActivityRepository.GetLogicalLevelOverview(id);
+
+  public static bool TryListRunsByLogicalLevel(string id, int offset, int limit, out List<RunRecord> runs)
+  {
+    runs = null;
+    if (!LogicalLevelRepository.Exists(id))
+      return false;
+    runs = RunRepository.ListByLogicalLevel(id, offset, limit);
+    return true;
+  }
+
+  public static ChartData GetLogicalLevelChart(string id)
+  {
+    if (!LogicalLevelRepository.Exists(id))
+      return null;
+    List<LevelSession> sessions = LevelSessionRepository.ListByLogicalLevelNewestFirst(id);
+    int floorCount = sessions.Count == 0 ? 0 : sessions[0].LevelTileCount;
+    foreach (LevelSession session in sessions)
+    {
+      floorCount = System.Math.Max(floorCount, session.LevelTileCount);
+      if (string.IsNullOrEmpty(session.LevelPath) || !File.Exists(session.LevelPath))
+        continue;
+      if (
+        session.LevelFileHash != null
+        && (
+          !AdofaiLevelFileHash.TryCompute(session.LevelPath, out byte[] currentFileHash)
+          || !AdofaiLevelFileHash.Equals(session.LevelFileHash, currentFileHash)
+        )
+      )
+        continue;
+      return new ChartData
+      {
+        id = id,
+        levelText = File.ReadAllText(session.LevelPath),
+        floorCount = session.LevelTileCount,
+      };
+    }
+    return new ChartData { id = id, floorCount = floorCount };
+  }
+
   public static ChartData GetChart(string id)
   {
     LevelSession s = LevelSessionRepository.Get(id);
@@ -107,7 +148,7 @@ public static class ActivityQueryService
     if (!tufLevelId.HasValue)
       return;
 
-    LevelSessionRepository.UpdateTufLevelIdIfMissing(level.Id, tufLevelId.Value);
+    level.LogicalLevelId = LevelSessionRepository.UpdateTufLevelIdIfMissing(level.Id, tufLevelId.Value);
     level.TufLevelId = tufLevelId;
   }
 }

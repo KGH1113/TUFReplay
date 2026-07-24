@@ -1,23 +1,28 @@
 import {
   ArrowDown02Icon,
-  ArrowLeft02Icon,
-  ArrowRight02Icon,
   ArrowUp02Icon,
   ChartAverageIcon,
   Clock01Icon,
   DashboardSpeed01Icon,
-  FitToScreenIcon,
+  Loading03Icon,
   PercentIcon,
+  PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { Button } from "../../ui/button.component";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../../ui/tooltip.component";
 import { cn } from "../../ui/ui-class.utils";
 import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../activity.model";
 import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
 import { runsForMarker } from "../lib/activity-data.utils";
-import { formatTimeWithOffset } from "../lib/activity-date.utils";
+import { formatTimeWithOffsetParts } from "../lib/activity-date.utils";
 import { formatXAccuracy } from "../lib/x-accuracy.format";
+import { MicrophoneRecordingPopover } from "./microphone-recording-popover.component";
 import { RunDifficultyIcon } from "./run-difficulty-icon.component";
 import { RunJudgmentStrip } from "./run-judgment-strip.component";
 import { RunNoFailIcon } from "./run-no-fail-icon.component";
@@ -45,6 +50,7 @@ export function ActivityWorkspace({
   selectedRun,
   loading,
   error,
+  readOnly,
   timeZone,
   replayStatus,
   replayPendingRunId,
@@ -53,6 +59,8 @@ export function ActivityWorkspace({
   onSelectMarker,
   onSelectRun,
   onPlayReplay,
+  onDeleteMicrophoneRecording,
+  onKeepMicrophoneRecording,
 }: {
   chartAvailable: boolean;
   chart: ActivityChart | null;
@@ -62,6 +70,7 @@ export function ActivityWorkspace({
   selectedRun: ActivityRun | null;
   loading: boolean;
   error: string;
+  readOnly: boolean;
   timeZone: string;
   replayStatus: ReplayStatus;
   replayPendingRunId: string | null;
@@ -70,12 +79,15 @@ export function ActivityWorkspace({
   onSelectMarker: (marker: RunMarker | null) => void;
   onSelectRun: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const chartRef = useRef<EmbeddedChartHandle>(null);
   const runListRef = useRef<HTMLDivElement>(null);
   const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
   const [runSort, setRunSort] = useState<RunSortKey>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [microphonePinnedRunId, setMicrophonePinnedRunId] = useState<string | null>(null);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
     if (!runList) return;
@@ -120,25 +132,13 @@ export function ActivityWorkspace({
       onSelectMarker(markers.find((marker) => marker.floorIndex === floor) ?? null),
     [markers, onSelectMarker],
   );
-  const selectedMarkerIndex = selectedMarker
-    ? markers.findIndex((marker) => marker.id === selectedMarker.id)
-    : -1;
-  const previousMarker = selectedMarkerIndex > 0 ? markers[selectedMarkerIndex - 1] : null;
-  const nextMarker =
-    selectedMarkerIndex >= 0 && selectedMarkerIndex < markers.length - 1
-      ? markers[selectedMarkerIndex + 1]
-      : null;
   const selectedRuns = runsForMarker(runs, selectedMarker);
   const sortedRuns = sortRuns(selectedRuns, runSort, sortDirection);
-  const replayMessage = selectedRun
-    ? describeReplay(
-        selectedRun.Id,
-        replayStatus,
-        replayPendingRunId,
-        replayError,
-        replayErrorRunId,
-      )
-    : null;
+  const selectedMarkerId = selectedMarker?.id ?? null;
+  useEffect(() => {
+    void selectedMarkerId;
+    setMicrophonePinnedRunId(null);
+  }, [selectedMarkerId]);
   useLayoutEffect(() => {
     void runSort;
     void sortDirection;
@@ -218,48 +218,6 @@ export function ActivityWorkspace({
       >
         {selectedMarker ? (
           <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col">
-            <div className="mb-3 flex shrink-0 items-center justify-between border-b border-border pb-3">
-              <div>
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Run start
-                </div>
-                <div className="mt-0.5 font-heading text-sm font-semibold tabular-nums">
-                  Floor {selectedMarker.floorIndex}
-                </div>
-              </div>
-              <fieldset
-                className="grid min-w-0 grid-cols-3 rounded-md border border-border bg-background/70 p-1"
-                aria-label="Run start navigation and camera controls"
-              >
-                <RunStartNavigationButton
-                  label="Previous run start"
-                  icon={ArrowLeft02Icon}
-                  marker={previousMarker}
-                  onSelect={onSelectMarker}
-                />
-                <RunStartNavigationButton
-                  label="Next run start"
-                  icon={ArrowRight02Icon}
-                  marker={nextMarker}
-                  onSelect={onSelectMarker}
-                />
-                <button
-                  type="button"
-                  aria-label="Fit entire run"
-                  title="Fit entire run"
-                  disabled={!selectedRun}
-                  onClick={() => chartRef.current?.fitEntireRun()}
-                  className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={FitToScreenIcon}
-                    size={16}
-                    strokeWidth={2}
-                  />
-                </button>
-              </fieldset>
-            </div>
             <div className="mb-3 shrink-0">
               <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Sort by
@@ -299,88 +257,275 @@ export function ActivityWorkspace({
               </fieldset>
             </div>
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
-              <div ref={runListRef} className="space-y-2">
-                {sortedRuns.map((run) => {
-                  const active = selectedRun?.Id === run.Id;
-                  return (
-                    <button
-                      key={run.Id}
-                      data-run-id={run.Id}
-                      type="button"
-                      aria-pressed={active}
-                      onClick={() => onSelectRun(run)}
-                      className={cn(
-                        "block w-full rounded-md border border-border bg-background/60 p-3 text-left text-xs transition-colors hover:border-primary/50 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        active && "border-primary bg-primary/10 ring-1 ring-primary/40",
-                      )}
-                    >
-                      <div className="flex items-center justify-between font-medium">
-                        <span className="inline-flex min-w-7 items-center justify-center rounded-sm border border-primary/30 bg-primary/10 px-1.5 py-0.5 font-heading text-[11px] font-semibold tabular-nums text-primary">
-                          #{run.RunIndex}
-                        </span>
-                        <span className="inline-flex items-center gap-1">
-                          <RunNoFailIcon enabled={run.NoFailMode} />
-                          <RunDifficultyIcon difficulty={run.JudgmentDifficulty} />
-                        </span>
-                      </div>
-                      <div className="mt-2.5 grid grid-cols-2 gap-2">
-                        <RunMetric
-                          icon={PercentIcon}
-                          label="Progress"
-                          value={`${run.StartTile} → ${runProgressPercent(run)}%`}
-                        />
-                        <RunMetric
-                          icon={DashboardSpeed01Icon}
-                          label="Pitch"
-                          value={`${run.LevelPitchPercent ?? "?"}%`}
-                        />
-                        <RunMetric
-                          icon={ChartAverageIcon}
-                          label="X-Accuracy"
-                          value={formatXAccuracy(run.XAccuracy)}
-                        />
-                        <RunMetric
-                          icon={Clock01Icon}
-                          label="Started at"
-                          value={formatTimeWithOffset(run.StartedAtUtc, timeZone)}
-                        />
-                      </div>
-                      <RunJudgmentStrip counts={run.JudgmentCounts} />
-                    </button>
-                  );
-                })}
-              </div>
+              <TooltipProvider>
+                <div ref={runListRef} className="space-y-2">
+                  {sortedRuns.map((run) => {
+                    const active = selectedRun?.Id === run.Id;
+                    return (
+                      <RunCard
+                        key={run.Id}
+                        run={run}
+                        active={active}
+                        readOnly={readOnly}
+                        timeZone={timeZone}
+                        microphonePinnedRunId={microphonePinnedRunId}
+                        replayStatus={replayStatus}
+                        replayPendingRunId={replayPendingRunId}
+                        replayError={replayError}
+                        replayErrorRunId={replayErrorRunId}
+                        onSelect={() => onSelectRun(run)}
+                        onPinnedRunChange={setMicrophonePinnedRunId}
+                        onPlayReplay={onPlayReplay}
+                        onKeepMicrophoneRecording={onKeepMicrophoneRecording}
+                        onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
+                      />
+                    );
+                  })}
+                </div>
+              </TooltipProvider>
             </div>
-            {selectedRun ? (
-              <div className="mt-3 shrink-0 border-t border-border pt-3">
-                <Button
-                  type="button"
-                  className="w-full"
-                  disabled={replayPendingRunId === selectedRun.Id}
-                  onClick={() => onPlayReplay(selectedRun)}
-                >
-                  {replayPendingRunId === selectedRun.Id ? "Starting…" : "Play replay"}
-                </Button>
-                {replayMessage ? (
-                  <p
-                    aria-live="polite"
-                    className={cn(
-                      "mt-2 text-xs text-muted-foreground",
-                      replayErrorRunId === selectedRun.Id ||
-                        (replayStatus.RunId === selectedRun.Id && replayStatus.State === "error")
-                        ? "text-destructive"
-                        : null,
-                    )}
-                  >
-                    {replayMessage}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
           </div>
         ) : null}
       </aside>
     </section>
+  );
+}
+
+function RunCard({
+  run,
+  active,
+  readOnly,
+  timeZone,
+  microphonePinnedRunId,
+  replayStatus,
+  replayPendingRunId,
+  replayError,
+  replayErrorRunId,
+  onSelect,
+  onPinnedRunChange,
+  onPlayReplay,
+  onKeepMicrophoneRecording,
+  onDeleteMicrophoneRecording,
+}: {
+  run: ActivityRun;
+  active: boolean;
+  readOnly: boolean;
+  timeZone: string;
+  microphonePinnedRunId: string | null;
+  replayStatus: ReplayStatus;
+  replayPendingRunId: string | null;
+  replayError: string;
+  replayErrorRunId: string | null;
+  onSelect: () => void;
+  onPinnedRunChange: (runId: string | null) => void;
+  onPlayReplay: (run: ActivityRun) => void;
+  onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+}) {
+  const microphoneAction = run.HasMicrophoneRecording ? (
+    <MicrophoneRecordingPopover
+      run={run}
+      pinnedRunId={microphonePinnedRunId}
+      onPinnedRunChange={onPinnedRunChange}
+      onKeep={onKeepMicrophoneRecording}
+      onDelete={onDeleteMicrophoneRecording}
+      disabled={readOnly}
+    />
+  ) : null;
+  const replayAction = (
+    <RunReplayButton
+      run={run}
+      status={replayStatus}
+      pendingRunId={replayPendingRunId}
+      error={replayError}
+      errorRunId={replayErrorRunId}
+      onPlay={onPlayReplay}
+      disabled={readOnly}
+    />
+  );
+
+  return (
+    <div
+      data-run-id={run.Id}
+      className={cn(
+        "group/run relative rounded-md border border-border bg-background/60 text-xs transition-colors hover:border-primary/60",
+      )}
+    >
+      <button
+        type="button"
+        aria-label={`Select run ${run.RunIndex}`}
+        aria-pressed={active}
+        onClick={onSelect}
+        className="block w-full rounded-md p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+      >
+        <HeaderRunCardContent run={run} timeZone={timeZone} />
+        <RunJudgmentStrip counts={run.JudgmentCounts} />
+      </button>
+
+      <div className="pointer-events-auto absolute right-3 top-2.5 flex items-center gap-1.5">
+        {microphoneAction}
+        {replayAction}
+      </div>
+    </div>
+  );
+}
+
+function RunIdentity({ run }: { run: ActivityRun }) {
+  return (
+    <div className="flex min-w-0 items-center gap-2.5">
+      <span className="inline-flex min-w-8 items-center justify-center rounded-sm border border-primary/35 bg-primary/10 px-1.5 py-0.5 font-heading text-xs font-semibold tabular-nums text-primary">
+        #{run.RunIndex}
+      </span>
+      <RunNoFailIcon enabled={run.NoFailMode} />
+      <RunDifficultyIcon difficulty={run.JudgmentDifficulty} />
+    </div>
+  );
+}
+
+function HeaderRunCardContent({ run, timeZone }: { run: ActivityRun; timeZone: string }) {
+  const startedAt = formatTimeWithOffsetParts(run.StartedAtUtc, timeZone);
+
+  return (
+    <>
+      <div className="flex min-h-8 items-center pr-28">
+        <RunIdentity run={run} />
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-2 rounded-md bg-muted/25 p-2.5">
+        <ScoreboardMetric
+          icon={PercentIcon}
+          label="Progress"
+          value={`${runStartProgressPercent(run)}% → ${runProgressPercent(run)}%`}
+        />
+        <ScoreboardMetric
+          icon={DashboardSpeed01Icon}
+          label="Pitch"
+          value={`${run.LevelPitchPercent ?? "?"}%`}
+        />
+        <ScoreboardMetric
+          icon={ChartAverageIcon}
+          label="X-Accuracy"
+          value={formatXAccuracy(run.XAccuracy)}
+        />
+        <ScoreboardMetric
+          icon={Clock01Icon}
+          label="Started at"
+          value={startedAt.time}
+          suffix={startedAt.offset ? `(${startedAt.offset})` : undefined}
+        />
+      </div>
+    </>
+  );
+}
+
+function ScoreboardMetric({
+  icon,
+  label,
+  value,
+  suffix,
+}: {
+  icon: typeof PercentIcon;
+  label: string;
+  value: string;
+  suffix?: string;
+}) {
+  return (
+    <span
+      className="flex min-w-0 items-center gap-2.5"
+      title={`${label}: ${value}${suffix ? ` ${suffix}` : ""}`}
+    >
+      <span className="grid size-7 shrink-0 place-items-center rounded-sm bg-primary/10 text-primary">
+        <HugeiconsIcon aria-hidden="true" icon={icon} size={15} strokeWidth={2} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[8px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {label}
+        </span>
+        <span className="flex min-w-0 items-baseline gap-1 font-heading font-semibold leading-tight tabular-nums text-foreground">
+          <span className="min-w-0 truncate text-[13px]">{value}</span>
+          {suffix ? (
+            <span className="shrink-0 text-[9px] font-medium text-muted-foreground">{suffix}</span>
+          ) : null}
+        </span>
+      </span>
+    </span>
+  );
+}
+
+function RunReplayButton({
+  run,
+  status,
+  pendingRunId,
+  error,
+  errorRunId,
+  onPlay,
+  disabled,
+}: {
+  run: ActivityRun;
+  status: ReplayStatus;
+  pendingRunId: string | null;
+  error: string;
+  errorRunId: string | null;
+  onPlay: (run: ActivityRun) => void;
+  disabled: boolean;
+}) {
+  const message = describeReplay(run.Id, status, pendingRunId, error, errorRunId);
+  const statusMatches = status.RunId === run.Id;
+  const starting =
+    pendingRunId === run.Id ||
+    (statusMatches &&
+      (status.State === "preparing" ||
+        status.State === "opening_level" ||
+        status.State === "waiting_for_focus" ||
+        status.State === "starting" ||
+        status.State === "returning_to_editor"));
+  const playing = statusMatches && status.State === "playing";
+  const failed =
+    (errorRunId === run.Id && Boolean(error)) || (statusMatches && status.State === "error");
+  const failureKey = failed ? error || status.Message || status.ErrorCode || "replay-error" : "";
+  const [failureVisible, setFailureVisible] = useState(false);
+  useEffect(() => {
+    if (!failureKey) {
+      setFailureVisible(false);
+      return;
+    }
+    setFailureVisible(true);
+    const timeout = setTimeout(() => setFailureVisible(false), 5_000);
+    return () => clearTimeout(timeout);
+  }, [failureKey]);
+  const label = `Play replay for run ${run.RunIndex}${message ? `. ${message}` : ""}`;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          aria-disabled={disabled || pendingRunId !== null}
+          disabled={disabled}
+          onClick={() => !disabled && pendingRunId === null && onPlay(run)}
+          className={cn(
+            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-[11px] font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:cursor-wait aria-disabled:opacity-45",
+            "min-w-16",
+            (starting || playing) && "border-primary/70 bg-primary/25",
+            playing && "bg-primary text-primary-foreground shadow-sm shadow-primary/20",
+            failureVisible &&
+              "border-destructive/50 bg-destructive/10 text-destructive shadow-none hover:border-destructive/70 hover:bg-destructive/15",
+          )}
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={starting ? Loading03Icon : PlayIcon}
+            className={cn("size-4", starting && "animate-spin")}
+            fill={starting ? "none" : "currentColor"}
+            strokeWidth={starting ? 2.2 : 0}
+          />
+          <span>{playing ? "Playing" : "Play"}</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent side="top" align="end">
+        {message || "Play replay"}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -392,30 +537,6 @@ function StatePanel({ title, body }: { title: string; body: string }) {
         <p className="mt-2 text-sm text-muted-foreground">{body}</p>
       </div>
     </section>
-  );
-}
-
-function RunMetric({
-  icon,
-  label,
-  value,
-  className,
-}: {
-  icon: typeof PercentIcon;
-  label: string;
-  value: string;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn("inline-flex min-w-0 items-center gap-2 whitespace-nowrap", className)}
-      title={`${label}: ${value}`}
-    >
-      <span className="grid size-6 shrink-0 place-items-center rounded-sm bg-muted/70 text-muted-foreground">
-        <HugeiconsIcon aria-hidden="true" icon={icon} size={14} strokeWidth={2} />
-      </span>
-      <span className="min-w-0 truncate font-medium tabular-nums text-foreground/85">{value}</span>
-    </span>
   );
 }
 
@@ -451,31 +572,6 @@ function SortDirectionButton({
   );
 }
 
-function RunStartNavigationButton({
-  label,
-  icon,
-  marker,
-  onSelect,
-}: {
-  label: string;
-  icon: typeof ArrowLeft02Icon;
-  marker: RunMarker | null;
-  onSelect: (marker: RunMarker | null) => void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={!marker}
-      onClick={() => marker && onSelect(marker)}
-      className="grid size-8 place-items-center rounded-sm text-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:text-muted-foreground/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-    >
-      <HugeiconsIcon aria-hidden="true" icon={icon} size={16} strokeWidth={2} />
-    </button>
-  );
-}
-
 function sortRuns(runs: ActivityRun[], sort: RunSortKey, direction: SortDirection) {
   return [...runs].sort((left, right) => {
     const leftValue = runSortValue(left, sort);
@@ -501,7 +597,15 @@ function runSortValue(run: ActivityRun, sort: RunSortKey) {
 
 function runProgressPercent(run: ActivityRun) {
   const lastTile = Math.max(run.StartTile, run.LastTile ?? run.StartTile);
-  return Math.round(Math.min(1, lastTile / Math.max(1, run.FloorCount)) * 100);
+  return tileProgressPercent(lastTile, run.FloorCount);
+}
+
+function runStartProgressPercent(run: ActivityRun) {
+  return tileProgressPercent(run.StartTile, run.FloorCount);
+}
+
+function tileProgressPercent(tile: number, floorCount: number) {
+  return Math.round(Math.min(1, Math.max(0, tile) / Math.max(1, floorCount)) * 100);
 }
 
 function describeReplay(

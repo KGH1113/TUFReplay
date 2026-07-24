@@ -4,7 +4,6 @@ import type { ActivityChart, ActivityRun, RunMarker } from "../activity.model";
 import { ChartBridge } from "./chart-bridge";
 
 export interface EmbeddedChartHandle {
-  fitEntireRun(): void;
   refocusSelection(): void;
 }
 
@@ -105,10 +104,6 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
     useImperativeHandle(
       ref,
       () => ({
-        fitEntireRun() {
-          if (selectedRunStart === null || selectedRunEnd === null) return;
-          bridgeRef.current?.fitEntireRun(selectedRunStart, selectedRunEnd);
-        },
         refocusSelection() {
           if (state !== "ready") return;
           if (selectedRunStart !== null && selectedRunEnd !== null) {

@@ -4,6 +4,7 @@ using TUFReplay;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
+using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
@@ -12,6 +13,7 @@ using TUFReplay.Infrastructure.Database;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Database.Schema;
 using TUFReplay.Infrastructure.NativeInput;
+using TUFReplay.Infrastructure.Unity;
 
 internal static class Program
 {
@@ -29,12 +31,14 @@ internal static class Program
       TestCalibrationWaveforms(root);
       TestAdofaiLevelFileHash(root);
       TestSchemaMigrationAndBlob(root);
+      TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
       TestReplaySchedulerChord();
       TestReplayPumpTimingAndBatching();
       TestReplayPumpFocusAndReleaseAll();
       TestReplayPumpClockJumpSeeksState();
       TestPreparedReplayDoesNotEmit();
+      TestMiddleStartReplayInitializesFromPlayerControl();
       Console.WriteLine("TUFReplay C# tests passed.");
       return 0;
     }
@@ -138,6 +142,27 @@ internal static class Program
     var context = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Won };
     ReplayRunController.MarkRestartPrepared(context);
     Assert(context.Phase == ReplayPlaybackPhase.Prepared, "Won replay was not returned to Prepared on restart.");
+  }
+
+  private static void TestMiddleStartReplayInitializesFromPlayerControl()
+  {
+    var prepared = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Prepared, RunStarted = false };
+    Assert(
+      ReplayRunController.ShouldInitializeFromPlayerControl(prepared),
+      "Prepared middle-start replay was not eligible for PlayerControl initialization."
+    );
+
+    prepared.RunStarted = true;
+    Assert(
+      !ReplayRunController.ShouldInitializeFromPlayerControl(prepared),
+      "Running replay attempted PlayerControl initialization twice."
+    );
+
+    var armed = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Armed, RunStarted = false };
+    Assert(
+      !ReplayRunController.ShouldInitializeFromPlayerControl(armed),
+      "Countdown-armed replay incorrectly used the middle-start fallback."
+    );
   }
 
   private static RecordedInput Input(long timeUs, int key, bool down)
@@ -316,7 +341,7 @@ internal static class Program
       ActivitySchema.Ensure(connection);
       using SqliteCommand version = connection.CreateCommand();
       version.CommandText = "PRAGMA user_version";
-      Assert(Convert.ToInt32(version.ExecuteScalar()) == 9, "Fresh schema version is not 9.");
+      Assert(Convert.ToInt32(version.ExecuteScalar()) == 11, "Fresh schema version is not 11.");
       InsertRun(connection);
     }
 
@@ -336,7 +361,8 @@ internal static class Program
       DeviceId = "test-device",
       CaptureStartOffsetUs = 123,
     };
-    MicrophoneRecordingRepository.Save(recording);
+    DateTime retentionSavedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    MicrophoneRecordingRepository.Save(recording, retentionSavedAt);
 
     string playbackPath = Path.Combine(root, "blob-playback.wav");
     StoredMicrophoneRecording copied = MicrophoneRecordingRepository.CopyForPlayback(
@@ -359,6 +385,37 @@ internal static class Program
       ) == null,
       "Missing microphone recording did not return null."
     );
+    Assert(
+      MicrophoneRecordingRepository.DeleteExpired(retentionSavedAt.AddDays(2)) == 0,
+      "Temporary microphone recording expired too early."
+    );
+    Assert(MicrophoneRecordingRepository.KeepPermanently("run"), "Microphone recording was not kept permanently.");
+    Assert(
+      !MicrophoneRecordingRepository.KeepPermanently("run"),
+      "Repeated permanent microphone retention was not idempotent."
+    );
+    Assert(
+      MicrophoneRecordingRepository.DeleteExpired(retentionSavedAt.AddDays(30)) == 0,
+      "Permanent microphone recording expired."
+    );
+    Assert(MicrophoneRecordingRepository.Delete("run"), "Microphone recording was not deleted.");
+    Assert(!MicrophoneRecordingRepository.Delete("run"), "Repeated microphone recording deletion was not idempotent.");
+    Assert(MicrophoneRecordingRepository.RunExists("run"), "Microphone recording deletion removed its run.");
+    Assert(
+      MicrophoneRecordingRepository.CopyForPlayback(
+        "run",
+        Path.Combine(root, "deleted.wav"),
+        System.Threading.CancellationToken.None
+      ) == null,
+      "Deleted microphone recording remained available for playback."
+    );
+    MicrophoneRecordingRepository.Save(recording, retentionSavedAt);
+    Assert(
+      MicrophoneRecordingRepository.DeleteExpired(retentionSavedAt.AddDays(3)) == 1,
+      "Temporary microphone recording did not expire after three days."
+    );
+    Assert(MicrophoneRecordingRepository.RunExists("run"), "Expiration removed the microphone recording's run.");
+    MicrophoneRecordingRepository.Save(recording);
 
     using (var cancelled = new System.Threading.CancellationTokenSource())
     {
@@ -403,13 +460,56 @@ internal static class Program
     using (SqliteCommand setup = migration.CreateCommand())
     {
       setup.CommandText =
-        "ALTER TABLE level_sessions DROP COLUMN level_file_hash; DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
+        "DROP INDEX idx_level_sessions_logical; ALTER TABLE level_sessions DROP COLUMN logical_level_id; ALTER TABLE level_sessions DROP COLUMN gameplay_hash; ALTER TABLE level_sessions DROP COLUMN gameplay_hash_version; DROP TABLE logical_levels; ALTER TABLE level_sessions DROP COLUMN level_file_hash; DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
       setup.ExecuteNonQuery();
     }
     ActivitySchema.Ensure(migration);
     using SqliteCommand migrated = migration.CreateCommand();
     migrated.CommandText = "SELECT user_version FROM pragma_user_version";
-    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 9, "Schema 7 to 9 migration failed.");
+    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 11, "Schema 7 to 11 migration failed.");
+
+    string retentionMigrationPath = Path.Combine(root, "retention-migration.sqlite");
+    using var retentionMigration = new SqliteConnection("Data Source=" + retentionMigrationPath);
+    retentionMigration.Open();
+    using (SqliteCommand setup = retentionMigration.CreateCommand())
+    {
+      setup.CommandText =
+        @"
+CREATE TABLE app_sessions(id TEXT PRIMARY KEY,started_at_utc TEXT NOT NULL);
+CREATE TABLE level_sessions(
+  id TEXT PRIMARY KEY,app_session_id TEXT NOT NULL,tuf_level_id INTEGER,level_path TEXT NOT NULL,
+  opened_at_utc TEXT NOT NULL,closed_at_utc TEXT,level_tile_count INTEGER NOT NULL DEFAULT 0,
+  level_file_hash BLOB,song TEXT,author TEXT,artist TEXT,metadata_state INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE runs(
+  id TEXT PRIMARY KEY,level_session_id TEXT NOT NULL,run_index INTEGER NOT NULL,start_tile INTEGER NOT NULL,
+  gameplay_hash BLOB,gameplay_hash_version INTEGER
+);
+CREATE TABLE microphone_recordings(
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
+  audio_wav BLOB NOT NULL,format TEXT NOT NULL,sample_rate INTEGER NOT NULL,
+  channels INTEGER NOT NULL,frame_count INTEGER NOT NULL,device_id TEXT,
+  capture_start_offset_us INTEGER NOT NULL DEFAULT 0
+);
+INSERT INTO app_sessions(id,started_at_utc) VALUES('legacy-app','2026-01-01T00:00:00Z');
+INSERT INTO level_sessions(id,app_session_id,level_path,opened_at_utc)
+VALUES('legacy-level','legacy-app','legacy.adofai','2026-01-01T00:00:00Z');
+INSERT INTO runs(id,level_session_id,run_index,start_tile) VALUES('legacy-run','legacy-level',0,0);
+INSERT INTO microphone_recordings(run_id,audio_wav,format,sample_rate,channels,frame_count)
+VALUES('legacy-run',X'00','wav/pcm16',48000,1,1);
+PRAGMA user_version=9;";
+      setup.ExecuteNonQuery();
+    }
+    ActivitySchema.Ensure(retentionMigration);
+    using SqliteCommand retention = retentionMigration.CreateCommand();
+    retention.CommandText =
+      "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
+    using SqliteDataReader retentionReader = retention.ExecuteReader();
+    Assert(retentionReader.Read(), "Legacy microphone recording was lost during retention migration.");
+    Assert(
+      retentionReader.GetInt32(0) == 1 && retentionReader.IsDBNull(1),
+      "Legacy microphone recording was not migrated as permanent."
+    );
   }
 
   private static void TestAdofaiLevelFileHash(string root)
@@ -426,13 +526,71 @@ internal static class Program
     Assert(!AdofaiLevelFileHash.Equals(first, changed), "Changed level file was treated as identical.");
   }
 
+  private static void TestLogicalLevelIdentity(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "logical-levels.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "logical-app",
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+
+    LevelSession gameplayA = LogicalVisit("gameplay-a", "/tmp/a.adofai", null, new byte[16], new byte[] { 1 });
+    LevelSession gameplayB = LogicalVisit("gameplay-b", "/tmp/b.adofai", null, new byte[16], new byte[] { 2 });
+    LevelSessionRepository.Save(gameplayA);
+    LevelSessionRepository.Save(gameplayB);
+    Assert(gameplayA.LogicalLevelId == gameplayB.LogicalLevelId, "Equal gameplay hashes were not merged.");
+
+    LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[16], new byte[] { 3 });
+    LevelSession tufB = LogicalVisit("tuf-b", "/tmp/tuf-b.adofai", 77, Enumerable.Repeat((byte)9, 16).ToArray(), new byte[] { 4 });
+    LevelSessionRepository.Save(tufA);
+    LevelSessionRepository.Save(tufB);
+    Assert(tufA.LogicalLevelId == tufB.LogicalLevelId, "Equal TUF IDs were not merged after chart updates.");
+
+    LevelSession fileA = LogicalVisit("file-a", "/tmp/local.adofai", null, null, new byte[] { 5 });
+    LevelSession fileB = LogicalVisit("file-b", "/tmp/local.adofai", null, null, new byte[] { 5 });
+    LevelSession fileChanged = LogicalVisit("file-changed", "/tmp/local.adofai", null, null, new byte[] { 6 });
+    LevelSessionRepository.Save(fileA);
+    LevelSessionRepository.Save(fileB);
+    LevelSessionRepository.Save(fileChanged);
+    Assert(fileA.LogicalLevelId == fileB.LogicalLevelId, "Equal local file identities were not merged.");
+    Assert(fileA.LogicalLevelId != fileChanged.LogicalLevelId, "Changed local files were incorrectly merged.");
+  }
+
+  private static LevelSession LogicalVisit(
+    string id,
+    string path,
+    int? tufLevelId,
+    byte[] gameplayHash,
+    byte[] fileHash
+  ) =>
+    new LevelSession
+    {
+      Id = id,
+      AppSessionId = "logical-app",
+      TufLevelId = tufLevelId,
+      LevelPath = path,
+      OpenedAtUtc = "2026-01-01T00:00:00Z",
+      LevelTileCount = 100,
+      GameplayHash = gameplayHash,
+      GameplayHashVersion = gameplayHash == null ? null : (int?)GameplayChartHash.Version,
+      LevelFileHash = fileHash,
+      MetadataState = LevelMetadataState.Unavailable,
+    };
+
   private static void InsertRun(SqliteConnection connection)
   {
     using SqliteCommand command = connection.CreateCommand();
     command.CommandText =
       @"
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01',0);
-INSERT INTO level_sessions(id,app_session_id,level_path,opened_at_utc) VALUES('level','app','test.adofai','2026-01-01');
+INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test','2026-01-01','2026-01-01');
+INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc) VALUES('level','logical','app','test.adofai','2026-01-01');
 INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result) VALUES('run','level',0,'2026-01-01',0,'cleared');";
     command.ExecuteNonQuery();
   }
