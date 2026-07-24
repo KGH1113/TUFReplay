@@ -36,6 +36,28 @@ describe("activity IPC contract", () => {
     }
   });
 
+  test("uses logical-level endpoints for cross-visit activity", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return method.endsWith("runs.list") ? [] : {};
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+    await gateway.getLogicalLevel("logical-1");
+    await gateway.listAllLogicalLevelRuns("logical-1");
+    await gateway.getLogicalLevelChart("logical-1");
+    expect(calls).toEqual([
+      { method: "activity.logical-level.get", params: { id: "logical-1" } },
+      {
+        method: "activity.logical-level.runs.list",
+        params: { id: "logical-1", offset: 0, limit: 200 },
+      },
+      { method: "activity.logical-level.chart.get", params: { id: "logical-1" } },
+    ]);
+  });
+
   test("deletes a microphone recording with the exact command and params", async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
     const namespace = {

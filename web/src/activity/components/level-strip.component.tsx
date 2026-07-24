@@ -1,5 +1,5 @@
 import { cn } from "@/ui/ui-class.utils";
-import type { ActivityLevelSessionOverview, LevelMetadata } from "../activity.model";
+import type { ActivityLogicalLevelOverview, LevelMetadata } from "../activity.model";
 import { formatTime } from "../lib/activity-date.utils";
 
 export function LevelStrip({
@@ -9,10 +9,10 @@ export function LevelStrip({
   metadataFor,
   onSelectLevelSession,
 }: {
-  levelSessions: ActivityLevelSessionOverview[];
+  levelSessions: ActivityLogicalLevelOverview[];
   selectedLevelSessionId: string | null;
   timeZone: string;
-  metadataFor: (session: ActivityLevelSessionOverview) => LevelMetadata;
+  metadataFor: (session: ActivityLogicalLevelOverview) => LevelMetadata;
   onSelectLevelSession: (id: string) => void;
 }) {
   return (
@@ -63,7 +63,7 @@ export function LevelStrip({
                   <span>·</span>
                   <span>{session.ClearRunCount} clears</span>
                   <span>·</span>
-                  <span>{formatTime(session.OpenedAtUtc, timeZone)}</span>
+                  <span>{formatTime(session.LastSeenAtUtc, timeZone)}</span>
                 </div>
               </div>
             </button>

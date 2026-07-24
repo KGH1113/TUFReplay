@@ -1,5 +1,6 @@
 export interface ActivityLevelSessionOverview {
   Id: string;
+  LogicalLevelId: string;
   AppSessionId: string;
   TufLevelId: number | null;
   Song: string | null;
@@ -7,8 +8,30 @@ export interface ActivityLevelSessionOverview {
   Artist: string | null;
   OpenedAtUtc: string;
   ClosedAtUtc: string | null;
+  FloorCount: number;
   RunCount: number;
   ClearRunCount: number;
+  NoFailRunCount: number;
+  FirstStartTile: number | null;
+  LastStartTile: number | null;
+  ChartAvailable: boolean;
+}
+
+export interface ActivityLogicalLevelOverview {
+  Id: string;
+  TufLevelId: number | null;
+  Song: string | null;
+  Author: string | null;
+  Artist: string | null;
+  FirstSeenAtUtc: string;
+  LastSeenAtUtc: string;
+  FloorCount: number;
+  VisitCount: number;
+  RunCount: number;
+  ClearRunCount: number;
+  NoFailRunCount: number;
+  FirstStartTile: number | null;
+  LastStartTile: number | null;
   ChartAvailable: boolean;
 }
 
@@ -123,7 +146,7 @@ export interface ReplayLevelFilePickerResult {
 export interface ActivityDay {
   date: string;
   appSessions: ActivityAppSession[];
-  levelSessions: ActivityLevelSessionOverview[];
+  levelSessions: ActivityLogicalLevelOverview[];
   runCount: number;
   clearRunCount: number;
 }

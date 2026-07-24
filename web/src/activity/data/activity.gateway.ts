@@ -4,6 +4,7 @@ import type {
   ActivityAppSession,
   ActivityChart,
   ActivityLevelSessionOverview,
+  ActivityLogicalLevelOverview,
   ActivityRun,
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
@@ -40,8 +41,14 @@ export interface ActivityGateway {
   health(): Promise<unknown>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
+  getLogicalLevel(id: string): Promise<ActivityLogicalLevelOverview>;
   listAllRuns(id: string, onPage?: (items: ActivityRun[]) => void): Promise<ActivityRun[]>;
+  listAllLogicalLevelRuns(
+    id: string,
+    onPage?: (items: ActivityRun[]) => void,
+  ): Promise<ActivityRun[]>;
   getChart(id: string): Promise<ActivityChart>;
+  getLogicalLevelChart(id: string): Promise<ActivityChart>;
   deleteMicrophoneRecording(runId: string): Promise<MicrophoneRecordingDeleteResult>;
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
@@ -96,6 +103,7 @@ export function createActivityGateway(
         onPage,
       ),
     getLevelSession: (id) => callDomain(namespace, "activity.level-session.get", { id }),
+    getLogicalLevel: (id) => callDomain(namespace, "activity.logical-level.get", { id }),
     listAllRuns: (id, onPage) =>
       loadAllPages<ActivityRun>(
         (offset, limit) =>
@@ -107,6 +115,17 @@ export function createActivityGateway(
         onPage,
       ),
     getChart: (id) => callDomain(namespace, "activity.level-session.chart.get", { id }),
+    listAllLogicalLevelRuns: (id, onPage) =>
+      loadAllPages<ActivityRun>(
+        (offset, limit) =>
+          callDomain<ActivityRun[]>(namespace, "activity.logical-level.runs.list", {
+            id,
+            offset,
+            limit,
+          }),
+        onPage,
+      ),
+    getLogicalLevelChart: (id) => callDomain(namespace, "activity.logical-level.chart.get", { id }),
     deleteMicrophoneRecording: (runId) =>
       callDomain(namespace, "microphone.recording.delete", { runId }),
     keepMicrophoneRecording: (runId) =>

@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import type { ActivityAppSession, ActivityRun } from "../activity.model";
+import type {
+  ActivityAppSession,
+  ActivityLevelSessionOverview,
+  ActivityRun,
+} from "../activity.model";
 import { aggregateRunMarkers, groupSessionsByDay } from "./activity-data.utils";
 
 const session = (id: string, started: string): ActivityAppSession => ({
@@ -10,6 +14,30 @@ const session = (id: string, started: string): ActivityAppSession => ({
   RecorderTimeZoneId: "Asia/Seoul",
   RecorderUtcOffsetMinutes: 540,
   LevelSessions: [],
+});
+const visit = (
+  id: string,
+  logicalLevelId: string,
+  appSessionId: string,
+  openedAtUtc: string,
+  runCount: number,
+): ActivityLevelSessionOverview => ({
+  Id: id,
+  LogicalLevelId: logicalLevelId,
+  AppSessionId: appSessionId,
+  TufLevelId: 7,
+  Song: "Same level",
+  Author: "Creator",
+  Artist: "Artist",
+  OpenedAtUtc: openedAtUtc,
+  ClosedAtUtc: null,
+  FloorCount: 100,
+  RunCount: runCount,
+  ClearRunCount: 0,
+  NoFailRunCount: 0,
+  FirstStartTile: 0,
+  LastStartTile: 0,
+  ChartAvailable: true,
 });
 const run = (id: string, start: number, last: number, result = "failed"): ActivityRun => ({
   Id: id,
@@ -73,5 +101,16 @@ describe("activity data", () => {
     expect(aggregateRunMarkers([run("a", 12, 20), run("b", 12, 30, "cleared")])).toEqual([
       { id: "floor-12", floorIndex: 12, count: 2, clearCount: 1, bestLastFloorIndex: 30 },
     ]);
+  });
+
+  test("deduplicates the same logical level while preserving visits across app sessions", () => {
+    const first = session("app-a", "2026-01-01T01:00:00Z");
+    const second = session("app-b", "2026-01-01T02:00:00Z");
+    first.LevelSessions = [visit("visit-a", "logical-7", first.Id, first.StartedAtUtc, 2)];
+    second.LevelSessions = [visit("visit-b", "logical-7", second.Id, second.StartedAtUtc, 3)];
+    const [day] = groupSessionsByDay([first, second], "UTC");
+    expect(day.levelSessions).toHaveLength(1);
+    expect(day.levelSessions[0]).toMatchObject({ Id: "logical-7", VisitCount: 2, RunCount: 5 });
+    expect(day.runCount).toBe(5);
   });
 });

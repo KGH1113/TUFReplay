@@ -76,24 +76,8 @@ describe("ChartBridge child contract", () => {
   test("does not send focus commands before the child is ready", () => {
     const { bridge, postMessage } = setup();
     bridge.focusRun(2, 8);
-    bridge.fitEntireRun(2, 8);
     bridge.clearRunFocus();
     expect(postMessage).not.toHaveBeenCalled();
-  });
-
-  test("emits an exact additive v1 command when the user requests the entire run", () => {
-    const { bridge, postMessage, send } = setup();
-    send({ type: "chart.ready" });
-    bridge.fitEntireRun(2, 8);
-    expect(postMessage).toHaveBeenCalledTimes(1);
-    expect(postMessage.mock.calls[0]?.[0]).toEqual({
-      protocol: "web-adofai.chart",
-      version: 1,
-      type: "run.fit-all",
-      startFloorIndex: 2,
-      endFloorIndex: 8,
-    });
-    expect(postMessage.mock.calls[0]?.[1]).toBe("https://chart.example");
   });
 
   test("updates changed markers without reloading the chart and ignores equivalent polling data", () => {

@@ -94,12 +94,38 @@ export function createMockActivityGateway(): ActivityGateway {
       return appSessions;
     },
     getLevelSession: async (id) => findLevel(id).session,
+    getLogicalLevel: async (id) => {
+      const level = findLevel(id);
+      return {
+        Id: id,
+        TufLevelId: level.session.TufLevelId,
+        Song: level.session.Song,
+        Author: level.session.Author,
+        Artist: level.session.Artist,
+        FirstSeenAtUtc: level.session.OpenedAtUtc,
+        LastSeenAtUtc: level.session.ClosedAtUtc ?? level.session.OpenedAtUtc,
+        FloorCount: level.session.FloorCount,
+        VisitCount: 1,
+        RunCount: level.session.RunCount,
+        ClearRunCount: level.session.ClearRunCount,
+        NoFailRunCount: level.session.NoFailRunCount,
+        FirstStartTile: level.session.FirstStartTile,
+        LastStartTile: level.session.LastStartTile,
+        ChartAvailable: level.session.ChartAvailable,
+      };
+    },
     listAllRuns: async (id, onPage) => {
       const runs = findLevel(id).runs;
       onPage?.(runs);
       return runs;
     },
     getChart: async (id) => findLevel(id).chart,
+    listAllLogicalLevelRuns: async (id, onPage) => {
+      const runs = findLevel(id).runs;
+      onPage?.(runs);
+      return runs;
+    },
+    getLogicalLevelChart: async (id) => findLevel(id).chart,
     deleteMicrophoneRecording: async (runId) => {
       for (const level of levels) {
         const run = level.runs.find((candidate) => candidate.Id === runId);
@@ -230,6 +256,7 @@ function createLevel(
   return {
     session: {
       Id: id,
+      LogicalLevelId: id,
       AppSessionId: appSessionId,
       TufLevelId: tufLevelId,
       Song: null,
@@ -237,8 +264,12 @@ function createLevel(
       Artist: null,
       OpenedAtUtc: openedAtUtc,
       ClosedAtUtc: null,
+      FloorCount: floorCount,
       RunCount: runs.length,
       ClearRunCount: clearRunCount,
+      NoFailRunCount: runs.filter((run) => run.NoFailMode).length,
+      FirstStartTile: Math.min(...starts),
+      LastStartTile: Math.max(...starts),
       ChartAvailable: true,
     },
     chart: { LevelSessionId: id, LevelText: levelText, FloorCount: floorCount },
