@@ -35,6 +35,7 @@ internal static class Program
       TestReplayPumpFocusAndReleaseAll();
       TestReplayPumpClockJumpSeeksState();
       TestPreparedReplayDoesNotEmit();
+      TestMiddleStartReplayInitializesFromPlayerControl();
       Console.WriteLine("TUFReplay C# tests passed.");
       return 0;
     }
@@ -138,6 +139,27 @@ internal static class Program
     var context = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Won };
     ReplayRunController.MarkRestartPrepared(context);
     Assert(context.Phase == ReplayPlaybackPhase.Prepared, "Won replay was not returned to Prepared on restart.");
+  }
+
+  private static void TestMiddleStartReplayInitializesFromPlayerControl()
+  {
+    var prepared = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Prepared, RunStarted = false };
+    Assert(
+      ReplayRunController.ShouldInitializeFromPlayerControl(prepared),
+      "Prepared middle-start replay was not eligible for PlayerControl initialization."
+    );
+
+    prepared.RunStarted = true;
+    Assert(
+      !ReplayRunController.ShouldInitializeFromPlayerControl(prepared),
+      "Running replay attempted PlayerControl initialization twice."
+    );
+
+    var armed = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Armed, RunStarted = false };
+    Assert(
+      !ReplayRunController.ShouldInitializeFromPlayerControl(armed),
+      "Countdown-armed replay incorrectly used the middle-start fallback."
+    );
   }
 
   private static RecordedInput Input(long timeUs, int key, bool down)
