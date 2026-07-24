@@ -8,7 +8,7 @@ export function RunNoFailIcon({ enabled }: { enabled?: boolean }) {
       src={noFailIcon}
       alt="No Fail mode"
       title="No Fail mode"
-      className="size-4 shrink-0 object-contain"
+      className="size-[18px] shrink-0 object-contain"
     />
   );
 }

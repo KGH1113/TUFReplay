@@ -18,7 +18,7 @@ export function RunDifficultyIcon({ difficulty }: { difficulty?: JudgmentDifficu
       src={difficultyIcons[difficulty]}
       alt={`${difficulty} judgment difficulty`}
       title={`${difficulty} judgment difficulty`}
-      className="size-4 shrink-0"
+      className="size-[18px] shrink-0"
     />
   );
 }

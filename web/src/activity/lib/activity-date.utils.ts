@@ -49,16 +49,22 @@ export function formatTime(value: string | null | undefined, timeZone?: string) 
 }
 
 export function formatTimeWithOffset(value: string | null | undefined, timeZone?: string) {
-  if (!value) return "Open";
+  const { time, offset } = formatTimeWithOffsetParts(value, timeZone);
+  return offset ? `${time} (${offset})` : time;
+}
+
+export function formatTimeWithOffsetParts(value: string | null | undefined, timeZone?: string) {
+  if (!value) return { time: "Open", offset: "" };
   const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
+  if (Number.isNaN(parsed.getTime())) return { time: value, offset: "" };
   const time = parsed.toLocaleTimeString(undefined, {
     hour: "2-digit",
+    hourCycle: "h23",
     minute: "2-digit",
     timeZone,
   });
   const offset = new Intl.DateTimeFormat("en-US", { timeZone, timeZoneName: "shortOffset" })
     .formatToParts(parsed)
     .find((part) => part.type === "timeZoneName")?.value;
-  return offset ? `${time} (${offset})` : time;
+  return { time, offset: offset ?? "" };
 }
