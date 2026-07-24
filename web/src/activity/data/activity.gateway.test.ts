@@ -180,6 +180,7 @@ describe("activity IPC contract", () => {
       Revision: 1,
       DurationMs: 6000,
       GameWaveform: [0, 1],
+      SongWaveform: [0, 0.5],
       MicrophoneWaveform: [1, 0],
     } satisfies MicrophoneCalibrationResult;
     const namespace = {

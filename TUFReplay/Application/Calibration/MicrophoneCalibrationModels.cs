@@ -33,5 +33,6 @@ public sealed class MicrophoneCalibrationResult
   public int Revision;
   public double DurationMs;
   public float[] GameWaveform;
+  public float[] SongWaveform;
   public float[] MicrophoneWaveform;
 }

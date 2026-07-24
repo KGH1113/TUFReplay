@@ -121,7 +121,12 @@ function CalibrationProgress({
   return (
     <section className="p-6 sm:p-8">
       <div className="flex items-start gap-4">
-        <span className="grid size-11 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
+        <span
+          className={cn(
+            "grid size-11 shrink-0 place-items-center rounded-full",
+            failed ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary",
+          )}
+        >
           <HugeiconsIcon
             aria-hidden="true"
             icon={waiting || failed ? WaveSquareIcon : Loading03Icon}
@@ -154,13 +159,20 @@ function CalibrationProgress({
 
       <div className="mt-8 h-1.5 overflow-hidden rounded-full bg-muted">
         <div
-          className="h-full rounded-full bg-primary transition-[width] duration-700 ease-out motion-reduce:transition-none"
-          style={{ width: failed ? "100%" : waiting ? "72%" : "34%" }}
+          className={cn(
+            "h-full rounded-full transition-[width] duration-700 ease-out motion-reduce:transition-none",
+            failed ? "bg-destructive" : "bg-primary",
+          )}
+          style={{ width: waiting || failed ? "72%" : "34%" }}
         />
       </div>
       <ol className="mt-5 grid grid-cols-3 gap-3 text-xs">
-        <ProgressStep label="Open level" active={!waiting} complete={waiting} />
-        <ProgressStep label="Clear run" active={waiting} complete={false} />
+        <ProgressStep
+          label="Open level"
+          active={!waiting && !failed}
+          complete={waiting || failed}
+        />
+        <ProgressStep label="Clear run" active={waiting || failed} complete={false} />
         <ProgressStep label="Align audio" active={false} complete={false} />
       </ol>
 
@@ -240,7 +252,7 @@ function OffsetEditor({
   onTogglePlayback: () => void;
   onClose: () => void;
 }) {
-  const gamePath = useMemo(() => buildWaveformAreaPath(data.gameWaveform), [data.gameWaveform]);
+  const songPath = useMemo(() => buildWaveformAreaPath(data.songWaveform), [data.songWaveform]);
   const microphonePath = useMemo(
     () => buildWaveformAreaPath(data.microphoneWaveform),
     [data.microphoneWaveform],
@@ -362,7 +374,7 @@ function OffsetEditor({
           <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] sm:grid-cols-[7.25rem_minmax(0,1fr)]">
             <div className="grid grid-rows-[2.25rem_7rem_7rem]">
               <div className="border-b border-border bg-muted/25" />
-              <TrackLabel icon={MusicNote01Icon} label="Game audio" description="Reference" />
+              <TrackLabel icon={MusicNote01Icon} label="Game audio" description="Song reference" />
               <TrackLabel icon={Mic02Icon} label="Microphone" description="Drag to align" />
             </div>
 
@@ -370,8 +382,8 @@ function OffsetEditor({
               <div className="min-w-full" style={{ width: `${timelineScale * 100}%` }}>
                 <TimelineRuler durationMs={data.durationMs} visibleMs={timelineVisibleMs} />
                 <WaveformTrack
-                  path={gamePath}
-                  colorClassName="fill-foreground/55"
+                  path={songPath}
+                  colorClassName="fill-sky-400/55"
                   playheadPercent={playheadPercent}
                   playing={playing}
                 />
@@ -621,9 +633,11 @@ function MicrophoneWaveformTrack({
       aria-valuemax={MAX_MICROPHONE_OFFSET_MS}
       aria-valuenow={draftOffsetMs}
       aria-valuetext={formatMicrophoneOffset(draftOffsetMs)}
-      title="Drag left or right to adjust microphone timing"
+      style={{ WebkitTouchCallout: "none" }}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
+        event.preventDefault();
+        event.currentTarget.focus({ preventScroll: true });
         const timelineWidth = event.currentTarget.getBoundingClientRect().width;
         event.currentTarget.setPointerCapture(event.pointerId);
         dragRef.current = {
@@ -635,10 +649,13 @@ function MicrophoneWaveformTrack({
         onDraggingChange(true);
       }}
       onPointerMove={(event) => {
-        if (dragRef.current?.pointerId === event.pointerId) updatePointerOffset(event.clientX);
+        if (dragRef.current?.pointerId !== event.pointerId) return;
+        event.preventDefault();
+        updatePointerOffset(event.clientX);
       }}
       onPointerUp={(event) => {
         if (dragRef.current?.pointerId !== event.pointerId) return;
+        event.preventDefault();
         updatePointerOffset(event.clientX);
         dragRef.current = null;
         if (event.currentTarget.hasPointerCapture(event.pointerId))
@@ -652,6 +669,8 @@ function MicrophoneWaveformTrack({
         onDraftOffset(committedOffsetMs);
         onDraggingChange(false);
       }}
+      onContextMenu={(event) => event.preventDefault()}
+      onDragStart={(event) => event.preventDefault()}
       onKeyDown={(event) => {
         if (event.key === "Escape") {
           event.preventDefault();
@@ -676,9 +695,9 @@ function MicrophoneWaveformTrack({
       }}
       onBlur={commitKeyboardOffset}
       className={cn(
-        "relative min-h-28 touch-none overflow-hidden bg-primary/[0.035] outline-none transition-[transform,box-shadow,background-color] duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60",
+        "relative min-h-28 touch-none select-none overflow-hidden bg-primary/[0.035] outline-none transition-[transform,box-shadow,background-color] duration-150 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60",
         dragging
-          ? "z-10 -translate-y-1 scale-[1.008] cursor-grabbing bg-primary/[0.07] shadow-[0_14px_36px_rgba(0,0,0,0.22)]"
+          ? "z-10 -translate-y-1 cursor-grabbing bg-primary/[0.07] shadow-[0_14px_36px_rgba(0,0,0,0.22)]"
           : "cursor-grab hover:bg-primary/[0.055]",
       )}
     >
@@ -687,7 +706,7 @@ function MicrophoneWaveformTrack({
         aria-hidden="true"
         viewBox="0 0 1000 100"
         preserveAspectRatio="none"
-        className="absolute inset-0 h-full w-full py-4"
+        className="pointer-events-none absolute inset-0 h-full w-full select-none py-4"
       >
         <path d={path} transform={`translate(${translation} 0)`} className="fill-primary/75" />
       </svg>

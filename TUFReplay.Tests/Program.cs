@@ -318,7 +318,10 @@ internal static class Program
     };
     float[] microphone = CalibrationWaveformBuilder.FromPcm16(recording, 1000d);
     Assert(microphone.Length == CalibrationWaveformBuilder.BinCount, "Microphone waveform bin count is wrong.");
-    Assert(microphone[240] > 0.99f, "Microphone waveform did not apply the capture start offset.");
+    Assert(
+      microphone[CalibrationWaveformBuilder.BinCount / 2] > 0.99f,
+      "Microphone waveform did not apply the capture start offset."
+    );
     Assert(microphone[0] == 0f, "Microphone waveform leaked before its capture start.");
 
     float[] game = CalibrationWaveformBuilder.FromTimedPeaks(
@@ -329,8 +332,48 @@ internal static class Program
       1000d
     );
     Assert(game.Length == CalibrationWaveformBuilder.BinCount, "Game waveform bin count is wrong.");
-    Assert(Math.Abs(game[10] - 0.5f) < 0.001f, "Game waveform peak normalization is wrong.");
-    Assert(game[200] > 0.99f && game[400] == 0f, "Game waveform timing aggregation is wrong.");
+    Assert(
+      Math.Abs(game[CalibrationWaveformBuilder.BinCount / 20] - 0.5f) < 0.001f,
+      "Game waveform peak normalization is wrong."
+    );
+    Assert(
+      game[CalibrationWaveformBuilder.BinCount / 2] > 0.99f
+        && game[CalibrationWaveformBuilder.BinCount * 4 / 5] == 0f,
+      "Game waveform timing aggregation is wrong."
+    );
+
+    string referencePath = Path.Combine(root, "calibration-reference.waveform");
+    using (var stream = new FileStream(referencePath, FileMode.Create, FileAccess.Write, FileShare.None))
+    using (var writer = new BinaryWriter(stream))
+    {
+      writer.Write(System.Text.Encoding.ASCII.GetBytes("TUFWRF1\0"));
+      writer.Write((uint)1000);
+      writer.Write((uint)1);
+      writer.Write((uint)4);
+      writer.Write((ushort)0);
+      writer.Write((ushort)32768);
+      writer.Write(ushort.MaxValue);
+      writer.Write((ushort)0);
+    }
+    CalibrationReferenceWaveform reference = CalibrationReferenceWaveform.Read(referencePath);
+    float[] referenceSong = CalibrationWaveformBuilder.FromReferenceWaveform(reference, 1, 1000, 3d);
+    Assert(referenceSong[0] > 0.49f, "Reference song waveform did not apply its source start frame.");
+    Assert(
+      referenceSong[CalibrationWaveformBuilder.BinCount / 3] > 0.99f,
+      "Reference song waveform timing is wrong."
+    );
+    Assert(
+      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, 0.1d, 2d, 1000, false) == 1400,
+      "Modern conductor input offset was not applied to the song reference."
+    );
+    Assert(
+      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, -0.1d, 2d, 1000, false) == 1000,
+      "Negative input offset moved the song reference in the wrong direction."
+    );
+    Assert(
+      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, 0.1d, 2d, 1000, true) == 1200,
+      "Legacy conductor input offset was not applied to the song reference."
+    );
   }
 
   private static void TestSchemaMigrationAndBlob(string root)
