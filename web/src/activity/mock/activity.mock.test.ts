@@ -24,4 +24,38 @@ describe("activity mock", () => {
     }
     expect(noFailRuns).toBe(1);
   });
+
+  test("deletes microphone recordings without removing their runs", async () => {
+    const gateway = createMockActivityGateway();
+    const sessions = await gateway.listAllAppSessions();
+    const levelId = sessions[0]?.LevelSessions[0]?.Id;
+    if (!levelId) throw new Error("mock level is missing");
+    const runs = await gateway.listAllRuns(levelId);
+    const recordedRun = runs.find((run) => run.HasMicrophoneRecording);
+    if (!recordedRun) throw new Error("mock microphone recording is missing");
+
+    expect(await gateway.keepMicrophoneRecording(recordedRun.Id)).toEqual({
+      RunId: recordedRun.Id,
+      Permanent: true,
+    });
+    expect(recordedRun).toMatchObject({
+      MicrophoneRecordingPermanent: true,
+      MicrophoneRecordingExpiresAtUtc: null,
+    });
+
+    expect(await gateway.deleteMicrophoneRecording(recordedRun.Id)).toEqual({
+      RunId: recordedRun.Id,
+      Deleted: true,
+    });
+    expect(await gateway.deleteMicrophoneRecording(recordedRun.Id)).toEqual({
+      RunId: recordedRun.Id,
+      Deleted: false,
+    });
+    const updatedRuns = await gateway.listAllRuns(levelId);
+    expect(updatedRuns.find((run) => run.Id === recordedRun.Id)).toMatchObject({
+      HasMicrophoneRecording: false,
+      MicrophoneRecordingBytes: 0,
+      MicrophoneDurationSeconds: null,
+    });
+  });
 });

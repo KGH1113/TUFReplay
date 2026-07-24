@@ -38,5 +38,7 @@ public class RunRecord
   public int? MicrophoneSampleRate;
   public int? MicrophoneChannels;
   public long? MicrophoneFrameCount;
+  public bool MicrophoneRecordingPermanent;
+  public string MicrophoneRecordingExpiresAtUtc;
   public string MetaJson;
 }

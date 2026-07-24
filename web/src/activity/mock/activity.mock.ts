@@ -5,10 +5,10 @@ import type {
   ActivityRun,
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
-  ReplayLevelFilePickerStatus,
+  ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
-import type { ActivityGateway } from "../data/activity.gateway";
+import { ActivityDomainError, type ActivityGateway } from "../data/activity.gateway";
 
 import level5Text from "./levels/tuf-5.adofai?raw";
 import level303Text from "./levels/tuf-303.adofai?raw";
@@ -76,7 +76,6 @@ export function createMockActivityGateway(): ActivityGateway {
     ErrorCode: null,
     Message: null,
   };
-  let pickerStatus: ReplayLevelFilePickerStatus | null = null;
   let calibrationStatus: MicrophoneCalibrationStatus = {
     OperationId: null,
     State: "idle",
@@ -95,12 +94,67 @@ export function createMockActivityGateway(): ActivityGateway {
       return appSessions;
     },
     getLevelSession: async (id) => findLevel(id).session,
+    getLogicalLevel: async (id) => {
+      const level = findLevel(id);
+      return {
+        Id: id,
+        TufLevelId: level.session.TufLevelId,
+        Song: level.session.Song,
+        Author: level.session.Author,
+        Artist: level.session.Artist,
+        FirstSeenAtUtc: level.session.OpenedAtUtc,
+        LastSeenAtUtc: level.session.ClosedAtUtc ?? level.session.OpenedAtUtc,
+        FloorCount: level.session.FloorCount,
+        VisitCount: 1,
+        RunCount: level.session.RunCount,
+        ClearRunCount: level.session.ClearRunCount,
+        NoFailRunCount: level.session.NoFailRunCount,
+        FirstStartTile: level.session.FirstStartTile,
+        LastStartTile: level.session.LastStartTile,
+        ChartAvailable: level.session.ChartAvailable,
+      };
+    },
     listAllRuns: async (id, onPage) => {
       const runs = findLevel(id).runs;
       onPage?.(runs);
       return runs;
     },
     getChart: async (id) => findLevel(id).chart,
+    listAllLogicalLevelRuns: async (id, onPage) => {
+      const runs = findLevel(id).runs;
+      onPage?.(runs);
+      return runs;
+    },
+    getLogicalLevelChart: async (id) => findLevel(id).chart,
+    deleteMicrophoneRecording: async (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        const deleted = run.HasMicrophoneRecording;
+        run.HasMicrophoneRecording = false;
+        run.MicrophoneRecordingBytes = 0;
+        run.MicrophoneDurationSeconds = null;
+        run.MicrophoneRecordingPermanent = false;
+        run.MicrophoneRecordingExpiresAtUtc = null;
+        return { RunId: runId, Deleted: deleted };
+      }
+      throw new ActivityDomainError("run_not_found", "Run was not found");
+    },
+    keepMicrophoneRecording: async (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        if (!run.HasMicrophoneRecording)
+          throw new ActivityDomainError(
+            "microphone_recording_not_found",
+            "Microphone recording was not found",
+          );
+        run.MicrophoneRecordingPermanent = true;
+        run.MicrophoneRecordingExpiresAtUtc = null;
+        return { RunId: runId, Permanent: true };
+      }
+      throw new ActivityDomainError("run_not_found", "Run was not found");
+    },
     playReplay: async (runId) => {
       replayStatus = {
         OperationId: `mock-${runId}`,
@@ -112,21 +166,14 @@ export function createMockActivityGateway(): ActivityGateway {
       return replayStatus;
     },
     getReplayStatus: async () => replayStatus,
-    startReplayLevelFilePicker: async (runId) => {
-      pickerStatus = {
-        OperationId: `mock-picker-${runId}`,
+    pickReplayLevelFile: async (runId): Promise<ReplayLevelFilePickerResult> => {
+      return {
         RunId: runId,
-        State: "selected",
+        Outcome: "selected",
         LevelPath: `/mock/${runId}.adofai`,
         ErrorCode: null,
         Message: "Matching level file selected.",
       };
-      return pickerStatus;
-    },
-    getReplayLevelFilePickerStatus: async (operationId) => {
-      if (!pickerStatus || pickerStatus.OperationId !== operationId)
-        throw new Error("Mock picker operation was not found");
-      return pickerStatus;
     },
     getMicrophoneDevices: async () => ({
       Devices: microphoneDevices,
@@ -209,6 +256,7 @@ function createLevel(
   return {
     session: {
       Id: id,
+      LogicalLevelId: id,
       AppSessionId: appSessionId,
       TufLevelId: tufLevelId,
       Song: null,
@@ -216,8 +264,12 @@ function createLevel(
       Artist: null,
       OpenedAtUtc: openedAtUtc,
       ClosedAtUtc: null,
+      FloorCount: floorCount,
       RunCount: runs.length,
       ClearRunCount: clearRunCount,
+      NoFailRunCount: runs.filter((run) => run.NoFailMode).length,
+      FirstStartTile: Math.min(...starts),
+      LastStartTile: Math.max(...starts),
       ChartAvailable: true,
     },
     chart: { LevelSessionId: id, LevelText: levelText, FloorCount: floorCount },
@@ -236,6 +288,8 @@ function createRun(
   const startedAt = new Date(new Date(openedAtUtc).getTime() + (index + 1) * 75_000);
   const cleared = index === 0 && startTile === 0;
   const lastTile = cleared ? floorCount - 1 : Math.min(floorCount - 1, startTile + 35 + index * 19);
+  const hasMicrophoneRecording = index % 2 === 0;
+  const microphoneDurationSeconds = 42 + index * 6;
   return {
     Id: `${levelSessionId}-run-${index + 1}`,
     LevelSessionId: levelSessionId,
@@ -268,11 +322,15 @@ function createRun(
     FloorCount: floorCount,
     InputBytes: 0,
     HitContextBytes: 0,
-    HasMicrophoneRecording: false,
-    MicrophoneRecordingBytes: 0,
-    MicrophoneDurationSeconds: null,
-    MicrophoneSampleRate: null,
-    MicrophoneChannels: null,
+    HasMicrophoneRecording: hasMicrophoneRecording,
+    MicrophoneRecordingBytes: hasMicrophoneRecording
+      ? microphoneDurationSeconds * 48_000 * 2 + 44
+      : 0,
+    MicrophoneDurationSeconds: hasMicrophoneRecording ? microphoneDurationSeconds : null,
+    MicrophoneSampleRate: hasMicrophoneRecording ? 48_000 : null,
+    MicrophoneChannels: hasMicrophoneRecording ? 1 : null,
+    MicrophoneRecordingPermanent: false,
+    MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
   };
 }
 

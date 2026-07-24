@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using System.Threading.Tasks;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Unity;
@@ -11,95 +12,97 @@ namespace TUFReplay.Application.Replay;
 
 public static class ReplayLevelFilePickerCoordinator
 {
+  private sealed class PickOperation
+  {
+    public readonly long Generation;
+    public readonly string Id;
+    public readonly StoredReplayRun Run;
+    public readonly CancellationTokenSource Cancellation = new CancellationTokenSource();
+    public readonly TaskCompletionSource<ReplayLevelFilePickerResult> Completion =
+      new TaskCompletionSource<ReplayLevelFilePickerResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+    public PickOperation(long generation, StoredReplayRun run)
+    {
+      Generation = generation;
+      Id = Guid.NewGuid().ToString("N");
+      Run = run;
+    }
+  }
+
   private static readonly object Gate = new object();
-  private static ReplayLevelFilePickerStatus _status;
+  private static long _generation;
+  private static PickOperation _active;
 
   public static bool IsPicking
   {
     get
     {
       lock (Gate)
-        return _status?.State == ReplayLevelFilePickerStates.Picking;
+        return _active != null;
     }
   }
 
-  public static bool TryStart(
-    string runId,
-    out ReplayLevelFilePickerStatus status,
-    out string errorCode,
-    out string errorMessage
-  )
+  // AdofaiIpc 1.x handlers are synchronous. The IPC server thread waits here while
+  // the picker and ADOFAI's own level decoder run on Unity's main thread.
+  public static ReplayLevelFilePickerResult Pick(string runId)
   {
-    status = null;
-    errorCode = null;
-    errorMessage = null;
     if (ReplayPlaybackCoordinator.IsBusy)
-      return Error("replay_busy", "A replay is already in progress.", out errorCode, out errorMessage);
+      return Error(runId, "replay_busy", "A replay is already in progress.");
 
     StoredReplayRun run = RunRepository.GetReplayRun(runId);
     if (run == null)
-      return Error("run_not_found", "The recorded run was not found.", out errorCode, out errorMessage);
+      return Error(runId, "run_not_found", "The recorded run was not found.");
 
+    PickOperation operation;
     lock (Gate)
     {
-      if (_status?.State == ReplayLevelFilePickerStates.Picking)
-        return Error("file_picker_busy", "Another level file picker is already open.", out errorCode, out errorMessage);
+      if (_active != null)
+        return Error(runId, "file_picker_busy", "Another level file picker is already open.");
 
-      string operationId = Guid.NewGuid().ToString("N");
-      _status = new ReplayLevelFilePickerStatus
-      {
-        OperationId = operationId,
-        RunId = runId,
-        State = ReplayLevelFilePickerStates.Picking,
-        Message = "Waiting for level file selection.",
-      };
-      status = Clone(_status);
-      UnityMainThread.Post(() => BeginPickOnMainThread(operationId, run));
-      return true;
+      operation = new PickOperation(++_generation, run);
+      _active = operation;
     }
-  }
 
-  public static bool TryGetStatus(
-    string operationId,
-    out ReplayLevelFilePickerStatus status,
-    out string errorCode,
-    out string errorMessage
-  )
-  {
-    errorCode = null;
-    errorMessage = null;
-    lock (Gate)
+    UnityMainThread.Post(() => BeginPickOnMainThread(operation));
+    try
     {
-      if (_status == null || !string.Equals(_status.OperationId, operationId, StringComparison.Ordinal))
+      return operation.Completion.Task.GetAwaiter().GetResult();
+    }
+    finally
+    {
+      lock (Gate)
       {
-        status = null;
-        return Error(
-          "file_picker_not_found",
-          "The level file picker operation was not found.",
-          out errorCode,
-          out errorMessage
-        );
+        if (ReferenceEquals(_active, operation))
+          _active = null;
       }
-
-      status = Clone(_status);
-      return true;
+      operation.Cancellation.Dispose();
     }
   }
 
   public static void Shutdown()
   {
+    PickOperation operation;
     lock (Gate)
-      _status = null;
+    {
+      operation = _active;
+      _active = null;
+      _generation++;
+    }
+
+    if (operation == null)
+      return;
+    operation.Cancellation.Cancel();
+    operation.Completion.TrySetResult(Cancelled(operation.Run.Id));
   }
 
-  private static void BeginPickOnMainThread(string operationId, StoredReplayRun run)
+  private static void BeginPickOnMainThread(PickOperation operation)
   {
-    if (!IsCurrent(operationId))
+    if (!IsCurrent(operation))
       return;
 
     if (UnityEngine.Application.platform == RuntimePlatform.OSXPlayer)
     {
-      ThreadPool.QueueUserWorkItem(_ => PickOnMac(operationId, run));
+      ThreadPool.QueueUserWorkItem(_ => PickOnMac(operation));
       return;
     }
 
@@ -115,14 +118,14 @@ public static class ReplayLevelFilePickerCoordinator
     }
     catch (Exception exception)
     {
-      SetError(operationId, "file_picker_failed", "The level file picker failed: " + exception.GetType().Name);
+      Complete(operation, Error(operation.Run.Id, "file_picker_failed", PickerFailure(exception)));
       return;
     }
 
-    CompleteSelectionOnMainThread(operationId, run, selectedPath);
+    QueueValidation(operation, selectedPath);
   }
 
-  private static void PickOnMac(string operationId, StoredReplayRun run)
+  private static void PickOnMac(PickOperation operation)
   {
     string selectedPath = null;
     string error = null;
@@ -158,122 +161,198 @@ public static class ReplayLevelFilePickerCoordinator
       error = "The macOS file picker failed: " + exception.GetType().Name;
     }
 
-    UnityMainThread.Post(() =>
+    if (!IsCurrent(operation))
+      return;
+    if (error != null)
     {
-      if (!IsCurrent(operationId))
-        return;
-      if (error != null)
-      {
-        SetError(operationId, "file_picker_failed", error);
-        return;
-      }
-
-      CompleteSelectionOnMainThread(operationId, run, cancelled ? null : selectedPath);
-    });
+      Complete(operation, Error(operation.Run.Id, "file_picker_failed", error));
+      return;
+    }
+    QueueValidation(operation, cancelled ? null : selectedPath);
   }
 
-  private static void CompleteSelectionOnMainThread(string operationId, StoredReplayRun run, string selectedPath)
+  private static void QueueValidation(PickOperation operation, string selectedPath)
   {
-    if (!IsCurrent(operationId))
+    if (!IsCurrent(operation))
       return;
     if (string.IsNullOrWhiteSpace(selectedPath))
     {
-      SetStatus(
-        operationId,
-        new ReplayLevelFilePickerStatus
-        {
-          OperationId = operationId,
-          RunId = run.Id,
-          State = ReplayLevelFilePickerStates.Cancelled,
-          Message = "Level file selection was cancelled.",
-        }
+      Complete(operation, Cancelled(operation.Run.Id));
+      return;
+    }
+
+    UnityMainThread.Post(() => BeginValidationOnMainThread(operation, selectedPath));
+  }
+
+  private static void BeginValidationOnMainThread(PickOperation operation, string selectedPath)
+  {
+    if (!IsCurrent(operation) || operation.Cancellation.IsCancellationRequested)
+      return;
+
+    ReplayLevelOpenService.WipeForVerification(
+      uiController => ValidateWhileBlack(operation, selectedPath, uiController),
+      () => Complete(operation, Error(operation.Run.Id, "level_wipe_cancelled", "The level verification transition was interrupted."))
+    );
+  }
+
+  private static void ValidateWhileBlack(
+    PickOperation operation,
+    string selectedPath,
+    scrUIController uiController
+  )
+  {
+    if (!IsCurrent(operation) || operation.Cancellation.IsCancellationRequested)
+    {
+      ReplayLevelOpenService.ReturnFromVerification(uiController);
+      return;
+    }
+
+    ReplayLevelFilePickerResult result;
+    try
+    {
+      result = ValidateSelection(operation.Run, selectedPath);
+    }
+    catch (Exception exception)
+    {
+      result = Error(
+        operation.Run.Id,
+        "level_hash_failed",
+        "Level verification failed: " + exception.GetType().Name
       );
-      return;
     }
 
-    if (
-      !ReplayLevelHashValidator.ValidateTarget(
-        run,
-        selectedPath,
-        out string canonicalPath,
-        out string validationCode,
-        out string validationMessage
-      )
-    )
+    if (!IsCurrent(operation) || operation.Cancellation.IsCancellationRequested)
     {
-      SetError(operationId, validationCode, validationMessage);
+      ReplayLevelOpenService.ReturnFromVerification(uiController);
       return;
     }
 
-    Persistence.UpdateLastUsedFolder(canonicalPath);
-    SetStatus(
-      operationId,
-      new ReplayLevelFilePickerStatus
+    if (result.Outcome != ReplayLevelFilePickerOutcomes.Selected)
+    {
+      ReplayLevelOpenService.ReturnFromVerification(uiController);
+      Complete(operation, result);
+      return;
+    }
+
+    try
+    {
+      Persistence.UpdateLastUsedFolder(result.LevelPath);
+      ReplayLevelOpenService.HoldVerifiedLevel(result.LevelPath, uiController);
+      if (!Complete(operation, result))
+        ReplayLevelOpenService.ReleaseHeldBlack();
+    }
+    catch (Exception exception)
+    {
+      ReplayLevelOpenService.ReturnFromVerification(uiController);
+      Complete(operation, Error(operation.Run.Id, "file_picker_failed", PickerFailure(exception)));
+    }
+  }
+
+  private static ReplayLevelFilePickerResult ValidateSelection(StoredReplayRun run, string selectedPath)
+  {
+    string canonicalPath = LevelPathIdentity.Canonicalize(selectedPath);
+    if (canonicalPath == null)
+      return Error(run.Id, "level_unavailable", "The selected level file is unavailable.");
+
+    if (!TryResolveReferenceHash(run, out byte[] referenceHash, out string errorCode, out string errorMessage))
+      return Error(run.Id, errorCode, errorMessage);
+
+    if (!GameplayChartHash.TryLoadCustomLevel(canonicalPath, out _, out byte[] selectedHash, out string hashError))
+      return Error(run.Id, "level_hash_failed", hashError);
+
+    if (!GameplayChartHash.Equals(referenceHash, selectedHash))
+    {
+      return new ReplayLevelFilePickerResult
       {
-        OperationId = operationId,
         RunId = run.Id,
-        State = ReplayLevelFilePickerStates.Selected,
+        Outcome = ReplayLevelFilePickerOutcomes.Mismatch,
         LevelPath = canonicalPath,
-        Message = "Level file selected. It will be verified after loading.",
-      }
-    );
-  }
-
-  private static bool IsCurrent(string operationId)
-  {
-    lock (Gate)
-      return string.Equals(_status?.OperationId, operationId, StringComparison.Ordinal);
-  }
-
-  private static void SetError(string operationId, string code, string message)
-  {
-    string runId;
-    lock (Gate)
-    {
-      if (!string.Equals(_status?.OperationId, operationId, StringComparison.Ordinal))
-        return;
-      runId = _status.RunId;
+        ErrorCode = "level_gameplay_mismatch",
+        Message = "This file has different tiles. Choose another level file.",
+      };
     }
 
-    SetStatus(
-      operationId,
-      new ReplayLevelFilePickerStatus
-      {
-        OperationId = operationId,
-        RunId = runId,
-        State = ReplayLevelFilePickerStates.Error,
-        ErrorCode = code,
-        Message = message,
-      }
-    );
-  }
-
-  private static void SetStatus(string operationId, ReplayLevelFilePickerStatus status)
-  {
-    lock (Gate)
+    return new ReplayLevelFilePickerResult
     {
-      if (string.Equals(_status?.OperationId, operationId, StringComparison.Ordinal))
-        _status = status;
-    }
-  }
-
-  private static ReplayLevelFilePickerStatus Clone(ReplayLevelFilePickerStatus status)
-  {
-    return new ReplayLevelFilePickerStatus
-    {
-      OperationId = status.OperationId,
-      RunId = status.RunId,
-      State = status.State,
-      LevelPath = status.LevelPath,
-      ErrorCode = status.ErrorCode,
-      Message = status.Message,
+      RunId = run.Id,
+      Outcome = ReplayLevelFilePickerOutcomes.Selected,
+      LevelPath = canonicalPath,
+      Message = "Matching level file selected.",
     };
   }
 
-  private static bool Error(string code, string message, out string errorCode, out string errorMessage)
+  private static bool TryResolveReferenceHash(
+    StoredReplayRun run,
+    out byte[] referenceHash,
+    out string errorCode,
+    out string errorMessage
+  )
+  {
+    referenceHash = null;
+    errorCode = null;
+    errorMessage = null;
+    if (run.GameplayHash != null || run.GameplayHashVersion.HasValue)
+    {
+      if (!GameplayChartHash.IsSupported(run.GameplayHashVersion, run.GameplayHash))
+        return Fail("level_hash_unsupported", "This run uses an unsupported gameplay hash.", out errorCode, out errorMessage);
+      referenceHash = run.GameplayHash;
+      return true;
+    }
+
+    string originalPath = LevelPathIdentity.Canonicalize(run.LevelPath);
+    if (originalPath == null)
+    {
+      return Fail(
+        "level_hash_unavailable",
+        "The original level file is required once to identify this older run.",
+        out errorCode,
+        out errorMessage
+      );
+    }
+    if (!GameplayChartHash.TryLoadCustomLevel(originalPath, out _, out referenceHash, out string hashError))
+      return Fail("level_hash_failed", hashError, out errorCode, out errorMessage);
+
+    run.GameplayHash = referenceHash;
+    run.GameplayHashVersion = GameplayChartHash.Version;
+    RunRepository.UpdateGameplayHashIfMissing(run.Id, referenceHash, GameplayChartHash.Version);
+    return true;
+  }
+
+  private static bool IsCurrent(PickOperation operation)
+  {
+    lock (Gate)
+      return ReferenceEquals(_active, operation) && operation.Generation == _generation;
+  }
+
+  private static bool Complete(PickOperation operation, ReplayLevelFilePickerResult result)
+  {
+    return IsCurrent(operation) && operation.Completion.TrySetResult(result);
+  }
+
+  private static ReplayLevelFilePickerResult Cancelled(string runId) =>
+    new ReplayLevelFilePickerResult
+    {
+      RunId = runId,
+      Outcome = ReplayLevelFilePickerOutcomes.Cancelled,
+      Message = "Level file selection was cancelled.",
+    };
+
+  private static ReplayLevelFilePickerResult Error(string runId, string code, string message) =>
+    new ReplayLevelFilePickerResult
+    {
+      RunId = runId,
+      Outcome = ReplayLevelFilePickerOutcomes.Error,
+      ErrorCode = code,
+      Message = message,
+    };
+
+  private static bool Fail(string code, string message, out string errorCode, out string errorMessage)
   {
     errorCode = code;
     errorMessage = message;
     return false;
   }
+
+  private static string PickerFailure(Exception exception) =>
+    "The level file picker failed: " + exception.GetType().Name;
 }

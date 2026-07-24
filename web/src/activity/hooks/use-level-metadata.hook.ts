@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 
-import type { ActivityLevelSessionOverview, LevelMetadata } from "../activity.model";
+import type { ActivityLogicalLevelOverview, LevelMetadata } from "../activity.model";
 import { getFallbackMetadata, getTufMetadata } from "../data/tuf-metadata.service";
 
-export function useLevelMetadata(levelSessions: ActivityLevelSessionOverview[]) {
+export function useLevelMetadata(levelSessions: ActivityLogicalLevelOverview[]) {
   const [metadata, setMetadata] = useState<Map<number, LevelMetadata>>(new Map());
   const key = [
     ...new Set(
@@ -25,7 +25,7 @@ export function useLevelMetadata(levelSessions: ActivityLevelSessionOverview[]) 
       active = false;
     };
   }, [key]);
-  return (session: ActivityLevelSessionOverview) =>
+  return (session: ActivityLogicalLevelOverview) =>
     session.TufLevelId === null
       ? getFallbackMetadata(null, session)
       : (metadata.get(session.TufLevelId) ?? getFallbackMetadata(session.TufLevelId, session));

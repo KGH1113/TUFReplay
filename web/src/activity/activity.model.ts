@@ -1,5 +1,6 @@
 export interface ActivityLevelSessionOverview {
   Id: string;
+  LogicalLevelId: string;
   AppSessionId: string;
   TufLevelId: number | null;
   Song: string | null;
@@ -7,8 +8,30 @@ export interface ActivityLevelSessionOverview {
   Artist: string | null;
   OpenedAtUtc: string;
   ClosedAtUtc: string | null;
+  FloorCount: number;
   RunCount: number;
   ClearRunCount: number;
+  NoFailRunCount: number;
+  FirstStartTile: number | null;
+  LastStartTile: number | null;
+  ChartAvailable: boolean;
+}
+
+export interface ActivityLogicalLevelOverview {
+  Id: string;
+  TufLevelId: number | null;
+  Song: string | null;
+  Author: string | null;
+  Artist: string | null;
+  FirstSeenAtUtc: string;
+  LastSeenAtUtc: string;
+  FloorCount: number;
+  VisitCount: number;
+  RunCount: number;
+  ClearRunCount: number;
+  NoFailRunCount: number;
+  FirstStartTile: number | null;
+  LastStartTile: number | null;
   ChartAvailable: boolean;
 }
 
@@ -48,6 +71,18 @@ export interface ActivityRun {
   MicrophoneDurationSeconds: number | null;
   MicrophoneSampleRate: number | null;
   MicrophoneChannels: number | null;
+  MicrophoneRecordingPermanent: boolean;
+  MicrophoneRecordingExpiresAtUtc: string | null;
+}
+
+export interface MicrophoneRecordingDeleteResult {
+  RunId: string;
+  Deleted: boolean;
+}
+
+export interface MicrophoneRecordingKeepResult {
+  RunId: string;
+  Permanent: boolean;
 }
 
 export type JudgmentDifficulty = "Lenient" | "Normal" | "Strict";
@@ -98,12 +133,11 @@ export interface ReplayStatus {
   Message: string | null;
 }
 
-export type ReplayLevelFilePickerState = "picking" | "selected" | "cancelled" | "error";
+export type ReplayLevelFilePickerOutcome = "selected" | "mismatch" | "cancelled" | "error";
 
-export interface ReplayLevelFilePickerStatus {
-  OperationId: string;
+export interface ReplayLevelFilePickerResult {
   RunId: string;
-  State: ReplayLevelFilePickerState;
+  Outcome: ReplayLevelFilePickerOutcome;
   LevelPath: string | null;
   ErrorCode: string | null;
   Message: string | null;
@@ -112,7 +146,7 @@ export interface ReplayLevelFilePickerStatus {
 export interface ActivityDay {
   date: string;
   appSessions: ActivityAppSession[];
-  levelSessions: ActivityLevelSessionOverview[];
+  levelSessions: ActivityLogicalLevelOverview[];
   runCount: number;
   clearRunCount: number;
 }

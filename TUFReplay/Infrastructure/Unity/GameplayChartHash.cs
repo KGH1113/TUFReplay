@@ -1,8 +1,8 @@
 using System;
-using System.IO;
-using System.Security.Cryptography;
-using System.Text;
+using System.Collections.Generic;
 using ADOFAI;
+using GDMiniJSON;
+using TUFReplay.Infrastructure.Adofai;
 
 namespace TUFReplay.Infrastructure.Unity;
 
@@ -17,7 +17,7 @@ public static class GameplayChartHash
     return TryCompute(levelData, out hash, out error);
   }
 
-  public static bool TryLoad(string levelPath, out LevelData levelData, out byte[] hash, out string error)
+  public static bool TryLoadCustomLevel(string levelPath, out LevelData levelData, out byte[] hash, out string error)
   {
     levelData = null;
     hash = null;
@@ -32,11 +32,42 @@ public static class GameplayChartHash
 
     try
     {
+      string source = RDFile.ReadAllText(canonicalPath);
+      if (!(Json.Deserialize(source) is Dictionary<string, object> decoded))
+      {
+        error = "ADOFAI could not parse the level JSON.";
+        return false;
+      }
+
       var loaded = new LevelData();
-      if (!loaded.LoadLevel(canonicalPath, out LoadResult status))
+      PrepareCustomAngleData(loaded, decoded);
+      loaded.Decode(decoded, out LoadResult status);
+      if (status != LoadResult.Successful)
       {
         error = "ADOFAI could not parse the level file. status=" + status;
         return false;
+      }
+
+      // LevelData.LoadLevel performs this compatibility pass for v7 files after
+      // the initial decode. Keep the custom-file path independent from the
+      // current scene while preserving the game's own migration behavior.
+      if (loaded.version == 7)
+      {
+        string migrated = source.Replace("\"enabled\": true", "\"active\": true")
+          .Replace("\"enabled\": false", "\"active\": false");
+        if (!(Json.Deserialize(migrated) is Dictionary<string, object> migratedDecoded))
+        {
+          error = "ADOFAI could not migrate the version 7 level JSON.";
+          return false;
+        }
+
+        PrepareCustomAngleData(loaded, migratedDecoded);
+        loaded.Decode(migratedDecoded, out status);
+        if (status != LoadResult.Successful)
+        {
+          error = "ADOFAI could not migrate the level file. status=" + status;
+          return false;
+        }
       }
 
       if (!TryCompute(loaded, out hash, out error))
@@ -47,7 +78,7 @@ public static class GameplayChartHash
     }
     catch (Exception exception)
     {
-      error = "Level hash failed: " + exception.GetType().Name;
+      error = "ADOFAI level verification failed: " + exception.GetType().Name + ": " + exception.Message;
       return false;
     }
   }
@@ -64,25 +95,16 @@ public static class GameplayChartHash
 
     try
     {
-      using var payload = new MemoryStream();
+      using var writer = new GameplayChartHashCanonicalWriter();
       if (levelData.isOldLevel)
-      {
-        WriteUtf(payload, levelData.pathData ?? string.Empty);
-      }
+        writer.WriteLegacyPath(levelData.pathData);
       else
-      {
-        int count = levelData.angleData?.Count ?? 0;
-        WriteInt(payload, count);
-        for (int index = 0; index < count; index++)
-          WriteFloat(payload, levelData.angleData[index]);
-      }
+        writer.WriteAngles(levelData.angleData);
 
       foreach (LevelEvent levelEvent in levelData.levelEvents)
-        WriteGameplayEvent(payload, levelEvent);
+        WriteGameplayEvent(writer, levelEvent);
 
-      payload.Position = 0;
-      using MD5 md5 = MD5.Create();
-      hash = md5.ComputeHash(payload);
+      hash = writer.ComputeHash();
       return true;
     }
     catch (Exception exception)
@@ -90,6 +112,19 @@ public static class GameplayChartHash
       error = "Level hash failed: " + exception.GetType().Name;
       return false;
     }
+  }
+
+  private static void PrepareCustomAngleData(LevelData levelData, Dictionary<string, object> decoded)
+  {
+    if (decoded.ContainsKey("pathData"))
+      return;
+
+    // LevelData.Decode normally reads angleData only while a non-legacy scnGame
+    // instance exists. Replay verification can begin from menus where there is no
+    // scnGame yet, so seed the same game-decoded values before calling Decode.
+    levelData.angleData = new List<float>(RDEditorUtils.DecodeFloatArray(decoded["angleData"]));
+    levelData.pathData = "";
+    levelData.isOldLevel = false;
   }
 
   public static bool Equals(byte[] left, byte[] right)
@@ -110,86 +145,50 @@ public static class GameplayChartHash
     return version == Version && hash?.Length == Size;
   }
 
-  private static void WriteGameplayEvent(Stream stream, LevelEvent levelEvent)
+  private static void WriteGameplayEvent(GameplayChartHashCanonicalWriter writer, LevelEvent levelEvent)
   {
     switch (levelEvent.eventType)
     {
       case LevelEventType.SetSpeed:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(0);
         var speedType = (SpeedType)levelEvent["speedType"];
-        stream.WriteByte((byte)speedType);
-        WriteFloat(stream, (float)levelEvent[speedType == SpeedType.Bpm ? "beatsPerMinute" : "bpmMultiplier"]);
+        writer.WriteSetSpeed(
+          levelEvent.floor,
+          (byte)speedType,
+          (float)levelEvent[speedType == SpeedType.Bpm ? "beatsPerMinute" : "bpmMultiplier"]
+        );
         break;
 
       case LevelEventType.Twirl:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(1);
+        writer.WriteTwirl(levelEvent.floor);
         break;
 
       case LevelEventType.Hold:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(2);
-        WriteInt(stream, (int)levelEvent["duration"]);
+        writer.WriteHold(levelEvent.floor, (int)levelEvent["duration"]);
         break;
 
       case LevelEventType.MultiPlanet:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(3);
-        stream.WriteByte((byte)(PlanetCount)levelEvent["planets"]);
+        writer.WriteMultiPlanet(levelEvent.floor, (byte)(PlanetCount)levelEvent["planets"]);
         break;
 
       case LevelEventType.Pause:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(4);
-        WriteFloat(stream, (float)levelEvent["duration"]);
+        writer.WritePause(levelEvent.floor, (float)levelEvent["duration"]);
         break;
 
       case LevelEventType.AutoPlayTiles:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(5);
-        stream.WriteByte((bool)levelEvent["enabled"] ? (byte)1 : (byte)0);
+        writer.WriteAutoPlayTiles(levelEvent.floor, (bool)levelEvent["enabled"]);
         break;
 
       case LevelEventType.ScaleMargin:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(6);
-        WriteFloat(stream, (float)levelEvent["scale"]);
+        writer.WriteScaleMargin(levelEvent.floor, (float)levelEvent["scale"]);
         break;
 
       case LevelEventType.Multitap:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(7);
-        WriteFloat(stream, (float)levelEvent["taps"]);
+        writer.WriteMultitap(levelEvent.floor, Convert.ToSingle(levelEvent["taps"]));
         break;
 
       case LevelEventType.KillPlayer:
-        WriteInt(stream, levelEvent.floor);
-        stream.WriteByte(8);
+        writer.WriteKillPlayer(levelEvent.floor);
         break;
     }
-  }
-
-  private static void WriteUtf(Stream stream, string value)
-  {
-    byte[] bytes = Encoding.UTF8.GetBytes(value);
-    WriteInt(stream, bytes.Length);
-    stream.Write(bytes, 0, bytes.Length);
-  }
-
-  private static void WriteInt(Stream stream, int value)
-  {
-    stream.WriteByte((byte)(value >> 24));
-    stream.WriteByte((byte)(value >> 16));
-    stream.WriteByte((byte)(value >> 8));
-    stream.WriteByte((byte)value);
-  }
-
-  private static void WriteFloat(Stream stream, float value)
-  {
-    byte[] bytes = BitConverter.GetBytes(value);
-    if (BitConverter.IsLittleEndian)
-      Array.Reverse(bytes);
-    stream.Write(bytes, 0, bytes.Length);
   }
 }

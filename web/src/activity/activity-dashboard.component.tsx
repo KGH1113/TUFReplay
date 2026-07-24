@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { ActivityRun, RunMarker } from "./activity.model";
 import { ActivityWorkspace } from "./components/activity-workspace.component";
+import { ConnectionStatePanel } from "./components/connection-state-panel.component";
 import { DashboardHeader } from "./components/dashboard-header.component";
 import { DayRail } from "./components/day-rail.component";
 import { LevelStrip } from "./components/level-strip.component";
@@ -69,8 +70,11 @@ export function ActivityDashboard() {
       setSelectedLevelSessionId(null);
       return;
     }
-    if (!levelSessions.some((session) => session.Id === selectedLevelSessionId))
-      setSelectedLevelSessionId(levelSessions[0].Id);
+    if (!levelSessions.some((session) => session.Id === selectedLevelSessionId)) {
+      const firstLevelId = levelSessions[0].Id;
+      setSelectedLevelSessionId(firstLevelId);
+      setFirstMarkerLevelSessionId(firstLevelId);
+    }
   }, [levelSessions, selectedLevelSessionId]);
   useEffect(() => {
     if (selectedMarkerId && !markers.some((marker) => marker.id === selectedMarkerId)) {
@@ -125,6 +129,29 @@ export function ActivityDashboard() {
     setSelectedRunId(null);
     setFirstMarkerLevelSessionId(id);
   };
+  const handleDeleteMicrophoneRecording = async (run: ActivityRun) => {
+    const gateway = activity.gatewayRef.current;
+    if (!gateway) throw new Error("TUFReplay is not connected");
+    await gateway.deleteMicrophoneRecording(run.Id);
+    levelData.updateRun(run.Id, {
+      HasMicrophoneRecording: false,
+      MicrophoneRecordingBytes: 0,
+      MicrophoneDurationSeconds: null,
+      MicrophoneSampleRate: null,
+      MicrophoneChannels: null,
+      MicrophoneRecordingPermanent: false,
+      MicrophoneRecordingExpiresAtUtc: null,
+    });
+  };
+  const handleKeepMicrophoneRecording = async (run: ActivityRun) => {
+    const gateway = activity.gatewayRef.current;
+    if (!gateway) throw new Error("TUFReplay is not connected");
+    await gateway.keepMicrophoneRecording(run.Id);
+    levelData.updateRun(run.Id, {
+      MicrophoneRecordingPermanent: true,
+      MicrophoneRecordingExpiresAtUtc: null,
+    });
+  };
   return (
     <>
       <main className="h-screen overflow-hidden bg-background text-foreground">
@@ -144,11 +171,6 @@ export function ActivityDashboard() {
               onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
               onAdjustMicrophoneOffset={microphoneOffset.start}
             />
-            {activity.error && !activity.sessions.length ? (
-              <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-sm text-destructive">
-                {activity.error}
-              </div>
-            ) : null}
             <LevelStrip
               levelSessions={levelSessions}
               selectedLevelSessionId={selectedLevel?.Id ?? null}
@@ -157,11 +179,17 @@ export function ActivityDashboard() {
               onSelectLevelSession={handleLevel}
             />
             {!selectedLevel ? (
-              <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-                {activity.status === "connecting"
-                  ? "Connecting to TUFReplay…"
-                  : "No recorded activity yet."}
-              </div>
+              activity.status !== "online" ? (
+                <ConnectionStatePanel
+                  status={activity.status}
+                  error={activity.error}
+                  onRetry={() => void activity.retry()}
+                />
+              ) : (
+                <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+                  No recorded activity yet.
+                </div>
+              )
             ) : (
               <ActivityWorkspace
                 chartAvailable={selectedLevel.ChartAvailable}
@@ -172,6 +200,7 @@ export function ActivityDashboard() {
                 selectedRun={selectedRun}
                 loading={levelData.loading}
                 error={levelData.error}
+                readOnly={activity.status !== "online"}
                 timeZone={timeZone}
                 replayStatus={replay.status}
                 replayPendingRunId={replay.pendingRunId}
@@ -180,6 +209,8 @@ export function ActivityDashboard() {
                 onSelectMarker={handleMarker}
                 onSelectRun={handleRun}
                 onPlayReplay={setReplayChoiceRun}
+                onDeleteMicrophoneRecording={handleDeleteMicrophoneRecording}
+                onKeepMicrophoneRecording={handleKeepMicrophoneRecording}
               />
             )}
           </section>
@@ -187,12 +218,13 @@ export function ActivityDashboard() {
       </main>
       <ReplayLevelChoiceDialog
         run={replayChoiceRun}
-        pickerStatus={replay.pickerStatus}
+        pickerResult={replay.pickerResult}
+        pickingRunId={replay.pickingRunId}
         playError={replay.error}
         playErrorRunId={replay.errorRunId}
         onClose={() => setReplayChoiceRun(null)}
         onPlay={replay.play}
-        onChooseAnother={replay.startLevelFilePicker}
+        onChooseAnother={replay.pickLevelFile}
         onResetPicker={replay.clearLevelFilePicker}
       />
       <MicrophoneOffsetCalibrationDialog
