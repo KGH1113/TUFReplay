@@ -12,7 +12,7 @@ public static class Database
   {
     NativeSqliteLoader.Initialize();
 
-    string dir = Path.Combine(Main.Instance.Path, "Data");
+    string dir = Path.Combine(Main.Instance.InstallPath, "Data");
     Directory.CreateDirectory(dir);
     DbPath = Path.Combine(dir, "tufreplay.sqlite");
 

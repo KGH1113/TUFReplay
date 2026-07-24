@@ -24,7 +24,8 @@ public sealed class MicrophoneCalibrationFeature
   private MicrophoneCalibrationResult _result;
   private StoredReplayRun _run;
   private CapturedMicrophoneRecording _recording;
-  private CalibrationGameAudioTap _audioTap;
+  private int _songStartFrame;
+  private int _songSampleRate;
   private MicrophoneCalibrationTicker _ticker;
   private string _levelPath;
   private byte[] _levelGameplayHash;
@@ -66,10 +67,11 @@ public sealed class MicrophoneCalibrationFeature
       return Rejected("gameplay_active", "Finish the current gameplay run before starting calibration.");
 
     CleanupSession();
-    string levelPath = Path.Combine(Main.Instance.Path, "Assets", "calibration", "level.adofai");
+    string levelPath = Path.Combine(Main.Instance.PayloadPath, "Assets", "calibration", "level.adofai");
     string songPath = Path.Combine(Path.GetDirectoryName(levelPath) ?? string.Empty, "calibration_old.ogg");
-    if (!File.Exists(levelPath) || !File.Exists(songPath))
-      return Error("calibration_assets_missing", "The packaged calibration level or song is missing.");
+    string waveformPath = Path.Combine(Path.GetDirectoryName(levelPath) ?? string.Empty, "calibration_old.waveform");
+    if (!File.Exists(levelPath) || !File.Exists(songPath) || !File.Exists(waveformPath))
+      return Error("calibration_assets_missing", "The packaged calibration level, song, or waveform is missing.");
 
     string operationId = Guid.NewGuid().ToString("N");
     _levelPath = LevelPathIdentity.Canonicalize(levelPath);
@@ -137,13 +139,25 @@ public sealed class MicrophoneCalibrationFeature
   {
     if (!Active)
       return;
-    DestroyAudioTap();
-    AudioListener listener = UnityEngine.Object.FindFirstObjectByType<AudioListener>();
-    if (listener != null)
-    {
-      _audioTap = listener.gameObject.AddComponent<CalibrationGameAudioTap>();
-      _audioTap.BeginCapture();
-    }
+    scrConductor conductor = ADOBase.conductor;
+    AudioSource song = conductor?.song;
+    _songSampleRate = song?.clip?.frequency ?? 0;
+    _songStartFrame = conductor == null
+      ? 0
+      : CalibrationWaveformBuilder.ReferenceStartFrame(
+        conductor.songposition_minusi,
+        conductor.addoffset,
+        scrConductor.calibration_i,
+        song?.pitch ?? 1f,
+        _songSampleRate,
+        GCS.d_oldConductor || GCS.d_webglConductor
+      );
+    Main.Instance?.Log(
+      "[Calibration] Song reference startFrame="
+        + _songStartFrame
+        + ", inputOffsetMs="
+        + scrConductor.currentPreset.inputOffset
+    );
     UpdateState(MicrophoneCalibrationStates.Recording, "Recording the calibration run.");
   }
 
@@ -162,18 +176,23 @@ public sealed class MicrophoneCalibrationFeature
 
     ReplayMetadata metadata = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
     double durationMs = Math.Max(1d, (metadata?.terminalTimeUs ?? 0L) / 1000d);
-    float[] gameWaveform;
-    try
-    {
-      gameWaveform = _audioTap?.Finish(durationMs) ?? new float[CalibrationWaveformBuilder.BinCount];
-    }
-    catch (Exception exception)
+    if (_songSampleRate <= 0)
     {
       FeatureRegistry.MicrophoneRecording?.Discard(recording);
-      Error("game_waveform_failed", exception.Message, GetStatus().OperationId);
+      Error(
+        "game_waveform_failed",
+        "The calibration song sample rate is unavailable.",
+        GetStatus().OperationId
+      );
       return;
     }
-    DestroyAudioTap();
+    int songStartFrame = _songStartFrame;
+    int songSampleRate = _songSampleRate;
+    string referenceWaveformPath = Path.Combine(
+      Path.GetDirectoryName(_levelPath) ?? string.Empty,
+      "calibration_old.waveform"
+    );
+    ResetAudioCapture();
     _run = ToStoredReplayRun(run);
     _recording = recording;
     UpdateState(MicrophoneCalibrationStates.Processing, "Building calibration waveforms.");
@@ -182,19 +201,26 @@ public sealed class MicrophoneCalibrationFeature
     {
       try
       {
+        CalibrationReferenceWaveform referenceWaveform = CalibrationReferenceWaveform.Read(referenceWaveformPath);
+        float[] songWaveform = CalibrationWaveformBuilder.FromReferenceWaveform(
+          referenceWaveform,
+          songStartFrame,
+          songSampleRate,
+          durationMs
+        );
         float[] microphoneWaveform = CalibrationWaveformBuilder.FromPcm16(recording, durationMs);
-        UnityMainThread.Post(() => CompleteResult(operationId, durationMs, gameWaveform, microphoneWaveform));
+        UnityMainThread.Post(() => CompleteResult(operationId, durationMs, songWaveform, microphoneWaveform));
       }
       catch (Exception exception)
       {
-        UnityMainThread.Post(() => ErrorIfCurrent(operationId, "microphone_waveform_failed", exception.Message));
+        UnityMainThread.Post(() => ErrorIfCurrent(operationId, "calibration_waveform_failed", exception.Message));
       }
     });
   }
 
   public void OnRunDiscarded(CapturedMicrophoneRecording recording, string message)
   {
-    DestroyAudioTap();
+    ResetAudioCapture();
     FeatureRegistry.MicrophoneRecording?.Discard(recording);
     if (Active)
       UpdateState(MicrophoneCalibrationStates.WaitingForRun, message ?? "Try the calibration level again.");
@@ -316,6 +342,7 @@ public sealed class MicrophoneCalibrationFeature
         Revision = _result.Revision,
         DurationMs = _result.DurationMs,
         GameWaveform = (float[])_result.GameWaveform.Clone(),
+        SongWaveform = (float[])_result.SongWaveform.Clone(),
         MicrophoneWaveform = (float[])_result.MicrophoneWaveform.Clone(),
       };
     }
@@ -323,7 +350,12 @@ public sealed class MicrophoneCalibrationFeature
 
   public bool IsCurrentOperation(string operationId) => IsCurrent(operationId);
 
-  private void CompleteResult(string operationId, double durationMs, float[] gameWaveform, float[] microphoneWaveform)
+  private void CompleteResult(
+    string operationId,
+    double durationMs,
+    float[] songWaveform,
+    float[] microphoneWaveform
+  )
   {
     if (!IsCurrent(operationId))
       return;
@@ -336,7 +368,8 @@ public sealed class MicrophoneCalibrationFeature
         OperationId = operationId,
         Revision = revision,
         DurationMs = durationMs,
-        GameWaveform = gameWaveform,
+        GameWaveform = songWaveform,
+        SongWaveform = songWaveform,
         MicrophoneWaveform = microphoneWaveform,
       };
       _status.DurationMs = durationMs;
@@ -409,7 +442,7 @@ public sealed class MicrophoneCalibrationFeature
   private void CleanupSession()
   {
     StopPreview();
-    DestroyAudioTap();
+    ResetAudioCapture();
     if (_recording != null)
       FeatureRegistry.MicrophoneRecording?.Discard(_recording);
     _recording = null;
@@ -437,11 +470,10 @@ public sealed class MicrophoneCalibrationFeature
     }
   }
 
-  private void DestroyAudioTap()
+  private void ResetAudioCapture()
   {
-    if (_audioTap != null)
-      UnityEngine.Object.Destroy(_audioTap);
-    _audioTap = null;
+    _songStartFrame = 0;
+    _songSampleRate = 0;
   }
 
   private void RestoreRunInBackground()

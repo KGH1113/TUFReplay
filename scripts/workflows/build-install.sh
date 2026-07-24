@@ -18,6 +18,7 @@ else
 fi
 
 run_task "Build bootstrap (Debug)" "$TASKS_DIR/build/bootstrap.sh" Debug
+run_task "Build update engine (Debug)" "$TASKS_DIR/build/update-engine.sh" Debug
 run_task "Build mod (Debug)" "$TASKS_DIR/build/mod.sh" Debug
 
 if is_macos; then

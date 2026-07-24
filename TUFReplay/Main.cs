@@ -14,7 +14,9 @@ public sealed class Main
   public static UpdateSettings UpdaterSettings { get; private set; }
 
   public UnityModManager.ModEntry ModEntry { get; }
-  public string Path => ModEntry.Path;
+  public string InstallPath => ModEntry.Path;
+  public string PayloadPath => System.IO.Path.GetDirectoryName(typeof(Main).Assembly.Location) ?? ModEntry.Path;
+  public string Path => InstallPath;
   public string Version => ModEntry.Info.Version;
 
   private readonly string _updateSettingsPath;
@@ -23,7 +25,7 @@ public sealed class Main
   private Main(UnityModManager.ModEntry modEntry)
   {
     ModEntry = modEntry;
-    _updateSettingsPath = System.IO.Path.Combine(modEntry.Path, "UpdateSettings.json");
+    _updateSettingsPath = System.IO.Path.Combine(InstallPath, "UpdateSettings.json");
   }
 
   public static bool Load(UnityModManager.ModEntry modEntry)
@@ -31,7 +33,7 @@ public sealed class Main
     try
     {
       Instance = new Main(modEntry);
-      TUFReplaySettingStore.Initialize(System.IO.Path.Combine(modEntry.Path, "Settings.json"));
+      TUFReplaySettingStore.Initialize(System.IO.Path.Combine(Instance.InstallPath, "Settings.json"));
       UpdaterSettings = UpdateSettings.Load(Instance._updateSettingsPath);
       UnityMainThread.Initialize();
 

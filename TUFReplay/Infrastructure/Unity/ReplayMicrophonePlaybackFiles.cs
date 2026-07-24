@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Unity;
 
 public static class ReplayMicrophonePlaybackFiles
 {
-  private static string DirectoryPath => Path.Combine(Main.Instance.Path, "Data", "MicrophonePlayback");
+  private static string DirectoryPath => Path.Combine(Main.Instance.InstallPath, "Data", "MicrophonePlayback");
 
   public static void Initialize()
   {

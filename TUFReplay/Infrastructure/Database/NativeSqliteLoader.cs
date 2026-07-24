@@ -35,7 +35,7 @@ public static class NativeSqliteLoader
     if (!string.IsNullOrEmpty(configuredPath) && File.Exists(configuredPath))
       return configuredPath;
 
-    string bundledPath = Path.Combine(Main.Instance.Path, GetBundledLibraryFileName());
+    string bundledPath = Path.Combine(Main.Instance.PayloadPath, GetBundledLibraryFileName());
     if (File.Exists(bundledPath))
       return bundledPath;
 

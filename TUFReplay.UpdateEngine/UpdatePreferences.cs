@@ -1,7 +1,7 @@
 using System.IO;
 using Newtonsoft.Json.Linq;
 
-namespace TUFReplay.Bootstrap;
+namespace TUFReplay.UpdateEngine;
 
 internal sealed class UpdatePreferences
 {
@@ -13,11 +13,10 @@ internal sealed class UpdatePreferences
     {
       if (!File.Exists(path))
         return new UpdatePreferences();
-
       JObject root = JObject.Parse(File.ReadAllText(path));
       return new UpdatePreferences
       {
-        ReceiveBetaUpdates = root.Value<bool?>(nameof(ReceiveBetaUpdates)) ?? false
+        ReceiveBetaUpdates = root.Value<bool?>(nameof(ReceiveBetaUpdates)) ?? false,
       };
     }
     catch
