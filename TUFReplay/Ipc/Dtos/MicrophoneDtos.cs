@@ -23,6 +23,8 @@ public sealed class MicrophoneDeviceDto
 
 public sealed class MicrophoneDevicesResponseDto
 {
+  public bool Enabled;
+  public bool ToggleLocked;
   public List<MicrophoneDeviceDto> Devices;
   public string SelectedDeviceId;
 
@@ -31,6 +33,12 @@ public sealed class MicrophoneDevicesResponseDto
     var devices = new List<MicrophoneDeviceDto>(state.Devices.Count);
     foreach (MicrophoneDeviceInfo device in state.Devices)
       devices.Add(MicrophoneDeviceDto.From(device));
-    return new MicrophoneDevicesResponseDto { Devices = devices, SelectedDeviceId = state.SelectedDeviceId };
+    return new MicrophoneDevicesResponseDto
+    {
+      Enabled = state.Enabled,
+      ToggleLocked = state.ToggleLocked,
+      Devices = devices,
+      SelectedDeviceId = state.SelectedDeviceId,
+    };
   }
 }
