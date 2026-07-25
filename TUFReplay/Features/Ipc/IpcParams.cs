@@ -56,6 +56,17 @@ public static class IpcParams
     return int.TryParse(token.ToString(), out int value) ? value : null;
   }
 
+  public static bool TryBool(IpcRequest request, string name, out bool value)
+  {
+    value = false;
+    JToken token = GetToken(request, name);
+    if (token == null || token.Type != JTokenType.Boolean)
+      return false;
+
+    value = token.Value<bool>();
+    return true;
+  }
+
   private static JToken GetToken(IpcRequest request, string name)
   {
     return request?.Params is JObject obj ? obj[name] : null;

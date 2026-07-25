@@ -134,6 +134,8 @@ describe("activity IPC contract", () => {
   test("uses the exact microphone command names and nullable selection param", async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
     const microphones = {
+      Enabled: true,
+      ToggleLocked: false,
       Devices: [
         {
           Id: "USB Audio Device",
@@ -153,10 +155,12 @@ describe("activity IPC contract", () => {
     const gateway = createActivityGateway(namespace as never);
 
     expect(await gateway.getMicrophoneDevices()).toBe(microphones);
+    expect(await gateway.setMicrophoneEnabled(false)).toBe(microphones);
     expect(await gateway.selectMicrophoneDevice("USB Audio Device")).toBe(microphones);
     expect(await gateway.selectMicrophoneDevice(null)).toBe(microphones);
     expect(calls).toEqual([
       { method: "microphone.devices.get", params: {} },
+      { method: "microphone.enabled.set", params: { enabled: false } },
       { method: "microphone.device.select", params: { deviceId: "USB Audio Device" } },
       { method: "microphone.device.select", params: { deviceId: null } },
     ]);

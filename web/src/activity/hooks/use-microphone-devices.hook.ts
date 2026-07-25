@@ -4,6 +4,8 @@ import type { ConnectionStatus, MicrophoneDevice, MicrophoneDevicesState } from 
 import type { ActivityGateway } from "../data/activity.gateway";
 
 const EMPTY_STATE: MicrophoneDevicesState = {
+  Enabled: true,
+  ToggleLocked: false,
   Devices: [],
   SelectedDeviceId: null,
 };
@@ -15,11 +17,14 @@ export function useMicrophoneDevices(
   const [state, setState] = useState(EMPTY_STATE);
   const [loading, setLoading] = useState(false);
   const [pendingDeviceId, setPendingDeviceId] = useState<string | null | undefined>(undefined);
+  const [pendingEnabled, setPendingEnabled] = useState<boolean | undefined>(undefined);
   const [error, setError] = useState("");
   const refreshInFlightRef = useRef(false);
 
   const applyState = useCallback((next: MicrophoneDevicesState) => {
     setState({
+      Enabled: next.Enabled !== false,
+      ToggleLocked: next.ToggleLocked === true,
       Devices: Array.isArray(next.Devices) ? next.Devices : [],
       SelectedDeviceId: next.SelectedDeviceId ?? null,
     });
@@ -61,6 +66,30 @@ export function useMicrophoneDevices(
     [applyState, connectionStatus, gatewayRef, pendingDeviceId],
   );
 
+  const setEnabled = useCallback(
+    async (enabled: boolean) => {
+      const gateway = gatewayRef.current;
+      if (
+        !gateway ||
+        connectionStatus !== "online" ||
+        pendingEnabled !== undefined ||
+        pendingDeviceId !== undefined
+      )
+        return;
+
+      setPendingEnabled(enabled);
+      setError("");
+      try {
+        applyState(await gateway.setMicrophoneEnabled(enabled));
+      } catch (cause) {
+        setError(errorMessage(cause));
+      } finally {
+        setPendingEnabled(undefined);
+      }
+    },
+    [applyState, connectionStatus, gatewayRef, pendingDeviceId, pendingEnabled],
+  );
+
   useEffect(() => {
     if (connectionStatus === "online") {
       void refresh();
@@ -72,12 +101,16 @@ export function useMicrophoneDevices(
 
   return {
     devices: state.Devices as MicrophoneDevice[],
+    enabled: state.Enabled,
+    toggleLocked: state.ToggleLocked,
     selectedDeviceId: state.SelectedDeviceId,
     loading,
     pendingDeviceId,
+    pendingEnabled,
     error,
     refresh,
     select,
+    setEnabled,
   };
 }
 

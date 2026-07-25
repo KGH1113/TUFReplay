@@ -55,6 +55,7 @@ const appSessions: ActivityAppSession[] = [
 
 export function createMockActivityGateway(): ActivityGateway {
   let selectedMicrophoneDeviceId: string | null = null;
+  let microphoneEnabled = true;
   const microphoneDevices = [
     {
       Id: "MacBook Pro Microphone",
@@ -176,12 +177,25 @@ export function createMockActivityGateway(): ActivityGateway {
       };
     },
     getMicrophoneDevices: async () => ({
-      Devices: microphoneDevices,
+      Enabled: microphoneEnabled,
+      ToggleLocked: false,
+      Devices: microphoneEnabled ? microphoneDevices : [],
       SelectedDeviceId: selectedMicrophoneDeviceId,
     }),
+    setMicrophoneEnabled: async (enabled) => {
+      microphoneEnabled = enabled;
+      return {
+        Enabled: microphoneEnabled,
+        ToggleLocked: false,
+        Devices: microphoneEnabled ? microphoneDevices : [],
+        SelectedDeviceId: selectedMicrophoneDeviceId,
+      };
+    },
     selectMicrophoneDevice: async (deviceId) => {
       selectedMicrophoneDeviceId = deviceId;
       return {
+        Enabled: microphoneEnabled,
+        ToggleLocked: false,
         Devices: microphoneDevices,
         SelectedDeviceId: selectedMicrophoneDeviceId,
       };

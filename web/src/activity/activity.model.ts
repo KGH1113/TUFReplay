@@ -171,6 +171,8 @@ export interface MicrophoneDevice {
 }
 
 export interface MicrophoneDevicesState {
+  Enabled: boolean;
+  ToggleLocked: boolean;
   Devices: MicrophoneDevice[];
   SelectedDeviceId: string | null;
 }
