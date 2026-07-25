@@ -11,6 +11,7 @@ public readonly struct RecordedInput
   public bool PassedHook => (Flags & RecordInputFlags.PassedHook) != 0;
   public bool MainCandidate => (Flags & RecordInputFlags.MainCandidate) != 0;
   public bool GameplayCounted => (Flags & RecordInputFlags.GameplayCounted) != 0;
+  public bool ExtendedKey => (Flags & RecordInputFlags.ExtendedKey) != 0;
 
   public RecordedInput(long timeUs, int key, RecordInputFlags flags)
   {
@@ -28,4 +29,5 @@ public enum RecordInputFlags : ushort
   PassedHook = 1 << 2,
   MainCandidate = 1 << 3,
   GameplayCounted = 1 << 4,
+  ExtendedKey = 1 << 5,
 }

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Infrastructure.NativeInput;
 
 namespace TUFReplay.Features.Replay;
 
@@ -41,12 +42,21 @@ public class ReplayInputScheduler
 
   public List<int> SeekToState(long nowUs)
   {
+    List<NativeInputKey> nativeState = SeekToNativeState(nowUs);
+    List<int> heldKeys = new List<int>(nativeState.Count);
+    for (int i = 0; i < nativeState.Count; i++)
+      heldKeys.Add(nativeState[i].Key);
+    return heldKeys;
+  }
+
+  internal List<NativeInputKey> SeekToNativeState(long nowUs)
+  {
     lock (_gate)
     {
       _nextIndex = 0;
 
-      List<int> heldKeys = new List<int>();
-      HashSet<int> heldSet = new HashSet<int>();
+      List<NativeInputKey> heldKeys = new List<NativeInputKey>();
+      HashSet<NativeInputKey> heldSet = new HashSet<NativeInputKey>();
 
       while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
       {
@@ -54,14 +64,15 @@ public class ReplayInputScheduler
 
         if (input.Async)
         {
+          NativeInputKey key = new NativeInputKey(input.Key, input.ExtendedKey);
           if (input.Down)
           {
-            if (heldSet.Add(input.Key))
-              heldKeys.Add(input.Key);
+            if (heldSet.Add(key))
+              heldKeys.Add(key);
           }
-          else if (heldSet.Remove(input.Key))
+          else if (heldSet.Remove(key))
           {
-            heldKeys.Remove(input.Key);
+            heldKeys.Remove(key);
           }
         }
 
