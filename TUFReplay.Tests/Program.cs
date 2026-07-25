@@ -453,8 +453,7 @@ internal static class Program
       "Game waveform peak normalization is wrong."
     );
     Assert(
-      game[CalibrationWaveformBuilder.BinCount / 2] > 0.99f
-        && game[CalibrationWaveformBuilder.BinCount * 4 / 5] == 0f,
+      game[CalibrationWaveformBuilder.BinCount / 2] > 0.99f && game[CalibrationWaveformBuilder.BinCount * 4 / 5] == 0f,
       "Game waveform timing aggregation is wrong."
     );
 
@@ -474,21 +473,25 @@ internal static class Program
     CalibrationReferenceWaveform reference = CalibrationReferenceWaveform.Read(referencePath);
     float[] referenceSong = CalibrationWaveformBuilder.FromReferenceWaveform(reference, 1, 1000, 3d);
     Assert(referenceSong[0] > 0.49f, "Reference song waveform did not apply its source start frame.");
+    Assert(referenceSong[CalibrationWaveformBuilder.BinCount / 3] > 0.99f, "Reference song waveform timing is wrong.");
+    float[] scheduledSong = CalibrationWaveformBuilder.FromReferenceWaveform(reference, -1, 1000, 5d);
+    Assert(scheduledSong[0] == 0f, "Scheduled song waveform did not preserve leading silence.");
     Assert(
-      referenceSong[CalibrationWaveformBuilder.BinCount / 3] > 0.99f,
-      "Reference song waveform timing is wrong."
+      scheduledSong[CalibrationWaveformBuilder.BinCount * 2 / 5] > 0.49f
+        && scheduledSong[CalibrationWaveformBuilder.BinCount * 3 / 5] > 0.99f,
+      "Scheduled song waveform did not shift source peaks onto the gameplay timeline."
     );
     Assert(
-      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, 0.1d, 2d, 1000, false) == 1400,
-      "Modern conductor input offset was not applied to the song reference."
+      CalibrationWaveformBuilder.SourceFrameAtDspTime(9.5d, 8d, true, 0.5d, 4d, 1d, 1000) == -500,
+      "Scheduled calibration audio did not preserve its leading silence."
     );
     Assert(
-      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, -0.1d, 2d, 1000, false) == 1000,
-      "Negative input offset moved the song reference in the wrong direction."
+      CalibrationWaveformBuilder.SourceFrameAtDspTime(10d, 8d, true, 0.5d, 4d, 1d, 1000) == 0,
+      "Scheduled calibration audio did not start at source frame zero."
     );
     Assert(
-      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, 0.1d, 2d, 1000, true) == 1200,
-      "Legacy conductor input offset was not applied to the song reference."
+      CalibrationWaveformBuilder.SourceFrameAtDspTime(10d, 8d, false, 0.5d, 4d, 2d, 1000) == 4000,
+      "Pitched source frame calculation is wrong."
     );
   }
 
@@ -662,8 +665,7 @@ PRAGMA user_version=9;";
     }
     ActivitySchema.Ensure(retentionMigration);
     using SqliteCommand retention = retentionMigration.CreateCommand();
-    retention.CommandText =
-      "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
+    retention.CommandText = "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
     using SqliteDataReader retentionReader = retention.ExecuteReader();
     Assert(retentionReader.Read(), "Legacy microphone recording was lost during retention migration.");
     Assert(
@@ -707,7 +709,13 @@ PRAGMA user_version=9;";
     Assert(gameplayA.LogicalLevelId == gameplayB.LogicalLevelId, "Equal gameplay hashes were not merged.");
 
     LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[16], new byte[] { 3 });
-    LevelSession tufB = LogicalVisit("tuf-b", "/tmp/tuf-b.adofai", 77, Enumerable.Repeat((byte)9, 16).ToArray(), new byte[] { 4 });
+    LevelSession tufB = LogicalVisit(
+      "tuf-b",
+      "/tmp/tuf-b.adofai",
+      77,
+      Enumerable.Repeat((byte)9, 16).ToArray(),
+      new byte[] { 4 }
+    );
     LevelSessionRepository.Save(tufA);
     LevelSessionRepository.Save(tufB);
     Assert(tufA.LogicalLevelId == tufB.LogicalLevelId, "Equal TUF IDs were not merged after chart updates.");
