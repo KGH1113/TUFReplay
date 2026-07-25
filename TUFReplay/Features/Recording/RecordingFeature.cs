@@ -192,7 +192,33 @@ public class RecordingFeature
       Main.Instance.Log("[Recording] Calibration level opened in transient recording mode.");
       return;
     }
+
+    PrepareCurrentLevelRecording("Custom level opened");
+  }
+
+  public void OnReplayEndedInPlayMode()
+  {
+    if (!Active || Session.IsRecording || ReplaySessionService.HasActiveContext)
+      return;
+    if (scnEditor.instance == null || !scnEditor.instance.playMode)
+      return;
+    if (FeatureRegistry.MicrophoneCalibration?.IsCalibrationLevel() == true)
+      return;
+
+    PrepareCurrentLevelRecording("Replay ended; recording rearmed for the next run");
+  }
+
+  private void PrepareCurrentLevelRecording(string logMessage)
+  {
     _calibrationRun = false;
+
+    string levelPath = CanonicalLevelPath();
+    if (levelPath == null)
+    {
+      StopSession();
+      _activity.CloseLevel();
+      return;
+    }
 
     int? tufLevelId = TufHelperGateway.ResolveTufLevelId(levelPath);
     ReplaySessionService.ClearActiveContextIfLevelChanged();
@@ -215,7 +241,7 @@ public class RecordingFeature
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
     if (Session.IsRecording)
       FeatureRegistry.MicrophoneRecording?.ArmForLevel();
-    Main.Instance.Log("[Recording] Custom level opened. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
+    Main.Instance.Log("[Recording] " + logMessage + ". tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
   }
 
   public bool PrepareRunForInputCapture()
