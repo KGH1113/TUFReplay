@@ -7,6 +7,7 @@ using System.Threading;
 using Newtonsoft.Json;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Recording;
+using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
@@ -701,6 +702,7 @@ public static class ReplayPlaybackCoordinator
     if (!IsCurrent(operation.OperationId))
       return;
 
+    bool shouldRearmRecording = !operation.AllowBackground;
     ReplaySessionService.ClearActiveContext();
     operation.CleanupPreparedMicrophone();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
@@ -708,6 +710,18 @@ public static class ReplayPlaybackCoordinator
     _waitingForEditor = false;
     _forcedFail = false;
     _operation = null;
+
+    if (shouldRearmRecording)
+    {
+      try
+      {
+        FeatureRegistry.Recording?.OnReplayEndedInPlayMode();
+      }
+      catch (Exception exception)
+      {
+        Main.Instance?.LogException("OnReplayEndedInPlayMode", exception);
+      }
+    }
   }
 
   private static void TickReturnToEditor(PendingReplay operation)

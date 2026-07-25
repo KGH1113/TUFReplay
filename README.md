@@ -47,7 +47,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
-- Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run.
+- Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
 - Streams microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries; temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
@@ -236,6 +236,7 @@ Registered methods:
 - `replay.status.get`
 - `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
 - `microphone.devices.get`
+- `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
 - `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
 - `microphone.calibration.start`
 - `microphone.calibration.status.get`

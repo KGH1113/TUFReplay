@@ -55,6 +55,7 @@ export interface ActivityGateway {
   getReplayStatus(): Promise<ReplayStatus>;
   pickReplayLevelFile(runId: string): Promise<ReplayLevelFilePickerResult>;
   getMicrophoneDevices(): Promise<MicrophoneDevicesState>;
+  setMicrophoneEnabled(enabled: boolean): Promise<MicrophoneDevicesState>;
   selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
   startMicrophoneCalibration(): Promise<MicrophoneCalibrationStatus>;
   getMicrophoneCalibrationStatus(operationId: string): Promise<MicrophoneCalibrationStatus>;
@@ -136,6 +137,7 @@ export function createActivityGateway(
     pickReplayLevelFile: (runId) =>
       callDomain(pickerNamespace, "replay.level-file.pick", { runId }),
     getMicrophoneDevices: () => callDomain(namespace, "microphone.devices.get", {}),
+    setMicrophoneEnabled: (enabled) => callDomain(namespace, "microphone.enabled.set", { enabled }),
     selectMicrophoneDevice: (deviceId) =>
       callDomain(namespace, "microphone.device.select", { deviceId }),
     startMicrophoneCalibration: () => callDomain(namespace, "microphone.calibration.start", {}),

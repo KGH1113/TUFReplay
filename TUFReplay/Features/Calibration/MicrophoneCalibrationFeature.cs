@@ -63,6 +63,8 @@ public sealed class MicrophoneCalibrationFeature
         + ", editorPlayMode="
         + (scnEditor.instance?.playMode == true)
     );
+    if (TUFReplaySettingStore.Current?.MicrophoneEnabled == false)
+      return Rejected("microphone_disabled", "Turn on microphone input before starting calibration.");
     if (IsGameplayActive())
       return Rejected("gameplay_active", "Finish the current gameplay run before starting calibration.");
 

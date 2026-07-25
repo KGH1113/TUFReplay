@@ -162,12 +162,16 @@ export function ActivityDashboard() {
               status={activity.status}
               onRetry={() => void activity.retry()}
               microphoneDevices={microphones.devices}
+              microphoneEnabled={microphones.enabled}
+              microphoneToggleLocked={microphones.toggleLocked}
               selectedMicrophoneDeviceId={microphones.selectedDeviceId}
               microphoneLoading={microphones.loading}
               pendingMicrophoneDeviceId={microphones.pendingDeviceId}
+              pendingMicrophoneEnabled={microphones.pendingEnabled}
               microphoneError={microphones.error}
               showMicrophoneOffsetCalibration={activity.status === "online"}
               onRefreshMicrophones={() => void microphones.refresh()}
+              onSetMicrophoneEnabled={(enabled) => void microphones.setEnabled(enabled)}
               onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
               onAdjustMicrophoneOffset={microphoneOffset.start}
             />

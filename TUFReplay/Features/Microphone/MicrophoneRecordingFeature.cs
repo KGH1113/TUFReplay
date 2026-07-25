@@ -23,24 +23,18 @@ public sealed class MicrophoneRecordingFeature
   private System.Threading.Timer _retentionTimer;
   private int _retentionCleanupRunning;
   private string _tempDirectory;
+  private bool _active;
 
   public void Enable()
   {
-    if (_backend != null)
+    if (_active)
       return;
+    _active = true;
     try
     {
       _tempDirectory = Path.Combine(Main.Instance.InstallPath, "Data", "MicrophoneTemp");
       Directory.CreateDirectory(_tempDirectory);
       DeleteStalePartials();
-      _backend = MicrophoneCaptureBackendFactory.Create();
-      MicrophoneCaptureRuntime.Backend = _backend;
-      if (TUFReplaySettingStore.Current?.AutoRecord != false)
-        _backend.RequestPermission();
-      var gameObject = new GameObject("TUFReplay Microphone Capture Ticker");
-      UnityEngine.Object.DontDestroyOnLoad(gameObject);
-      _ticker = gameObject.AddComponent<MicrophoneCaptureTicker>();
-      _ticker.Backend = _backend;
       try
       {
         RecoverPendingSaves();
@@ -55,47 +49,73 @@ public sealed class MicrophoneRecordingFeature
         TimeSpan.Zero,
         TimeSpan.FromHours(1)
       );
+      if (TUFReplaySettingStore.Current?.MicrophoneEnabled != false)
+      {
+        try
+        {
+          ActivateCaptureBackend();
+        }
+        catch (Exception exception)
+        {
+          DeactivateCaptureBackend();
+          Main.Instance?.LogException("Microphone/CaptureInitialize", exception);
+        }
+      }
     }
     catch (Exception exception)
     {
       Main.Instance?.LogException("Microphone/Initialize", exception);
+      _active = false;
       _retentionTimer?.Dispose();
       _retentionTimer = null;
-      _backend?.Dispose();
-      _backend = null;
-      MicrophoneCaptureRuntime.Backend = null;
-      if (_ticker != null)
-        UnityEngine.Object.Destroy(_ticker.gameObject);
-      _ticker = null;
+      DeactivateCaptureBackend();
     }
   }
 
   public void Disable()
   {
+    if (!_active)
+      return;
+    _active = false;
     _retentionTimer?.Dispose();
     _retentionTimer = null;
-    Disarm();
-    try
-    {
-      _backend?.Dispose();
-    }
-    catch (Exception exception)
-    {
-      Main.Instance?.Log("[Microphone] Shutdown failed. error=" + exception.Message);
-    }
-    _backend = null;
-    MicrophoneCaptureRuntime.Backend = null;
+    DeactivateCaptureBackend();
     _savesIdle.Wait(TimeSpan.FromSeconds(2));
     lock (_gate)
       _persistedRuns.Clear();
-    if (_ticker != null)
-      UnityEngine.Object.Destroy(_ticker.gameObject);
-    _ticker = null;
+  }
+
+  public bool SetCaptureEnabled(bool enabled, out string error)
+  {
+    error = null;
+    if (!_active)
+    {
+      error = "Microphone capture is unavailable.";
+      return false;
+    }
+
+    if (enabled)
+    {
+      try
+      {
+        ActivateCaptureBackend();
+        return true;
+      }
+      catch (Exception exception)
+      {
+        DeactivateCaptureBackend();
+        error = exception.Message;
+        return false;
+      }
+    }
+
+    DeactivateCaptureBackend();
+    return true;
   }
 
   public void ArmForLevel()
   {
-    if (_backend == null)
+    if (!IsCaptureEnabled() || _backend == null)
       return;
     try
     {
@@ -112,6 +132,11 @@ public sealed class MicrophoneRecordingFeature
   public bool ArmForCalibration(out string error)
   {
     error = null;
+    if (!IsCaptureEnabled())
+    {
+      error = "Microphone input is turned off.";
+      return false;
+    }
     if (_backend == null)
     {
       error = "Microphone capture is unavailable.";
@@ -148,7 +173,7 @@ public sealed class MicrophoneRecordingFeature
 
   public void BeginRun(string runId)
   {
-    if (_backend == null || string.IsNullOrEmpty(runId))
+    if (!IsCaptureEnabled() || _backend == null || string.IsNullOrEmpty(runId))
       return;
     string path = Path.Combine(_tempDirectory, runId + ".wav.partial");
     try
@@ -174,6 +199,62 @@ public sealed class MicrophoneRecordingFeature
     {
       Main.Instance?.Log("[Microphone] Capture finalization failed. error=" + exception.Message);
       return null;
+    }
+  }
+
+  private static bool IsCaptureEnabled()
+  {
+    return TUFReplaySettingStore.Current?.MicrophoneEnabled != false;
+  }
+
+  private void ActivateCaptureBackend()
+  {
+    if (_backend != null)
+      return;
+
+    IMicrophoneCaptureBackend backend = MicrophoneCaptureBackendFactory.Create();
+    GameObject gameObject = null;
+    try
+    {
+      gameObject = new GameObject("TUFReplay Microphone Capture Ticker");
+      UnityEngine.Object.DontDestroyOnLoad(gameObject);
+      MicrophoneCaptureTicker ticker = gameObject.AddComponent<MicrophoneCaptureTicker>();
+      ticker.Backend = backend;
+      if (TUFReplaySettingStore.Current?.AutoRecord != false)
+        backend.RequestPermission();
+      _backend = backend;
+      _ticker = ticker;
+      MicrophoneCaptureRuntime.Backend = backend;
+    }
+    catch
+    {
+      if (gameObject != null)
+        UnityEngine.Object.Destroy(gameObject);
+      backend.Dispose();
+      throw;
+    }
+  }
+
+  private void DeactivateCaptureBackend()
+  {
+    IMicrophoneCaptureBackend backend = _backend;
+    _backend = null;
+    MicrophoneCaptureRuntime.Backend = null;
+
+    if (_ticker != null)
+      UnityEngine.Object.Destroy(_ticker.gameObject);
+    _ticker = null;
+
+    if (backend == null)
+      return;
+    try
+    {
+      backend.Disarm();
+      backend.Dispose();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Shutdown failed. error=" + exception.Message);
     }
   }
 
