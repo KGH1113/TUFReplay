@@ -7,24 +7,32 @@ export function DashboardHeader({
   status,
   onRetry,
   microphoneDevices,
+  microphoneEnabled,
+  microphoneToggleLocked,
   selectedMicrophoneDeviceId,
   microphoneLoading,
   pendingMicrophoneDeviceId,
+  pendingMicrophoneEnabled,
   microphoneError,
   showMicrophoneOffsetCalibration,
   onRefreshMicrophones,
+  onSetMicrophoneEnabled,
   onSelectMicrophone,
   onAdjustMicrophoneOffset,
 }: {
   status: ConnectionStatus;
   onRetry: () => void;
   microphoneDevices: MicrophoneDevice[];
+  microphoneEnabled: boolean;
+  microphoneToggleLocked: boolean;
   selectedMicrophoneDeviceId: string | null;
   microphoneLoading: boolean;
   pendingMicrophoneDeviceId: string | null | undefined;
+  pendingMicrophoneEnabled: boolean | undefined;
   microphoneError: string;
   showMicrophoneOffsetCalibration: boolean;
   onRefreshMicrophones: () => void;
+  onSetMicrophoneEnabled: (enabled: boolean) => void;
   onSelectMicrophone: (deviceId: string | null) => void;
   onAdjustMicrophoneOffset: () => void;
 }) {
@@ -35,12 +43,16 @@ export function DashboardHeader({
         <MicrophoneDeviceMenu
           connectionStatus={status}
           devices={microphoneDevices}
+          enabled={microphoneEnabled}
+          toggleLocked={microphoneToggleLocked}
           selectedDeviceId={selectedMicrophoneDeviceId}
           loading={microphoneLoading}
           pendingDeviceId={pendingMicrophoneDeviceId}
+          pendingEnabled={pendingMicrophoneEnabled}
           error={microphoneError}
           showOffsetCalibration={showMicrophoneOffsetCalibration}
           onRefresh={onRefreshMicrophones}
+          onSetEnabled={onSetMicrophoneEnabled}
           onSelect={onSelectMicrophone}
           onAdjustOffset={onAdjustMicrophoneOffset}
         />

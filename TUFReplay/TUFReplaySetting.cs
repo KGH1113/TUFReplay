@@ -13,6 +13,7 @@ public sealed class TUFReplaySetting
   public const int MaxMicrophoneVolumeDb = 20;
 
   public bool AutoRecord { get; set; } = true;
+  public bool MicrophoneEnabled { get; set; } = true;
   public string MicrophoneDeviceId { get; set; }
   public int MicrophoneOffsetMs { get; set; }
   public int MicrophoneVolumeDb { get; set; }

@@ -282,12 +282,20 @@ internal static class Program
     File.WriteAllText(legacyPath, "{\"Setting\":{\"AutoRecord\":false}}");
     TUFReplaySetting legacy = TUFReplaySetting.Load(legacyPath);
     Assert(!legacy.AutoRecord, "Legacy AutoRecord setting was not loaded.");
+    Assert(legacy.MicrophoneEnabled, "Legacy microphone access did not default to enabled.");
     Assert(legacy.MicrophoneOffsetMs == 0, "Legacy calibration offset default is incorrect.");
     Assert(legacy.MicrophoneVolumeDb == 0, "Legacy calibration volume default is incorrect.");
 
     string percentPath = Path.Combine(root, "percent-settings.json");
     File.WriteAllText(percentPath, "{\"Setting\":{\"MicrophoneVolumePercent\":200}}");
     Assert(TUFReplaySetting.Load(percentPath).MicrophoneVolumeDb == 6, "Legacy percent volume was not migrated.");
+
+    string disabledPath = Path.Combine(root, "disabled-microphone-settings.json");
+    var disabled = new TUFReplaySetting { MicrophoneEnabled = false, MicrophoneDeviceId = "saved-device" };
+    disabled.Save(disabledPath);
+    TUFReplaySetting reloadedDisabled = TUFReplaySetting.Load(disabledPath);
+    Assert(!reloadedDisabled.MicrophoneEnabled, "Disabled microphone access was not persisted.");
+    Assert(reloadedDisabled.MicrophoneDeviceId == "saved-device", "Disabled microphone access lost its device.");
 
     legacy.MicrophoneOffsetMs = 999;
     legacy.MicrophoneVolumeDb = -50;

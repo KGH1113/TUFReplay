@@ -43,4 +43,31 @@ public static class MicrophoneIpcHandlers
       );
     }
   }
+
+  public static object SetEnabled(IpcRequest request)
+  {
+    if (!IpcParams.TryBool(request, "enabled", out bool enabled))
+      return IpcDomainError.Create("invalid_microphone_enabled", "enabled must be a boolean.");
+
+    try
+    {
+      if (
+        !MicrophoneDeviceService.TrySetEnabled(
+          enabled,
+          out MicrophoneDevicesState state,
+          out string errorCode,
+          out string errorMessage
+        )
+      )
+        return IpcDomainError.Create(errorCode, errorMessage);
+
+      Main.Instance?.Log("[Microphone] Input access " + (enabled ? "enabled." : "disabled."));
+      return MicrophoneDevicesResponseDto.From(state);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[IPC] Microphone access update failed: " + exception.GetType().Name);
+      return IpcDomainError.Create("microphone_toggle_failed", "Microphone access could not be updated.");
+    }
+  }
 }

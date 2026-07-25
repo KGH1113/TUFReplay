@@ -323,7 +323,11 @@ public static class ReplaySessionService
       return;
     }
 
-    if (_activeContext?.HitContextPlayer != null && _activeContext.HitContextPlayer.Finished)
+    if (
+      _activeContext?.HitContextPlayer != null
+      && before < _activeContext.HitContextPlayer.Count
+      && after >= _activeContext.HitContextPlayer.Count
+    )
     {
       Main.Instance?.Log(
         "[Replay/HitContext] Finished. hitContext=" + HitContextSnapshot(_activeContext.HitContextPlayer)
