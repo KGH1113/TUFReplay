@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
+using SkyHook;
 using TUFReplay;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
@@ -13,6 +14,7 @@ using TUFReplay.Infrastructure.Database;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Database.Schema;
 using TUFReplay.Infrastructure.NativeInput;
+using TUFReplay.Infrastructure.NativeInput.Capture;
 using TUFReplay.Infrastructure.Unity;
 
 internal static class Program
@@ -33,6 +35,9 @@ internal static class Program
       TestSchemaMigrationAndBlob(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
+      TestWindowsSkyHookRawKeyPreservation();
+      TestNativeInputMigrationCompatibility();
+      TestWindowsPhysicalKeyMetadata();
       TestReplaySchedulerChord();
       TestReplayPumpTimingAndBatching();
       TestReplayPumpFocusAndReleaseAll();
@@ -75,6 +80,109 @@ internal static class Program
     Assert(scheduler.CopyNextTimestampGroup(chord) == 128, "128-key chord was truncated.");
     for (int i = 0; i < chord.Count; i++)
       Assert(chord[i].Key == i + 1, "Chord order changed.");
+  }
+
+  private static void TestWindowsPhysicalKeyMetadata()
+  {
+    RecordInputFlags mainEnterFlags = RecordInputFlags.Async | RecordInputFlags.Down;
+    RecordInputFlags keypadEnterFlags = mainEnterFlags | RecordInputFlags.ExtendedKey;
+    var inputs = new List<RecordedInput>
+    {
+      new RecordedInput(0, 0x0D, mainEnterFlags),
+      new RecordedInput(0, 0x0D, keypadEnterFlags),
+    };
+
+    var scheduler = new ReplayInputScheduler(inputs);
+    List<NativeInputKey> held = scheduler.SeekToNativeState(0);
+    Assert(held.Count == 2, "Main Enter and numpad Enter collapsed into one held key.");
+    Assert(held.Exists(key => key.Key == 0x0D && !key.ExtendedKey), "Main Enter identity was lost.");
+    Assert(held.Exists(key => key.Key == 0x0D && key.ExtendedKey), "Numpad Enter identity was lost.");
+
+    var payload = new RecordedRunPayload();
+    payload.Inputs.AddRange(inputs);
+    List<RecordedInput> roundTrip = ReplayInputParser.Parse(payload.ToInputCsvBytes());
+    Assert(roundTrip.Count == 2 && roundTrip[1].ExtendedKey, "Extended-key flag was not preserved in CSV.");
+
+    Assert(WindowsNativeInputKey.IsExtended(0x2C), "Print Screen must be treated as extended.");
+    Assert(WindowsNativeInputKey.IsExtended(0x5D), "Menu/Application must be treated as extended.");
+    Assert(!WindowsNativeInputKey.IsExtended(0x90), "Num Lock must not use the E0 extended-key flag.");
+    Assert(!WindowsNativeInputKey.IsExtended(0xA0), "Left Shift must not be treated as extended.");
+
+    var emitter = new WindowsNativeInputEmitter();
+    Assert(emitter.IsSupported(0x1B), "Escape must be replayable.");
+    Assert(!emitter.IsSupported(0x10), "Generic Shift must remain filtered to avoid duplicate modifier events.");
+  }
+
+  private static void TestNativeInputMigrationCompatibility()
+  {
+    byte[] original = System.Text.Encoding.UTF8.GetBytes("1,69,3\n2,160,2\n");
+    Assert(
+      SkyHookInputKeyMigration.TryConvertInputCsv(original, out byte[] preserved, out int count, out int dropped),
+      "Native input migration rejected a valid format-2 payload."
+    );
+    Assert(count == 2 && dropped == 0, "Native input migration changed the input count.");
+    Assert(
+      System.Text.Encoding.UTF8.GetString(preserved) == "1,69,3\n2,160,2\n",
+      "Native input migration reinterpreted OS-native key codes as HID usages."
+    );
+
+    Assert(
+      NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(69, out int incorrectlyMigratedF12),
+      "Test setup could not reproduce the historical HID conversion."
+    );
+    var corruptedMeta = new ReplayMetadata
+    {
+      formatVersion = 3,
+      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
+      inputCapture = NativeInputKeyCodeMapper.CorruptedNativeStateMigrationCapture,
+    };
+    var corrupted = new List<RecordedInput>
+    {
+      new RecordedInput(1, incorrectlyMigratedF12, RecordInputFlags.Async | RecordInputFlags.Down),
+    };
+    List<RecordedInput> repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
+    Assert(repaired.Count == 1 && repaired[0].Key == 69, "Historical E-to-F12 corruption was not repaired.");
+    Assert(dropped == 0, "A uniquely reversible migrated key was dropped.");
+
+    Assert(
+      NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(49, out int ambiguousBackslash),
+      "Test setup could not reproduce an ambiguous historical conversion."
+    );
+    corrupted[0] = new RecordedInput(1, ambiguousBackslash, RecordInputFlags.Async | RecordInputFlags.Down);
+    repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
+    Assert(repaired.Count == 0 && dropped == 1, "Ambiguous historical key corruption was replayed unsafely.");
+  }
+
+  private static void TestWindowsSkyHookRawKeyPreservation()
+  {
+    AssertWindowsCapture(0x45, KeyLabel.E, 0x45, false, "E");
+    AssertWindowsCapture(0x5D, KeyLabel.Unknown, 0x5D, true, "Menu");
+    AssertWindowsCapture(0x15, KeyLabel.Unknown, 0x15, false, "Hangul");
+    AssertWindowsCapture(0x19, KeyLabel.Unknown, 0x19, false, "Hanja");
+    AssertWindowsCapture(0x10, KeyLabel.LShift, 0xA0, false, "left Shift");
+    AssertWindowsCapture(0x11, KeyLabel.RControl, 0xA3, true, "right Ctrl");
+    AssertWindowsCapture(0x12, KeyLabel.RAlt, 0xA5, true, "right Alt");
+  }
+
+  private static void AssertWindowsCapture(
+    int rawVirtualKey,
+    KeyLabel label,
+    int expectedVirtualKey,
+    bool expectedExtended,
+    string name
+  )
+  {
+    Assert(
+      SkyHookNativeInputEventSource.TryResolveWindowsNativeKey(
+        rawVirtualKey,
+        label,
+        out int actualVirtualKey,
+        out bool actualExtended
+      ),
+      "Windows capture rejected " + name + "."
+    );
+    Assert(actualVirtualKey == expectedVirtualKey, "Windows capture remapped " + name + " to another key.");
+    Assert(actualExtended == expectedExtended, "Windows capture assigned the wrong extended state to " + name + ".");
   }
 
   private static void TestReplayPumpTimingAndBatching()

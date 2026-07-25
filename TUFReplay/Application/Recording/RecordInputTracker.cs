@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Infrastructure.NativeInput;
 using TUFReplay.Infrastructure.NativeInput.Capture;
 
 namespace TUFReplay.Application.Recording;
@@ -17,7 +19,8 @@ public static class RecordInputTracker
   private static readonly NativeInputTransition[] DrainBuffer = new NativeInputTransition[
     NativeInputTransitionRingBuffer.Capacity
   ];
-  private static readonly bool[] KeyStates = new bool[ushort.MaxValue + 1];
+  private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+  private static readonly bool[] KeyStates = new bool[(ushort.MaxValue + 1) * 2];
 
   private static bool _capturing;
   private static bool _captureWindowActive;
@@ -235,12 +238,12 @@ public static class RecordInputTracker
       }
       if (!_acceptingEvents)
         return;
-      if (transition.Key < 0 || transition.Key >= KeyStates.Length)
+      if (!TryGetStateIndex(transition.Key, transition.ExtendedKey, out int stateIndex))
       {
         Interlocked.Increment(ref _readFailures);
         return;
       }
-      if (KeyStates[transition.Key] == transition.Down)
+      if (KeyStates[stateIndex] == transition.Down)
       {
         Interlocked.Increment(ref _duplicates);
         return;
@@ -254,7 +257,7 @@ public static class RecordInputTracker
         return;
       }
 
-      KeyStates[transition.Key] = transition.Down;
+      KeyStates[stateIndex] = transition.Down;
       UpdateMaxQueueDepth(EventQueue.Count);
     }
   }
@@ -275,20 +278,26 @@ public static class RecordInputTracker
     for (int i = 0; i < keyCodes.Count; i++)
     {
       int key = keyCodes[i];
-      if (key < 0 || key >= KeyStates.Length || !StateReader.TryGetIsDown(key, out bool isDown))
+      bool extendedKey = IsWindows && WindowsNativeInputKey.IsExtended(key);
+      if (
+        !TryGetStateIndex(key, extendedKey, out int stateIndex)
+        || !StateReader.TryGetIsDown(key, out bool isDown)
+      )
       {
         Interlocked.Increment(ref _readFailures);
         continue;
       }
 
-      bool wasDown = KeyStates[key];
+      bool wasDown = KeyStates[stateIndex];
       if (isDown == wasDown)
         continue;
 
-      KeyStates[key] = isDown;
+      KeyStates[stateIndex] = isDown;
       RecordInputFlags flags = RecordInputFlags.Async;
       if (isDown)
         flags |= RecordInputFlags.Down;
+      if (extendedKey)
+        flags |= RecordInputFlags.ExtendedKey;
 
       session.AddInputAtCurrentTime(key, flags);
       Interlocked.Increment(ref _transitions);
@@ -312,18 +321,22 @@ public static class RecordInputTracker
     for (int i = 0; i < keyCodes.Count; i++)
     {
       int key = keyCodes[i];
-      if (key < 0 || key >= KeyStates.Length || !StateReader.TryGetIsDown(key, out bool isDown))
+      bool extendedKey = IsWindows && WindowsNativeInputKey.IsExtended(key);
+      if (
+        !TryGetStateIndex(key, extendedKey, out int stateIndex)
+        || !StateReader.TryGetIsDown(key, out bool isDown)
+      )
       {
         Interlocked.Increment(ref _readFailures);
         continue;
       }
 
-      bool wasDown = KeyStates[key];
-      KeyStates[key] = isDown;
+      bool wasDown = KeyStates[stateIndex];
+      KeyStates[stateIndex] = isDown;
       if (!emitTransitions || isDown == wasDown)
         continue;
 
-      if (!EventQueue.TryEnqueue(new NativeInputTransition(timestampNs, key, isDown)))
+      if (!EventQueue.TryEnqueue(new NativeInputTransition(timestampNs, key, isDown, extendedKey)))
       {
         _overflowed = true;
         _acceptingEvents = false;
@@ -437,6 +450,16 @@ public static class RecordInputTracker
   private static long CurrentUnixTimeNs()
   {
     return (DateTime.UtcNow.Ticks - UnixEpochTicks) * 100L;
+  }
+
+  private static bool TryGetStateIndex(int key, bool extendedKey, out int stateIndex)
+  {
+    stateIndex = 0;
+    if (key < 0 || key > ushort.MaxValue)
+      return false;
+
+    stateIndex = key + (extendedKey ? ushort.MaxValue + 1 : 0);
+    return true;
   }
 
   private static void UpdateMaxQueueDepth(int depth)

@@ -9,8 +9,12 @@ namespace TUFReplay.Infrastructure.NativeInput;
 internal static class NativeInputKeyCodeMapper
 {
   public const string NativeKeySpace = "os-native-key-code";
+  public const string CorruptedNativeStateMigrationCapture = "skyhook-native-events";
 
   private static readonly Dictionary<int, KeyLabel> HidUsageLabels = CreateHidUsageLabels();
+  private static readonly object RepairMapLock = new object();
+  private static Dictionary<int, int> _reversibleMigratedNativeCodes;
+  private static HashSet<int> _ambiguousMigratedNativeCodes;
 
   private static readonly Dictionary<KeyLabel, ushort> MacVirtualKeyCodes = new Dictionary<KeyLabel, ushort>
   {
@@ -133,22 +137,97 @@ internal static class NativeInputKeyCodeMapper
 
     if (string.Equals(meta?.inputKeySpace, NativeKeySpace, StringComparison.OrdinalIgnoreCase))
     {
+      if (
+        meta.formatVersion == 3
+        && string.Equals(
+          meta.inputCapture,
+          CorruptedNativeStateMigrationCapture,
+          StringComparison.OrdinalIgnoreCase
+        )
+      )
+        return RepairCorruptedNativeStateMigration(inputs, out dropped);
       return inputs;
     }
 
     List<RecordedInput> converted = new List<RecordedInput>(inputs.Count);
     foreach (RecordedInput input in inputs)
     {
-      if (!TryConvertKeyLabel((KeyLabel)input.Key, out int nativeKeyCode))
+      KeyLabel label = (KeyLabel)input.Key;
+      if (!TryConvertKeyLabel(label, out int nativeKeyCode))
       {
         dropped++;
         continue;
       }
 
-      converted.Add(new RecordedInput(input.TimeUs, nativeKeyCode, input.Flags));
+      RecordInputFlags flags = input.Flags;
+      if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label))
+        flags |= RecordInputFlags.ExtendedKey;
+      converted.Add(new RecordedInput(input.TimeUs, nativeKeyCode, flags));
     }
 
     return converted;
+  }
+
+  private static List<RecordedInput> RepairCorruptedNativeStateMigration(
+    List<RecordedInput> inputs,
+    out int dropped
+  )
+  {
+    dropped = 0;
+    EnsureRepairMap();
+
+    List<RecordedInput> repaired = new List<RecordedInput>(inputs.Count);
+    foreach (RecordedInput input in inputs)
+    {
+      if (
+        _ambiguousMigratedNativeCodes.Contains(input.Key)
+        || !_reversibleMigratedNativeCodes.TryGetValue(input.Key, out int originalNativeKeyCode)
+      )
+      {
+        dropped++;
+        continue;
+      }
+
+      RecordInputFlags flags = input.Flags & ~RecordInputFlags.ExtendedKey;
+      if (
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+        && WindowsNativeInputKey.IsExtended(originalNativeKeyCode)
+      )
+        flags |= RecordInputFlags.ExtendedKey;
+      repaired.Add(new RecordedInput(input.TimeUs, originalNativeKeyCode, flags));
+    }
+
+    return repaired;
+  }
+
+  private static void EnsureRepairMap()
+  {
+    lock (RepairMapLock)
+    {
+      if (_reversibleMigratedNativeCodes != null)
+        return;
+
+      Dictionary<int, int> reversible = new Dictionary<int, int>();
+      HashSet<int> ambiguous = new HashSet<int>();
+      foreach (KeyValuePair<int, KeyLabel> pair in HidUsageLabels)
+      {
+        if (!TryConvertKeyLabel(pair.Value, out int migratedNativeKeyCode))
+          continue;
+
+        if (reversible.TryGetValue(migratedNativeKeyCode, out int existing) && existing != pair.Key)
+        {
+          reversible.Remove(migratedNativeKeyCode);
+          ambiguous.Add(migratedNativeKeyCode);
+          continue;
+        }
+
+        if (!ambiguous.Contains(migratedNativeKeyCode))
+          reversible[migratedNativeKeyCode] = pair.Key;
+      }
+
+      _ambiguousMigratedNativeCodes = ambiguous;
+      _reversibleMigratedNativeCodes = reversible;
+    }
   }
 
   public static bool TryConvertKeyLabel(KeyLabel label, out int nativeKeyCode)
@@ -202,8 +281,18 @@ internal static class NativeInputKeyCodeMapper
 
   public static bool TryConvertSkyHookHidUsage(int hidUsage, out int nativeKeyCode)
   {
+    return TryConvertSkyHookHidUsage(hidUsage, out nativeKeyCode, out _);
+  }
+
+  public static bool TryConvertSkyHookHidUsage(int hidUsage, out int nativeKeyCode, out bool extendedKey)
+  {
     nativeKeyCode = 0;
-    return HidUsageLabels.TryGetValue(hidUsage, out KeyLabel label) && TryConvertKeyLabel(label, out nativeKeyCode);
+    extendedKey = false;
+    if (!HidUsageLabels.TryGetValue(hidUsage, out KeyLabel label) || !TryConvertKeyLabel(label, out nativeKeyCode))
+      return false;
+
+    extendedKey = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label);
+    return true;
   }
 
   private static Dictionary<int, KeyLabel> CreateHidUsageLabels()
