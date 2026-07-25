@@ -94,11 +94,10 @@ public static class CalibrationWaveformBuilder
     )
       return result;
 
-    double sourceStartSeconds = Math.Max(0, sourceStartFrame) / (double)sourceSampleRate;
+    double sourceStartSeconds = sourceStartFrame / (double)sourceSampleRate;
     for (int peakIndex = 0; peakIndex < reference.Peaks.Length; peakIndex++)
     {
-      double timeMs =
-        (peakIndex * reference.FramesPerPeak / (double)reference.SampleRate - sourceStartSeconds) * 1000d;
+      double timeMs = (peakIndex * reference.FramesPerPeak / (double)reference.SampleRate - sourceStartSeconds) * 1000d;
       if (timeMs < 0d)
         continue;
       if (timeMs >= durationMs)
@@ -109,23 +108,32 @@ public static class CalibrationWaveformBuilder
     return Normalize(result);
   }
 
-  public static int ReferenceStartFrame(
-    double songPositionSeconds,
-    double levelOffsetSeconds,
-    double inputOffsetSeconds,
+  public static int SourceFrameAtDspTime(
+    double dspTime,
+    double dspTimeSong,
+    bool separateCountdownTime,
+    double crotchetAtStart,
+    double adjustedCountdownTicks,
     double pitch,
-    int sampleRate,
-    bool legacyConductor
+    int sampleRate
   )
   {
     if (sampleRate <= 0)
       return 0;
-    pitch = Math.Max(0.0001d, pitch);
-    double sourceTimeSeconds = legacyConductor
-      ? songPositionSeconds + inputOffsetSeconds + levelOffsetSeconds / pitch
-      : songPositionSeconds + inputOffsetSeconds * pitch + levelOffsetSeconds;
-    double frame = Math.Max(0d, sourceTimeSeconds * sampleRate);
-    return frame >= int.MaxValue ? int.MaxValue : (int)Math.Round(frame);
+    if (pitch <= 0d || double.IsNaN(pitch) || double.IsInfinity(pitch))
+      pitch = 1d;
+    double countdownDspSeconds = separateCountdownTime
+      ? Math.Max(0d, crotchetAtStart) * Math.Max(0d, adjustedCountdownTicks) / pitch
+      : 0d;
+    double sourceTimeSeconds = (dspTime - dspTimeSong - countdownDspSeconds) * pitch;
+    double frame = sourceTimeSeconds * sampleRate;
+    if (double.IsNaN(frame))
+      return 0;
+    if (frame >= int.MaxValue)
+      return int.MaxValue;
+    if (frame <= int.MinValue)
+      return int.MinValue;
+    return (int)Math.Round(frame);
   }
 
   private static float[] Normalize(float[] samples)
