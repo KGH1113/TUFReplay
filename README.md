@@ -256,7 +256,7 @@ Registered methods:
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.1.0-beta.5",
+  "ModVersion": "0.1.0-beta.6",
   "ProtocolVersion": 1,
   "ServerVersion": 1
 }
