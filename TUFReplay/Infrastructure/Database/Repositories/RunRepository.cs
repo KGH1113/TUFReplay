@@ -86,6 +86,19 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     return q.ExecuteScalar() != null;
   }
 
+  public static RunRecord Get(string runId)
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      return null;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = Select + " WHERE r.id=@id LIMIT 1";
+    q.Parameters.AddWithValue("@id", runId);
+    using SqliteDataReader r = q.ExecuteReader();
+    return r.Read() ? Read(r) : null;
+  }
+
   public static bool Delete(string runId)
   {
     if (string.IsNullOrWhiteSpace(runId))

@@ -1,8 +1,12 @@
 using System.Reflection;
+using System.IO.Compression;
+using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json.Linq;
 using SkyHook;
 using TUFReplay;
 using TUFReplay.Application.Calibration;
+using TUFReplay.Application.Export;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Activity;
@@ -34,6 +38,7 @@ internal static class Program
       TestCalibrationWaveforms(root);
       TestAdofaiLevelFileHash(root);
       TestSchemaMigrationAndBlob(root);
+      TestRunExport(root);
       TestRunDeletionHierarchy(root);
       TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
@@ -888,6 +893,171 @@ PRAGMA user_version=9;";
       retentionReader.GetInt32(0) == 1 && retentionReader.IsDBNull(1),
       "Legacy microphone recording was not migrated as permanent."
     );
+  }
+
+  private static void TestRunExport(string root)
+  {
+    string databasePath = Path.Combine(root, "export.sqlite");
+    SetDatabasePath(databasePath);
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      InsertRun(connection);
+      using SqliteCommand update = connection.CreateCommand();
+      update.CommandText =
+        @"UPDATE level_sessions
+SET tuf_level_id=871,song='Export Song',author='Chart Author',artist='Song Artist',level_tile_count=42,
+    gameplay_hash=@hash,gameplay_hash_version=1
+WHERE id='level';
+UPDATE runs
+SET ended_at_utc='2026-01-01T00:01:00Z',last_tile=41,input_count=2,hit_context_count=1,
+    input_csv=@inputs,hit_context_csv=@hits,meta_json=@meta,gameplay_hash=@hash,
+    gameplay_hash_version=1,x_accuracy=99.5,effective_pitch=1.0
+WHERE id='run';";
+      byte[] gameplayHash = { 0x01, 0x02, 0xA0, 0xFF };
+      update.Parameters.AddWithValue("@hash", gameplayHash);
+      update.Parameters.AddWithValue("@inputs", System.Text.Encoding.UTF8.GetBytes("time,key\n1,A\n2,B\n"));
+      update.Parameters.AddWithValue("@hits", System.Text.Encoding.UTF8.GetBytes("time,angle\n1,90\n"));
+      update.Parameters.AddWithValue("@meta", "{\"source\":\"test\"}");
+      update.ExecuteNonQuery();
+    }
+
+    string wavPath = Path.Combine(root, "export-source.wav");
+    using (var writer = new Pcm16WavWriter(wavPath))
+    {
+      Assert(writer.TryEnqueue(new[] { 0f, 0.5f, -0.5f }, 3, 1), "Export WAV chunk was not queued.");
+      writer.Complete();
+    }
+    MicrophoneRecordingRepository.Save(
+      new CapturedMicrophoneRecording
+      {
+        RunId = "run",
+        TempPath = wavPath,
+        SampleRate = 48000,
+        Channels = 1,
+        FrameCount = 3,
+        DeviceId = "private-device-id",
+        CaptureStartOffsetUs = 321,
+      }
+    );
+
+    byte[] archiveBytes;
+    RunExportArchiveResult result;
+    using (var destination = new MemoryStream())
+    {
+      result = RunExportArchiveWriter.Write(
+        "run",
+        destination,
+        CancellationToken.None,
+        new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc)
+      );
+      archiveBytes = destination.ToArray();
+    }
+    Assert(result.IncludedMicrophone, "Run export omitted an available microphone recording.");
+
+    using (var cancelledMicrophone = new CancellationTokenSource())
+    {
+      cancelledMicrophone.Cancel();
+      AssertThrows<OperationCanceledException>(
+        () => MicrophoneRecordingRepository.WriteTo(
+          "run",
+          new MemoryStream(),
+          cancelledMicrophone.Token
+        ),
+        "Cancelled microphone export completed."
+      );
+    }
+
+    using (var archiveStream = new MemoryStream(archiveBytes))
+    using (var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read))
+    {
+      string[] expected =
+      {
+        "manifest.json",
+        "replay/inputs.csv",
+        "replay/hit-contexts.csv",
+        "replay/meta.json",
+        "microphone/recording.wav",
+      };
+      Assert(
+        archive.Entries.Select(entry => entry.FullName).OrderBy(name => name).SequenceEqual(expected.OrderBy(name => name)),
+        "Run export archive entries are incorrect."
+      );
+
+      byte[] manifestBytes = ReadZipEntry(archive, "manifest.json");
+      string manifestText = System.Text.Encoding.UTF8.GetString(manifestBytes);
+      JObject manifest = JObject.Parse(manifestText);
+      Assert((string)manifest["format"] == "tufreplay", "Run export format is incorrect.");
+      Assert((int)manifest["formatVersion"] == 1, "Run export format version is incorrect.");
+      Assert(
+        ((DateTime)manifest["exportedAtUtc"]).ToUniversalTime()
+          == new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc),
+        "Export time is incorrect."
+      );
+      Assert((int)manifest["level"]["tufLevelId"] == 871, "TUF level ID was not exported.");
+      Assert((string)manifest["level"]["gameplayHash"] == "0102a0ff", "Gameplay hash was not exported.");
+      Assert((long)manifest["microphone"]["captureStartOffsetUs"] == 321, "Microphone offset was not exported.");
+      Assert(!manifestText.Contains("test.adofai"), "Run export leaked the local level path.");
+      Assert(!manifestText.Contains("private-device-id"), "Run export leaked the microphone device ID.");
+
+      AssertExportEntryHash(archive, manifest, "inputs", "replay/inputs.csv");
+      AssertExportEntryHash(archive, manifest, "hitContexts", "replay/hit-contexts.csv");
+      AssertExportEntryHash(archive, manifest, "meta", "replay/meta.json");
+      AssertExportEntryHash(archive, manifest, "microphone", "microphone/recording.wav");
+      Assert(
+        ReadZipEntry(archive, "microphone/recording.wav").SequenceEqual(File.ReadAllBytes(wavPath)),
+        "Run export changed the microphone WAV bytes."
+      );
+    }
+
+    Assert(MicrophoneRecordingRepository.Delete("run"), "Export test microphone recording was not deleted.");
+    using var withoutMicrophone = new MemoryStream();
+    RunExportArchiveResult withoutResult = RunExportArchiveWriter.Write(
+      "run",
+      withoutMicrophone,
+      CancellationToken.None
+    );
+    Assert(!withoutResult.IncludedMicrophone, "Run export reported a missing microphone recording.");
+    withoutMicrophone.Position = 0;
+    using var withoutArchive = new ZipArchive(withoutMicrophone, ZipArchiveMode.Read);
+    Assert(withoutArchive.GetEntry("microphone/recording.wav") == null, "Run export wrote a missing microphone recording.");
+
+    using var cancelled = new CancellationTokenSource();
+    cancelled.Cancel();
+    AssertThrows<OperationCanceledException>(
+      () => RunExportArchiveWriter.Write("run", new MemoryStream(), cancelled.Token),
+      "Cancelled run export completed."
+    );
+    AssertThrows<InvalidOperationException>(
+      () => RunExportArchiveWriter.Write("missing-run", new MemoryStream(), CancellationToken.None),
+      "Missing run export completed."
+    );
+  }
+
+  private static void AssertExportEntryHash(
+    ZipArchive archive,
+    JObject manifest,
+    string manifestName,
+    string entryPath
+  )
+  {
+    byte[] bytes = ReadZipEntry(archive, entryPath);
+    using SHA256 sha256 = SHA256.Create();
+    string hash = Convert.ToHexString(sha256.ComputeHash(bytes)).ToLowerInvariant();
+    JToken descriptor = manifest["entries"][manifestName];
+    Assert((string)descriptor["path"] == entryPath, "Export entry path is incorrect: " + entryPath);
+    Assert((long)descriptor["bytes"] == bytes.LongLength, "Export entry length is incorrect: " + entryPath);
+    Assert((string)descriptor["sha256"] == hash, "Export entry hash is incorrect: " + entryPath);
+  }
+
+  private static byte[] ReadZipEntry(ZipArchive archive, string path)
+  {
+    ZipArchiveEntry entry = archive.GetEntry(path);
+    Assert(entry != null, "Missing ZIP entry: " + path);
+    using Stream source = entry.Open();
+    using var destination = new MemoryStream();
+    source.CopyTo(destination);
+    return destination.ToArray();
   }
 
   private static void TestAdofaiLevelFileHash(string root)

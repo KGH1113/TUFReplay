@@ -234,6 +234,7 @@ Registered methods:
 - `activity.logical-level.get`
 - `activity.logical-level.runs.list` (`appSessionIds` scopes the logical level's runs to the selected day)
 - `activity.logical-level.chart.get`
+- `activity.run.export` (`runId` identifies the run; opens ADOFAI's native save dialog and writes a `.tufreplay` file)
 - `activity.run.delete` (`runId` identifies the run; active replays cannot be deleted)
 - `replay.play`
 - `replay.status.get`
@@ -249,6 +250,12 @@ Registered methods:
 - `microphone.calibration.offset.set`
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
+
+Exported `.tufreplay` files are ZIP archives with format version 1. They contain `manifest.json`,
+`replay/inputs.csv`, `replay/hit-contexts.csv`, `replay/meta.json`, and, when available,
+`microphone/recording.wav`. The manifest records replay and level metadata plus the byte length and
+SHA-256 digest of each payload. Local level paths, chart files, song assets, and microphone device IDs
+are not exported.
 
 `health.get` returns the TUFReplay namespace protocol and installed mod version:
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using AdofaiIpc.Core;
 using TUFReplay.Application.Activity;
+using TUFReplay.Application.Export;
 using TUFReplay.Application.Replay;
 using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Activity;
@@ -146,6 +147,8 @@ public static class ActivityIpcHandlers
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
       return IpcDomainError.Create("run_not_found", "Run was not found.");
+    if (RunExportCoordinator.IsExportingRun(runId))
+      return IpcDomainError.Create("run_in_use", "Wait for this run export to finish before deleting it.");
 
     ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.GetStatus();
     if (ReplayPlaybackCoordinator.IsBusy && replayStatus.RunId == runId)
