@@ -4,6 +4,9 @@ namespace TUFReplay.Application.Replay;
 
 public static class ReplayMicrophoneClock
 {
+  public static long ApplyLatencyCorrection(long captureStartOffsetUs, long microphoneLatencyUs) =>
+    captureStartOffsetUs - microphoneLatencyUs;
+
   public static double ToMicrophoneTimeUs(
     long replayTimeUs,
     double gameplayRate,

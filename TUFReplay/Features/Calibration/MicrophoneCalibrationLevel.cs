@@ -14,17 +14,12 @@ internal sealed class MicrophoneCalibrationLevel
 
   public string Path { get; private set; }
 
-  public string ReferenceWaveformPath =>
-    System.IO.Path.Combine(System.IO.Path.GetDirectoryName(Path) ?? string.Empty, "calibration_old.waveform");
-
   public bool TryPrepare(string payloadPath)
   {
     string levelPath = System.IO.Path.Combine(payloadPath, "Assets", "calibration", "level.adofai");
     string assetDirectory = System.IO.Path.GetDirectoryName(levelPath) ?? string.Empty;
     if (
-      !File.Exists(levelPath)
-      || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration_old.ogg"))
-      || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration_old.waveform"))
+      !File.Exists(levelPath) || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration_old.ogg"))
     )
       return false;
     Path = LevelPathIdentity.Canonicalize(levelPath);

@@ -381,13 +381,16 @@ public static class ReplaySessionService
     return TryComputeReplayTimeUs(out replayTimeUs, out _);
   }
 
-  public static void UpdateActiveMicrophoneSettings(int offsetMs, int volumeDb)
+  public static void UpdateActiveMicrophoneLatency(int latencyMs)
   {
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null || !TryComputeReplayTimeUs(out long replayTimeUs, out _))
       return;
-    player.UpdateUserSettings(offsetMs, volumeDb, replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
+    player.UpdateLatency(latencyMs, replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
   }
+
+  public static void UpdateActiveMicrophoneVolume(int volumeDb) =>
+    _activeContext?.MicrophonePlayer?.UpdateVolume(volumeDb);
 
   public static void ApplyReplayPitchNow()
   {

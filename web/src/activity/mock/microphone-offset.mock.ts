@@ -15,9 +15,9 @@ const DURATION_MS = 6_000;
 const SUGGESTED_OFFSET_MS = 96;
 const WAVEFORM_SAMPLE_COUNT = 2048;
 const GAME_EVENTS_MS = [520, 1_180, 1_920, 2_760, 3_420, 4_260, 5_140];
-const MICROPHONE_EVENTS_MS = GAME_EVENTS_MS.map((eventMs) => eventMs - SUGGESTED_OFFSET_MS);
+const MICROPHONE_EVENTS_MS = GAME_EVENTS_MS.map((eventMs) => eventMs + SUGGESTED_OFFSET_MS);
 
-const songWaveform = createSongWaveform();
+const songWaveform = createInputWaveform(GAME_EVENTS_MS);
 
 export const mockMicrophoneOffsetCalibration: MockMicrophoneOffsetCalibrationData = {
   durationMs: DURATION_MS,
@@ -30,11 +30,13 @@ export const mockMicrophoneOffsetCalibration: MockMicrophoneOffsetCalibrationDat
   microphoneWaveform: createMicrophoneWaveform(MICROPHONE_EVENTS_MS),
 };
 
-function createSongWaveform() {
+function createInputWaveform(eventsMs: number[]) {
   return Array.from({ length: WAVEFORM_SAMPLE_COUNT }, (_, index) => {
     const timeMs = (index / (WAVEFORM_SAMPLE_COUNT - 1)) * DURATION_MS;
-    const pulse = 0.36 + 0.18 * Math.sin(timeMs * 0.006) + 0.1 * Math.sin(timeMs * 0.017);
-    return Math.max(0.04, Math.min(0.7, pulse * (0.78 + 0.22 * Math.sin(timeMs * 0.0017))));
+    return eventsMs.reduce((energy, eventMs) => {
+      const distance = Math.abs(timeMs - eventMs);
+      return Math.max(energy, Math.exp(-distance / 12));
+    }, 0);
   });
 }
 

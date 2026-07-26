@@ -8,6 +8,7 @@ using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Settings;
 using TUFReplay.Infrastructure.Unity;
 using UnityEngine;
@@ -19,8 +20,6 @@ public sealed class MicrophoneCalibrationFeature
   private readonly MicrophoneCalibrationState _state = new MicrophoneCalibrationState();
   private readonly MicrophoneCalibrationLevel _level = new MicrophoneCalibrationLevel();
   private readonly MicrophoneCalibrationPreview _preview;
-  private int _songStartFrame;
-  private int _songSampleRate;
   private MicrophoneCalibrationTicker _ticker;
 
   public MicrophoneCalibrationFeature()
@@ -129,32 +128,7 @@ public sealed class MicrophoneCalibrationFeature
   {
     if (!Active)
       return;
-    scrConductor conductor = ADOBase.conductor;
-    AudioSource song = conductor?.song;
-    _songSampleRate = song?.clip?.frequency ?? 0;
-    double originDspTime = AudioSettings.dspTime;
-    _songStartFrame =
-      conductor == null ? 0
-      : GCS.d_oldConductor || GCS.d_webglConductor ? song?.timeSamples ?? 0
-      : CalibrationWaveformBuilder.SourceFrameAtDspTime(
-        originDspTime,
-        conductor.dspTimeSong,
-        conductor.separateCountdownTime,
-        conductor.crotchetAtStart,
-        conductor.adjustedCountdownTicks,
-        song?.pitch ?? 1f,
-        _songSampleRate
-      );
-    Main.Instance?.Log(
-      "[Calibration] Song reference startFrame="
-        + _songStartFrame
-        + ", originDspTime="
-        + originDspTime
-        + ", songStartDspTime="
-        + conductor?.dspTimeSong
-        + ", separateCountdown="
-        + conductor?.separateCountdownTime
-    );
+    Main.Instance?.Log("[Calibration] Recording microphone audio against native input timestamps.");
     _state.Update(MicrophoneCalibrationStates.Recording, "Recording the calibration run.");
   }
 
@@ -173,27 +147,15 @@ public sealed class MicrophoneCalibrationFeature
 
     ReplayMetadata metadata = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
     double durationMs = Math.Max(1d, (metadata?.terminalTimeUs ?? 0L) / 1000d);
-    if (_songSampleRate <= 0)
-    {
-      FeatureRegistry.MicrophoneRecording?.Discard(recording);
-      Error("game_waveform_failed", "The calibration song sample rate is unavailable.", GetStatus().OperationId);
-      return;
-    }
-    int songStartFrame = _songStartFrame;
-    int songSampleRate = _songSampleRate;
-    string referenceWaveformPath = _level.ReferenceWaveformPath;
-    ResetAudioCapture();
     _preview.SetSource(ToStoredReplayRun(run), recording);
     _state.Update(MicrophoneCalibrationStates.Processing, "Building calibration waveforms.");
     string operationId = GetStatus().OperationId;
-    ThreadPool.QueueUserWorkItem(_ =>
-      BuildWaveforms(operationId, recording, referenceWaveformPath, songStartFrame, songSampleRate, durationMs)
-    );
+    byte[] inputCsv = run.InputCsv;
+    ThreadPool.QueueUserWorkItem(_ => BuildWaveforms(operationId, recording, inputCsv, durationMs));
   }
 
   public void OnRunDiscarded(CapturedMicrophoneRecording recording, string message)
   {
-    ResetAudioCapture();
     FeatureRegistry.MicrophoneRecording?.Discard(recording);
     if (Active)
       _state.Update(MicrophoneCalibrationStates.WaitingForRun, message ?? "Try the calibration level again.");
@@ -219,7 +181,7 @@ public sealed class MicrophoneCalibrationFeature
     );
     TUFReplaySettingStore.Save();
     _state.SetOffset(settings.MicrophoneOffsetMs);
-    ReplaySessionService.UpdateActiveMicrophoneSettings(settings.MicrophoneOffsetMs, settings.MicrophoneVolumeDb);
+    ReplaySessionService.UpdateActiveMicrophoneLatency(settings.MicrophoneOffsetMs);
     return GetStatus();
   }
 
@@ -234,7 +196,7 @@ public sealed class MicrophoneCalibrationFeature
     );
     TUFReplaySettingStore.Save();
     _state.SetVolume(settings.MicrophoneVolumeDb);
-    ReplaySessionService.UpdateActiveMicrophoneSettings(settings.MicrophoneOffsetMs, settings.MicrophoneVolumeDb);
+    ReplaySessionService.UpdateActiveMicrophoneVolume(settings.MicrophoneVolumeDb);
     return GetStatus();
   }
 
@@ -257,23 +219,20 @@ public sealed class MicrophoneCalibrationFeature
   private void BuildWaveforms(
     string operationId,
     CapturedMicrophoneRecording recording,
-    string referenceWaveformPath,
-    int songStartFrame,
-    int songSampleRate,
+    byte[] inputCsv,
     double durationMs
   )
   {
     try
     {
-      CalibrationReferenceWaveform referenceWaveform = CalibrationReferenceWaveform.Read(referenceWaveformPath);
-      float[] songWaveform = CalibrationWaveformBuilder.FromReferenceWaveform(
-        referenceWaveform,
-        songStartFrame,
-        songSampleRate,
+      float[] inputWaveform = CalibrationWaveformBuilder.FromInputEvents(
+        ReplayInputParser.Parse(inputCsv),
         durationMs
       );
+      if (!CalibrationWaveformBuilder.HasSignal(inputWaveform))
+        throw new InvalidOperationException("No microphone calibration key presses were recorded.");
       float[] microphoneWaveform = CalibrationWaveformBuilder.FromPcm16(recording, durationMs);
-      UnityMainThread.Post(() => CompleteResult(operationId, durationMs, songWaveform, microphoneWaveform));
+      UnityMainThread.Post(() => CompleteResult(operationId, durationMs, inputWaveform, microphoneWaveform));
     }
     catch (Exception exception)
     {
@@ -285,9 +244,9 @@ public sealed class MicrophoneCalibrationFeature
     }
   }
 
-  private void CompleteResult(string operationId, double durationMs, float[] songWaveform, float[] microphoneWaveform)
+  private void CompleteResult(string operationId, double durationMs, float[] inputWaveform, float[] microphoneWaveform)
   {
-    int revision = _state.CompleteResult(operationId, durationMs, songWaveform, microphoneWaveform);
+    int revision = _state.CompleteResult(operationId, durationMs, inputWaveform, microphoneWaveform);
     if (revision > 0)
       Main.Instance?.Log("[Calibration] Waveforms ready. durationMs=" + durationMs + ", revision=" + revision);
   }
@@ -295,7 +254,6 @@ public sealed class MicrophoneCalibrationFeature
   private void CleanupSession()
   {
     _preview.Reset();
-    ResetAudioCapture();
     _state.ClearResult();
     _level.Reset();
     FeatureRegistry.MicrophoneRecording?.Disarm();
@@ -314,12 +272,6 @@ public sealed class MicrophoneCalibrationFeature
     {
       Error("calibration_level_open_failed", exception.Message, operationId);
     }
-  }
-
-  private void ResetAudioCapture()
-  {
-    _songStartFrame = 0;
-    _songSampleRate = 0;
   }
 
   private MicrophoneCalibrationStatus Error(string code, string message, string operationId = null) =>

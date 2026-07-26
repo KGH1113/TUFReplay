@@ -6,25 +6,16 @@ import { ConnectionStatePanel } from "./components/connection-state-panel.compon
 import { DashboardHeader } from "./components/dashboard-header.component";
 import { DayRail } from "./components/day-rail.component";
 import { LevelStrip } from "./components/level-strip.component";
-import { MicrophoneOffsetCalibrationDialog } from "./components/microphone-offset-calibration-dialog.component";
 import { ReplayLevelChoiceDialog } from "./components/replay-level-choice-dialog.component";
 import { useActivityData } from "./hooks/use-activity-data.hook";
 import { useLevelMetadata } from "./hooks/use-level-metadata.hook";
 import { useLevelSessionData } from "./hooks/use-level-session-data.hook";
-import { useMicrophoneDevices } from "./hooks/use-microphone-devices.hook";
-import { useMicrophoneOffsetCalibration } from "./hooks/use-microphone-offset-calibration.hook";
 import { useReplayControl } from "./hooks/use-replay-control.hook";
 import { aggregateRunMarkers, groupSessionsByDay } from "./lib/activity-data.utils";
 
 export function ActivityDashboard() {
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
-  const microphones = useMicrophoneDevices(activity.gatewayRef, activity.status);
-  const microphoneOffset = useMicrophoneOffsetCalibration(
-    activity.gatewayRef,
-    activity.status,
-    activity.mockEnabled,
-  );
   const clearLevelFilePicker = replay.clearLevelFilePicker;
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
@@ -161,19 +152,8 @@ export function ActivityDashboard() {
             <DashboardHeader
               status={activity.status}
               onRetry={() => void activity.retry()}
-              microphoneDevices={microphones.devices}
-              microphoneEnabled={microphones.enabled}
-              microphoneToggleLocked={microphones.toggleLocked}
-              selectedMicrophoneDeviceId={microphones.selectedDeviceId}
-              microphoneLoading={microphones.loading}
-              pendingMicrophoneDeviceId={microphones.pendingDeviceId}
-              pendingMicrophoneEnabled={microphones.pendingEnabled}
-              microphoneError={microphones.error}
-              showMicrophoneOffsetCalibration={activity.status === "online"}
-              onRefreshMicrophones={() => void microphones.refresh()}
-              onSetMicrophoneEnabled={(enabled) => void microphones.setEnabled(enabled)}
-              onSelectMicrophone={(deviceId) => void microphones.select(deviceId)}
-              onAdjustMicrophoneOffset={microphoneOffset.start}
+              gatewayRef={activity.gatewayRef}
+              mockEnabled={activity.mockEnabled}
             />
             <LevelStrip
               levelSessions={levelSessions}
@@ -230,20 +210,6 @@ export function ActivityDashboard() {
         onPlay={replay.play}
         onChooseAnother={replay.pickLevelFile}
         onResetPicker={replay.clearLevelFilePicker}
-      />
-      <MicrophoneOffsetCalibrationDialog
-        data={microphoneOffset.data}
-        phase={microphoneOffset.phase}
-        offsetMs={microphoneOffset.offsetMs}
-        microphoneVolumeDb={microphoneOffset.microphoneVolumeDb}
-        playing={microphoneOffset.playing}
-        playbackPositionMs={microphoneOffset.playbackPositionMs}
-        audioError={microphoneOffset.audioError}
-        onClose={microphoneOffset.close}
-        onCommitOffset={microphoneOffset.commitOffset}
-        onCommitMicrophoneVolume={microphoneOffset.commitMicrophoneVolume}
-        onResetOffset={microphoneOffset.resetOffset}
-        onTogglePlayback={() => void microphoneOffset.togglePlayback()}
       />
     </>
   );

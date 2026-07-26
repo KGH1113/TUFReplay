@@ -90,6 +90,7 @@ export function useMicrophoneOffsetCalibration(
   const [audioError, setAudioError] = useState("");
   const playerRef = useRef<MockMicrophoneOffsetAudioPlayer | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const playbackPositionRef = useRef(0);
   const playbackStartedAtRef = useRef(0);
   const playingRef = useRef(false);
   const operationIdRef = useRef<string | null>(null);
@@ -109,6 +110,7 @@ export function useMicrophoneOffsetCalibration(
       animationFrameRef.current = null;
     }
     playerRef.current?.stop();
+    playbackPositionRef.current = positionMs;
     setPlaying(false);
     setPlaybackPositionMs(positionMs);
   }, []);
@@ -137,13 +139,15 @@ export function useMicrophoneOffsetCalibration(
     });
 
     const previewActive = status.State === "preview_starting" || status.State === "preview_playing";
+    const playingChanged = playingRef.current !== previewActive;
     playingRef.current = previewActive;
-    setPlaying(previewActive);
+    if (playingChanged) setPlaying(previewActive);
     positionAnchorRef.current = {
       positionMs: status.PlaybackPositionMs,
       sampledAtMs: performance.now(),
     };
-    setPlaybackPositionMs(status.PlaybackPositionMs);
+    playbackPositionRef.current = status.PlaybackPositionMs;
+    if (!previewActive) setPlaybackPositionMs(status.PlaybackPositionMs);
     setAudioError(status.State === "error" ? status.Message || "Calibration failed." : "");
   }, []);
 
@@ -175,6 +179,7 @@ export function useMicrophoneOffsetCalibration(
     const generation = ++requestGenerationRef.current;
     stopLocalPlayback();
     setAudioError("");
+    playbackPositionRef.current = 0;
     setPlaybackPositionMs(0);
     resultRevisionRef.current = 0;
     dispatch({ type: "start" });
@@ -318,6 +323,7 @@ export function useMicrophoneOffsetCalibration(
       return;
     }
     setAudioError("");
+    playbackPositionRef.current = 0;
     setPlaybackPositionMs(0);
     setPlaying(true);
     playingRef.current = true;
@@ -328,7 +334,7 @@ export function useMicrophoneOffsetCalibration(
         mockMicrophoneOffsetCalibration.durationMs,
         now - playbackStartedAtRef.current,
       );
-      setPlaybackPositionMs(positionMs);
+      playbackPositionRef.current = positionMs;
       if (positionMs >= mockMicrophoneOffsetCalibration.durationMs) {
         stopLocalPlayback(mockMicrophoneOffsetCalibration.durationMs);
         return;
@@ -391,21 +397,15 @@ export function useMicrophoneOffsetCalibration(
     });
   }, [applyBackendStatus, gatewayRef, loadBackendResult, mockEnabled, state.phase]);
 
-  useEffect(() => {
-    if (mockEnabled || state.phase === "closed") return undefined;
-    let frame = 0;
-    const animate = (now: number) => {
-      if (playingRef.current && backendStateRef.current === "preview_playing") {
-        const anchor = positionAnchorRef.current;
-        setPlaybackPositionMs(
-          extrapolateCalibrationPlaybackPosition(anchor, now, durationRef.current),
-        );
-      }
-      frame = requestAnimationFrame(animate);
-    };
-    frame = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(frame);
-  }, [mockEnabled, state.phase]);
+  const getPlaybackPositionMs = useCallback(() => {
+    if (!mockEnabled && playingRef.current && backendStateRef.current === "preview_playing")
+      return extrapolateCalibrationPlaybackPosition(
+        positionAnchorRef.current,
+        performance.now(),
+        durationRef.current,
+      );
+    return playbackPositionRef.current;
+  }, [mockEnabled]);
 
   useEffect(
     () => () => {
@@ -434,6 +434,7 @@ export function useMicrophoneOffsetCalibration(
     microphoneVolumeDb: state.microphoneVolumeDb,
     playing,
     playbackPositionMs,
+    getPlaybackPositionMs,
     audioError,
     start,
     close,

@@ -16,10 +16,10 @@ describe("microphone offset calibration mock", () => {
     }
   });
 
-  test("aligns mock microphone transients at the suggested positive delay", () => {
+  test("represents positive latency as microphone transients arriving late", () => {
     const mock = mockMicrophoneOffsetCalibration;
     expect(mock.microphoneEventsMs).toEqual(
-      mock.gameEventsMs.map((eventMs) => eventMs - mock.suggestedOffsetMs),
+      mock.gameEventsMs.map((eventMs) => eventMs + mock.suggestedOffsetMs),
     );
   });
 });

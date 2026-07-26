@@ -23,7 +23,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private long _readerFrame;
   private bool _started;
   private bool _paused;
-  private long _userOffsetUs;
+  private long _microphoneLatencyUs;
   private volatile float _gain;
   private volatile bool _failed;
   private bool _disposed;
@@ -37,7 +37,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   {
     _recording = recording ?? throw new ArgumentNullException(nameof(recording));
     _wave = wave ?? throw new ArgumentNullException(nameof(wave));
-    SetUserSettings(userOffsetMs, volumeDb);
+    SetLatency(userOffsetMs);
+    SetVolume(volumeDb);
     if (wave.FrameCount > int.MaxValue)
       throw new InvalidDataException("The microphone recording is too long for Unity audio playback.");
 
@@ -193,19 +194,19 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
   }
 
-  public void UpdateUserSettings(
-    int offsetMs,
-    int volumeDb,
-    long replayTimeUs,
-    double gameplayRate,
-    long? wonTimeUs
-  )
+  public void UpdateLatency(int latencyMs, long replayTimeUs, double gameplayRate, long? wonTimeUs)
   {
     if (_disposed)
       return;
-    SetUserSettings(offsetMs, volumeDb);
+    SetLatency(latencyMs);
     if (_started || _paused)
       SetPlaybackPosition(TargetFrame(replayTimeUs, gameplayRate, wonTimeUs));
+  }
+
+  public void UpdateVolume(int volumeDb)
+  {
+    if (!_disposed)
+      SetVolume(volumeDb);
   }
 
   public void Stop()
@@ -251,19 +252,24 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     );
   }
 
-  private long EffectiveCaptureOffsetUs() => _recording.CaptureStartOffsetUs + _userOffsetUs;
+  private long EffectiveCaptureOffsetUs() =>
+    ReplayMicrophoneClock.ApplyLatencyCorrection(_recording.CaptureStartOffsetUs, _microphoneLatencyUs);
 
-  private void SetUserSettings(int offsetMs, int volumeDb)
+  private void SetLatency(int latencyMs)
   {
-    int clampedOffset = Math.Max(
+    int clampedLatency = Math.Max(
       TUFReplaySetting.MinMicrophoneOffsetMs,
-      Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, offsetMs)
+      Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, latencyMs)
     );
+    _microphoneLatencyUs = clampedLatency * 1000L;
+  }
+
+  private void SetVolume(int volumeDb)
+  {
     int clampedVolumeDb = Math.Max(
       TUFReplaySetting.MinMicrophoneVolumeDb,
       Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
     );
-    _userOffsetUs = clampedOffset * 1000L;
     _gain = MicrophoneGain.FromDecibels(clampedVolumeDb);
   }
 

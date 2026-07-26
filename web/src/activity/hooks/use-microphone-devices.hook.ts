@@ -10,6 +10,8 @@ const EMPTY_STATE: MicrophoneDevicesState = {
   SelectedDeviceId: null,
 };
 
+const DEVICE_REFRESH_MAX_AGE_MS = 5_000;
+
 export function useMicrophoneDevices(
   gatewayRef: RefObject<ActivityGateway | null>,
   connectionStatus: ConnectionStatus,
@@ -20,15 +22,18 @@ export function useMicrophoneDevices(
   const [pendingEnabled, setPendingEnabled] = useState<boolean | undefined>(undefined);
   const [error, setError] = useState("");
   const refreshInFlightRef = useRef(false);
+  const loadedRef = useRef(false);
+  const lastRefreshAtRef = useRef(0);
 
   const applyState = useCallback((next: MicrophoneDevicesState) => {
-    setState({
+    const normalized = {
       Enabled: next.Enabled !== false,
       ToggleLocked: next.ToggleLocked === true,
       Devices: Array.isArray(next.Devices) ? next.Devices : [],
       SelectedDeviceId: next.SelectedDeviceId ?? null,
-    });
-    setError("");
+    };
+    setState((current) => (microphoneStatesEqual(current, normalized) ? current : normalized));
+    setError((current) => (current ? "" : current));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -37,16 +42,24 @@ export function useMicrophoneDevices(
     if (!gateway) return;
 
     refreshInFlightRef.current = true;
-    setLoading(true);
+    const showLoading = !loadedRef.current;
+    if (showLoading) setLoading(true);
     try {
       applyState(await gateway.getMicrophoneDevices());
+      loadedRef.current = true;
+      lastRefreshAtRef.current = Date.now();
     } catch (cause) {
       setError(errorMessage(cause));
     } finally {
       refreshInFlightRef.current = false;
-      setLoading(false);
+      if (showLoading) setLoading(false);
     }
   }, [applyState, connectionStatus, gatewayRef]);
+
+  const refreshIfStale = useCallback(() => {
+    if (Date.now() - lastRefreshAtRef.current < DEVICE_REFRESH_MAX_AGE_MS) return;
+    void refresh();
+  }, [refresh]);
 
   const select = useCallback(
     async (deviceId: string | null) => {
@@ -96,6 +109,8 @@ export function useMicrophoneDevices(
       return;
     }
     setLoading(false);
+    loadedRef.current = false;
+    lastRefreshAtRef.current = 0;
     if (connectionStatus === "error") setError("TUFReplay is not connected");
   }, [connectionStatus, refresh]);
 
@@ -109,9 +124,29 @@ export function useMicrophoneDevices(
     pendingEnabled,
     error,
     refresh,
+    refreshIfStale,
     select,
     setEnabled,
   };
+}
+
+function microphoneStatesEqual(left: MicrophoneDevicesState, right: MicrophoneDevicesState) {
+  if (
+    left.Enabled !== right.Enabled ||
+    left.ToggleLocked !== right.ToggleLocked ||
+    left.SelectedDeviceId !== right.SelectedDeviceId ||
+    left.Devices.length !== right.Devices.length
+  )
+    return false;
+  return left.Devices.every((device, index) => {
+    const other = right.Devices[index];
+    return (
+      device.Id === other.Id &&
+      device.Name === other.Name &&
+      device.MinFrequency === other.MinFrequency &&
+      device.MaxFrequency === other.MaxFrequency
+    );
+  });
 }
 
 function errorMessage(cause: unknown) {

@@ -19,9 +19,9 @@ describe("microphone offset utilities", () => {
   });
 
   test("maps horizontal pointer movement onto the shared timeline", () => {
-    expect(offsetFromPointerDelta(0, 16, 1_000, 6_000)).toBe(96);
-    expect(offsetFromPointerDelta(0, 0.25, 1_000, 2_000)).toBe(0.5);
-    expect(offsetFromPointerDelta(490, 100, 1_000, 6_000)).toBe(500);
+    expect(offsetFromPointerDelta(0, 16, 1_000, 6_000)).toBe(-96);
+    expect(offsetFromPointerDelta(0, 0.25, 1_000, 2_000)).toBe(-0.5);
+    expect(offsetFromPointerDelta(-490, 100, 1_000, 6_000)).toBe(-500);
     expect(offsetFromPointerDelta(42, 10, 0, 6_000)).toBe(42);
   });
 
@@ -35,8 +35,8 @@ describe("microphone offset utilities", () => {
   });
 
   test("supports precise and accelerated keyboard adjustment", () => {
-    expect(keyboardOffsetAdjustment(0, "ArrowRight", false)).toBe(1);
-    expect(keyboardOffsetAdjustment(0, "ArrowLeft", true)).toBe(-10);
+    expect(keyboardOffsetAdjustment(0, "ArrowRight", false)).toBe(-1);
+    expect(keyboardOffsetAdjustment(0, "ArrowLeft", true)).toBe(10);
     expect(keyboardOffsetAdjustment(0, "Enter", false)).toBeNull();
   });
 

@@ -383,6 +383,14 @@ internal static class Program
 
   private static void TestReplayMicrophoneClock()
   {
+    Assert(
+      ReplayMicrophoneClock.ApplyLatencyCorrection(-1_000_000L, 100_000L) == -1_100_000L,
+      "Positive microphone latency did not advance playback."
+    );
+    Assert(
+      ReplayMicrophoneClock.ApplyLatencyCorrection(-1_000_000L, -100_000L) == -900_000L,
+      "Negative microphone latency did not delay playback."
+    );
     Assert(ReplayMicrophoneClock.ToFrame(500_000, 1d, 0L, 48000, 100000) == 24000, "100% mic clock is wrong.");
     Assert(ReplayMicrophoneClock.ToFrame(500_000, 2d, 0L, 48000, 100000) == 12000, "Pitched mic clock is wrong.");
     Assert(
@@ -424,6 +432,18 @@ internal static class Program
     Assert(legacy.MicrophoneOffsetMs == 0, "Legacy calibration offset default is incorrect.");
     Assert(legacy.MicrophoneVolumeDb == 0, "Legacy calibration volume default is incorrect.");
 
+    string offsetPath = Path.Combine(root, "legacy-offset-settings.json");
+    File.WriteAllText(offsetPath, "{\"Setting\":{\"MicrophoneOffsetMs\":-80}}");
+    TUFReplaySetting migratedOffset = TUFReplaySetting.Load(offsetPath);
+    Assert(migratedOffset.MicrophoneOffsetMs == 80, "Legacy microphone offset sign was not migrated.");
+    Assert(
+      migratedOffset.MicrophoneOffsetConventionVersion
+        == TUFReplaySetting.CurrentMicrophoneOffsetConventionVersion,
+      "Microphone offset convention version was not migrated."
+    );
+    migratedOffset.Save(offsetPath);
+    Assert(TUFReplaySetting.Load(offsetPath).MicrophoneOffsetMs == 80, "Microphone offset sign migrated twice.");
+
     string percentPath = Path.Combine(root, "percent-settings.json");
     File.WriteAllText(percentPath, "{\"Setting\":{\"MicrophoneVolumePercent\":200}}");
     Assert(TUFReplaySetting.Load(percentPath).MicrophoneVolumeDb == 6, "Legacy percent volume was not migrated.");
@@ -447,6 +467,28 @@ internal static class Program
 
   private static void TestCalibrationWaveforms(string root)
   {
+    float[] inputs = CalibrationWaveformBuilder.FromInputEvents(
+      new List<RecordedInput>
+      {
+        new RecordedInput(-50_000L, 1, RecordInputFlags.Down | RecordInputFlags.Async),
+        new RecordedInput(250_000L, 1, RecordInputFlags.Down | RecordInputFlags.Async),
+        new RecordedInput(260_000L, 1, RecordInputFlags.Async),
+      },
+      1000d
+    );
+    Assert(inputs[CalibrationWaveformBuilder.BinCount / 4] == 1f, "Input waveform missed a key-down timestamp.");
+    Assert(inputs[0] == 0f, "Input waveform included a countdown key press.");
+    Assert(CalibrationWaveformBuilder.HasSignal(inputs), "Input waveform signal detection failed.");
+    Assert(
+      !CalibrationWaveformBuilder.HasSignal(
+        CalibrationWaveformBuilder.FromInputEvents(
+          new List<RecordedInput> { new RecordedInput(250_000L, 1, RecordInputFlags.Async) },
+          1000d
+        )
+      ),
+      "Input waveform included a key-up timestamp."
+    );
+
     string path = Path.Combine(root, "calibration-waveform.wav");
     using (var writer = new Pcm16WavWriter(path))
     {
