@@ -95,8 +95,7 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     using SqliteConnection c = DatabaseStore.OpenConnection();
     using SqliteCommand q = c.CreateCommand();
     q.CommandText =
-      Select
-      + " WHERE l.logical_level_id=@id ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
+      Select + " WHERE l.logical_level_id=@id ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
     q.Parameters.AddWithValue("@id", id);
     q.Parameters.AddWithValue("@limit", limit);
     q.Parameters.AddWithValue("@offset", offset);
@@ -117,7 +116,7 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
       @"
 SELECT r.id,r.level_session_id,l.tuf_level_id,l.level_path,l.level_tile_count,
        r.start_tile,r.last_tile,r.result,r.input_csv,r.hit_context_csv,r.meta_json,
-       r.gameplay_hash,r.gameplay_hash_version
+       r.gameplay_hash,r.gameplay_hash_version,r.judgment_difficulty,r.no_fail_mode
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 WHERE r.id=@id
@@ -142,6 +141,8 @@ LIMIT 1";
       MetaJson = r.GetString(10),
       GameplayHash = r.IsDBNull(11) ? null : (byte[])r.GetValue(11),
       GameplayHashVersion = DbValue.NullableInt(r, 12),
+      JudgmentDifficulty = ReadDifficulty(r, 13),
+      NoFailMode = r.GetInt32(14) != 0,
     };
   }
 

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 
@@ -14,6 +15,8 @@ public class ActiveReplayContext
   public string Result;
   public int? TufLevelId;
   public int StartTile;
+  public RunJudgmentDifficulty? JudgmentDifficulty;
+  public bool NoFailMode;
   public long TerminalTimeUs;
   public string OpenedAtUtc;
   public List<RecordedInput> Inputs;
@@ -30,4 +33,8 @@ public class ActiveReplayContext
   public long WonClockStartTimeUs;
   public int? OriginalLevelPitchPercent;
   public bool ReplayPitchApplied;
+  public int? OriginalJudgmentDifficulty;
+  public bool ReplayJudgmentDifficultyApplied;
+  public bool? OriginalNoFailMode;
+  public bool ReplayNoFailApplied;
 }

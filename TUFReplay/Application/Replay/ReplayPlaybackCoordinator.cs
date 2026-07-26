@@ -629,6 +629,8 @@ public static class ReplayPlaybackCoordinator
       Result = operation.Run.Result,
       TufLevelId = operation.Run.TufLevelId,
       StartTile = operation.Run.StartTile,
+      JudgmentDifficulty = operation.Run.JudgmentDifficulty,
+      NoFailMode = operation.Run.NoFailMode,
       TerminalTimeUs = operation.TerminalTimeUs,
       Inputs = operation.Inputs,
       HitContexts = operation.HitContexts,
@@ -644,7 +646,9 @@ public static class ReplayPlaybackCoordinator
     };
 
     ReplaySessionService.InstallActiveContext(context);
+    ReplaySessionService.ApplyReplayNoFailNow();
     ReplaySessionService.ApplyReplayPitchNow();
+    ReplaySessionService.ApplyReplayJudgmentDifficultyNow();
     editor.SelectFloor(editor.floors[operation.Run.StartTile]);
     SetOperationState(operation, ReplayPlaybackStates.Starting, "Starting replay.");
     editor.Play();

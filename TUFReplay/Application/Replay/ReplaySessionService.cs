@@ -96,7 +96,6 @@ public static class ReplaySessionService
   public static void ClearActiveContext()
   {
     ActiveReplayContext context = _activeContext;
-    bool hadActiveContext = context != null;
 
     if (context != null)
     {
@@ -106,15 +105,12 @@ public static class ReplaySessionService
       context.NativeInputPlayer?.Dispose();
       context.MicrophonePlayer?.Dispose();
     }
+    RestoreReplayNoFail();
     RestoreReplayPitch();
+    RestoreReplayJudgmentDifficulty();
     _activeContext = null;
     _pendingReplayPitchApplyFrame = -1;
     _suppressReplayMarkFail = false;
-
-    if (hadActiveContext && ADOBase.controller != null)
-    {
-      ReplayFailPolicy.ApplyReplayNoFail(false);
-    }
   }
 
   public static void OnStateChanged(States newState)
@@ -235,10 +231,7 @@ public static class ReplaySessionService
     TransitionTo(phase, reason);
     _suppressReplayMarkFail = true;
 
-    if (ADOBase.controller != null)
-    {
-      ReplayFailPolicy.ApplyReplayNoFail(ShouldUseReplayNoFail());
-    }
+    ApplyReplayNoFailNow();
   }
 
   public static bool ShouldBlockOriginalHit()
@@ -267,6 +260,29 @@ public static class ReplaySessionService
   private static bool ShouldUseReplayNoFail()
   {
     return ReplayFailPolicy.ShouldUseReplayNoFail(_activeContext);
+  }
+
+  public static void ApplyReplayNoFailNow()
+  {
+    if (_activeContext == null || ADOBase.controller == null)
+      return;
+
+    if (!_activeContext.ReplayNoFailApplied)
+    {
+      _activeContext.OriginalNoFailMode = ADOBase.controller.noFail;
+      _activeContext.ReplayNoFailApplied = true;
+    }
+
+    ReplayFailPolicy.ApplyReplayNoFail(ShouldUseReplayNoFail());
+  }
+
+  private static void RestoreReplayNoFail()
+  {
+    if (_activeContext?.ReplayNoFailApplied != true || !_activeContext.OriginalNoFailMode.HasValue)
+      return;
+
+    ReplayFailPolicy.ApplyReplayNoFail(_activeContext.OriginalNoFailMode.Value);
+    _activeContext.ReplayNoFailApplied = false;
   }
 
   public static bool ShouldSuppressReplayMarkFail()
@@ -394,6 +410,22 @@ public static class ReplaySessionService
     _activeContext.ReplayPitchApplied = true;
   }
 
+  public static void ApplyReplayJudgmentDifficultyNow()
+  {
+    if (_activeContext?.JudgmentDifficulty.HasValue != true)
+      return;
+    if (_activeContext.ReplayJudgmentDifficultyApplied)
+      return;
+
+    Difficulty difficulty = (Difficulty)(int)_activeContext.JudgmentDifficulty.Value;
+    if (!Enum.IsDefined(typeof(Difficulty), difficulty))
+      return;
+
+    _activeContext.OriginalJudgmentDifficulty = (int)GCS.difficulty;
+    GCS.difficulty = difficulty;
+    _activeContext.ReplayJudgmentDifficultyApplied = true;
+  }
+
   private static void RestoreReplayPitch()
   {
     if (_activeContext?.ReplayPitchApplied != true || !_activeContext.OriginalLevelPitchPercent.HasValue)
@@ -401,6 +433,15 @@ public static class ReplaySessionService
 
     ReplayPitchService.ApplyToEditorLevelData(_activeContext.OriginalLevelPitchPercent.Value);
     _activeContext.ReplayPitchApplied = false;
+  }
+
+  private static void RestoreReplayJudgmentDifficulty()
+  {
+    if (_activeContext?.ReplayJudgmentDifficultyApplied != true || !_activeContext.OriginalJudgmentDifficulty.HasValue)
+      return;
+
+    GCS.difficulty = (Difficulty)_activeContext.OriginalJudgmentDifficulty.Value;
+    _activeContext.ReplayJudgmentDifficultyApplied = false;
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)
