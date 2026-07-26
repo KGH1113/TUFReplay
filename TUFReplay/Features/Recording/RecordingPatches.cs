@@ -3,6 +3,7 @@ using HarmonyLib;
 using MonsterLove.StateMachine;
 using TUFReplay.Application.Recording;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Infrastructure.NativeInput;
 
 namespace TUFReplay.Features.Recording;
 
@@ -68,9 +69,9 @@ public static class RecordingPatches
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
 
-    bool focused = UnityEngine.Application.isFocused;
-    RecordInputTracker.SetCaptureWindowActive(focused);
-    if (!focused)
+    bool captureAllowed = IsNativeInputCaptureAllowed();
+    RecordInputTracker.SetCaptureWindowActive(captureAllowed);
+    if (!captureAllowed)
       return;
 
     RecordInputTracker.Sample(session);
@@ -146,7 +147,7 @@ public static class RecordingPatches
         if (!recording.PrepareRunForInputCapture())
           return;
         recording.Session.StartInputCapture();
-        RecordInputTracker.SetCaptureWindowActive(UnityEngine.Application.isFocused);
+        RecordInputTracker.SetCaptureWindowActive(IsNativeInputCaptureAllowed());
         recording.OnInputCaptureStarted();
         ResetHitContextState();
         break;
@@ -171,8 +172,8 @@ public static class RecordingPatches
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
 
-    bool focused = UnityEngine.Application.isFocused;
-    bool active = focused && IsNativeInputCaptureState(newState);
+    bool captureAllowed = IsNativeInputCaptureAllowed();
+    bool active = captureAllowed && IsNativeInputCaptureState(newState);
     if (active)
     {
       RecordInputTracker.SetCaptureWindowActive(true);
@@ -180,9 +181,14 @@ public static class RecordingPatches
       return;
     }
 
-    if (focused)
+    if (captureAllowed)
       RecordInputTracker.Sample(session);
     RecordInputTracker.SetCaptureWindowActive(false);
+  }
+
+  private static bool IsNativeInputCaptureAllowed()
+  {
+    return UnityEngine.Application.isFocused && !NativeInputUmmWindowInterlock.IsBlocked;
   }
 
   private static bool IsNativeInputCaptureState(States state)

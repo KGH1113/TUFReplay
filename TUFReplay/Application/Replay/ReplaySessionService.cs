@@ -449,6 +449,22 @@ public static class ReplaySessionService
     return true;
   }
 
+  internal static void SuspendNativeInputForUmmWindow()
+  {
+    ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
+    if (player == null)
+      return;
+
+    if (!TryComputeReplayTimeUs(out long nowUs, out _))
+    {
+      player.ReleaseAll();
+      return;
+    }
+
+    player.SkipTo(nowUs);
+    ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
+  }
+
   private static bool EnsurePlayerControlRunStarted()
   {
     if (_activeContext == null)
