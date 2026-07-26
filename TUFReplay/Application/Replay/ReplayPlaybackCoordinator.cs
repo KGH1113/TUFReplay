@@ -356,9 +356,15 @@ public static class ReplayPlaybackCoordinator
         if (recording != null)
         {
           Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
+          Pcm16LimiterEnvelope limiterEnvelope = Pcm16WaveAnalyzer.Analyze(
+            recording,
+            wave,
+            operation.PreparationCancellation.Token
+          );
           operation.PreparationCancellation.Token.ThrowIfCancellationRequested();
           operation.MicrophoneRecording = recording;
           operation.MicrophoneWave = wave;
+          operation.MicrophoneLimiterEnvelope = limiterEnvelope;
         }
       }
       catch (OperationCanceledException)
@@ -596,7 +602,11 @@ public static class ReplayPlaybackCoordinator
       operation.NativeInputFocusGuard
       ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
     IReplayMicrophonePlayer microphonePlayer = null;
-    if (operation.MicrophoneRecording != null && operation.MicrophoneWave != null)
+    if (
+      operation.MicrophoneRecording != null
+      && operation.MicrophoneWave != null
+      && operation.MicrophoneLimiterEnvelope != null
+    )
     {
       try
       {
@@ -604,6 +614,7 @@ public static class ReplayPlaybackCoordinator
         microphonePlayer = new ReplayMicrophonePlayer(
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
+          operation.MicrophoneLimiterEnvelope,
           settings?.MicrophoneOffsetMs ?? 0,
           settings?.MicrophoneVolumeDb ?? 0
         );
@@ -921,6 +932,7 @@ public static class ReplayPlaybackCoordinator
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
+    public Pcm16LimiterEnvelope MicrophoneLimiterEnvelope;
     public bool AllowBackground;
 
     public PendingReplay(
@@ -946,6 +958,7 @@ public static class ReplayPlaybackCoordinator
     {
       MicrophoneRecording = null;
       MicrophoneWave = null;
+      MicrophoneLimiterEnvelope = null;
     }
 
     public void CleanupPreparedMicrophone()
@@ -953,6 +966,7 @@ public static class ReplayPlaybackCoordinator
       string path = MicrophoneRecording?.FilePath;
       MicrophoneRecording = null;
       MicrophoneWave = null;
+      MicrophoneLimiterEnvelope = null;
       ReplayMicrophonePlaybackFiles.Delete(path);
     }
   }
