@@ -93,7 +93,7 @@ export function createMockActivityGateway(): ActivityGateway {
       Ok: true,
       Mod: "TUFReplay",
       ModVersion: "mock",
-      ProtocolVersion: 1,
+      ProtocolVersion: 2,
       ServerVersion: 1,
     }),
     listAllAppSessions: async (onPage) => {
@@ -134,6 +134,17 @@ export function createMockActivityGateway(): ActivityGateway {
       return runs;
     },
     getLogicalLevelChart: async (id) => findLevel(id).chart,
+    exportRun: async (runId) => {
+      const run = levels.flatMap((level) => level.runs).find((candidate) => candidate.Id === runId);
+      if (!run) throw new Error("Run was not found");
+      return {
+        RunId: runId,
+        Outcome: "exported" as const,
+        FileName: `mock-run-${run.RunIndex}.tufreplay`,
+        ByteLength: 4096,
+        IncludedMicrophone: run.HasMicrophoneRecording,
+      };
+    },
     deleteRun: async (runId) => {
       for (let index = levels.length - 1; index >= 0; index -= 1) {
         const level = levels[index];

@@ -264,7 +264,7 @@ are not exported.
   "Ok": true,
   "Mod": "TUFReplay",
   "ModVersion": "0.1.0-beta.6",
-  "ProtocolVersion": 1,
+  "ProtocolVersion": 2,
   "ServerVersion": 1
 }
 ```

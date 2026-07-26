@@ -14,13 +14,14 @@ import type {
   MicrophoneRecordingKeepResult,
   ReplayLevelFilePickerResult,
   ReplayStatus,
+  RunExportResult,
 } from "../activity.model";
 import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
 const FILE_PICKER_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-export const SUPPORTED_PROTOCOL_VERSION = 1;
+export const SUPPORTED_PROTOCOL_VERSION = 2;
 
 export interface ActivityHealth {
   Ok: boolean;
@@ -76,6 +77,7 @@ export interface ActivityGateway {
   getChart(id: string): Promise<ActivityChart>;
   getLogicalLevelChart(id: string): Promise<ActivityChart>;
   deleteRun(runId: string): Promise<ActivityRunDeleteResult>;
+  exportRun(runId: string): Promise<RunExportResult>;
   deleteMicrophoneRecording(runId: string): Promise<MicrophoneRecordingDeleteResult>;
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
@@ -156,6 +158,7 @@ export function createActivityGateway(
       ),
     getLogicalLevelChart: (id) => callDomain(namespace, "activity.logical-level.chart.get", { id }),
     deleteRun: (runId) => callDomain(namespace, "activity.run.delete", { runId }),
+    exportRun: (runId) => callDomain(pickerNamespace, "activity.run.export", { runId }),
     deleteMicrophoneRecording: (runId) =>
       callDomain(namespace, "microphone.recording.delete", { runId }),
     keepMicrophoneRecording: (runId) =>
