@@ -1,4 +1,5 @@
 using AdofaiIpc;
+using TUFReplay.Application.Export;
 
 namespace TUFReplay.Features.Ipc;
 
@@ -39,6 +40,7 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("activity.logical-level.runs.list", ActivityIpcHandlers.ListLogicalLevelRuns);
     ipc.Register("activity.logical-level.chart.get", ActivityIpcHandlers.GetLogicalLevelChart);
     ipc.Register("activity.run.delete", ActivityIpcHandlers.DeleteRun);
+    ipc.Register("activity.run.export", RunExportIpcHandlers.Export);
     ipc.Register("microphone.recording.delete", MicrophoneRecordingIpcHandlers.Delete);
     ipc.Register("microphone.recording.keep", MicrophoneRecordingIpcHandlers.KeepPermanently);
     ipc.Register("replay.play", ReplayIpcHandlers.Play);
@@ -64,6 +66,8 @@ public sealed class TUFReplayIpcFeature
     if (!_active)
       return;
     _active = false;
+
+    RunExportCoordinator.Shutdown();
 
     AdofaiIpc.AdofaiIpc.UnregisterNamespace(Namespace);
     Main.Instance.Log("[IPC] Unregistered namespace: " + Namespace);

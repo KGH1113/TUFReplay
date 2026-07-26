@@ -1,4 +1,5 @@
 using AdofaiIpc.Core;
+using TUFReplay.Application.Export;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Ipc.Dtos;
 
@@ -12,6 +13,8 @@ public static class MicrophoneRecordingIpcHandlers
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
       return IpcDomainError.Create("run_not_found", "Run was not found.");
+    if (RunExportCoordinator.IsExportingRun(runId))
+      return IpcDomainError.Create("run_in_use", "Wait for this run export to finish before deleting its recording.");
 
     return new MicrophoneRecordingDeleteResultDto
     {
