@@ -208,3 +208,9 @@ public sealed class ActivityChartDto
   public string LevelText;
   public int FloorCount;
 }
+
+public sealed class ActivityRunDeleteResultDto
+{
+  public string RunId;
+  public bool Deleted;
+}

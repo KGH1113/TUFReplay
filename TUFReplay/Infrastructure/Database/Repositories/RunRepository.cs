@@ -74,6 +74,86 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     return System.Convert.ToInt32(q.ExecuteScalar());
   }
 
+  public static bool Exists(string runId)
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      return false;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "SELECT 1 FROM runs WHERE id=@id LIMIT 1";
+    q.Parameters.AddWithValue("@id", runId);
+    return q.ExecuteScalar() != null;
+  }
+
+  public static bool Delete(string runId)
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      return false;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteTransaction transaction = c.BeginTransaction();
+    using SqliteCommand q = c.CreateCommand();
+    q.Transaction = transaction;
+    q.CommandText =
+      @"SELECT r.level_session_id,l.logical_level_id,l.app_session_id,l.closed_at_utc,a.ended_at_utc
+FROM runs r
+JOIN level_sessions l ON l.id=r.level_session_id
+JOIN app_sessions a ON a.id=l.app_session_id
+WHERE r.id=@id
+LIMIT 1";
+    q.Parameters.AddWithValue("@id", runId);
+
+    string levelSessionId;
+    string logicalLevelId;
+    string appSessionId;
+    bool levelSessionClosed;
+    bool appSessionClosed;
+    using (SqliteDataReader reader = q.ExecuteReader())
+    {
+      if (!reader.Read())
+        return false;
+      levelSessionId = reader.GetString(0);
+      logicalLevelId = reader.GetString(1);
+      appSessionId = reader.GetString(2);
+      levelSessionClosed = !reader.IsDBNull(3);
+      appSessionClosed = !reader.IsDBNull(4);
+    }
+
+    q.CommandText = "DELETE FROM runs WHERE id=@id";
+    int deleted = q.ExecuteNonQuery();
+    if (deleted == 0)
+      return false;
+
+    if (levelSessionClosed)
+    {
+      q.CommandText =
+        @"DELETE FROM level_sessions
+WHERE id=@level
+  AND closed_at_utc IS NOT NULL
+  AND NOT EXISTS(SELECT 1 FROM runs WHERE level_session_id=@level)";
+      q.Parameters.AddWithValue("@level", levelSessionId);
+      int levelDeleted = q.ExecuteNonQuery();
+      if (levelDeleted > 0)
+      {
+        LogicalLevelRepository.DeleteIfOrphaned(c, transaction, logicalLevelId);
+        if (appSessionClosed)
+        {
+          q.CommandText =
+            @"DELETE FROM app_sessions
+WHERE id=@app
+  AND ended_at_utc IS NOT NULL
+  AND NOT EXISTS(SELECT 1 FROM level_sessions WHERE app_session_id=@app)";
+          q.Parameters.AddWithValue("@app", appSessionId);
+          q.ExecuteNonQuery();
+        }
+      }
+    }
+
+    transaction.Commit();
+    return true;
+  }
+
   public static List<RunRecord> ListByLevelSession(string id, int offset, int limit)
   {
     var result = new List<RunRecord>();
@@ -89,13 +169,30 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     return result;
   }
 
-  public static List<RunRecord> ListByLogicalLevel(string id, int offset, int limit)
+  public static List<RunRecord> ListByLogicalLevel(
+    string id,
+    IReadOnlyList<string> appSessionIds,
+    int offset,
+    int limit
+  )
   {
     var result = new List<RunRecord>();
+    if (appSessionIds == null || appSessionIds.Count == 0)
+      return result;
     using SqliteConnection c = DatabaseStore.OpenConnection();
     using SqliteCommand q = c.CreateCommand();
+    var appSessionParameters = new List<string>(appSessionIds.Count);
+    for (int index = 0; index < appSessionIds.Count; index++)
+    {
+      string parameter = "@app" + index;
+      appSessionParameters.Add(parameter);
+      q.Parameters.AddWithValue(parameter, appSessionIds[index]);
+    }
     q.CommandText =
-      Select + " WHERE l.logical_level_id=@id ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
+      Select
+      + " WHERE l.logical_level_id=@id AND l.app_session_id IN ("
+      + string.Join(",", appSessionParameters)
+      + ") ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
     q.Parameters.AddWithValue("@id", id);
     q.Parameters.AddWithValue("@limit", limit);
     q.Parameters.AddWithValue("@offset", offset);

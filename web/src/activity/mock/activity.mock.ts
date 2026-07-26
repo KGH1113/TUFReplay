@@ -121,12 +121,40 @@ export function createMockActivityGateway(): ActivityGateway {
       return runs;
     },
     getChart: async (id) => findLevel(id).chart,
-    listAllLogicalLevelRuns: async (id, onPage) => {
-      const runs = findLevel(id).runs;
+    listAllLogicalLevelRuns: async (id, appSessionIds, onPage) => {
+      const level = findLevel(id);
+      const runs = appSessionIds.includes(level.session.AppSessionId) ? level.runs : [];
       onPage?.(runs);
       return runs;
     },
     getLogicalLevelChart: async (id) => findLevel(id).chart,
+    deleteRun: async (runId) => {
+      for (let index = levels.length - 1; index >= 0; index -= 1) {
+        const level = levels[index];
+        const runIndex = level.runs.findIndex((candidate) => candidate.Id === runId);
+        if (runIndex < 0) continue;
+        level.runs.splice(runIndex, 1);
+        level.session.RunCount = level.runs.length;
+        level.session.ClearRunCount = level.runs.filter((run) => run.Result === "clear").length;
+        level.session.NoFailRunCount = level.runs.filter((run) => run.NoFailMode).length;
+        if (level.runs.length === 0) {
+          levels.splice(index, 1);
+          const appIndex = appSessions.findIndex(
+            (session) => session.Id === level.session.AppSessionId,
+          );
+          if (appIndex >= 0) {
+            const appSession = appSessions[appIndex];
+            appSession.LevelSessions = appSession.LevelSessions.filter(
+              (session) => session.Id !== level.session.Id,
+            );
+            if (appSession.LevelSessions.length === 0 && appSession.EndedAtUtc)
+              appSessions.splice(appIndex, 1);
+          }
+        }
+        return { RunId: runId, Deleted: true };
+      }
+      throw new ActivityDomainError("run_not_found", "Run was not found");
+    },
     deleteMicrophoneRecording: async (runId) => {
       for (const level of levels) {
         const run = level.runs.find((candidate) => candidate.Id === runId);

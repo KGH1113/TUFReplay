@@ -5,10 +5,12 @@ import type { ActivityGateway } from "../data/activity.gateway";
 
 export function useLevelSessionData(
   id: string | null,
+  appSessionIds: string[],
   chartAvailable: boolean,
   revision: number,
   gatewayRef: RefObject<ActivityGateway | null>,
 ) {
+  const appSessionKey = appSessionIds.join("\0");
   const [overview, setOverview] = useState<ActivityLogicalLevelOverview | null>(null);
   const [runs, setRuns] = useState<ActivityRun[]>([]);
   const [chart, setChart] = useState<ActivityChart | null>(null);
@@ -19,6 +21,7 @@ export function useLevelSessionData(
 
   useEffect(() => {
     void revision;
+    const requestedAppSessionIds = appSessionKey ? appSessionKey.split("\0") : [];
     const gateway = gatewayRef.current;
     if (!id || !gateway) {
       selectedLevelIdRef.current = null;
@@ -55,6 +58,7 @@ export function useLevelSessionData(
       gateway
         .listAllLogicalLevelRuns(
           id,
+          requestedAppSessionIds,
           levelChanged
             ? (value) => {
                 if (active) setRuns(value);
@@ -85,13 +89,21 @@ export function useLevelSessionData(
     return () => {
       active = false;
     };
-  }, [chartAvailable, gatewayRef, id, revision]);
+  }, [appSessionKey, chartAvailable, gatewayRef, id, revision]);
 
   const updateRun = useCallback((runId: string, update: Partial<ActivityRun>) => {
     setRuns((current) => current.map((run) => (run.Id === runId ? { ...run, ...update } : run)));
   }, []);
 
-  return { overview, runs, chart, loading, error, updateRun };
+  const removeRun = useCallback((runId: string) => {
+    setRuns((current) => removeRunById(current, runId));
+  }, []);
+
+  return { overview, runs, chart, loading, error, updateRun, removeRun };
+}
+
+export function removeRunById(runs: ActivityRun[], runId: string) {
+  return runs.filter((run) => run.Id !== runId);
 }
 
 export function planLevelSessionRefresh(

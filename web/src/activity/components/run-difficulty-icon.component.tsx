@@ -14,11 +14,13 @@ export function RunDifficultyIcon({ difficulty }: { difficulty?: JudgmentDifficu
   if (!difficulty || !difficultyIcons[difficulty]) return null;
 
   return (
-    <img
-      src={difficultyIcons[difficulty]}
-      alt={`${difficulty} judgment difficulty`}
-      title={`${difficulty} judgment difficulty`}
-      className="size-[18px] shrink-0"
-    />
+    <span className="grid size-6 shrink-0 place-items-center">
+      <img
+        src={difficultyIcons[difficulty]}
+        alt={`${difficulty} judgment difficulty`}
+        title={`${difficulty} judgment difficulty`}
+        className="block size-[18px] translate-y-[0.5px]"
+      />
+    </span>
   );
 }

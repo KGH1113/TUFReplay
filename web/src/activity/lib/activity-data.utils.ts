@@ -22,7 +22,6 @@ export function groupSessionsByDay(
   sessions: ActivityAppSession[],
   timeZone: string,
 ): ActivityDay[] {
-  const logicalLevels = buildLogicalLevelOverviews(sessions);
   const groups = new Map<string, ActivityAppSession[]>();
   for (const session of sessions) {
     const key = dateKeyInTimeZone(session.StartedAtUtc, timeZone);
@@ -31,6 +30,7 @@ export function groupSessionsByDay(
   return [...groups.entries()]
     .sort(([left], [right]) => right.localeCompare(left))
     .map(([date, appSessions]) => {
+      const logicalLevels = buildLogicalLevelOverviews(appSessions);
       const visits = appSessions.flatMap((session) => session.LevelSessions);
       const logicalIds = new Set(visits.map((visit) => visit.LogicalLevelId));
       const levelSessions = [...logicalIds]
