@@ -139,8 +139,9 @@ public static class ReplaySessionService
     switch (newState)
     {
       case States.Countdown:
-        if (_activeContext.Phase == ReplayPlaybackPhase.Prepared)
-          ResetReplayRun("state_countdown", ReplayPlaybackPhase.Armed);
+      case States.Checkpoint:
+        if (ReplayRunController.ShouldInitializeFromPreRoll(_activeContext))
+          ResetReplayRun("state_preroll_" + newState, ReplayPlaybackPhase.Armed);
         break;
 
       case States.PlayerControl:
