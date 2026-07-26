@@ -26,12 +26,13 @@ import {
 import type { ActivityRun } from "../activity.model";
 import { formatFileSize } from "../lib/file-size.format";
 
-type PendingAction = "keep" | "delete-recording" | "delete-run" | null;
+type PendingAction = "export" | "keep" | "delete-recording" | "delete-run" | null;
 
 export function RunActionsMenu({
   run,
   disabled,
   runDeleteDisabled,
+  onExportRun,
   onKeepMicrophoneRecording,
   onDeleteMicrophoneRecording,
   onDeleteRun,
@@ -39,16 +40,33 @@ export function RunActionsMenu({
   run: ActivityRun;
   disabled: boolean;
   runDeleteDisabled: boolean;
+  onExportRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [recordingDialogOpen, setRecordingDialogOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [menuError, setMenuError] = useState("");
+  const [exportError, setExportError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const busy = pendingAction !== null;
+
+  const exportRun = async () => {
+    if (disabled || busy) return;
+    setPendingAction("export");
+    setExportError("");
+    try {
+      await onExportRun(run);
+      setMenuOpen(false);
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : "Could not export run");
+    } finally {
+      setPendingAction(null);
+    }
+  };
 
   const keepRecording = async () => {
     if (disabled || busy) return;
@@ -95,7 +113,16 @@ export function RunActionsMenu({
 
   return (
     <>
-      <DropdownMenu onOpenChange={(open) => open && setMenuError("")}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          setMenuOpen(open);
+          if (open) {
+            setMenuError("");
+            setExportError("");
+          }
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
@@ -168,11 +195,26 @@ export function RunActionsMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem
+            disabled={disabled || busy}
+            onSelect={(event) => {
+              event.preventDefault();
+              void exportRun();
+            }}
+          >
             <span aria-hidden="true" className="size-4" />
-            <HugeiconsIcon aria-hidden="true" icon={Download04Icon} className="size-4" />
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={pendingAction === "export" ? Loading03Icon : Download04Icon}
+              className={pendingAction === "export" ? "size-4 animate-spin" : "size-4"}
+            />
             Export run
           </DropdownMenuItem>
+          {exportError ? (
+            <p aria-live="polite" className="px-2 py-1 text-xs text-destructive">
+              {exportError}
+            </p>
+          ) : null}
           <DropdownMenuItem disabled>
             <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Upload04Icon} className="size-4" />

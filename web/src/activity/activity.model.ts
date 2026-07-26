@@ -85,6 +85,14 @@ export interface ActivityRunDeleteResult {
   Deleted: boolean;
 }
 
+export interface RunExportResult {
+  RunId: string;
+  Outcome: "exported" | "cancelled";
+  FileName: string | null;
+  ByteLength: number;
+  IncludedMicrophone: boolean;
+}
+
 export interface MicrophoneRecordingKeepResult {
   RunId: string;
   Permanent: boolean;

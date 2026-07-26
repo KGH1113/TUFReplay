@@ -52,7 +52,8 @@ describe("activity IPC contract", () => {
     const gateway = createActivityGateway({
       call: async (method: string) => {
         calls.push(method);
-        if (method === "health.get") return { ProtocolVersion: 2, ModVersion: "0.2.0" };
+        if (method === "health.get")
+          return { ProtocolVersion: SUPPORTED_PROTOCOL_VERSION + 1, ModVersion: "0.2.0" };
         return [];
       },
     } as never);
@@ -148,6 +149,32 @@ describe("activity IPC contract", () => {
 
     expect(await gateway.deleteRun("run-9")).toEqual({ RunId: "run-9", Deleted: true });
     expect(calls).toEqual([{ method: "activity.run.delete", params: { runId: "run-9" } }]);
+  });
+
+  test("exports a run through the long-running picker namespace", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const result = {
+      RunId: "run-9",
+      Outcome: "exported" as const,
+      FileName: "run-9.tufreplay",
+      ByteLength: 8192,
+      IncludedMicrophone: true,
+    };
+    const namespace = {
+      call: async () => {
+        throw new Error("export used the default IPC namespace");
+      },
+    };
+    const pickerNamespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return result;
+      },
+    };
+    const gateway = createActivityGateway(namespace as never, pickerNamespace as never);
+
+    expect(await gateway.exportRun("run-9")).toBe(result);
+    expect(calls).toEqual([{ method: "activity.run.export", params: { runId: "run-9" } }]);
   });
 
   test("keeps a microphone recording permanently with the exact command and params", async () => {
