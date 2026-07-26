@@ -1,7 +1,7 @@
 import {
+  KeyboardIcon,
   Loading03Icon,
   Mic02Icon,
-  MusicNote01Icon,
   PlayIcon,
   RefreshIcon,
   StopIcon,
@@ -42,6 +42,7 @@ export function MicrophoneOffsetCalibrationDialog({
   microphoneVolumeDb,
   playing,
   playbackPositionMs,
+  getPlaybackPositionMs,
   audioError,
   onClose,
   onCommitOffset,
@@ -55,6 +56,7 @@ export function MicrophoneOffsetCalibrationDialog({
   microphoneVolumeDb: number;
   playing: boolean;
   playbackPositionMs: number;
+  getPlaybackPositionMs: () => number;
   audioError: string;
   onClose: () => void;
   onCommitOffset: (offsetMs: number) => void;
@@ -90,6 +92,7 @@ export function MicrophoneOffsetCalibrationDialog({
             dragging={dragging}
             playing={playing}
             playbackPositionMs={playbackPositionMs}
+            getPlaybackPositionMs={getPlaybackPositionMs}
             audioError={audioError}
             onDraftOffset={setDraftOffsetMs}
             onDraggingChange={setDragging}
@@ -227,6 +230,7 @@ function OffsetEditor({
   dragging,
   playing,
   playbackPositionMs,
+  getPlaybackPositionMs,
   audioError,
   onDraftOffset,
   onDraggingChange,
@@ -243,6 +247,7 @@ function OffsetEditor({
   dragging: boolean;
   playing: boolean;
   playbackPositionMs: number;
+  getPlaybackPositionMs: () => number;
   audioError: string;
   onDraftOffset: (offsetMs: number) => void;
   onDraggingChange: (dragging: boolean) => void;
@@ -258,12 +263,44 @@ function OffsetEditor({
     [data.microphoneWaveform],
   );
   const timelineViewportRef = useRef<HTMLDivElement>(null);
+  const timelineContentRef = useRef<HTMLDivElement>(null);
   const pendingZoomCenterRef = useRef<number | null>(null);
   const [timelineVisibleMs, setTimelineVisibleMs] = useState(() =>
     clampCalibrationTimelineVisibleMs(data.durationMs, CALIBRATION_TIMELINE_VISIBLE_MS),
   );
-  const playheadPercent = Math.min(100, (playbackPositionMs / data.durationMs) * 100);
   const timelineScale = calibrationTimelineScale(data.durationMs, timelineVisibleMs);
+
+  useEffect(() => {
+    const timeline = timelineContentRef.current;
+    if (!timeline) return undefined;
+    let frame = 0;
+    let timelineWidth = timeline.clientWidth;
+    const updatePlayhead = () => {
+      const positionMs = Math.max(
+        0,
+        Math.min(data.durationMs, playing ? getPlaybackPositionMs() : playbackPositionMs),
+      );
+      const x = data.durationMs > 0 ? (positionMs / data.durationMs) * timelineWidth : 0;
+      timeline.style.setProperty("--calibration-playhead-x", `${x}px`);
+    };
+    const resizeObserver = new ResizeObserver((entries) => {
+      timelineWidth = entries[0]?.contentRect.width ?? timeline.clientWidth;
+      updatePlayhead();
+    });
+    resizeObserver.observe(timeline);
+    updatePlayhead();
+    if (playing) {
+      const animate = () => {
+        updatePlayhead();
+        frame = requestAnimationFrame(animate);
+      };
+      frame = requestAnimationFrame(animate);
+    }
+    return () => {
+      resizeObserver.disconnect();
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [data.durationMs, getPlaybackPositionMs, playbackPositionMs, playing]);
 
   useEffect(() => {
     pendingZoomCenterRef.current = null;
@@ -297,7 +334,7 @@ function OffsetEditor({
         <div className="min-w-0">
           <DialogTitle>Microphone timing</DialogTitle>
           <p id="microphone-offset-description" className="mt-1 text-sm text-muted-foreground">
-            Drag the microphone waveform until its transients line up with the game audio.
+            Drag the microphone waveform until its key sounds line up with the recorded inputs.
           </p>
         </div>
         <div className="shrink-0 text-left sm:text-right">
@@ -313,7 +350,7 @@ function OffsetEditor({
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <p className="text-xs text-muted-foreground">
-            Positive values delay the microphone. Use arrow keys for 1ms or Shift for 10ms.
+            Positive values mean the microphone is late. Use arrow keys for 1ms or Shift for 10ms.
           </p>
           <div className="flex items-center gap-2">
             <fieldset className="flex items-center rounded-full border border-border bg-muted/20 p-0.5">
@@ -374,18 +411,21 @@ function OffsetEditor({
           <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] sm:grid-cols-[7.25rem_minmax(0,1fr)]">
             <div className="grid grid-rows-[2.25rem_7rem_7rem]">
               <div className="border-b border-border bg-muted/25" />
-              <TrackLabel icon={MusicNote01Icon} label="Game audio" description="Song reference" />
+              <TrackLabel icon={KeyboardIcon} label="Key input" description="Recorded timing" />
               <TrackLabel icon={Mic02Icon} label="Microphone" description="Drag to align" />
             </div>
 
             <div ref={timelineViewportRef} className="min-w-0 overflow-x-auto overscroll-x-contain">
-              <div className="min-w-full" style={{ width: `${timelineScale * 100}%` }}>
+              <div
+                ref={timelineContentRef}
+                className="min-w-full"
+                style={{ width: `${timelineScale * 100}%` }}
+              >
                 <TimelineRuler durationMs={data.durationMs} visibleMs={timelineVisibleMs} />
                 <WaveformTrack
                   path={songPath}
                   colorClassName="fill-sky-400/55"
-                  playheadPercent={playheadPercent}
-                  playing={playing}
+                  playheadVisible={playing || playbackPositionMs > 0}
                 />
                 <MicrophoneWaveformTrack
                   path={microphonePath}
@@ -393,8 +433,7 @@ function OffsetEditor({
                   committedOffsetMs={offsetMs}
                   draftOffsetMs={draftOffsetMs}
                   dragging={dragging}
-                  playheadPercent={playheadPercent}
-                  playing={playing}
+                  playheadVisible={playing || playbackPositionMs > 0}
                   onDraftOffset={onDraftOffset}
                   onDraggingChange={onDraggingChange}
                   onCommitOffset={onCommitOffset}
@@ -531,7 +570,7 @@ function TrackLabel({
   label,
   description,
 }: {
-  icon: typeof MusicNote01Icon;
+  icon: typeof KeyboardIcon;
   label: string;
   description: string;
 }) {
@@ -547,13 +586,11 @@ function TrackLabel({
 function WaveformTrack({
   path,
   colorClassName,
-  playheadPercent,
-  playing,
+  playheadVisible,
 }: {
   path: string;
   colorClassName: string;
-  playheadPercent: number;
-  playing: boolean;
+  playheadVisible: boolean;
 }) {
   return (
     <div className="relative min-h-28 overflow-hidden border-b border-border bg-muted/5">
@@ -566,7 +603,7 @@ function WaveformTrack({
       >
         <path d={path} className={colorClassName} />
       </svg>
-      <Playhead percent={playheadPercent} visible={playing || playheadPercent > 0} />
+      <Playhead visible={playheadVisible} />
     </div>
   );
 }
@@ -577,8 +614,7 @@ function MicrophoneWaveformTrack({
   committedOffsetMs,
   draftOffsetMs,
   dragging,
-  playheadPercent,
-  playing,
+  playheadVisible,
   onDraftOffset,
   onDraggingChange,
   onCommitOffset,
@@ -588,8 +624,7 @@ function MicrophoneWaveformTrack({
   committedOffsetMs: number;
   draftOffsetMs: number;
   dragging: boolean;
-  playheadPercent: number;
-  playing: boolean;
+  playheadVisible: boolean;
   onDraftOffset: (offsetMs: number) => void;
   onDraggingChange: (dragging: boolean) => void;
   onCommitOffset: (offsetMs: number) => void;
@@ -603,7 +638,7 @@ function MicrophoneWaveformTrack({
   const draftOffsetRef = useRef(draftOffsetMs);
   const keyboardAdjustingRef = useRef(false);
   draftOffsetRef.current = draftOffsetMs;
-  const translation = (draftOffsetMs / durationMs) * 1_000;
+  const translationPercent = (-draftOffsetMs / durationMs) * 100;
 
   const updatePointerOffset = (clientX: number) => {
     const drag = dragRef.current;
@@ -702,15 +737,21 @@ function MicrophoneWaveformTrack({
       )}
     >
       <TimelineGrid />
-      <svg
+      <div
         aria-hidden="true"
-        viewBox="0 0 1000 100"
-        preserveAspectRatio="none"
-        className="pointer-events-none absolute inset-0 h-full w-full select-none py-4"
+        className="pointer-events-none absolute inset-0 will-change-transform"
+        style={{ transform: `translate3d(${translationPercent}%, 0, 0)` }}
       >
-        <path d={path} transform={`translate(${translation} 0)`} className="fill-primary/75" />
-      </svg>
-      <Playhead percent={playheadPercent} visible={playing || playheadPercent > 0} />
+        <svg
+          aria-hidden="true"
+          viewBox="0 0 1000 100"
+          preserveAspectRatio="none"
+          className="absolute inset-0 h-full w-full select-none py-4"
+        >
+          <path d={path} className="fill-primary/75" />
+        </svg>
+      </div>
+      <Playhead visible={playheadVisible} />
     </div>
   );
 }
@@ -729,15 +770,15 @@ function TimelineGrid() {
   );
 }
 
-function Playhead({ percent, visible }: { percent: number; visible: boolean }) {
+function Playhead({ visible }: { visible: boolean }) {
   return (
     <div
       aria-hidden="true"
       className={cn(
-        "pointer-events-none absolute inset-y-0 z-20 w-px bg-primary shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_25%,transparent)] transition-opacity",
+        "pointer-events-none absolute inset-y-0 left-0 z-20 w-px bg-primary shadow-[0_0_0_1px_color-mix(in_oklab,var(--primary)_25%,transparent)] transition-opacity will-change-transform",
         visible ? "opacity-100" : "opacity-0",
       )}
-      style={{ left: `${percent}%` }}
+      style={{ transform: "translate3d(var(--calibration-playhead-x, 0px), 0, 0)" }}
     />
   );
 }

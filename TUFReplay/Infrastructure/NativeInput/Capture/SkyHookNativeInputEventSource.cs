@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.InteropServices;
 using SkyHook;
 using TUFReplay.Infrastructure.NativeInput;
 using UnityEngine.Events;
@@ -72,10 +73,7 @@ internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
   {
     if (IsMouseButton(inputEvent.Label))
       return;
-    if (
-      !NativeInputKeyCodeMapper.TryConvertKeyLabel(inputEvent.Label, out int nativeKeyCode)
-      && !NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(inputEvent.Key, out nativeKeyCode)
-    )
+    if (!TryResolveNativeKey(inputEvent, out int nativeKeyCode, out bool extendedKey))
       return;
 
     bool down;
@@ -92,7 +90,48 @@ internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
     }
 
     long timestampNs = inputEvent.TimeSec * 1_000_000_000L + inputEvent.TimeSubsecNano;
-    _onTransition?.Invoke(new NativeInputTransition(timestampNs, nativeKeyCode, down));
+    _onTransition?.Invoke(new NativeInputTransition(timestampNs, nativeKeyCode, down, extendedKey));
+  }
+
+  private static bool TryResolveNativeKey(SkyHookEvent inputEvent, out int nativeKeyCode, out bool extendedKey)
+  {
+    nativeKeyCode = 0;
+    extendedKey = false;
+
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+    {
+      // SkyHook exposes the Windows virtual-key value in Key. Preserve it directly:
+      // treating a VK as a USB HID usage turns VK_APPS/HANGUL/HANJA into unrelated keys.
+      if (TryResolveWindowsNativeKey(inputEvent.Key, inputEvent.Label, out nativeKeyCode, out extendedKey))
+        return true;
+
+      // Retain a label fallback for malformed/older SkyHook events, but never reinterpret
+      // a Windows VK as a HID usage.
+      if (!NativeInputKeyCodeMapper.TryConvertKeyLabel(inputEvent.Label, out nativeKeyCode))
+        return false;
+      extendedKey = WindowsNativeInputKey.IsExtended(nativeKeyCode, inputEvent.Label);
+      return true;
+    }
+
+    return NativeInputKeyCodeMapper.TryConvertKeyLabel(inputEvent.Label, out nativeKeyCode)
+      || NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(inputEvent.Key, out nativeKeyCode);
+  }
+
+  internal static bool TryResolveWindowsNativeKey(
+    int rawVirtualKey,
+    KeyLabel label,
+    out int nativeKeyCode,
+    out bool extendedKey
+  )
+  {
+    nativeKeyCode = 0;
+    extendedKey = false;
+    if (rawVirtualKey <= 0 || rawVirtualKey > byte.MaxValue || WindowsNativeInputKey.IsMouseButton(rawVirtualKey))
+      return false;
+
+    nativeKeyCode = WindowsNativeInputKey.NormalizeCapturedVirtualKey(rawVirtualKey, label);
+    extendedKey = WindowsNativeInputKey.IsExtended(nativeKeyCode, label);
+    return true;
   }
 
   private static bool IsMouseButton(KeyLabel label)

@@ -55,12 +55,17 @@ export function microphoneOffsetCalibrationReducer(
       ...state,
       microphoneVolumeDb: clampMicrophoneVolumeDb(action.volumeDb),
     };
-  if (action.type === "sync")
-    return {
-      phase: action.phase,
-      offsetMs: clampMicrophoneOffset(action.offsetMs),
-      microphoneVolumeDb: clampMicrophoneVolumeDb(action.microphoneVolumeDb),
-    };
+  if (action.type === "sync") {
+    const offsetMs = clampMicrophoneOffset(action.offsetMs);
+    const microphoneVolumeDb = clampMicrophoneVolumeDb(action.microphoneVolumeDb);
+    if (
+      state.phase === action.phase &&
+      state.offsetMs === offsetMs &&
+      state.microphoneVolumeDb === microphoneVolumeDb
+    )
+      return state;
+    return { phase: action.phase, offsetMs, microphoneVolumeDb };
+  }
   if (action.type === "close") return { ...state, phase: "closed" };
   return state;
 }

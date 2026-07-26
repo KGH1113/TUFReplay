@@ -4,7 +4,7 @@ public static class ReplayFailPolicy
 {
   public static bool ShouldUseReplayNoFail(ActiveReplayContext context)
   {
-    return context != null;
+    return context?.NoFailMode == true;
   }
 
   public static void ApplyReplayNoFail(bool enabled)
@@ -23,5 +23,19 @@ public static class ReplayFailPolicy
     {
       ADOBase.controller.freeroamInvulnerability = Persistence.freeroamInvulnerability;
     }
+
+    SyncEditorIndicator(enabled);
+  }
+
+  private static void SyncEditorIndicator(bool enabled)
+  {
+    if (scnEditor.instance?.buttonNoFail == null)
+      return;
+
+    UnityEngine.UI.Image image = scnEditor.instance.buttonNoFail.GetComponent<UnityEngine.UI.Image>();
+    if (image == null)
+      return;
+
+    image.color = enabled ? UnityEngine.Color.white : new UnityEngine.Color(36f / 85f, 36f / 85f, 36f / 85f);
   }
 }

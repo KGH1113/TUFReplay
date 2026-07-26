@@ -22,7 +22,7 @@ export function offsetFromPointerDelta(
 ) {
   if (timelineWidthPixels <= 0 || durationMs <= 0) return clampMicrophoneOffset(startOffsetMs);
   return clampMicrophoneOffsetDraft(
-    startOffsetMs + (deltaPixels / timelineWidthPixels) * durationMs,
+    startOffsetMs - (deltaPixels / timelineWidthPixels) * durationMs,
   );
 }
 
@@ -51,8 +51,8 @@ export function zoomCalibrationTimelineVisibleMs(
 
 export function keyboardOffsetAdjustment(offsetMs: number, key: string, largeStep: boolean) {
   const step = largeStep ? 10 : 1;
-  if (key === "ArrowLeft") return clampMicrophoneOffset(offsetMs - step);
-  if (key === "ArrowRight") return clampMicrophoneOffset(offsetMs + step);
+  if (key === "ArrowLeft") return clampMicrophoneOffset(offsetMs + step);
+  if (key === "ArrowRight") return clampMicrophoneOffset(offsetMs - step);
   return null;
 }
 

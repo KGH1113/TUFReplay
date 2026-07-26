@@ -4,11 +4,13 @@ export function RunNoFailIcon({ enabled }: { enabled?: boolean }) {
   if (!enabled) return null;
 
   return (
-    <img
-      src={noFailIcon}
-      alt="No Fail mode"
-      title="No Fail mode"
-      className="size-[18px] shrink-0 object-contain"
-    />
+    <span className="grid size-6 shrink-0 place-items-center">
+      <img
+        src={noFailIcon}
+        alt="No Fail mode"
+        title="No Fail mode"
+        className="block size-5 object-contain"
+      />
+    </span>
   );
 }

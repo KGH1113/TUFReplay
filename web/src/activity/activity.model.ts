@@ -80,6 +80,11 @@ export interface MicrophoneRecordingDeleteResult {
   Deleted: boolean;
 }
 
+export interface ActivityRunDeleteResult {
+  RunId: string;
+  Deleted: boolean;
+}
+
 export interface MicrophoneRecordingKeepResult {
   RunId: string;
   Permanent: boolean;
@@ -161,7 +166,7 @@ export interface LevelMetadata {
   source: "tuf" | "local" | "fallback";
 }
 
-export type ConnectionStatus = "connecting" | "online" | "error";
+export type ConnectionStatus = "connecting" | "online" | "incompatible" | "error";
 
 export interface MicrophoneDevice {
   Id: string;

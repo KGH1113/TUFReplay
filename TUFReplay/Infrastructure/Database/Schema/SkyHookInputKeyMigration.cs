@@ -54,7 +54,6 @@ internal static class SkyHookInputKeyMigration
       }
 
       metadata["formatVersion"] = 3;
-      metadata["inputCapture"] = "skyhook-native-events";
       metadata["inputKeySpace"] = NativeInputKeyCodeMapper.NativeKeySpace;
       metadata["inputCount"] = convertedInputCount;
 
@@ -106,15 +105,20 @@ internal static class SkyHookInputKeyMigration
       string[] parts = line.Split(',');
       if (parts.Length != 3)
         return false;
-      if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int hidUsage))
+      if (!long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long timeUs))
         return false;
-      if (!NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(hidUsage, out int nativeKeyCode))
-      {
-        droppedInputCount++;
-        continue;
-      }
+      if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int nativeKeyCode))
+        return false;
+      if (!ushort.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
+        return false;
 
-      builder.Append(parts[0]).Append(',').Append(nativeKeyCode).Append(',').Append(parts[2]).Append('\n');
+      builder
+        .Append(timeUs)
+        .Append(',')
+        .Append(nativeKeyCode)
+        .Append(',')
+        .Append(rawFlags)
+        .Append('\n');
       convertedInputCount++;
     }
 

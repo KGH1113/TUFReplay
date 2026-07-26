@@ -3,13 +3,54 @@ import AppKit
 import CoreMedia
 import Foundation
 
+struct CaptureBufferSlice {
+  let skippedFrames: Int
+  let startOffsetUs: Int64
+}
+
+enum CaptureBufferTiming {
+  static func firstWritableSlice(
+    presentationTime: CMTime,
+    beginTime: CMTime,
+    sampleRate: Int,
+    sampleCount: Int
+  ) -> CaptureBufferSlice? {
+    guard
+      presentationTime.isValid,
+      !presentationTime.isIndefinite,
+      beginTime.isValid,
+      sampleRate > 0,
+      sampleCount > 0
+    else { return nil }
+
+    let firstSampleSeconds = CMTimeGetSeconds(CMTimeSubtract(presentationTime, beginTime))
+    guard firstSampleSeconds.isFinite else { return nil }
+    let skippedFrames = min(
+      sampleCount,
+      max(0, Int(ceil(-firstSampleSeconds * Double(sampleRate))))
+    )
+    guard skippedFrames < sampleCount else { return nil }
+
+    let firstWrittenTime = CMTimeAdd(
+      presentationTime,
+      CMTime(value: Int64(skippedFrames), timescale: CMTimeScale(sampleRate))
+    )
+    let offsetSeconds = CMTimeGetSeconds(CMTimeSubtract(firstWrittenTime, beginTime))
+    guard offsetSeconds.isFinite else { return nil }
+    return CaptureBufferSlice(
+      skippedFrames: skippedFrames,
+      startOffsetUs: max(0, Int64((offsetSeconds * 1_000_000).rounded()))
+    )
+  }
+}
+
 final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBufferDelegate {
   private let lock = NSLock()
   private let callbackQueue = DispatchQueue(label: "impl.tufreplay.microphone.callback")
   private var session: AVCaptureSession?
   private var output: AVCaptureAudioDataOutput?
   private var writer: PcmWaveFileWriter?
-  private var beginTime: UInt64 = 0
+  private var beginTime: CMTime = .invalid
   private var firstBufferOffsetUs: Int64 = 0
   private var activeDeviceId: String?
 
@@ -59,13 +100,15 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   }
 
   func begin(path: String) throws {
-    guard session?.isRunning == true else { throw CaptureError.message("Microphone is not armed.") }
+    guard let session, session.isRunning, let masterClock = session.masterClock else {
+      throw CaptureError.message("Microphone is not armed.")
+    }
     lock.lock()
     defer { lock.unlock() }
     try finishWriterLocked()
     writer = try PcmWaveFileWriter(path: path)
     firstBufferOffsetUs = 0
-    beginTime = DispatchTime.now().uptimeNanoseconds
+    beginTime = CMClockGetTime(masterClock)
   }
 
   func end() throws -> CaptureEndResponse {
@@ -95,9 +138,12 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     didOutput sampleBuffer: CMSampleBuffer,
     from connection: AVCaptureConnection
   ) {
+    let sampleCount = CMSampleBufferGetNumSamples(sampleBuffer)
+    let presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+    guard sampleCount > 0, presentationTime.isValid, !presentationTime.isIndefinite else { return }
     guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
     let length = CMBlockBufferGetDataLength(block)
-    guard length > 0 else { return }
+    guard length > 0, length % sampleCount == 0 else { return }
     var data = Data(count: length)
     let copyStatus = data.withUnsafeMutableBytes { buffer in
       CMBlockBufferCopyDataBytes(
@@ -111,10 +157,22 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
 
     lock.lock()
     defer { lock.unlock() }
-    guard let writer else { return }
+    guard let writer, beginTime.isValid else { return }
     if writer.frameCount == 0 {
-      let elapsed = DispatchTime.now().uptimeNanoseconds - beginTime
-      firstBufferOffsetUs = Int64(elapsed / 1_000)
+      guard
+        let slice = CaptureBufferTiming.firstWritableSlice(
+          presentationTime: presentationTime,
+          beginTime: beginTime,
+          sampleRate: PcmWaveFile.sampleRate,
+          sampleCount: sampleCount
+        )
+      else { return }
+
+      let bytesPerFrame = length / sampleCount
+      if slice.skippedFrames > 0 {
+        data = Data(data.dropFirst(slice.skippedFrames * bytesPerFrame))
+      }
+      firstBufferOffsetUs = slice.startOffsetUs
     }
     do {
       try writer.append(pcm16: data)
@@ -190,6 +248,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     guard let writer else { return 0 }
     let frameCount = try writer.finish()
     self.writer = nil
+    beginTime = .invalid
     return frameCount
   }
 }

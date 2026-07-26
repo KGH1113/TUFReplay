@@ -18,7 +18,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
   private readonly AutoResetEvent _wake = new AutoResetEvent(false);
   private readonly Thread _thread;
   private readonly List<RecordedInput> _group = new List<RecordedInput>();
-  private readonly HashSet<int> _heldKeys = new HashSet<int>();
+  private readonly HashSet<NativeInputKey> _heldKeys = new HashSet<NativeInputKey>();
 
   private NativeInputEmission[] _emissions = new NativeInputEmission[32];
   private bool _active;
@@ -85,7 +85,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
       {
         int before = _scheduler.NextIndex;
         ReleaseAllLocked();
-        _scheduler.SeekToState(nowUs);
+        _scheduler.SeekToNativeState(nowUs);
         _active = false;
         _resumePending = true;
         _wake.Set();
@@ -134,7 +134,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
     {
       int before = _scheduler.NextIndex;
       ReleaseAllLocked();
-      _scheduler.SeekToState(nowUs);
+      _scheduler.SeekToNativeState(nowUs);
       _active = false;
       _resumePending = true;
       _wake.Set();
@@ -239,7 +239,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
 
   private int SeekAndAnchorLocked(long nowUs, double timelineRate, bool emitState)
   {
-    List<int> targetHeldKeys = _scheduler.SeekToState(nowUs);
+    List<NativeInputKey> targetHeldKeys = _scheduler.SeekToNativeState(nowUs);
     int changed = emitState ? EmitStateDeltaLocked(targetHeldKeys) : 0;
     if (!emitState)
       _heldKeys.Clear();
@@ -265,7 +265,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (!input.Async || !_emitter.IsSupported(input.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(input.Key, input.Down);
+      _emissions[count++] = new NativeInputEmission(input.Key, input.Down, input.ExtendedKey);
     }
 
     if (count == 0)
@@ -279,10 +279,11 @@ internal sealed class ReplayNativeInputPump : IDisposable
     for (int i = 0; i < count; i++)
     {
       NativeInputEmission emission = _emissions[i];
+      NativeInputKey key = new NativeInputKey(emission.Key, emission.ExtendedKey);
       if (emission.Down)
-        _heldKeys.Add(emission.Key);
+        _heldKeys.Add(key);
       else
-        _heldKeys.Remove(emission.Key);
+        _heldKeys.Remove(key);
     }
 
     _emitted += count;
@@ -290,34 +291,34 @@ internal sealed class ReplayNativeInputPump : IDisposable
       _maxLatenessUs = latenessUs;
   }
 
-  private int EmitStateDeltaLocked(List<int> targetHeldKeys)
+  private int EmitStateDeltaLocked(List<NativeInputKey> targetHeldKeys)
   {
-    HashSet<int> target = new HashSet<int>(targetHeldKeys);
+    HashSet<NativeInputKey> target = new HashSet<NativeInputKey>(targetHeldKeys);
     int count = 0;
 
-    foreach (int heldKey in _heldKeys)
+    foreach (NativeInputKey heldKey in _heldKeys)
     {
-      if (target.Contains(heldKey) || !_emitter.IsSupported(heldKey))
+      if (target.Contains(heldKey) || !_emitter.IsSupported(heldKey.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(heldKey, false);
+      _emissions[count++] = new NativeInputEmission(heldKey.Key, false, heldKey.ExtendedKey);
     }
 
     for (int i = 0; i < targetHeldKeys.Count; i++)
     {
-      int key = targetHeldKeys[i];
-      if (_heldKeys.Contains(key) || !_emitter.IsSupported(key))
+      NativeInputKey key = targetHeldKeys[i];
+      if (_heldKeys.Contains(key) || !_emitter.IsSupported(key.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(key, true);
+      _emissions[count++] = new NativeInputEmission(key.Key, true, key.ExtendedKey);
     }
 
     if (count == 0)
     {
       _heldKeys.Clear();
-      foreach (int key in target)
+      foreach (NativeInputKey key in target)
       {
-        if (_emitter.IsSupported(key))
+        if (_emitter.IsSupported(key.Key))
           _heldKeys.Add(key);
       }
       return 0;
@@ -330,9 +331,9 @@ internal sealed class ReplayNativeInputPump : IDisposable
     }
 
     _heldKeys.Clear();
-    foreach (int key in target)
+    foreach (NativeInputKey key in target)
     {
-      if (_emitter.IsSupported(key))
+      if (_emitter.IsSupported(key.Key))
         _heldKeys.Add(key);
     }
     _emitted += count;
@@ -345,12 +346,12 @@ internal sealed class ReplayNativeInputPump : IDisposable
       return;
 
     int count = 0;
-    foreach (int key in _heldKeys)
+    foreach (NativeInputKey key in _heldKeys)
     {
-      if (!_emitter.IsSupported(key))
+      if (!_emitter.IsSupported(key.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(key, false);
+      _emissions[count++] = new NativeInputEmission(key.Key, false, key.ExtendedKey);
     }
 
     if (count > 0 && _emitter.EmitBatch(_emissions, count))

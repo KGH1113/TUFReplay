@@ -1,5 +1,4 @@
 using System;
-using System.IO;
 using System.Threading;
 using Newtonsoft.Json;
 using TUFReplay.Application.Calibration;
@@ -9,6 +8,7 @@ using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Settings;
 using TUFReplay.Infrastructure.Unity;
 using UnityEngine;
@@ -17,25 +17,17 @@ namespace TUFReplay.Features.Calibration;
 
 public sealed class MicrophoneCalibrationFeature
 {
-  private const double LevelOpenTimeoutSeconds = 30d;
-
-  private readonly object _gate = new object();
-  private MicrophoneCalibrationStatus _status = new MicrophoneCalibrationStatus();
-  private MicrophoneCalibrationResult _result;
-  private StoredReplayRun _run;
-  private CapturedMicrophoneRecording _recording;
-  private int _songStartFrame;
-  private int _songSampleRate;
+  private readonly MicrophoneCalibrationState _state = new MicrophoneCalibrationState();
+  private readonly MicrophoneCalibrationLevel _level = new MicrophoneCalibrationLevel();
+  private readonly MicrophoneCalibrationPreview _preview;
   private MicrophoneCalibrationTicker _ticker;
-  private string _levelPath;
-  private byte[] _levelGameplayHash;
-  private string _previewReplayOperationId;
-  private bool _originalRunInBackground;
-  private bool _changedRunInBackground;
-  private double _levelOpenStartedAt;
 
-  public bool Active =>
-    _status.State != MicrophoneCalibrationStates.Idle && _status.State != MicrophoneCalibrationStates.Error;
+  public MicrophoneCalibrationFeature()
+  {
+    _preview = new MicrophoneCalibrationPreview(_state);
+  }
+
+  public bool Active => _state.Active;
 
   public void Enable()
   {
@@ -64,20 +56,22 @@ public sealed class MicrophoneCalibrationFeature
         + (scnEditor.instance?.playMode == true)
     );
     if (TUFReplaySettingStore.Current?.MicrophoneEnabled == false)
-      return Rejected("microphone_disabled", "Turn on microphone input before starting calibration.");
-    if (IsGameplayActive())
-      return Rejected("gameplay_active", "Finish the current gameplay run before starting calibration.");
+      return MicrophoneCalibrationState.Rejected(
+        "microphone_disabled",
+        "Turn on microphone input before starting calibration."
+      );
+    if (MicrophoneCalibrationLevel.IsGameplayActive())
+      return MicrophoneCalibrationState.Rejected(
+        "gameplay_active",
+        "Finish the current gameplay run before starting calibration."
+      );
 
     CleanupSession();
-    string levelPath = Path.Combine(Main.Instance.PayloadPath, "Assets", "calibration", "level.adofai");
-    string songPath = Path.Combine(Path.GetDirectoryName(levelPath) ?? string.Empty, "calibration_old.ogg");
-    string waveformPath = Path.Combine(Path.GetDirectoryName(levelPath) ?? string.Empty, "calibration_old.waveform");
-    if (!File.Exists(levelPath) || !File.Exists(songPath) || !File.Exists(waveformPath))
+    if (!_level.TryPrepare(Main.Instance.PayloadPath))
       return Error("calibration_assets_missing", "The packaged calibration level, song, or waveform is missing.");
 
     string operationId = Guid.NewGuid().ToString("N");
-    _levelPath = LevelPathIdentity.Canonicalize(levelPath);
-    SetStatus(
+    _state.Set(
       new MicrophoneCalibrationStatus
       {
         OperationId = operationId,
@@ -96,9 +90,7 @@ public sealed class MicrophoneCalibrationFeature
 
   public void Tick()
   {
-    string state;
-    lock (_gate)
-      state = _status.State;
+    string state = GetStatus().State;
     if (state == MicrophoneCalibrationStates.Arming)
     {
       MicrophoneArmStatus arm = FeatureRegistry.MicrophoneRecording?.GetArmStatus();
@@ -111,12 +103,13 @@ public sealed class MicrophoneCalibrationFeature
 
     if (state == MicrophoneCalibrationStates.OpeningLevel)
     {
-      if (IsCalibrationEditorReady())
+      if (_level.IsEditorReady())
       {
+        Main.Instance?.Log("[Calibration] Captured loaded calibration gameplay hash.");
         Main.Instance?.Log("[Calibration] Calibration level opened automatically.");
-        UpdateState(MicrophoneCalibrationStates.WaitingForRun, "Play and clear the calibration level in ADOFAI.");
+        _state.Update(MicrophoneCalibrationStates.WaitingForRun, "Play and clear the calibration level in ADOFAI.");
       }
-      else if (Time.realtimeSinceStartupAsDouble - _levelOpenStartedAt > LevelOpenTimeoutSeconds)
+      else if (_level.HasOpenTimedOut())
         Error(
           "calibration_level_open_timeout",
           "ADOFAI did not finish opening the calibration level.",
@@ -126,41 +119,17 @@ public sealed class MicrophoneCalibrationFeature
     }
 
     if (state == MicrophoneCalibrationStates.PreviewStarting || state == MicrophoneCalibrationStates.PreviewPlaying)
-      TickPreview();
+      _preview.Tick();
   }
 
-  public bool IsCalibrationLevel()
-  {
-    return Active
-      && GameplayChartHash.IsSupported(GameplayChartHash.Version, _levelGameplayHash)
-      && GameplayChartHash.TryComputeCurrent(out byte[] currentHash, out _)
-      && GameplayChartHash.Equals(_levelGameplayHash, currentHash);
-  }
+  public bool IsCalibrationLevel() => Active && _level.IsCurrent();
 
   public void OnRunStarted()
   {
     if (!Active)
       return;
-    scrConductor conductor = ADOBase.conductor;
-    AudioSource song = conductor?.song;
-    _songSampleRate = song?.clip?.frequency ?? 0;
-    _songStartFrame = conductor == null
-      ? 0
-      : CalibrationWaveformBuilder.ReferenceStartFrame(
-        conductor.songposition_minusi,
-        conductor.addoffset,
-        scrConductor.calibration_i,
-        song?.pitch ?? 1f,
-        _songSampleRate,
-        GCS.d_oldConductor || GCS.d_webglConductor
-      );
-    Main.Instance?.Log(
-      "[Calibration] Song reference startFrame="
-        + _songStartFrame
-        + ", inputOffsetMs="
-        + scrConductor.currentPreset.inputOffset
-    );
-    UpdateState(MicrophoneCalibrationStates.Recording, "Recording the calibration run.");
+    Main.Instance?.Log("[Calibration] Recording microphone audio against native input timestamps.");
+    _state.Update(MicrophoneCalibrationStates.Recording, "Recording the calibration run.");
   }
 
   public void OnRunCleared(RunRecord run, CapturedMicrophoneRecording recording)
@@ -178,281 +147,115 @@ public sealed class MicrophoneCalibrationFeature
 
     ReplayMetadata metadata = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
     double durationMs = Math.Max(1d, (metadata?.terminalTimeUs ?? 0L) / 1000d);
-    if (_songSampleRate <= 0)
-    {
-      FeatureRegistry.MicrophoneRecording?.Discard(recording);
-      Error(
-        "game_waveform_failed",
-        "The calibration song sample rate is unavailable.",
-        GetStatus().OperationId
-      );
-      return;
-    }
-    int songStartFrame = _songStartFrame;
-    int songSampleRate = _songSampleRate;
-    string referenceWaveformPath = Path.Combine(
-      Path.GetDirectoryName(_levelPath) ?? string.Empty,
-      "calibration_old.waveform"
-    );
-    ResetAudioCapture();
-    _run = ToStoredReplayRun(run);
-    _recording = recording;
-    UpdateState(MicrophoneCalibrationStates.Processing, "Building calibration waveforms.");
+    _preview.SetSource(ToStoredReplayRun(run), recording);
+    _state.Update(MicrophoneCalibrationStates.Processing, "Building calibration waveforms.");
     string operationId = GetStatus().OperationId;
-    ThreadPool.QueueUserWorkItem(_ =>
-    {
-      try
-      {
-        CalibrationReferenceWaveform referenceWaveform = CalibrationReferenceWaveform.Read(referenceWaveformPath);
-        float[] songWaveform = CalibrationWaveformBuilder.FromReferenceWaveform(
-          referenceWaveform,
-          songStartFrame,
-          songSampleRate,
-          durationMs
-        );
-        float[] microphoneWaveform = CalibrationWaveformBuilder.FromPcm16(recording, durationMs);
-        UnityMainThread.Post(() => CompleteResult(operationId, durationMs, songWaveform, microphoneWaveform));
-      }
-      catch (Exception exception)
-      {
-        UnityMainThread.Post(() => ErrorIfCurrent(operationId, "calibration_waveform_failed", exception.Message));
-      }
-    });
+    byte[] inputCsv = run.InputCsv;
+    ThreadPool.QueueUserWorkItem(_ => BuildWaveforms(operationId, recording, inputCsv, durationMs));
   }
 
   public void OnRunDiscarded(CapturedMicrophoneRecording recording, string message)
   {
-    ResetAudioCapture();
     FeatureRegistry.MicrophoneRecording?.Discard(recording);
     if (Active)
-      UpdateState(MicrophoneCalibrationStates.WaitingForRun, message ?? "Try the calibration level again.");
+      _state.Update(MicrophoneCalibrationStates.WaitingForRun, message ?? "Try the calibration level again.");
   }
 
   public MicrophoneCalibrationStatus PlayPreview(string operationId)
   {
-    if (!IsCurrent(operationId))
-      return StaleOperation();
-    if (_run == null || _recording == null || _result == null)
-      return Error("calibration_result_unavailable", "Clear the calibration level before playing a test.", operationId);
-    StopPreview();
-    UpdateState(MicrophoneCalibrationStates.PreviewStarting, "Preparing calibration replay.");
-    string copyPath = ReplayMicrophonePlaybackFiles.ForOperation("calibration-" + Guid.NewGuid().ToString("N"));
-    CapturedMicrophoneRecording source = _recording;
-    ThreadPool.QueueUserWorkItem(_ =>
-    {
-      try
-      {
-        File.Copy(source.TempPath, copyPath, true);
-        var stored = new StoredMicrophoneRecording
-        {
-          RunId = source.RunId,
-          FilePath = copyPath,
-          Format = "wav/pcm16",
-          SampleRate = source.SampleRate,
-          Channels = source.Channels,
-          FrameCount = source.FrameCount,
-          DeviceId = source.DeviceId,
-          CaptureStartOffsetUs = source.CaptureStartOffsetUs,
-          ByteLength = new FileInfo(copyPath).Length,
-        };
-        UnityMainThread.Post(() => StartPreparedPreview(operationId, stored));
-      }
-      catch (Exception exception)
-      {
-        ReplayMicrophonePlaybackFiles.Delete(copyPath);
-        UnityMainThread.Post(() =>
-          ErrorIfPreviewStarting(operationId, "calibration_preview_prepare_failed", exception.Message)
-        );
-      }
-    });
-    return GetStatus();
+    if (!_state.IsCurrent(operationId))
+      return _state.StaleOperation();
+    return _preview.Play(operationId, _level.Path);
   }
 
-  public MicrophoneCalibrationStatus StopPreview()
-  {
-    if (_previewReplayOperationId != null)
-      ReplayPlaybackCoordinator.Cancel("Calibration preview stopped.");
-    _previewReplayOperationId = null;
-    RestoreRunInBackground();
-    if (_result != null && Active)
-    {
-      UpdateState(MicrophoneCalibrationStates.Editing, "Calibration preview stopped.");
-      lock (_gate)
-        _status.PlaybackPositionMs = 0d;
-    }
-    return GetStatus();
-  }
+  public MicrophoneCalibrationStatus StopPreview() => _preview.Stop();
 
   public MicrophoneCalibrationStatus SetOffset(string operationId, int offsetMs)
   {
-    if (!IsCurrent(operationId))
-      return StaleOperation();
+    if (!_state.IsCurrent(operationId))
+      return _state.StaleOperation();
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
     settings.MicrophoneOffsetMs = Math.Max(
       TUFReplaySetting.MinMicrophoneOffsetMs,
       Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, offsetMs)
     );
     TUFReplaySettingStore.Save();
-    lock (_gate)
-      _status.MicrophoneOffsetMs = settings.MicrophoneOffsetMs;
-    ReplaySessionService.UpdateActiveMicrophoneSettings(settings.MicrophoneOffsetMs, settings.MicrophoneVolumeDb);
+    _state.SetOffset(settings.MicrophoneOffsetMs);
+    ReplaySessionService.UpdateActiveMicrophoneLatency(settings.MicrophoneOffsetMs);
     return GetStatus();
   }
 
   public MicrophoneCalibrationStatus SetVolume(string operationId, int volumeDb)
   {
-    if (!IsCurrent(operationId))
-      return StaleOperation();
+    if (!_state.IsCurrent(operationId))
+      return _state.StaleOperation();
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
     settings.MicrophoneVolumeDb = Math.Max(
       TUFReplaySetting.MinMicrophoneVolumeDb,
       Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
     );
     TUFReplaySettingStore.Save();
-    lock (_gate)
-      _status.MicrophoneVolumeDb = settings.MicrophoneVolumeDb;
-    ReplaySessionService.UpdateActiveMicrophoneSettings(settings.MicrophoneOffsetMs, settings.MicrophoneVolumeDb);
+    _state.SetVolume(settings.MicrophoneVolumeDb);
+    ReplaySessionService.UpdateActiveMicrophoneVolume(settings.MicrophoneVolumeDb);
     return GetStatus();
   }
 
   public MicrophoneCalibrationStatus Close(string operationId)
   {
-    if (operationId != null && !IsCurrent(operationId))
-      return StaleOperation();
+    if (operationId != null && !_state.IsCurrent(operationId))
+      return _state.StaleOperation();
     CleanupSession();
-    SetStatus(new MicrophoneCalibrationStatus { State = MicrophoneCalibrationStates.Idle });
+    _state.Set(new MicrophoneCalibrationStatus { State = MicrophoneCalibrationStates.Idle });
     return GetStatus();
   }
 
-  public MicrophoneCalibrationStatus GetStatus()
-  {
-    lock (_gate)
-      return Clone(_status);
-  }
+  public MicrophoneCalibrationStatus GetStatus() => _state.GetStatus();
 
-  public MicrophoneCalibrationResult GetResult(string operationId, int revision)
-  {
-    lock (_gate)
-    {
-      if (!string.Equals(_status.OperationId, operationId, StringComparison.Ordinal) || _result == null)
-        return null;
-      if (revision > 0 && revision != _result.Revision)
-        return null;
-      return new MicrophoneCalibrationResult
-      {
-        OperationId = _result.OperationId,
-        Revision = _result.Revision,
-        DurationMs = _result.DurationMs,
-        GameWaveform = (float[])_result.GameWaveform.Clone(),
-        SongWaveform = (float[])_result.SongWaveform.Clone(),
-        MicrophoneWaveform = (float[])_result.MicrophoneWaveform.Clone(),
-      };
-    }
-  }
+  public MicrophoneCalibrationResult GetResult(string operationId, int revision) =>
+    _state.GetResult(operationId, revision);
 
-  public bool IsCurrentOperation(string operationId) => IsCurrent(operationId);
+  public bool IsCurrentOperation(string operationId) => _state.IsCurrent(operationId);
 
-  private void CompleteResult(
+  private void BuildWaveforms(
     string operationId,
-    double durationMs,
-    float[] songWaveform,
-    float[] microphoneWaveform
+    CapturedMicrophoneRecording recording,
+    byte[] inputCsv,
+    double durationMs
   )
   {
-    if (!IsCurrent(operationId))
-      return;
-    int revision;
-    lock (_gate)
+    try
     {
-      revision = _status.ResultRevision + 1;
-      _result = new MicrophoneCalibrationResult
+      float[] inputWaveform = CalibrationWaveformBuilder.FromInputEvents(
+        ReplayInputParser.Parse(inputCsv),
+        durationMs
+      );
+      if (!CalibrationWaveformBuilder.HasSignal(inputWaveform))
+        throw new InvalidOperationException("No microphone calibration key presses were recorded.");
+      float[] microphoneWaveform = CalibrationWaveformBuilder.FromPcm16(recording, durationMs);
+      UnityMainThread.Post(() => CompleteResult(operationId, durationMs, inputWaveform, microphoneWaveform));
+    }
+    catch (Exception exception)
+    {
+      UnityMainThread.Post(() =>
       {
-        OperationId = operationId,
-        Revision = revision,
-        DurationMs = durationMs,
-        GameWaveform = songWaveform,
-        SongWaveform = songWaveform,
-        MicrophoneWaveform = microphoneWaveform,
-      };
-      _status.DurationMs = durationMs;
-      _status.PlaybackPositionMs = 0d;
-      _status.ResultRevision = revision;
-      _status.State = MicrophoneCalibrationStates.Editing;
-      _status.Message = "Drag the microphone waveform to align it with the game audio.";
+        if (_state.IsCurrent(operationId))
+          Error("calibration_waveform_failed", exception.Message, operationId);
+      });
     }
-    Main.Instance?.Log("[Calibration] Waveforms ready. durationMs=" + durationMs + ", revision=" + revision);
   }
 
-  private void StartPreparedPreview(string operationId, StoredMicrophoneRecording recording)
+  private void CompleteResult(string operationId, double durationMs, float[] inputWaveform, float[] microphoneWaveform)
   {
-    if (!IsState(operationId, MicrophoneCalibrationStates.PreviewStarting) || _run == null)
-    {
-      ReplayMicrophonePlaybackFiles.Delete(recording.FilePath);
-      return;
-    }
-    _originalRunInBackground = UnityEngine.Application.runInBackground;
-    _changedRunInBackground = true;
-    UnityEngine.Application.runInBackground = true;
-    ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.PlayEphemeral(_run, _levelPath, recording);
-    if (replayStatus.State == ReplayPlaybackStates.Error)
-    {
-      RestoreRunInBackground();
-      Error(replayStatus.ErrorCode, replayStatus.Message, operationId);
-      return;
-    }
-    _previewReplayOperationId = replayStatus.OperationId;
-  }
-
-  private void TickPreview()
-  {
-    ReplayPlaybackStatus replay = ReplayPlaybackCoordinator.GetStatus();
-    if (_previewReplayOperationId == null)
-      return;
-    if (!string.Equals(replay.OperationId, _previewReplayOperationId, StringComparison.Ordinal))
-    {
-      StopPreview();
-      return;
-    }
-    if (replay.State == ReplayPlaybackStates.Error)
-    {
-      _previewReplayOperationId = null;
-      RestoreRunInBackground();
-      Error(replay.ErrorCode, replay.Message, GetStatus().OperationId);
-      return;
-    }
-    if (replay.State == ReplayPlaybackStates.Completed || replay.State == ReplayPlaybackStates.Cancelled)
-    {
-      bool completed = replay.State == ReplayPlaybackStates.Completed;
-      _previewReplayOperationId = null;
-      RestoreRunInBackground();
-      UpdateState(MicrophoneCalibrationStates.Editing, completed ? "Calibration preview finished." : replay.Message);
-      lock (_gate)
-        _status.PlaybackPositionMs = completed ? _status.DurationMs : 0d;
-      return;
-    }
-
-    if (replay.State == ReplayPlaybackStates.Playing)
-      UpdateState(MicrophoneCalibrationStates.PreviewPlaying, "Playing calibration preview in ADOFAI.");
-    if (ReplaySessionService.TryGetPlaybackSnapshot(out long replayTimeUs, out double timelineRate))
-    {
-      double positionMs = replayTimeUs / Math.Max(0.0001d, timelineRate) / 1000d;
-      lock (_gate)
-        _status.PlaybackPositionMs = Math.Max(0d, Math.Min(_status.DurationMs, positionMs));
-    }
+    int revision = _state.CompleteResult(operationId, durationMs, inputWaveform, microphoneWaveform);
+    if (revision > 0)
+      Main.Instance?.Log("[Calibration] Waveforms ready. durationMs=" + durationMs + ", revision=" + revision);
   }
 
   private void CleanupSession()
   {
-    StopPreview();
-    ResetAudioCapture();
-    if (_recording != null)
-      FeatureRegistry.MicrophoneRecording?.Discard(_recording);
-    _recording = null;
-    _run = null;
-    _result = null;
-    _levelPath = null;
-    _levelGameplayHash = null;
-    _levelOpenStartedAt = 0d;
+    _preview.Reset();
+    _state.ClearResult();
+    _level.Reset();
     FeatureRegistry.MicrophoneRecording?.Disarm();
   }
 
@@ -461,10 +264,9 @@ public sealed class MicrophoneCalibrationFeature
     string operationId = GetStatus().OperationId;
     try
     {
-      UpdateState(MicrophoneCalibrationStates.OpeningLevel, "Opening the calibration level automatically.");
-      _levelOpenStartedAt = Time.realtimeSinceStartupAsDouble;
-      Main.Instance?.Log("[Calibration] Opening packaged calibration level: " + _levelPath);
-      ReplayLevelOpenService.OpenEditor(_levelPath);
+      _state.Update(MicrophoneCalibrationStates.OpeningLevel, "Opening the calibration level automatically.");
+      Main.Instance?.Log("[Calibration] Opening packaged calibration level: " + _level.Path);
+      _level.Open();
     }
     catch (Exception exception)
     {
@@ -472,56 +274,8 @@ public sealed class MicrophoneCalibrationFeature
     }
   }
 
-  private void ResetAudioCapture()
-  {
-    _songStartFrame = 0;
-    _songSampleRate = 0;
-  }
-
-  private void RestoreRunInBackground()
-  {
-    if (_changedRunInBackground)
-      UnityEngine.Application.runInBackground = _originalRunInBackground;
-    _changedRunInBackground = false;
-  }
-
-  private bool IsCalibrationEditorReady()
-  {
-    scnEditor editor = scnEditor.instance;
-    if (
-      !IsCalibrationEditorBaseReady()
-      || !LevelPathIdentity.Equals(_levelPath, LevelPathIdentity.Current())
-      || !GameplayChartHash.TryCompute(editor.levelData, out byte[] currentHash, out _)
-    )
-      return false;
-
-    _levelGameplayHash = currentHash;
-    Main.Instance?.Log("[Calibration] Captured loaded calibration gameplay hash.");
-    return true;
-  }
-
-  private static bool IsCalibrationEditorBaseReady()
-  {
-    scnEditor editor = scnEditor.instance;
-    return editor != null && editor.initialized && !editor.isLoading;
-  }
-
-  private static bool IsGameplayActive()
-  {
-    if (string.Equals(ADOBase.sceneName, "scnEditor", StringComparison.Ordinal))
-      return scnEditor.instance?.playMode == true;
-
-    bool gameplayScene =
-      string.Equals(ADOBase.sceneName, "scnGame", StringComparison.Ordinal)
-      || string.Equals(ADOBase.sceneName, "scnCLS", StringComparison.Ordinal)
-      || string.Equals(ADOBase.sceneName, "scnCalibration", StringComparison.Ordinal)
-      || string.Equals(ADOBase.sceneName, "scnMinesweeper", StringComparison.Ordinal);
-    if (!gameplayScene || ADOBase.controller == null)
-      return false;
-
-    States state = ADOBase.controller.state;
-    return state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl;
-  }
+  private MicrophoneCalibrationStatus Error(string code, string message, string operationId = null) =>
+    _state.Error(code, message, operationId);
 
   private static StoredReplayRun ToStoredReplayRun(RunRecord run) =>
     new StoredReplayRun
@@ -539,108 +293,7 @@ public sealed class MicrophoneCalibrationFeature
       MetaJson = run.MetaJson,
       GameplayHash = run.GameplayHash,
       GameplayHashVersion = run.GameplayHashVersion,
+      JudgmentDifficulty = run.JudgmentDifficulty,
+      NoFailMode = run.NoFailMode,
     };
-
-  private bool IsCurrent(string operationId)
-  {
-    lock (_gate)
-      return !string.IsNullOrEmpty(operationId)
-        && string.Equals(_status.OperationId, operationId, StringComparison.Ordinal);
-  }
-
-  private bool IsState(string operationId, string state)
-  {
-    lock (_gate)
-      return !string.IsNullOrEmpty(operationId)
-        && string.Equals(_status.OperationId, operationId, StringComparison.Ordinal)
-        && string.Equals(_status.State, state, StringComparison.Ordinal);
-  }
-
-  private MicrophoneCalibrationStatus StaleOperation()
-  {
-    MicrophoneCalibrationStatus status = GetStatus();
-    status.ErrorCode = "calibration_operation_stale";
-    status.Message = "The calibration operation is no longer active.";
-    return status;
-  }
-
-  private MicrophoneCalibrationStatus Error(string code, string message, string operationId = null)
-  {
-    lock (_gate)
-    {
-      _status = new MicrophoneCalibrationStatus
-      {
-        OperationId = operationId ?? _status.OperationId,
-        State = MicrophoneCalibrationStates.Error,
-        ErrorCode = code,
-        Message = message,
-        MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
-        MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
-      };
-      return Clone(_status);
-    }
-  }
-
-  private void ErrorIfCurrent(string operationId, string code, string message)
-  {
-    if (IsCurrent(operationId))
-      Error(code, message, operationId);
-  }
-
-  private void ErrorIfPreviewStarting(string operationId, string code, string message)
-  {
-    if (IsState(operationId, MicrophoneCalibrationStates.PreviewStarting))
-      Error(code, message, operationId);
-  }
-
-  private static MicrophoneCalibrationStatus Rejected(string code, string message) =>
-    new MicrophoneCalibrationStatus
-    {
-      State = MicrophoneCalibrationStates.Error,
-      ErrorCode = code,
-      Message = message,
-      MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
-      MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
-    };
-
-  private void UpdateState(string state, string message)
-  {
-    lock (_gate)
-    {
-      _status.State = state;
-      _status.ErrorCode = null;
-      _status.Message = message;
-    }
-  }
-
-  private void SetStatus(MicrophoneCalibrationStatus status)
-  {
-    lock (_gate)
-      _status = status;
-  }
-
-  private static MicrophoneCalibrationStatus Clone(MicrophoneCalibrationStatus status) =>
-    new MicrophoneCalibrationStatus
-    {
-      OperationId = status.OperationId,
-      State = status.State,
-      ErrorCode = status.ErrorCode,
-      Message = status.Message,
-      DurationMs = status.DurationMs,
-      PlaybackPositionMs = status.PlaybackPositionMs,
-      ResultRevision = status.ResultRevision,
-      MicrophoneOffsetMs = status.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = status.MicrophoneVolumeDb,
-    };
-}
-
-public sealed class MicrophoneCalibrationTicker : MonoBehaviour
-{
-  public MicrophoneCalibrationFeature Feature;
-
-  private void Update()
-  {
-    UnityMainThread.DrainPending();
-    Feature?.Tick();
-  }
 }
