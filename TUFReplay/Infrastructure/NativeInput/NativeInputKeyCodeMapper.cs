@@ -10,6 +10,8 @@ internal static class NativeInputKeyCodeMapper
 {
   public const string NativeKeySpace = "os-native-key-code";
   public const string CorruptedNativeStateMigrationCapture = "skyhook-native-events";
+  public const string LegacyWindowsThreadStateCapture = "skyhook-events-high-resolution";
+  public const string PhysicalStateCapture = "skyhook-events-high-resolution-physical-state";
 
   private static readonly Dictionary<int, KeyLabel> HidUsageLabels = CreateHidUsageLabels();
   private static readonly object RepairMapLock = new object();
@@ -146,6 +148,8 @@ internal static class NativeInputKeyCodeMapper
         )
       )
         return RepairCorruptedNativeStateMigration(inputs, out dropped);
+      if (ShouldRemoveLegacyWindowsInitialState(inputs, meta))
+        return RemoveFirstTimestampGroup(inputs, out dropped);
       return inputs;
     }
 
@@ -166,6 +170,38 @@ internal static class NativeInputKeyCodeMapper
     }
 
     return converted;
+  }
+
+  private static bool ShouldRemoveLegacyWindowsInitialState(List<RecordedInput> inputs, ReplayMetadata meta)
+  {
+    if (
+      inputs.Count < 2
+      || inputs[0].TimeUs >= 0
+      || !string.Equals(meta?.inputNativePlatform, "windows", StringComparison.OrdinalIgnoreCase)
+      || !string.Equals(meta.inputCapture, LegacyWindowsThreadStateCapture, StringComparison.OrdinalIgnoreCase)
+    )
+      return false;
+
+    long firstTimeUs = inputs[0].TimeUs;
+    int count = 0;
+    while (count < inputs.Count && inputs[count].TimeUs == firstTimeUs)
+    {
+      if ((inputs[count].Flags & RecordInputFlags.Down) == 0)
+        return false;
+      count++;
+    }
+
+    return count >= 2;
+  }
+
+  private static List<RecordedInput> RemoveFirstTimestampGroup(List<RecordedInput> inputs, out int dropped)
+  {
+    long firstTimeUs = inputs[0].TimeUs;
+    dropped = 0;
+    while (dropped < inputs.Count && inputs[dropped].TimeUs == firstTimeUs)
+      dropped++;
+
+    return inputs.GetRange(dropped, inputs.Count - dropped);
   }
 
   private static List<RecordedInput> RepairCorruptedNativeStateMigration(

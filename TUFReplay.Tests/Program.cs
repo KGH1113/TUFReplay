@@ -41,6 +41,8 @@ internal static class Program
       TestReplayNoFailPolicy();
       TestNativeInputUmmWindowInterlock();
       TestWindowsSkyHookRawKeyPreservation();
+      TestWindowsPhysicalStateUsesCurrentDownBit();
+      TestLegacyWindowsInitialStateRemoval();
       TestNativeInputMigrationCompatibility();
       TestWindowsPhysicalKeyMetadata();
       TestReplaySchedulerChord();
@@ -195,6 +197,47 @@ internal static class Program
     AssertWindowsCapture(0x10, KeyLabel.LShift, 0xA0, false, "left Shift");
     AssertWindowsCapture(0x11, KeyLabel.RControl, 0xA3, true, "right Ctrl");
     AssertWindowsCapture(0x12, KeyLabel.RAlt, 0xA5, true, "right Alt");
+  }
+
+  private static void TestWindowsPhysicalStateUsesCurrentDownBit()
+  {
+    Assert(
+      WindowsNativeInputStateReader.IsAsyncKeyDown(unchecked((short)0x8000)),
+      "Windows physical state ignored the current-down bit."
+    );
+    Assert(
+      !WindowsNativeInputStateReader.IsAsyncKeyDown(0x0001),
+      "Windows physical state treated the recent-press bit as currently down."
+    );
+    Assert(!WindowsNativeInputStateReader.IsAsyncKeyDown(0), "Windows physical state reported an idle key as down.");
+  }
+
+  private static void TestLegacyWindowsInitialStateRemoval()
+  {
+    RecordInputFlags down = RecordInputFlags.Async | RecordInputFlags.Down;
+    var inputs = new List<RecordedInput>
+    {
+      new RecordedInput(-877_752, 187, down),
+      new RecordedInput(-877_752, 189, down),
+      new RecordedInput(-877_752, 220, down),
+      new RecordedInput(-836_688, 82, down),
+      new RecordedInput(-820_165, 82, RecordInputFlags.Async),
+    };
+    var legacyMeta = new ReplayMetadata
+    {
+      formatVersion = 3,
+      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
+      inputCapture = NativeInputKeyCodeMapper.LegacyWindowsThreadStateCapture,
+      inputNativePlatform = "windows",
+    };
+
+    List<RecordedInput> normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(inputs, legacyMeta, out int dropped);
+    Assert(dropped == 3, "Legacy Windows initial state group was not removed.");
+    Assert(normalized.Count == 2 && normalized[0].Key == 82, "Real countdown input was removed with legacy state.");
+
+    legacyMeta.inputCapture = NativeInputKeyCodeMapper.PhysicalStateCapture;
+    normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(inputs, legacyMeta, out dropped);
+    Assert(dropped == 0 && normalized.Count == inputs.Count, "Physical-state recording was sanitized as legacy data.");
   }
 
   private static void AssertWindowsCapture(

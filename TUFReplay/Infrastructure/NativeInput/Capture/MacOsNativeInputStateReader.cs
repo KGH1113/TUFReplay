@@ -12,6 +12,8 @@ internal sealed class MacOsNativeInputStateReader : INativeInputStateReader
 
   public void Refresh() { }
 
+  public void RefreshPhysicalState() => Refresh();
+
   [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
   [return: MarshalAs(UnmanagedType.I1)]
   private static extern bool CGEventSourceKeyState(int stateID, ushort virtualKey);

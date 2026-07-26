@@ -365,12 +365,7 @@ public static class ReplaySessionService
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null)
       return;
-    if (
-      !TryGetControllerState(out States state)
-      || (
-        state != States.Countdown && state != States.Checkpoint && state != States.PlayerControl && state != States.Won
-      )
-    )
+    if (!TryGetControllerState(out States state) || !IsReplayTimelinePlaybackState(state))
       return;
 
     player.Tick(nowUs, CurrentGameplayRate(), CurrentWonTimeUs(), ADOBase.controller.paused);
@@ -478,7 +473,7 @@ public static class ReplaySessionService
     if (!TryGetControllerState(out States state))
       return false;
 
-    if (state != States.Countdown && state != States.PlayerControl && state != States.Won)
+    if (!IsReplayTimelinePlaybackState(state))
       return false;
 
     if (!TryComputeReplayTimeUs(out nowUs, out _))
@@ -492,6 +487,14 @@ public static class ReplaySessionService
     }
 
     return true;
+  }
+
+  private static bool IsReplayTimelinePlaybackState(States state)
+  {
+    return state == States.Countdown
+      || state == States.Checkpoint
+      || state == States.PlayerControl
+      || state == States.Won;
   }
 
   internal static void SuspendNativeInputForUmmWindow()

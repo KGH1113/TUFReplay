@@ -16,11 +16,25 @@ internal sealed class WindowsNativeInputStateReader : INativeInputStateReader
   [DllImport("user32.dll", SetLastError = true)]
   private static extern int GetKeyboardState(byte[] keyState);
 
+  [DllImport("user32.dll")]
+  private static extern short GetAsyncKeyState(int virtualKey);
+
   public void Refresh()
   {
     if (GetKeyboardState(_keyState) == 0)
       throw new Win32Exception(Marshal.GetLastWin32Error());
   }
+
+  public void RefreshPhysicalState()
+  {
+    for (int i = 0; i < _keyCodes.Length; i++)
+    {
+      int keyCode = _keyCodes[i];
+      _keyState[keyCode] = IsAsyncKeyDown(GetAsyncKeyState(keyCode)) ? (byte)0x80 : (byte)0;
+    }
+  }
+
+  internal static bool IsAsyncKeyDown(short state) => (state & 0x8000) != 0;
 
   public bool TryGetIsDown(int keyCode, out bool isDown)
   {
