@@ -239,7 +239,7 @@ public sealed class ReplayHitContextPlayer
               0f,
               1f,
               player.planetarySystem.chosenPlanet,
-              hitPlanet.player.currFloor
+              hitFloor
             );
           }
           else
@@ -248,7 +248,7 @@ public sealed class ReplayHitContextPlayer
               angleDiff,
               (float)player.currFloor.marginScale,
               player.planetarySystem.chosenPlanet,
-              hitPlanet.player.currFloor
+              hitFloor
             );
           }
         }
