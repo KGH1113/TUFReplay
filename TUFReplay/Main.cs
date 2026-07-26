@@ -1,5 +1,6 @@
 ﻿using System;
 using TUFReplay.Bootstrap;
+using TUFReplay.Infrastructure.NativeInput;
 using TUFReplay.Infrastructure.Settings;
 using TUFReplay.Infrastructure.Unity;
 using UnityEngine;
@@ -39,6 +40,7 @@ public sealed class Main
 
       modEntry.OnToggle = OnToggle;
       modEntry.OnUnload = OnUnload;
+      modEntry.OnUpdate = OnUpdate;
       modEntry.OnGUI = OnGUI;
       modEntry.OnSaveGUI = OnSaveGUI;
 
@@ -73,6 +75,11 @@ public sealed class Main
       UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
       SaveUpdateSettings(modEntry);
     }
+  }
+
+  private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)
+  {
+    NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 
   private static void OnSaveGUI(UnityModManager.ModEntry modEntry)
@@ -137,6 +144,7 @@ public sealed class Main
     {
       FeatureRegistry.Initialize();
       _enabled = true;
+      NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
     }
     catch
     {
@@ -157,6 +165,7 @@ public sealed class Main
     }
     finally
     {
+      NativeInputUmmWindowInterlock.Reset();
       TUFReplaySettingStore.Save();
     }
   }

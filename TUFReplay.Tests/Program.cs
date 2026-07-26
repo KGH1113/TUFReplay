@@ -35,6 +35,7 @@ internal static class Program
       TestSchemaMigrationAndBlob(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
+      TestNativeInputUmmWindowInterlock();
       TestWindowsSkyHookRawKeyPreservation();
       TestNativeInputMigrationCompatibility();
       TestWindowsPhysicalKeyMetadata();
@@ -67,6 +68,24 @@ internal static class Program
     Assert(inputs.Count == 4, "Replay input parser dropped valid events.");
     Assert(inputs[0].Key == 7, "Replay input parser did not sort timestamps.");
     Assert(inputs[1].Key == 9 && inputs[2].Key == 8 && inputs[3].Key == 9, "Same-time input order changed.");
+  }
+
+  private static void TestNativeInputUmmWindowInterlock()
+  {
+    NativeInputUmmWindowInterlock.Reset();
+    NativeInputUmmWindowInterlock.SetWindowOpenAt(true, 1_000L);
+    Assert(NativeInputUmmWindowInterlock.IsBlockedAt(1_000L), "UMM open did not block native input.");
+
+    NativeInputUmmWindowInterlock.SetWindowOpenAt(false, 2_000L);
+    Assert(
+      NativeInputUmmWindowInterlock.IsBlockedAt(2_000L),
+      "UMM close did not preserve the native-input stabilization window."
+    );
+    Assert(
+      !NativeInputUmmWindowInterlock.IsBlockedAt(long.MaxValue),
+      "Native input remained blocked after the stabilization window."
+    );
+    NativeInputUmmWindowInterlock.Reset();
   }
 
   private static void TestReplaySchedulerChord()
