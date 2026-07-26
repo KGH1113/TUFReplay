@@ -168,7 +168,7 @@ export function RunActionsMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => undefined}>
+          <DropdownMenuItem disabled>
             <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Download04Icon} className="size-4" />
             Export run
