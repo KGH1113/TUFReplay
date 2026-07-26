@@ -7,6 +7,7 @@ namespace TUFReplay;
 
 public sealed class TUFReplaySetting
 {
+  public const int CurrentMicrophoneOffsetConventionVersion = 1;
   public const int MinMicrophoneOffsetMs = -500;
   public const int MaxMicrophoneOffsetMs = 500;
   public const int MinMicrophoneVolumeDb = -20;
@@ -16,6 +17,7 @@ public sealed class TUFReplaySetting
   public bool MicrophoneEnabled { get; set; } = true;
   public string MicrophoneDeviceId { get; set; }
   public int MicrophoneOffsetMs { get; set; }
+  public int MicrophoneOffsetConventionVersion { get; set; } = CurrentMicrophoneOffsetConventionVersion;
   public int MicrophoneVolumeDb { get; set; }
 
   public static TUFReplaySetting Load(string path)
@@ -26,6 +28,12 @@ public sealed class TUFReplaySetting
     JObject root = JObject.Parse(File.ReadAllText(path));
     JToken settings = root["Setting"] ?? root;
     TUFReplaySetting result = settings.ToObject<TUFReplaySetting>() ?? new TUFReplaySetting();
+    int offsetConventionVersion = (int?)settings["MicrophoneOffsetConventionVersion"] ?? 0;
+    if (offsetConventionVersion < CurrentMicrophoneOffsetConventionVersion)
+    {
+      result.MicrophoneOffsetMs = -result.MicrophoneOffsetMs;
+      result.MicrophoneOffsetConventionVersion = CurrentMicrophoneOffsetConventionVersion;
+    }
     JToken legacyVolumePercent = settings["MicrophoneVolumePercent"];
     if (settings["MicrophoneVolumeDb"] == null && legacyVolumePercent != null)
       result.MicrophoneVolumeDb = LegacyVolumePercentToDb(legacyVolumePercent.Value<double>());

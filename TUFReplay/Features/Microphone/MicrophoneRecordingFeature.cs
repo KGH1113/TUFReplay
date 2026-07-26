@@ -15,8 +15,10 @@ namespace TUFReplay.Features.Microphone;
 public sealed class MicrophoneRecordingFeature
 {
   private readonly object _gate = new object();
+  private readonly HashSet<string> _persisting = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _saving = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _persistedRuns = new HashSet<string>(StringComparer.Ordinal);
+  private readonly HashSet<string> _deletedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly ManualResetEventSlim _savesIdle = new ManualResetEventSlim(true);
   private IMicrophoneCaptureBackend _backend;
   private MicrophoneCaptureTicker _ticker;
@@ -82,7 +84,11 @@ public sealed class MicrophoneRecordingFeature
     DeactivateCaptureBackend();
     _savesIdle.Wait(TimeSpan.FromSeconds(2));
     lock (_gate)
+    {
       _persistedRuns.Clear();
+      _persisting.Clear();
+      _deletedRuns.Clear();
+    }
   }
 
   public bool SetCaptureEnabled(bool enabled, out string error)
@@ -263,6 +269,19 @@ public sealed class MicrophoneRecordingFeature
     if (recording == null)
       return;
 
+    bool deleted;
+    lock (_gate)
+    {
+      deleted = _deletedRuns.Contains(recording.RunId);
+      if (!deleted)
+        _persisting.Add(recording.RunId);
+    }
+    if (deleted)
+    {
+      Delete(recording.TempPath);
+      return;
+    }
+
     string pending = PendingPath(recording.RunId);
     try
     {
@@ -279,6 +298,14 @@ public sealed class MicrophoneRecordingFeature
       Delete(recording.TempPath);
       Delete(MetadataPath(pending));
     }
+    finally
+    {
+      lock (_gate)
+      {
+        _persisting.Remove(recording.RunId);
+        Monitor.PulseAll(_gate);
+      }
+    }
   }
 
   public void Discard(CapturedMicrophoneRecording recording)
@@ -291,7 +318,11 @@ public sealed class MicrophoneRecordingFeature
   public void NotifyRunPersisted(string runId)
   {
     lock (_gate)
+    {
+      if (_deletedRuns.Contains(runId))
+        return;
       _persistedRuns.Add(runId);
+    }
     string path = PendingPath(runId);
     if (File.Exists(path))
       QueueSave(ReadMetadata(path));
@@ -303,7 +334,7 @@ public sealed class MicrophoneRecordingFeature
       return;
     lock (_gate)
     {
-      if (!_persistedRuns.Contains(recording.RunId))
+      if (_deletedRuns.Contains(recording.RunId) || !_persistedRuns.Contains(recording.RunId))
         return;
       if (!_saving.Add(recording.RunId))
         return;
@@ -330,11 +361,37 @@ public sealed class MicrophoneRecordingFeature
         lock (_gate)
         {
           _saving.Remove(recording.RunId);
+          Monitor.PulseAll(_gate);
           if (_saving.Count == 0)
             _savesIdle.Set();
         }
       }
     });
+  }
+
+  public void BeginRunDeletion(string runId)
+  {
+    lock (_gate)
+    {
+      _deletedRuns.Add(runId);
+      while (_persisting.Contains(runId) || _saving.Contains(runId))
+        Monitor.Wait(_gate);
+    }
+  }
+
+  public void CompleteRunDeletion(string runId)
+  {
+    lock (_gate)
+      _persistedRuns.Remove(runId);
+    string pending = PendingPath(runId);
+    Delete(pending);
+    Delete(MetadataPath(pending));
+  }
+
+  public void CancelRunDeletion(string runId)
+  {
+    lock (_gate)
+      _deletedRuns.Remove(runId);
   }
 
   private void RecoverPendingSaves()

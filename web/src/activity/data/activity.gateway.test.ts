@@ -7,9 +7,65 @@ import type {
   ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
-import { ActivityDomainError, createActivityGateway, loadAllPages } from "./activity.gateway";
+import {
+  ActivityDomainError,
+  ActivityProtocolMismatchError,
+  createActivityGateway,
+  loadAllPages,
+  SUPPORTED_PROTOCOL_VERSION,
+} from "./activity.gateway";
 
 describe("activity IPC contract", () => {
+  test("accepts the supported TUFReplay protocol version", async () => {
+    const health = {
+      Ok: true,
+      Mod: "TUFReplay",
+      ModVersion: "0.1.0",
+      ProtocolVersion: SUPPORTED_PROTOCOL_VERSION,
+      ServerVersion: 1,
+    };
+    const gateway = createActivityGateway({ call: async () => health } as never);
+
+    expect(await gateway.health()).toEqual(health);
+  });
+
+  test.each([
+    ["a different version", { ProtocolVersion: SUPPORTED_PROTOCOL_VERSION + 1 }],
+    ["a missing version", {}],
+    ["a non-integer version", { ProtocolVersion: "1" }],
+  ])("rejects %s as an incompatible TUFReplay protocol", async (_name, health) => {
+    const gateway = createActivityGateway({
+      call: async () => ({
+        Ok: true,
+        Mod: "TUFReplay",
+        ModVersion: "0.1.0",
+        ServerVersion: 1,
+        ...health,
+      }),
+    } as never);
+
+    expect(gateway.health()).rejects.toBeInstanceOf(ActivityProtocolMismatchError);
+  });
+
+  test("stops before loading activity when the protocol is incompatible", async () => {
+    const calls: string[] = [];
+    const gateway = createActivityGateway({
+      call: async (method: string) => {
+        calls.push(method);
+        if (method === "health.get") return { ProtocolVersion: 2, ModVersion: "0.2.0" };
+        return [];
+      },
+    } as never);
+
+    try {
+      await gateway.health();
+      await gateway.listAllAppSessions();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ActivityProtocolMismatchError);
+    }
+    expect(calls).toEqual(["health.get"]);
+  });
+
   test("paging consumes raw arrays and continues past 1000 until a short page", async () => {
     const source = Array.from({ length: 1_237 }, (_, index) => index);
     const offsets: number[] = [];
@@ -46,13 +102,18 @@ describe("activity IPC contract", () => {
     };
     const gateway = createActivityGateway(namespace as never);
     await gateway.getLogicalLevel("logical-1");
-    await gateway.listAllLogicalLevelRuns("logical-1");
+    await gateway.listAllLogicalLevelRuns("logical-1", ["app-1", "app-2"]);
     await gateway.getLogicalLevelChart("logical-1");
     expect(calls).toEqual([
       { method: "activity.logical-level.get", params: { id: "logical-1" } },
       {
         method: "activity.logical-level.runs.list",
-        params: { id: "logical-1", offset: 0, limit: 200 },
+        params: {
+          id: "logical-1",
+          appSessionIds: ["app-1", "app-2"],
+          offset: 0,
+          limit: 200,
+        },
       },
       { method: "activity.logical-level.chart.get", params: { id: "logical-1" } },
     ]);
@@ -73,6 +134,20 @@ describe("activity IPC contract", () => {
       Deleted: true,
     });
     expect(calls).toEqual([{ method: "microphone.recording.delete", params: { runId: "run-7" } }]);
+  });
+
+  test("deletes a run with the exact command and params", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return { RunId: "run-9", Deleted: true };
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.deleteRun("run-9")).toEqual({ RunId: "run-9", Deleted: true });
+    expect(calls).toEqual([{ method: "activity.run.delete", params: { runId: "run-9" } }]);
   });
 
   test("keeps a microphone recording permanently with the exact command and params", async () => {

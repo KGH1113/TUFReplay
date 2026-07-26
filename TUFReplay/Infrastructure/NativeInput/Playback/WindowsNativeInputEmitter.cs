@@ -8,6 +8,9 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
   private const uint InputKeyboard = 1;
   private const uint KeyEventExtendedKey = 0x0001;
   private const uint KeyEventKeyUp = 0x0002;
+  private const uint KeyEventScanCode = 0x0008;
+  private const uint MapVirtualKeyToScanCodeEx = 4;
+  private const ushort PauseVirtualKey = 0x13;
 
   [StructLayout(LayoutKind.Sequential)]
   private struct Input
@@ -53,6 +56,9 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
   [DllImport("user32.dll", SetLastError = true)]
   private static extern uint SendInput(uint inputCount, Input[] inputs, int inputSize);
 
+  [DllImport("user32.dll")]
+  private static extern uint MapVirtualKeyW(uint code, uint mapType);
+
   private static readonly int InputSize = Marshal.SizeOf(typeof(Input));
   private Input[] _inputBuffer = new Input[32];
 
@@ -75,16 +81,12 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
       if (!IsSupported(emission.Key))
         return false;
 
-      uint flags = emission.Down ? 0u : KeyEventKeyUp;
-      if (IsExtendedKey((ushort)emission.Key))
-        flags |= KeyEventExtendedKey;
-
       _inputBuffer[i] = new Input
       {
         Type = InputKeyboard,
         Union = new InputUnion
         {
-          Keyboard = new KeyboardInput { VirtualKey = (ushort)emission.Key, Flags = flags },
+          Keyboard = CreateKeyboardInput(emission),
         },
       };
     }
@@ -110,35 +112,38 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
       case 16: // Generic Shift
       case 17: // Generic Ctrl
       case 18: // Generic Alt
-      case 27: // Escape
         return true;
       default:
         return false;
     }
   }
 
-  private static bool IsExtendedKey(ushort virtualKey)
+  private static KeyboardInput CreateKeyboardInput(NativeInputEmission emission)
   {
-    switch (virtualKey)
+    ushort virtualKey = (ushort)emission.Key;
+    uint flags = emission.Down ? 0u : KeyEventKeyUp;
+
+    // Pause uses the E1-prefixed sequence, which KEYEVENTF_EXTENDEDKEY cannot
+    // represent. Let Windows synthesize it from VK_PAUSE instead of emitting a
+    // truncated scan-code sequence.
+    if (virtualKey == PauseVirtualKey)
     {
-      case 0x21: // Page Up
-      case 0x22: // Page Down
-      case 0x23: // End
-      case 0x24: // Home
-      case 0x25: // Left
-      case 0x26: // Up
-      case 0x27: // Right
-      case 0x28: // Down
-      case 0x2D: // Insert
-      case 0x2E: // Delete
-      case 0x5B: // Left Windows
-      case 0x5C: // Right Windows
-      case 0x6F: // Numpad Divide
-      case 0xA3: // Right Ctrl
-      case 0xA5: // Right Alt
-        return true;
-      default:
-        return false;
+      return new KeyboardInput { VirtualKey = virtualKey, Flags = flags };
     }
+
+    uint mappedScanCode = MapVirtualKeyW(virtualKey, MapVirtualKeyToScanCodeEx);
+    if (mappedScanCode == 0)
+    {
+      if (emission.ExtendedKey || WindowsNativeInputKey.IsExtended(virtualKey))
+        flags |= KeyEventExtendedKey;
+      return new KeyboardInput { VirtualKey = virtualKey, Flags = flags };
+    }
+
+    bool mappedExtended = (mappedScanCode & 0xFF00u) == 0xE000u;
+    flags |= KeyEventScanCode;
+    if (emission.ExtendedKey || mappedExtended || WindowsNativeInputKey.IsExtended(virtualKey))
+      flags |= KeyEventExtendedKey;
+
+    return new KeyboardInput { ScanCode = (ushort)(mappedScanCode & 0xFFu), Flags = flags };
   }
 }

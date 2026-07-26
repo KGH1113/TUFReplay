@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { planLevelSessionRefresh } from "./use-level-session-data.hook";
+import type { ActivityRun } from "../activity.model";
+import { planLevelSessionRefresh, removeRunById } from "./use-level-session-data.hook";
 
 describe("level session refresh planning", () => {
   test("keeps the loaded chart when only the run revision changes", () => {
@@ -19,5 +20,17 @@ describe("level session refresh planning", () => {
       levelChanged: false,
       shouldLoadChart: true,
     });
+  });
+
+  test("removes only the deleted run without renumbering the remaining runs", () => {
+    const runs = [
+      { Id: "run-1", RunIndex: 3 },
+      { Id: "run-2", RunIndex: 7 },
+    ] as ActivityRun[];
+
+    expect(removeRunById(runs, "run-1").map(({ Id, RunIndex }) => ({ Id, RunIndex }))).toEqual([
+      { Id: "run-2", RunIndex: 7 },
+    ]);
+    expect(removeRunById(runs, "missing")).toEqual(runs);
   });
 });

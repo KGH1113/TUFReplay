@@ -216,7 +216,7 @@ public class RecordingSession
             new PendingSongPositionInput(
               anchorSongPosition - elapsedSeconds * timelineRate,
               input.Key,
-              ToRecordInputFlags(input.Down)
+              ToRecordInputFlags(input.Down, input.ExtendedKey)
             )
           );
         }
@@ -230,7 +230,7 @@ public class RecordingSession
         NativeInputTransition input = inputs[i];
         double elapsedSeconds = ElapsedSeconds(newestTimestampNs, input.TimestampNs);
         long elapsedTimeUs = (long)(elapsedSeconds * timelineRate * 1_000_000d);
-        AddInputLocked(anchorTimeUs - elapsedTimeUs, input.Key, ToRecordInputFlags(input.Down));
+        AddInputLocked(anchorTimeUs - elapsedTimeUs, input.Key, ToRecordInputFlags(input.Down, input.ExtendedKey));
       }
 
       return inputs.Length;
@@ -470,10 +470,14 @@ public class RecordingSession
     return (newestTimestampNs - timestampNs) / 1_000_000_000d;
   }
 
-  private static RecordInputFlags ToRecordInputFlags(bool down)
+  private static RecordInputFlags ToRecordInputFlags(bool down, bool extendedKey)
   {
     RecordInputFlags flags = RecordInputFlags.Async;
-    return down ? flags | RecordInputFlags.Down : flags;
+    if (down)
+      flags |= RecordInputFlags.Down;
+    if (extendedKey)
+      flags |= RecordInputFlags.ExtendedKey;
+    return flags;
   }
 
   private long ToRecordTimeUs(double songPosition)

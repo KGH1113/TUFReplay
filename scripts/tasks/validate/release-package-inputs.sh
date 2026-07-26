@@ -24,6 +24,5 @@ require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/level.adofai"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.ogg"
-require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.waveform"
 
 sourcegear_sqlite3_version >/dev/null

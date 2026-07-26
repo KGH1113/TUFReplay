@@ -22,7 +22,7 @@ import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart
 import { runsForMarker } from "../lib/activity-data.utils";
 import { formatTimeWithOffsetParts } from "../lib/activity-date.utils";
 import { formatXAccuracy } from "../lib/x-accuracy.format";
-import { MicrophoneRecordingPopover } from "./microphone-recording-popover.component";
+import { RunActionsMenu } from "./run-actions-menu.component";
 import { RunDifficultyIcon } from "./run-difficulty-icon.component";
 import { RunJudgmentStrip } from "./run-judgment-strip.component";
 import { RunNoFailIcon } from "./run-no-fail-icon.component";
@@ -59,6 +59,7 @@ export function ActivityWorkspace({
   onSelectMarker,
   onSelectRun,
   onPlayReplay,
+  onDeleteRun,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
 }: {
@@ -79,6 +80,7 @@ export function ActivityWorkspace({
   onSelectMarker: (marker: RunMarker | null) => void;
   onSelectRun: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onDeleteRun: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
@@ -87,7 +89,6 @@ export function ActivityWorkspace({
   const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
   const [runSort, setRunSort] = useState<RunSortKey>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [microphonePinnedRunId, setMicrophonePinnedRunId] = useState<string | null>(null);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
     if (!runList) return;
@@ -134,11 +135,6 @@ export function ActivityWorkspace({
   );
   const selectedRuns = runsForMarker(runs, selectedMarker);
   const sortedRuns = sortRuns(selectedRuns, runSort, sortDirection);
-  const selectedMarkerId = selectedMarker?.id ?? null;
-  useEffect(() => {
-    void selectedMarkerId;
-    setMicrophonePinnedRunId(null);
-  }, [selectedMarkerId]);
   useLayoutEffect(() => {
     void runSort;
     void sortDirection;
@@ -268,14 +264,13 @@ export function ActivityWorkspace({
                         active={active}
                         readOnly={readOnly}
                         timeZone={timeZone}
-                        microphonePinnedRunId={microphonePinnedRunId}
                         replayStatus={replayStatus}
                         replayPendingRunId={replayPendingRunId}
                         replayError={replayError}
                         replayErrorRunId={replayErrorRunId}
                         onSelect={() => onSelectRun(run)}
-                        onPinnedRunChange={setMicrophonePinnedRunId}
                         onPlayReplay={onPlayReplay}
+                        onDeleteRun={onDeleteRun}
                         onKeepMicrophoneRecording={onKeepMicrophoneRecording}
                         onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
                       />
@@ -296,14 +291,13 @@ function RunCard({
   active,
   readOnly,
   timeZone,
-  microphonePinnedRunId,
   replayStatus,
   replayPendingRunId,
   replayError,
   replayErrorRunId,
   onSelect,
-  onPinnedRunChange,
   onPlayReplay,
+  onDeleteRun,
   onKeepMicrophoneRecording,
   onDeleteMicrophoneRecording,
 }: {
@@ -311,38 +305,26 @@ function RunCard({
   active: boolean;
   readOnly: boolean;
   timeZone: string;
-  microphonePinnedRunId: string | null;
   replayStatus: ReplayStatus;
   replayPendingRunId: string | null;
   replayError: string;
   replayErrorRunId: string | null;
   onSelect: () => void;
-  onPinnedRunChange: (runId: string | null) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
-  const microphoneAction = run.HasMicrophoneRecording ? (
-    <MicrophoneRecordingPopover
-      run={run}
-      pinnedRunId={microphonePinnedRunId}
-      onPinnedRunChange={onPinnedRunChange}
-      onKeep={onKeepMicrophoneRecording}
-      onDelete={onDeleteMicrophoneRecording}
-      disabled={readOnly}
-    />
-  ) : null;
-  const replayAction = (
-    <RunReplayButton
-      run={run}
-      status={replayStatus}
-      pendingRunId={replayPendingRunId}
-      error={replayError}
-      errorRunId={replayErrorRunId}
-      onPlay={onPlayReplay}
-      disabled={readOnly}
-    />
-  );
+  const statusMatches = replayStatus.RunId === run.Id;
+  const runDeleteDisabled =
+    replayPendingRunId === run.Id ||
+    (statusMatches &&
+      (replayStatus.State === "preparing" ||
+        replayStatus.State === "opening_level" ||
+        replayStatus.State === "waiting_for_focus" ||
+        replayStatus.State === "starting" ||
+        replayStatus.State === "playing" ||
+        replayStatus.State === "returning_to_editor"));
 
   return (
     <div
@@ -351,69 +333,102 @@ function RunCard({
         "group/run relative rounded-md border border-border bg-background/60 text-xs transition-colors hover:border-primary/60",
       )}
     >
+      <div className="flex min-h-8 items-center gap-2 px-3 pt-2.5">
+        <RunReplayButton
+          run={run}
+          status={replayStatus}
+          pendingRunId={replayPendingRunId}
+          error={replayError}
+          errorRunId={replayErrorRunId}
+          onPlay={onPlayReplay}
+          disabled={readOnly}
+        />
+        <div className="ml-auto flex h-8 items-center gap-1">
+          <RunDifficultyIcon difficulty={run.JudgmentDifficulty} />
+          <RunNoFailIcon enabled={run.NoFailMode} />
+          {run.HasMicrophoneRecording ? <MicrophoneRecordingIndicator /> : null}
+        </div>
+        <RunActionsMenu
+          run={run}
+          disabled={readOnly}
+          runDeleteDisabled={runDeleteDisabled}
+          onKeepMicrophoneRecording={onKeepMicrophoneRecording}
+          onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
+          onDeleteRun={onDeleteRun}
+        />
+      </div>
+
       <button
         type="button"
         aria-label={`Select run ${run.RunIndex}`}
         aria-pressed={active}
         onClick={onSelect}
-        className="block w-full rounded-md p-3 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        className="block w-full rounded-b-md p-3 pt-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
-        <HeaderRunCardContent run={run} timeZone={timeZone} />
+        <RunCardContent run={run} timeZone={timeZone} />
         <RunJudgmentStrip counts={run.JudgmentCounts} />
       </button>
-
-      <div className="pointer-events-auto absolute right-3 top-2.5 flex items-center gap-1.5">
-        {microphoneAction}
-        {replayAction}
-      </div>
     </div>
   );
 }
 
-function RunIdentity({ run }: { run: ActivityRun }) {
+function MicrophoneRecordingIndicator() {
   return (
-    <div className="flex min-w-0 items-center gap-2.5">
-      <span className="inline-flex min-w-8 items-center justify-center rounded-sm border border-primary/35 bg-primary/10 px-1.5 py-0.5 font-heading text-xs font-semibold tabular-nums text-primary">
-        #{run.RunIndex}
-      </span>
-      <RunNoFailIcon enabled={run.NoFailMode} />
-      <RunDifficultyIcon difficulty={run.JudgmentDifficulty} />
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label="Microphone recording available"
+          className="-ml-1 grid size-6 shrink-0 place-items-center text-white"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 24 24"
+            className="size-4 -translate-y-[0.5px] overflow-visible"
+            fill="none"
+          >
+            <rect x="8" y="2" width="8" height="13" rx="4" fill="currentColor" />
+            <path
+              d="M5.5 10.75v.5a6.5 6.5 0 0 0 13 0v-.5M12 17.75V22M9 22h6"
+              stroke="currentColor"
+              strokeWidth="2.25"
+              strokeLinecap="round"
+            />
+          </svg>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">Microphone recording available</TooltipContent>
+    </Tooltip>
   );
 }
 
-function HeaderRunCardContent({ run, timeZone }: { run: ActivityRun; timeZone: string }) {
+function RunCardContent({ run, timeZone }: { run: ActivityRun; timeZone: string }) {
   const startedAt = formatTimeWithOffsetParts(run.StartedAtUtc, timeZone);
 
   return (
-    <>
-      <div className="flex min-h-8 items-center pr-28">
-        <RunIdentity run={run} />
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-5 gap-y-2 rounded-md bg-muted/25 p-2.5">
-        <ScoreboardMetric
-          icon={PercentIcon}
-          label="Progress"
-          value={`${runStartProgressPercent(run)}% → ${runProgressPercent(run)}%`}
-        />
-        <ScoreboardMetric
-          icon={DashboardSpeed01Icon}
-          label="Pitch"
-          value={`${run.LevelPitchPercent ?? "?"}%`}
-        />
-        <ScoreboardMetric
-          icon={ChartAverageIcon}
-          label="X-Accuracy"
-          value={formatXAccuracy(run.XAccuracy)}
-        />
-        <ScoreboardMetric
-          icon={Clock01Icon}
-          label="Started at"
-          value={startedAt.time}
-          suffix={startedAt.offset ? `(${startedAt.offset})` : undefined}
-        />
-      </div>
-    </>
+    <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-md bg-muted/25 p-2.5">
+      <ScoreboardMetric
+        icon={PercentIcon}
+        label="Progress"
+        value={`${runStartProgressPercent(run)}% → ${runProgressPercent(run)}%`}
+      />
+      <ScoreboardMetric
+        icon={DashboardSpeed01Icon}
+        label="Pitch"
+        value={`${run.LevelPitchPercent ?? "?"}%`}
+      />
+      <ScoreboardMetric
+        icon={ChartAverageIcon}
+        label="X-Accuracy"
+        value={formatXAccuracy(run.XAccuracy)}
+      />
+      <ScoreboardMetric
+        icon={Clock01Icon}
+        label="Started at"
+        value={startedAt.time}
+        suffix={startedAt.offset ? `(${startedAt.offset})` : undefined}
+      />
+    </div>
   );
 }
 

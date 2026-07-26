@@ -316,9 +316,9 @@ public class RecordingFeature
 
     Session.MarkGameplayStarted();
     PrepareActivityRun(RecordingSession.GetLevelTileCount());
+    StartMicrophoneRun();
     if (_calibrationRun)
       FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
-    StartMicrophoneRun();
     AnchorMicrophoneToGameplayStart();
   }
 
@@ -452,7 +452,7 @@ public class RecordingFeature
 
   private void AnchorMicrophoneToGameplayStart()
   {
-    if (_calibrationRun || !_microphoneCaptureStarted || _microphoneGameplayStartAnchored)
+    if (!_microphoneCaptureStarted || _microphoneGameplayStartAnchored)
       return;
 
     double startedAt = _microphoneCaptureStartedAt ?? RecordingClock.CurrentUnscaledTime();

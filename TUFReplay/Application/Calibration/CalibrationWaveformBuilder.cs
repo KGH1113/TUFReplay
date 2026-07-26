@@ -1,13 +1,53 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Domain.Microphone;
+using TUFReplay.Domain.ReplayData;
 
 namespace TUFReplay.Application.Calibration;
 
 public static class CalibrationWaveformBuilder
 {
   public const int BinCount = 2048;
+  private const int InputPulseRadiusBins = 3;
+
+  public static float[] FromInputEvents(IReadOnlyList<RecordedInput> inputs, double durationMs)
+  {
+    var result = new float[BinCount];
+    if (inputs == null || durationMs <= 0d)
+      return result;
+
+    double durationUs = durationMs * 1000d;
+    for (int inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
+    {
+      RecordedInput input = inputs[inputIndex];
+      if (!input.Down || input.TimeUs < 0L || input.TimeUs >= durationUs)
+        continue;
+      int centerBin = Math.Min(BinCount - 1, (int)(input.TimeUs / durationUs * BinCount));
+      for (int delta = -InputPulseRadiusBins; delta <= InputPulseRadiusBins; delta++)
+      {
+        int bin = centerBin + delta;
+        if (bin < 0 || bin >= BinCount)
+          continue;
+        float amplitude = 1f - Math.Abs(delta) / (float)(InputPulseRadiusBins + 1);
+        result[bin] = Math.Max(result[bin], amplitude);
+      }
+    }
+    return result;
+  }
+
+  public static bool HasSignal(float[] waveform)
+  {
+    if (waveform == null)
+      return false;
+    for (int i = 0; i < waveform.Length; i++)
+    {
+      if (waveform[i] > 0f)
+        return true;
+    }
+    return false;
+  }
 
   public static float[] FromPcm16(CapturedMicrophoneRecording recording, double durationMs)
   {
@@ -94,11 +134,10 @@ public static class CalibrationWaveformBuilder
     )
       return result;
 
-    double sourceStartSeconds = Math.Max(0, sourceStartFrame) / (double)sourceSampleRate;
+    double sourceStartSeconds = sourceStartFrame / (double)sourceSampleRate;
     for (int peakIndex = 0; peakIndex < reference.Peaks.Length; peakIndex++)
     {
-      double timeMs =
-        (peakIndex * reference.FramesPerPeak / (double)reference.SampleRate - sourceStartSeconds) * 1000d;
+      double timeMs = (peakIndex * reference.FramesPerPeak / (double)reference.SampleRate - sourceStartSeconds) * 1000d;
       if (timeMs < 0d)
         continue;
       if (timeMs >= durationMs)
@@ -109,23 +148,32 @@ public static class CalibrationWaveformBuilder
     return Normalize(result);
   }
 
-  public static int ReferenceStartFrame(
-    double songPositionSeconds,
-    double levelOffsetSeconds,
-    double inputOffsetSeconds,
+  public static int SourceFrameAtDspTime(
+    double dspTime,
+    double dspTimeSong,
+    bool separateCountdownTime,
+    double crotchetAtStart,
+    double adjustedCountdownTicks,
     double pitch,
-    int sampleRate,
-    bool legacyConductor
+    int sampleRate
   )
   {
     if (sampleRate <= 0)
       return 0;
-    pitch = Math.Max(0.0001d, pitch);
-    double sourceTimeSeconds = legacyConductor
-      ? songPositionSeconds + inputOffsetSeconds + levelOffsetSeconds / pitch
-      : songPositionSeconds + inputOffsetSeconds * pitch + levelOffsetSeconds;
-    double frame = Math.Max(0d, sourceTimeSeconds * sampleRate);
-    return frame >= int.MaxValue ? int.MaxValue : (int)Math.Round(frame);
+    if (pitch <= 0d || double.IsNaN(pitch) || double.IsInfinity(pitch))
+      pitch = 1d;
+    double countdownDspSeconds = separateCountdownTime
+      ? Math.Max(0d, crotchetAtStart) * Math.Max(0d, adjustedCountdownTicks) / pitch
+      : 0d;
+    double sourceTimeSeconds = (dspTime - dspTimeSong - countdownDspSeconds) * pitch;
+    double frame = sourceTimeSeconds * sampleRate;
+    if (double.IsNaN(frame))
+      return 0;
+    if (frame >= int.MaxValue)
+      return int.MaxValue;
+    if (frame <= int.MinValue)
+      return int.MinValue;
+    return (int)Math.Round(frame);
   }
 
   private static float[] Normalize(float[] samples)

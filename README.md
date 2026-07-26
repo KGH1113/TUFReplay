@@ -36,6 +36,7 @@ The project is built around preserving low-level play data instead of trusting f
 ## Features
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
+- Suspends native keyboard capture and replay emission while the UnityModManager window is open.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
 - Stores lean activity records, replay payloads, level paths, level-file fingerprints, and recorder timezone context in SQLite. Visits remain attached to their original app session, while the activity UI groups the same logical level across sessions by TUF ID, gameplay hash, or local path-and-file identity.
@@ -49,6 +50,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
 - Streams microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries; temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
+- Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
@@ -230,8 +232,9 @@ Registered methods:
 - `activity.level-session.runs.list`
 - `activity.level-session.chart.get`
 - `activity.logical-level.get`
-- `activity.logical-level.runs.list`
+- `activity.logical-level.runs.list` (`appSessionIds` scopes the logical level's runs to the selected day)
 - `activity.logical-level.chart.get`
+- `activity.run.delete` (`runId` identifies the run; active replays cannot be deleted)
 - `replay.play`
 - `replay.status.get`
 - `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
@@ -246,6 +249,24 @@ Registered methods:
 - `microphone.calibration.offset.set`
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
+
+`health.get` returns the TUFReplay namespace protocol and installed mod version:
+
+```json
+{
+  "Ok": true,
+  "Mod": "TUFReplay",
+  "ModVersion": "0.1.0-beta.5",
+  "ProtocolVersion": 1,
+  "ServerVersion": 1
+}
+```
+
+Web clients must compare `ProtocolVersion` with the protocol they support before calling other
+TUFReplay methods. A missing or different protocol version means the installed mod is incompatible.
+The companion web UI asks the user to fully quit and restart ADOFAI so the startup updater can install
+a compatible TUFReplay release. `ServerVersion` remains as a legacy compatibility field and is not the
+TUFReplay namespace protocol version.
 
 Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin song and microphone waveforms to the web editor. The precomputed song reference is aligned from ADOFAI's actual playback sample position on the recorded run timeline. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
 

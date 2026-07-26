@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
+using SkyHook;
 using TUFReplay;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
@@ -13,6 +14,7 @@ using TUFReplay.Infrastructure.Database;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Database.Schema;
 using TUFReplay.Infrastructure.NativeInput;
+using TUFReplay.Infrastructure.NativeInput.Capture;
 using TUFReplay.Infrastructure.Unity;
 
 internal static class Program
@@ -26,13 +28,21 @@ internal static class Program
       NativeSqliteLoader.Initialize();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
+      TestPlaybackLimiter(root);
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
       TestCalibrationWaveforms(root);
       TestAdofaiLevelFileHash(root);
       TestSchemaMigrationAndBlob(root);
+      TestRunDeletionHierarchy(root);
+      TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
+      TestReplayNoFailPolicy();
+      TestNativeInputUmmWindowInterlock();
+      TestWindowsSkyHookRawKeyPreservation();
+      TestNativeInputMigrationCompatibility();
+      TestWindowsPhysicalKeyMetadata();
       TestReplaySchedulerChord();
       TestReplayPumpTimingAndBatching();
       TestReplayPumpFocusAndReleaseAll();
@@ -64,6 +74,34 @@ internal static class Program
     Assert(inputs[1].Key == 9 && inputs[2].Key == 8 && inputs[3].Key == 9, "Same-time input order changed.");
   }
 
+  private static void TestReplayNoFailPolicy()
+  {
+    Assert(!ReplayFailPolicy.ShouldUseReplayNoFail(null), "Missing replay context enabled No-Fail.");
+    Assert(!ReplayFailPolicy.ShouldUseReplayNoFail(new ActiveReplayContext()), "A normal replay enabled No-Fail.");
+    Assert(
+      ReplayFailPolicy.ShouldUseReplayNoFail(new ActiveReplayContext { NoFailMode = true }),
+      "A No-Fail replay did not enable No-Fail."
+    );
+  }
+
+  private static void TestNativeInputUmmWindowInterlock()
+  {
+    NativeInputUmmWindowInterlock.Reset();
+    NativeInputUmmWindowInterlock.SetWindowOpenAt(true, 1_000L);
+    Assert(NativeInputUmmWindowInterlock.IsBlockedAt(1_000L), "UMM open did not block native input.");
+
+    NativeInputUmmWindowInterlock.SetWindowOpenAt(false, 2_000L);
+    Assert(
+      NativeInputUmmWindowInterlock.IsBlockedAt(2_000L),
+      "UMM close did not preserve the native-input stabilization window."
+    );
+    Assert(
+      !NativeInputUmmWindowInterlock.IsBlockedAt(long.MaxValue),
+      "Native input remained blocked after the stabilization window."
+    );
+    NativeInputUmmWindowInterlock.Reset();
+  }
+
   private static void TestReplaySchedulerChord()
   {
     var inputs = new List<RecordedInput>();
@@ -75,6 +113,109 @@ internal static class Program
     Assert(scheduler.CopyNextTimestampGroup(chord) == 128, "128-key chord was truncated.");
     for (int i = 0; i < chord.Count; i++)
       Assert(chord[i].Key == i + 1, "Chord order changed.");
+  }
+
+  private static void TestWindowsPhysicalKeyMetadata()
+  {
+    RecordInputFlags mainEnterFlags = RecordInputFlags.Async | RecordInputFlags.Down;
+    RecordInputFlags keypadEnterFlags = mainEnterFlags | RecordInputFlags.ExtendedKey;
+    var inputs = new List<RecordedInput>
+    {
+      new RecordedInput(0, 0x0D, mainEnterFlags),
+      new RecordedInput(0, 0x0D, keypadEnterFlags),
+    };
+
+    var scheduler = new ReplayInputScheduler(inputs);
+    List<NativeInputKey> held = scheduler.SeekToNativeState(0);
+    Assert(held.Count == 2, "Main Enter and numpad Enter collapsed into one held key.");
+    Assert(held.Exists(key => key.Key == 0x0D && !key.ExtendedKey), "Main Enter identity was lost.");
+    Assert(held.Exists(key => key.Key == 0x0D && key.ExtendedKey), "Numpad Enter identity was lost.");
+
+    var payload = new RecordedRunPayload();
+    payload.Inputs.AddRange(inputs);
+    List<RecordedInput> roundTrip = ReplayInputParser.Parse(payload.ToInputCsvBytes());
+    Assert(roundTrip.Count == 2 && roundTrip[1].ExtendedKey, "Extended-key flag was not preserved in CSV.");
+
+    Assert(WindowsNativeInputKey.IsExtended(0x2C), "Print Screen must be treated as extended.");
+    Assert(WindowsNativeInputKey.IsExtended(0x5D), "Menu/Application must be treated as extended.");
+    Assert(!WindowsNativeInputKey.IsExtended(0x90), "Num Lock must not use the E0 extended-key flag.");
+    Assert(!WindowsNativeInputKey.IsExtended(0xA0), "Left Shift must not be treated as extended.");
+
+    var emitter = new WindowsNativeInputEmitter();
+    Assert(emitter.IsSupported(0x1B), "Escape must be replayable.");
+    Assert(!emitter.IsSupported(0x10), "Generic Shift must remain filtered to avoid duplicate modifier events.");
+  }
+
+  private static void TestNativeInputMigrationCompatibility()
+  {
+    byte[] original = System.Text.Encoding.UTF8.GetBytes("1,69,3\n2,160,2\n");
+    Assert(
+      SkyHookInputKeyMigration.TryConvertInputCsv(original, out byte[] preserved, out int count, out int dropped),
+      "Native input migration rejected a valid format-2 payload."
+    );
+    Assert(count == 2 && dropped == 0, "Native input migration changed the input count.");
+    Assert(
+      System.Text.Encoding.UTF8.GetString(preserved) == "1,69,3\n2,160,2\n",
+      "Native input migration reinterpreted OS-native key codes as HID usages."
+    );
+
+    Assert(
+      NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(69, out int incorrectlyMigratedF12),
+      "Test setup could not reproduce the historical HID conversion."
+    );
+    var corruptedMeta = new ReplayMetadata
+    {
+      formatVersion = 3,
+      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
+      inputCapture = NativeInputKeyCodeMapper.CorruptedNativeStateMigrationCapture,
+    };
+    var corrupted = new List<RecordedInput>
+    {
+      new RecordedInput(1, incorrectlyMigratedF12, RecordInputFlags.Async | RecordInputFlags.Down),
+    };
+    List<RecordedInput> repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
+    Assert(repaired.Count == 1 && repaired[0].Key == 69, "Historical E-to-F12 corruption was not repaired.");
+    Assert(dropped == 0, "A uniquely reversible migrated key was dropped.");
+
+    Assert(
+      NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(49, out int ambiguousBackslash),
+      "Test setup could not reproduce an ambiguous historical conversion."
+    );
+    corrupted[0] = new RecordedInput(1, ambiguousBackslash, RecordInputFlags.Async | RecordInputFlags.Down);
+    repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
+    Assert(repaired.Count == 0 && dropped == 1, "Ambiguous historical key corruption was replayed unsafely.");
+  }
+
+  private static void TestWindowsSkyHookRawKeyPreservation()
+  {
+    AssertWindowsCapture(0x45, KeyLabel.E, 0x45, false, "E");
+    AssertWindowsCapture(0x5D, KeyLabel.Unknown, 0x5D, true, "Menu");
+    AssertWindowsCapture(0x15, KeyLabel.Unknown, 0x15, false, "Hangul");
+    AssertWindowsCapture(0x19, KeyLabel.Unknown, 0x19, false, "Hanja");
+    AssertWindowsCapture(0x10, KeyLabel.LShift, 0xA0, false, "left Shift");
+    AssertWindowsCapture(0x11, KeyLabel.RControl, 0xA3, true, "right Ctrl");
+    AssertWindowsCapture(0x12, KeyLabel.RAlt, 0xA5, true, "right Alt");
+  }
+
+  private static void AssertWindowsCapture(
+    int rawVirtualKey,
+    KeyLabel label,
+    int expectedVirtualKey,
+    bool expectedExtended,
+    string name
+  )
+  {
+    Assert(
+      SkyHookNativeInputEventSource.TryResolveWindowsNativeKey(
+        rawVirtualKey,
+        label,
+        out int actualVirtualKey,
+        out bool actualExtended
+      ),
+      "Windows capture rejected " + name + "."
+    );
+    Assert(actualVirtualKey == expectedVirtualKey, "Windows capture remapped " + name + " to another key.");
+    Assert(actualExtended == expectedExtended, "Windows capture assigned the wrong extended state to " + name + ".");
   }
 
   private static void TestReplayPumpTimingAndBatching()
@@ -243,8 +384,99 @@ internal static class Program
     );
   }
 
+  private static void TestPlaybackLimiter(string root)
+  {
+    const int sampleRate = 48000;
+    const int frameCount = sampleRate / 2;
+    int transientFrame = sampleRate / 10;
+    var samples = new float[frameCount];
+    Array.Fill(samples, 0.01f);
+    samples[transientFrame] = 1f;
+
+    string path = Path.Combine(root, "playback-limiter.wav");
+    using (var writer = new Pcm16WavWriter(path))
+    {
+      Assert(writer.TryEnqueue(samples, samples.Length, 1), "Limiter WAV was not queued.");
+      Assert(writer.Complete() == frameCount, "Limiter WAV frame count is incorrect.");
+    }
+
+    StoredMicrophoneRecording recording = PlaybackRecording(path, frameCount);
+    Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
+    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(
+      recording,
+      wave,
+      System.Threading.CancellationToken.None
+    );
+    Assert(envelope.BinCount == 500, "Limiter envelope did not use one-millisecond bins.");
+    Assert(
+      Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f,
+      "Limiter attenuated a quiet section."
+    );
+    Assert(
+      envelope.RequiredLimiterGain(transientFrame - sampleRate * 4 / 1000, 10f) < 1f,
+      "Limiter look-ahead did not anticipate a loud transient."
+    );
+    Assert(
+      Math.Abs(envelope.RequiredLimiterGain(transientFrame - sampleRate * 7 / 1000, 10f) - 1f) < 0.0001f,
+      "Limiter look-ahead started too early."
+    );
+
+    float limitedGain = envelope.RequiredLimiterGain(transientFrame, 10f) * 10f;
+    Assert(limitedGain <= Pcm16LimiterEnvelope.Ceiling + 0.0001f, "Limiter exceeded its true-peak ceiling.");
+
+    var limiter = new Pcm16Limiter(envelope, sampleRate);
+    float peakGain = 10f;
+    for (int frame = transientFrame - sampleRate * 7 / 1000; frame <= transientFrame; frame++)
+      peakGain = limiter.NextEffectiveGain(frame, 10f);
+    float releaseGain = peakGain;
+    for (int frame = transientFrame + 1; frame <= transientFrame + sampleRate / 10; frame++)
+      releaseGain = limiter.NextEffectiveGain(frame, 10f);
+    Assert(releaseGain > peakGain && releaseGain < 10f, "Limiter release did not recover smoothly.");
+
+    limiter.Reset();
+    float resetPeakGain = limiter.NextEffectiveGain(transientFrame, 10f);
+    Assert(Math.Abs(resetPeakGain - limitedGain) < 0.0001f, "Limiter reset did not seek by absolute PCM frame.");
+    limiter.Reset();
+    Assert(
+      Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f,
+      "A safe gain change was unnecessarily limited."
+    );
+
+    string stereoPath = Path.Combine(root, "playback-limiter-stereo.wav");
+    short[] stereoSamples = new short[32];
+    stereoSamples[16] = short.MaxValue;
+    stereoSamples[17] = short.MaxValue / 4;
+    WriteTestPcm16Wave(stereoPath, sampleRate, 2, stereoSamples);
+    StoredMicrophoneRecording stereoRecording = PlaybackRecording(stereoPath, 16, sampleRate, 2);
+    Pcm16WaveInfo stereoWave = Pcm16WaveFile.ReadAndValidate(stereoRecording);
+    Pcm16LimiterEnvelope stereoEnvelope = Pcm16WaveAnalyzer.Analyze(
+      stereoRecording,
+      stereoWave,
+      System.Threading.CancellationToken.None
+    );
+    Assert(
+      stereoEnvelope.RequiredLimiterGain(8, 10f) < 0.1f,
+      "Limiter did not link channels using the loudest channel."
+    );
+
+    using var cancelled = new System.Threading.CancellationTokenSource();
+    cancelled.Cancel();
+    AssertThrows<OperationCanceledException>(
+      () => Pcm16WaveAnalyzer.Analyze(recording, wave, cancelled.Token),
+      "Cancelled limiter analysis completed."
+    );
+  }
+
   private static void TestReplayMicrophoneClock()
   {
+    Assert(
+      ReplayMicrophoneClock.ApplyLatencyCorrection(-1_000_000L, 100_000L) == -1_100_000L,
+      "Positive microphone latency did not advance playback."
+    );
+    Assert(
+      ReplayMicrophoneClock.ApplyLatencyCorrection(-1_000_000L, -100_000L) == -900_000L,
+      "Negative microphone latency did not delay playback."
+    );
     Assert(ReplayMicrophoneClock.ToFrame(500_000, 1d, 0L, 48000, 100000) == 24000, "100% mic clock is wrong.");
     Assert(ReplayMicrophoneClock.ToFrame(500_000, 2d, 0L, 48000, 100000) == 12000, "Pitched mic clock is wrong.");
     Assert(
@@ -286,6 +518,18 @@ internal static class Program
     Assert(legacy.MicrophoneOffsetMs == 0, "Legacy calibration offset default is incorrect.");
     Assert(legacy.MicrophoneVolumeDb == 0, "Legacy calibration volume default is incorrect.");
 
+    string offsetPath = Path.Combine(root, "legacy-offset-settings.json");
+    File.WriteAllText(offsetPath, "{\"Setting\":{\"MicrophoneOffsetMs\":-80}}");
+    TUFReplaySetting migratedOffset = TUFReplaySetting.Load(offsetPath);
+    Assert(migratedOffset.MicrophoneOffsetMs == 80, "Legacy microphone offset sign was not migrated.");
+    Assert(
+      migratedOffset.MicrophoneOffsetConventionVersion
+        == TUFReplaySetting.CurrentMicrophoneOffsetConventionVersion,
+      "Microphone offset convention version was not migrated."
+    );
+    migratedOffset.Save(offsetPath);
+    Assert(TUFReplaySetting.Load(offsetPath).MicrophoneOffsetMs == 80, "Microphone offset sign migrated twice.");
+
     string percentPath = Path.Combine(root, "percent-settings.json");
     File.WriteAllText(percentPath, "{\"Setting\":{\"MicrophoneVolumePercent\":200}}");
     Assert(TUFReplaySetting.Load(percentPath).MicrophoneVolumeDb == 6, "Legacy percent volume was not migrated.");
@@ -309,6 +553,28 @@ internal static class Program
 
   private static void TestCalibrationWaveforms(string root)
   {
+    float[] inputs = CalibrationWaveformBuilder.FromInputEvents(
+      new List<RecordedInput>
+      {
+        new RecordedInput(-50_000L, 1, RecordInputFlags.Down | RecordInputFlags.Async),
+        new RecordedInput(250_000L, 1, RecordInputFlags.Down | RecordInputFlags.Async),
+        new RecordedInput(260_000L, 1, RecordInputFlags.Async),
+      },
+      1000d
+    );
+    Assert(inputs[CalibrationWaveformBuilder.BinCount / 4] == 1f, "Input waveform missed a key-down timestamp.");
+    Assert(inputs[0] == 0f, "Input waveform included a countdown key press.");
+    Assert(CalibrationWaveformBuilder.HasSignal(inputs), "Input waveform signal detection failed.");
+    Assert(
+      !CalibrationWaveformBuilder.HasSignal(
+        CalibrationWaveformBuilder.FromInputEvents(
+          new List<RecordedInput> { new RecordedInput(250_000L, 1, RecordInputFlags.Async) },
+          1000d
+        )
+      ),
+      "Input waveform included a key-up timestamp."
+    );
+
     string path = Path.Combine(root, "calibration-waveform.wav");
     using (var writer = new Pcm16WavWriter(path))
     {
@@ -345,8 +611,7 @@ internal static class Program
       "Game waveform peak normalization is wrong."
     );
     Assert(
-      game[CalibrationWaveformBuilder.BinCount / 2] > 0.99f
-        && game[CalibrationWaveformBuilder.BinCount * 4 / 5] == 0f,
+      game[CalibrationWaveformBuilder.BinCount / 2] > 0.99f && game[CalibrationWaveformBuilder.BinCount * 4 / 5] == 0f,
       "Game waveform timing aggregation is wrong."
     );
 
@@ -366,21 +631,25 @@ internal static class Program
     CalibrationReferenceWaveform reference = CalibrationReferenceWaveform.Read(referencePath);
     float[] referenceSong = CalibrationWaveformBuilder.FromReferenceWaveform(reference, 1, 1000, 3d);
     Assert(referenceSong[0] > 0.49f, "Reference song waveform did not apply its source start frame.");
+    Assert(referenceSong[CalibrationWaveformBuilder.BinCount / 3] > 0.99f, "Reference song waveform timing is wrong.");
+    float[] scheduledSong = CalibrationWaveformBuilder.FromReferenceWaveform(reference, -1, 1000, 5d);
+    Assert(scheduledSong[0] == 0f, "Scheduled song waveform did not preserve leading silence.");
     Assert(
-      referenceSong[CalibrationWaveformBuilder.BinCount / 3] > 0.99f,
-      "Reference song waveform timing is wrong."
+      scheduledSong[CalibrationWaveformBuilder.BinCount * 2 / 5] > 0.49f
+        && scheduledSong[CalibrationWaveformBuilder.BinCount * 3 / 5] > 0.99f,
+      "Scheduled song waveform did not shift source peaks onto the gameplay timeline."
     );
     Assert(
-      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, 0.1d, 2d, 1000, false) == 1400,
-      "Modern conductor input offset was not applied to the song reference."
+      CalibrationWaveformBuilder.SourceFrameAtDspTime(9.5d, 8d, true, 0.5d, 4d, 1d, 1000) == -500,
+      "Scheduled calibration audio did not preserve its leading silence."
     );
     Assert(
-      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, -0.1d, 2d, 1000, false) == 1000,
-      "Negative input offset moved the song reference in the wrong direction."
+      CalibrationWaveformBuilder.SourceFrameAtDspTime(10d, 8d, true, 0.5d, 4d, 1d, 1000) == 0,
+      "Scheduled calibration audio did not start at source frame zero."
     );
     Assert(
-      CalibrationWaveformBuilder.ReferenceStartFrame(1d, 0.2d, 0.1d, 2d, 1000, true) == 1200,
-      "Legacy conductor input offset was not applied to the song reference."
+      CalibrationWaveformBuilder.SourceFrameAtDspTime(10d, 8d, false, 0.5d, 4d, 2d, 1000) == 4000,
+      "Pitched source frame calculation is wrong."
     );
   }
 
@@ -396,6 +665,13 @@ internal static class Program
       Assert(Convert.ToInt32(version.ExecuteScalar()) == 11, "Fresh schema version is not 11.");
       InsertRun(connection);
     }
+
+    StoredReplayRun replayRun = RunRepository.GetReplayRun("run");
+    Assert(
+      replayRun?.JudgmentDifficulty == RunJudgmentDifficulty.Normal,
+      "Replay run did not preserve its judgment difficulty."
+    );
+    Assert(replayRun.NoFailMode, "Replay run did not preserve its No-Fail mode.");
 
     string wavPath = Path.Combine(root, "blob.wav.save-pending");
     using (var writer = new Pcm16WavWriter(wavPath))
@@ -554,8 +830,7 @@ PRAGMA user_version=9;";
     }
     ActivitySchema.Ensure(retentionMigration);
     using SqliteCommand retention = retentionMigration.CreateCommand();
-    retention.CommandText =
-      "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
+    retention.CommandText = "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
     using SqliteDataReader retentionReader = retention.ExecuteReader();
     Assert(retentionReader.Read(), "Legacy microphone recording was lost during retention migration.");
     Assert(
@@ -576,6 +851,89 @@ PRAGMA user_version=9;";
     File.WriteAllText(path, "{\"angleData\":[0,180]}");
     Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] changed), "Changed level file hash failed.");
     Assert(!AdofaiLevelFileHash.Equals(first, changed), "Changed level file was treated as identical.");
+  }
+
+  private static void TestRunDeletionHierarchy(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "run-deletion.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand seed = connection.CreateCommand();
+      seed.CommandText =
+        @"
+INSERT INTO app_sessions(id,started_at_utc,ended_at_utc,recorder_utc_offset_minutes)
+VALUES('closed-app','2026-01-01','2026-01-02',0),('open-app','2026-01-03',NULL,0);
+INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc)
+VALUES('closed-logical','closed','2026-01-01','2026-01-02'),('open-logical','open','2026-01-03','2026-01-03');
+INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc,closed_at_utc)
+VALUES('closed-level','closed-logical','closed-app','closed.adofai','2026-01-01','2026-01-02'),
+      ('open-level','open-logical','open-app','open.adofai','2026-01-03',NULL);
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
+VALUES('closed-run-1','closed-level',0,'2026-01-01',0,'clear'),
+      ('closed-run-2','closed-level',1,'2026-01-01',0,'clear'),
+      ('open-run','open-level',0,'2026-01-03',0,'clear');
+INSERT INTO microphone_recordings(
+  run_id,audio_wav,format,sample_rate,channels,frame_count,capture_start_offset_us,is_permanent
+) VALUES('closed-run-1',X'00','wav/pcm16',48000,1,1,0,1);";
+      seed.ExecuteNonQuery();
+    }
+
+    Assert(!RunRepository.Delete("missing-run"), "Missing run deletion succeeded.");
+    Assert(RunRepository.Delete("closed-run-1"), "Existing run was not deleted.");
+    Assert(!RunRepository.Exists("closed-run-1"), "Deleted run remained in the database.");
+    Assert(RunRepository.Exists("closed-run-2"), "Sibling run was deleted.");
+    Assert(CountRows("microphone_recordings") == 0, "Run deletion did not cascade to its microphone recording.");
+    Assert(CountRows("level_sessions", "id='closed-level'") == 1, "Non-empty level session was pruned.");
+
+    Assert(RunRepository.Delete("closed-run-2"), "Last closed-session run was not deleted.");
+    Assert(CountRows("level_sessions", "id='closed-level'") == 0, "Empty closed level session remained.");
+    Assert(CountRows("logical_levels", "id='closed-logical'") == 0, "Orphan logical level remained.");
+    Assert(CountRows("app_sessions", "id='closed-app'") == 0, "Empty closed app session remained.");
+
+    Assert(RunRepository.Delete("open-run"), "Open-session run was not deleted.");
+    Assert(CountRows("level_sessions", "id='open-level'") == 1, "Open level session was pruned.");
+    Assert(CountRows("logical_levels", "id='open-logical'") == 1, "Open logical level was pruned.");
+    Assert(CountRows("app_sessions", "id='open-app'") == 1, "Open app session was pruned.");
+  }
+
+  private static int CountRows(string table, string where = "1=1")
+  {
+    using SqliteConnection connection = Database.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT count(*) FROM " + table + " WHERE " + where;
+    return Convert.ToInt32(command.ExecuteScalar());
+  }
+
+  private static void TestLogicalRunSessionFilter(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "logical-run-filter.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand seed = connection.CreateCommand();
+      seed.CommandText =
+        @"
+INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes)
+VALUES('day-a','2026-01-01',0),('day-b','2026-01-02',0);
+INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc)
+VALUES('shared-logical','shared','2026-01-01','2026-01-02');
+INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc)
+VALUES('level-a','shared-logical','day-a','shared.adofai','2026-01-01'),
+      ('level-b','shared-logical','day-b','shared.adofai','2026-01-02');
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
+VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
+      ('run-b','level-b',0,'2026-01-02',0,'clear');";
+      seed.ExecuteNonQuery();
+    }
+
+    List<RunRecord> firstDay = RunRepository.ListByLogicalLevel(
+      "shared-logical",
+      new List<string> { "day-a" },
+      0,
+      200
+    );
+    Assert(firstDay.Count == 1 && firstDay[0].Id == "run-a", "Logical run query crossed day sessions.");
   }
 
   private static void TestLogicalLevelIdentity(string root)
@@ -599,7 +957,13 @@ PRAGMA user_version=9;";
     Assert(gameplayA.LogicalLevelId == gameplayB.LogicalLevelId, "Equal gameplay hashes were not merged.");
 
     LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[16], new byte[] { 3 });
-    LevelSession tufB = LogicalVisit("tuf-b", "/tmp/tuf-b.adofai", 77, Enumerable.Repeat((byte)9, 16).ToArray(), new byte[] { 4 });
+    LevelSession tufB = LogicalVisit(
+      "tuf-b",
+      "/tmp/tuf-b.adofai",
+      77,
+      Enumerable.Repeat((byte)9, 16).ToArray(),
+      new byte[] { 4 }
+    );
     LevelSessionRepository.Save(tufA);
     LevelSessionRepository.Save(tufB);
     Assert(tufA.LogicalLevelId == tufB.LogicalLevelId, "Equal TUF IDs were not merged after chart updates.");
@@ -643,7 +1007,7 @@ PRAGMA user_version=9;";
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01',0);
 INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test','2026-01-01','2026-01-01');
 INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc) VALUES('level','logical','app','test.adofai','2026-01-01');
-INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result) VALUES('run','level',0,'2026-01-01',0,'cleared');";
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,judgment_difficulty,no_fail_mode) VALUES('run','level',0,'2026-01-01',0,'cleared',1,1);";
     command.ExecuteNonQuery();
   }
 
@@ -673,19 +1037,45 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
     throw new InvalidOperationException(message);
   }
 
-  private static StoredMicrophoneRecording PlaybackRecording(string path, long frameCount)
+  private static StoredMicrophoneRecording PlaybackRecording(
+    string path,
+    long frameCount,
+    int sampleRate = 48000,
+    int channels = 1
+  )
   {
     return new StoredMicrophoneRecording
     {
       RunId = "test-run",
       FilePath = path,
       Format = "wav/pcm16",
-      SampleRate = 48000,
-      Channels = 1,
+      SampleRate = sampleRate,
+      Channels = channels,
       FrameCount = frameCount,
       CaptureStartOffsetUs = 0L,
       ByteLength = new FileInfo(path).Length,
     };
+  }
+
+  private static void WriteTestPcm16Wave(string path, int sampleRate, short channels, short[] samples)
+  {
+    using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+    using var writer = new BinaryWriter(stream);
+    int dataLength = samples.Length * 2;
+    writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+    writer.Write(36 + dataLength);
+    writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+    writer.Write(16);
+    writer.Write((short)1);
+    writer.Write(channels);
+    writer.Write(sampleRate);
+    writer.Write(sampleRate * channels * 2);
+    writer.Write((short)(channels * 2));
+    writer.Write((short)16);
+    writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+    writer.Write(dataLength);
+    foreach (short sample in samples)
+      writer.Write(sample);
   }
 
   private sealed class CapturingEmitter : INativeInputEmitter

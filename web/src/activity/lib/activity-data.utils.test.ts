@@ -113,4 +113,17 @@ describe("activity data", () => {
     expect(day.levelSessions[0]).toMatchObject({ Id: "logical-7", VisitCount: 2, RunCount: 5 });
     expect(day.runCount).toBe(5);
   });
+
+  test("keeps the same logical level's summary scoped to each day", () => {
+    const first = session("app-a", "2026-01-01T01:00:00Z");
+    const second = session("app-b", "2026-01-02T01:00:00Z");
+    first.LevelSessions = [visit("visit-a", "logical-7", first.Id, first.StartedAtUtc, 2)];
+    second.LevelSessions = [visit("visit-b", "logical-7", second.Id, second.StartedAtUtc, 5)];
+
+    const days = groupSessionsByDay([first, second], "UTC");
+    expect(days.map((day) => [day.date, day.levelSessions[0].RunCount])).toEqual([
+      ["2026-01-02", 5],
+      ["2026-01-01", 2],
+    ]);
+  });
 });

@@ -120,8 +120,8 @@ export class MockMicrophoneOffsetAudioPlayer {
     destinationTime: number,
   ) {
     if (!this.microphoneBuffer || !this.microphoneGain) return;
-    const offsetSeconds = offsetMs / 1_000;
-    let sourcePositionSeconds = timelinePositionSeconds - offsetSeconds;
+    const latencySeconds = offsetMs / 1_000;
+    let sourcePositionSeconds = timelinePositionSeconds + latencySeconds;
     let startAt = destinationTime;
     if (sourcePositionSeconds < 0) {
       startAt += -sourcePositionSeconds;
