@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -6,6 +7,7 @@ using System.Threading.Tasks;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Unity;
+using UnityEngine;
 using UnityFileDialog;
 
 namespace TUFReplay.Application.Export;
@@ -105,6 +107,12 @@ public static class RunExportCoordinator
     if (!IsCurrent(operation))
       return;
 
+    if (UnityEngine.Application.platform == RuntimePlatform.OSXPlayer)
+    {
+      ThreadPool.QueueUserWorkItem(_ => SaveOnMac(operation));
+      return;
+    }
+
     string selectedPath;
     try
     {
@@ -135,6 +143,80 @@ public static class RunExportCoordinator
 
     string destinationPath = EnsureExtension(selectedPath);
     _ = Task.Run(() => WriteArchive(operation, destinationPath));
+  }
+
+  private static void SaveOnMac(ExportOperation operation)
+  {
+    string selectedPath = null;
+    string error = null;
+    bool cancelled = false;
+    CancellationToken cancellationToken = operation.Cancellation.Token;
+    try
+    {
+      using var process = new Process
+      {
+        StartInfo = new ProcessStartInfo
+        {
+          FileName = "/usr/bin/osascript",
+          Arguments =
+            "-e \"POSIX path of (choose file name with prompt \\\"Export TUFReplay run\\\" default name (system attribute \\\"TUFREPLAY_EXPORT_FILE_NAME\\\"))\"",
+          UseShellExecute = false,
+          RedirectStandardOutput = true,
+          RedirectStandardError = true,
+          CreateNoWindow = true,
+        },
+      };
+      process.StartInfo.EnvironmentVariables["TUFREPLAY_EXPORT_FILE_NAME"] = DefaultFileName(
+        operation.Run,
+        operation.Level
+      );
+      using CancellationTokenRegistration registration = cancellationToken.Register(() =>
+      {
+        try
+        {
+          if (!process.HasExited)
+            process.Kill();
+        }
+        catch { }
+      });
+
+      cancellationToken.ThrowIfCancellationRequested();
+      process.Start();
+      string output = process.StandardOutput.ReadToEnd();
+      string standardError = process.StandardError.ReadToEnd();
+      process.WaitForExit();
+      cancellationToken.ThrowIfCancellationRequested();
+      if (process.ExitCode == 0 && !string.IsNullOrWhiteSpace(output))
+        selectedPath = output.Trim();
+      else if (standardError.Contains("(-128)"))
+        cancelled = true;
+      else
+        error = "The macOS save dialog failed.";
+    }
+    catch (OperationCanceledException)
+    {
+      return;
+    }
+    catch (Exception exception)
+    {
+      error = "The macOS save dialog failed: " + exception.GetType().Name;
+    }
+
+    if (!IsCurrent(operation))
+      return;
+    if (error != null)
+    {
+      Main.Instance?.Log("[Export] " + error);
+      Complete(operation, Error(operation.Run.Id, "export_failed", error));
+      return;
+    }
+    if (cancelled || string.IsNullOrWhiteSpace(selectedPath))
+    {
+      Complete(operation, Cancelled(operation.Run.Id));
+      return;
+    }
+
+    WriteArchive(operation, EnsureExtension(selectedPath));
   }
 
   private static void WriteArchive(ExportOperation operation, string destinationPath)
@@ -241,6 +323,13 @@ public static class RunExportCoordinator
       Outcome = RunExportOutcomes.Error,
       ErrorCode = code,
       Message = message,
+    };
+
+  private static RunExportResult Cancelled(string runId) =>
+    new RunExportResult
+    {
+      RunId = runId,
+      Outcome = RunExportOutcomes.Cancelled,
     };
 
   private static void DeleteIfExists(string path)
