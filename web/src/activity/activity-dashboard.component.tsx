@@ -30,6 +30,10 @@ export function ActivityDashboard() {
     [activity.sessions, timeZone],
   );
   const selectedDay = days.find((day) => day.date === selectedDate) ?? days[0] ?? null;
+  const selectedAppSessionIds = useMemo(
+    () => selectedDay?.appSessions.map((session) => session.Id) ?? [],
+    [selectedDay],
+  );
   const levelSessions = selectedDay?.levelSessions ?? [];
   const selectedLevel =
     levelSessions.find((session) => session.Id === selectedLevelSessionId) ??
@@ -37,6 +41,7 @@ export function ActivityDashboard() {
     null;
   const levelData = useLevelSessionData(
     selectedLevel?.Id ?? null,
+    selectedAppSessionIds,
     selectedLevel?.ChartAvailable ?? false,
     selectedLevel?.RunCount ?? 0,
     activity.gatewayRef,
@@ -143,6 +148,18 @@ export function ActivityDashboard() {
       MicrophoneRecordingExpiresAtUtc: null,
     });
   };
+  const handleDeleteRun = async (run: ActivityRun) => {
+    const gateway = activity.gatewayRef.current;
+    if (!gateway) throw new Error("TUFReplay is not connected");
+    await gateway.deleteRun(run.Id);
+    levelData.removeRun(run.Id);
+    setSelectedRunId((current) => (current === run.Id ? null : current));
+    if (replayChoiceRun?.Id === run.Id) {
+      clearLevelFilePicker();
+      setReplayChoiceRun(null);
+    }
+    await activity.retry();
+  };
   return (
     <>
       <main className="h-screen overflow-hidden bg-background text-foreground">
@@ -193,6 +210,7 @@ export function ActivityDashboard() {
                 onSelectMarker={handleMarker}
                 onSelectRun={handleRun}
                 onPlayReplay={setReplayChoiceRun}
+                onDeleteRun={handleDeleteRun}
                 onDeleteMicrophoneRecording={handleDeleteMicrophoneRecording}
                 onKeepMicrophoneRecording={handleKeepMicrophoneRecording}
               />

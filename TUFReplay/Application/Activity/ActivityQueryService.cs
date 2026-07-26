@@ -64,12 +64,18 @@ public static class ActivityQueryService
   public static LogicalLevelOverview GetLogicalLevelOverview(string id) =>
     ActivityRepository.GetLogicalLevelOverview(id);
 
-  public static bool TryListRunsByLogicalLevel(string id, int offset, int limit, out List<RunRecord> runs)
+  public static bool TryListRunsByLogicalLevel(
+    string id,
+    List<string> appSessionIds,
+    int offset,
+    int limit,
+    out List<RunRecord> runs
+  )
   {
     runs = null;
     if (!LogicalLevelRepository.Exists(id))
       return false;
-    runs = RunRepository.ListByLogicalLevel(id, offset, limit);
+    runs = RunRepository.ListByLogicalLevel(id, appSessionIds, offset, limit);
     return true;
   }
 

@@ -2,7 +2,10 @@ using System;
 using System.Collections.Generic;
 using AdofaiIpc.Core;
 using TUFReplay.Application.Activity;
+using TUFReplay.Application.Replay;
+using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Activity;
+using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Ipc.Dtos;
 
 namespace TUFReplay.Features.Ipc;
@@ -93,9 +96,17 @@ public static class ActivityIpcHandlers
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
+    if (!IpcParams.TryRequiredStringArray(request, "appSessionIds", out List<string> appSessionIds))
+      return IpcDomainError.Create("invalid_app_session_ids", "appSessionIds must be a non-empty string array.");
     IpcPagination pagination = IpcPagination.Parse(request);
     if (
-      !ActivityQueryService.TryListRunsByLogicalLevel(id, pagination.Offset, pagination.Limit, out List<RunRecord> runs)
+      !ActivityQueryService.TryListRunsByLogicalLevel(
+        id,
+        appSessionIds,
+        pagination.Offset,
+        pagination.Limit,
+        out List<RunRecord> runs
+      )
     )
       return IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
     var output = new List<ActivityRunDto>(runs.Count);
@@ -126,6 +137,37 @@ public static class ActivityIpcHandlers
     {
       Main.Instance?.Log("[IPC] Logical level chart read failed: " + exception.GetType().Name);
       return IpcDomainError.Create("chart_read_failed", "The recorded chart could not be read.");
+    }
+  }
+
+  public static object DeleteRun(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
+      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    if (!RunRepository.Exists(runId))
+      return IpcDomainError.Create("run_not_found", "Run was not found.");
+
+    ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.GetStatus();
+    if (ReplayPlaybackCoordinator.IsBusy && replayStatus.RunId == runId)
+      return IpcDomainError.Create("run_in_use", "Stop this replay before deleting its run.");
+
+    FeatureRegistry.MicrophoneRecording?.BeginRunDeletion(runId);
+    try
+    {
+      if (!RunRepository.Delete(runId))
+      {
+        FeatureRegistry.MicrophoneRecording?.CancelRunDeletion(runId);
+        return IpcDomainError.Create("run_not_found", "Run was not found.");
+      }
+
+      FeatureRegistry.MicrophoneRecording?.CompleteRunDeletion(runId);
+      return new ActivityRunDeleteResultDto { RunId = runId, Deleted = true };
+    }
+    catch (Exception exception)
+    {
+      FeatureRegistry.MicrophoneRecording?.CancelRunDeletion(runId);
+      Main.Instance?.Log("[IPC] Run deletion failed: " + exception.GetType().Name);
+      return IpcDomainError.Create("run_delete_failed", "The run could not be deleted.");
     }
   }
 

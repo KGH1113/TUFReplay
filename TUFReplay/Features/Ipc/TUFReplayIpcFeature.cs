@@ -38,6 +38,7 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("activity.logical-level.get", ActivityIpcHandlers.GetLogicalLevel);
     ipc.Register("activity.logical-level.runs.list", ActivityIpcHandlers.ListLogicalLevelRuns);
     ipc.Register("activity.logical-level.chart.get", ActivityIpcHandlers.GetLogicalLevelChart);
+    ipc.Register("activity.run.delete", ActivityIpcHandlers.DeleteRun);
     ipc.Register("microphone.recording.delete", MicrophoneRecordingIpcHandlers.Delete);
     ipc.Register("microphone.recording.keep", MicrophoneRecordingIpcHandlers.KeepPermanently);
     ipc.Register("replay.play", ReplayIpcHandlers.Play);

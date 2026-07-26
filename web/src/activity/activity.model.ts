@@ -80,6 +80,11 @@ export interface MicrophoneRecordingDeleteResult {
   Deleted: boolean;
 }
 
+export interface ActivityRunDeleteResult {
+  RunId: string;
+  Deleted: boolean;
+}
+
 export interface MicrophoneRecordingKeepResult {
   RunId: string;
   Permanent: boolean;

@@ -6,6 +6,7 @@ import type {
   ActivityLevelSessionOverview,
   ActivityLogicalLevelOverview,
   ActivityRun,
+  ActivityRunDeleteResult,
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
@@ -45,10 +46,12 @@ export interface ActivityGateway {
   listAllRuns(id: string, onPage?: (items: ActivityRun[]) => void): Promise<ActivityRun[]>;
   listAllLogicalLevelRuns(
     id: string,
+    appSessionIds: string[],
     onPage?: (items: ActivityRun[]) => void,
   ): Promise<ActivityRun[]>;
   getChart(id: string): Promise<ActivityChart>;
   getLogicalLevelChart(id: string): Promise<ActivityChart>;
+  deleteRun(runId: string): Promise<ActivityRunDeleteResult>;
   deleteMicrophoneRecording(runId: string): Promise<MicrophoneRecordingDeleteResult>;
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
@@ -116,17 +119,19 @@ export function createActivityGateway(
         onPage,
       ),
     getChart: (id) => callDomain(namespace, "activity.level-session.chart.get", { id }),
-    listAllLogicalLevelRuns: (id, onPage) =>
+    listAllLogicalLevelRuns: (id, appSessionIds, onPage) =>
       loadAllPages<ActivityRun>(
         (offset, limit) =>
           callDomain<ActivityRun[]>(namespace, "activity.logical-level.runs.list", {
             id,
+            appSessionIds,
             offset,
             limit,
           }),
         onPage,
       ),
     getLogicalLevelChart: (id) => callDomain(namespace, "activity.logical-level.chart.get", { id }),
+    deleteRun: (runId) => callDomain(namespace, "activity.run.delete", { runId }),
     deleteMicrophoneRecording: (runId) =>
       callDomain(namespace, "microphone.recording.delete", { runId }),
     keepMicrophoneRecording: (runId) =>

@@ -46,13 +46,18 @@ describe("activity IPC contract", () => {
     };
     const gateway = createActivityGateway(namespace as never);
     await gateway.getLogicalLevel("logical-1");
-    await gateway.listAllLogicalLevelRuns("logical-1");
+    await gateway.listAllLogicalLevelRuns("logical-1", ["app-1", "app-2"]);
     await gateway.getLogicalLevelChart("logical-1");
     expect(calls).toEqual([
       { method: "activity.logical-level.get", params: { id: "logical-1" } },
       {
         method: "activity.logical-level.runs.list",
-        params: { id: "logical-1", offset: 0, limit: 200 },
+        params: {
+          id: "logical-1",
+          appSessionIds: ["app-1", "app-2"],
+          offset: 0,
+          limit: 200,
+        },
       },
       { method: "activity.logical-level.chart.get", params: { id: "logical-1" } },
     ]);
@@ -73,6 +78,20 @@ describe("activity IPC contract", () => {
       Deleted: true,
     });
     expect(calls).toEqual([{ method: "microphone.recording.delete", params: { runId: "run-7" } }]);
+  });
+
+  test("deletes a run with the exact command and params", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return { RunId: "run-9", Deleted: true };
+      },
+    };
+    const gateway = createActivityGateway(namespace as never);
+
+    expect(await gateway.deleteRun("run-9")).toEqual({ RunId: "run-9", Deleted: true });
+    expect(calls).toEqual([{ method: "activity.run.delete", params: { runId: "run-9" } }]);
   });
 
   test("keeps a microphone recording permanently with the exact command and params", async () => {

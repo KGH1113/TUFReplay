@@ -33,6 +33,8 @@ internal static class Program
       TestCalibrationWaveforms(root);
       TestAdofaiLevelFileHash(root);
       TestSchemaMigrationAndBlob(root);
+      TestRunDeletionHierarchy(root);
+      TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
       TestReplayNoFailPolicy();
@@ -765,6 +767,89 @@ PRAGMA user_version=9;";
     File.WriteAllText(path, "{\"angleData\":[0,180]}");
     Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] changed), "Changed level file hash failed.");
     Assert(!AdofaiLevelFileHash.Equals(first, changed), "Changed level file was treated as identical.");
+  }
+
+  private static void TestRunDeletionHierarchy(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "run-deletion.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand seed = connection.CreateCommand();
+      seed.CommandText =
+        @"
+INSERT INTO app_sessions(id,started_at_utc,ended_at_utc,recorder_utc_offset_minutes)
+VALUES('closed-app','2026-01-01','2026-01-02',0),('open-app','2026-01-03',NULL,0);
+INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc)
+VALUES('closed-logical','closed','2026-01-01','2026-01-02'),('open-logical','open','2026-01-03','2026-01-03');
+INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc,closed_at_utc)
+VALUES('closed-level','closed-logical','closed-app','closed.adofai','2026-01-01','2026-01-02'),
+      ('open-level','open-logical','open-app','open.adofai','2026-01-03',NULL);
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
+VALUES('closed-run-1','closed-level',0,'2026-01-01',0,'clear'),
+      ('closed-run-2','closed-level',1,'2026-01-01',0,'clear'),
+      ('open-run','open-level',0,'2026-01-03',0,'clear');
+INSERT INTO microphone_recordings(
+  run_id,audio_wav,format,sample_rate,channels,frame_count,capture_start_offset_us,is_permanent
+) VALUES('closed-run-1',X'00','wav/pcm16',48000,1,1,0,1);";
+      seed.ExecuteNonQuery();
+    }
+
+    Assert(!RunRepository.Delete("missing-run"), "Missing run deletion succeeded.");
+    Assert(RunRepository.Delete("closed-run-1"), "Existing run was not deleted.");
+    Assert(!RunRepository.Exists("closed-run-1"), "Deleted run remained in the database.");
+    Assert(RunRepository.Exists("closed-run-2"), "Sibling run was deleted.");
+    Assert(CountRows("microphone_recordings") == 0, "Run deletion did not cascade to its microphone recording.");
+    Assert(CountRows("level_sessions", "id='closed-level'") == 1, "Non-empty level session was pruned.");
+
+    Assert(RunRepository.Delete("closed-run-2"), "Last closed-session run was not deleted.");
+    Assert(CountRows("level_sessions", "id='closed-level'") == 0, "Empty closed level session remained.");
+    Assert(CountRows("logical_levels", "id='closed-logical'") == 0, "Orphan logical level remained.");
+    Assert(CountRows("app_sessions", "id='closed-app'") == 0, "Empty closed app session remained.");
+
+    Assert(RunRepository.Delete("open-run"), "Open-session run was not deleted.");
+    Assert(CountRows("level_sessions", "id='open-level'") == 1, "Open level session was pruned.");
+    Assert(CountRows("logical_levels", "id='open-logical'") == 1, "Open logical level was pruned.");
+    Assert(CountRows("app_sessions", "id='open-app'") == 1, "Open app session was pruned.");
+  }
+
+  private static int CountRows(string table, string where = "1=1")
+  {
+    using SqliteConnection connection = Database.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT count(*) FROM " + table + " WHERE " + where;
+    return Convert.ToInt32(command.ExecuteScalar());
+  }
+
+  private static void TestLogicalRunSessionFilter(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "logical-run-filter.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand seed = connection.CreateCommand();
+      seed.CommandText =
+        @"
+INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes)
+VALUES('day-a','2026-01-01',0),('day-b','2026-01-02',0);
+INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc)
+VALUES('shared-logical','shared','2026-01-01','2026-01-02');
+INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc)
+VALUES('level-a','shared-logical','day-a','shared.adofai','2026-01-01'),
+      ('level-b','shared-logical','day-b','shared.adofai','2026-01-02');
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
+VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
+      ('run-b','level-b',0,'2026-01-02',0,'clear');";
+      seed.ExecuteNonQuery();
+    }
+
+    List<RunRecord> firstDay = RunRepository.ListByLogicalLevel(
+      "shared-logical",
+      new List<string> { "day-a" },
+      0,
+      200
+    );
+    Assert(firstDay.Count == 1 && firstDay[0].Id == "run-a", "Logical run query crossed day sessions.");
   }
 
   private static void TestLogicalLevelIdentity(string root)

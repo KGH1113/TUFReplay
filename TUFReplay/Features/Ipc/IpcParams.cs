@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using AdofaiIpc.Core;
 using Newtonsoft.Json.Linq;
 
@@ -18,6 +19,26 @@ public static class IpcParams
 
     value = parsed.Trim();
     return true;
+  }
+
+  public static bool TryRequiredStringArray(IpcRequest request, string name, out List<string> values)
+  {
+    values = null;
+    JToken token = GetToken(request, name);
+    if (!(token is JArray array) || array.Count == 0)
+      return false;
+
+    var parsed = new List<string>(array.Count);
+    foreach (JToken item in array)
+    {
+      if (item.Type != JTokenType.String || string.IsNullOrWhiteSpace(item.Value<string>()))
+        return false;
+      string value = item.Value<string>().Trim();
+      if (!parsed.Contains(value))
+        parsed.Add(value);
+    }
+    values = parsed;
+    return values.Count > 0;
   }
 
   public static string OptionalString(IpcRequest request, string name)
