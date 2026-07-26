@@ -20,6 +20,15 @@ import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
 const FILE_PICKER_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+export const SUPPORTED_PROTOCOL_VERSION = 1;
+
+export interface ActivityHealth {
+  Ok: boolean;
+  Mod: string;
+  ModVersion: string;
+  ProtocolVersion: number;
+  ServerVersion: number;
+}
 
 interface DomainErrorPayload {
   error: {
@@ -38,8 +47,23 @@ export class ActivityDomainError extends Error {
   }
 }
 
+export class ActivityProtocolMismatchError extends Error {
+  constructor(
+    readonly expectedVersion: number,
+    readonly detectedVersion: number | null,
+    readonly modVersion: string | null,
+  ) {
+    const detected = detectedVersion === null ? "unknown" : String(detectedVersion);
+    const mod = modVersion ?? "unknown";
+    super(
+      `TUFReplay IPC protocol mismatch (expected ${expectedVersion}, detected ${detected}, mod ${mod}).`,
+    );
+    this.name = "ActivityProtocolMismatchError";
+  }
+}
+
 export interface ActivityGateway {
-  health(): Promise<unknown>;
+  health(): Promise<ActivityHealth>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   getLogicalLevel(id: string): Promise<ActivityLogicalLevelOverview>;
@@ -96,7 +120,7 @@ export function createActivityGateway(
   pickerNamespace: Pick<AdofaiIpcNamespaceClient, "call"> = namespace,
 ): ActivityGateway {
   return {
-    health: () => callDomain(namespace, "health.get", {}),
+    health: async () => validateActivityHealth(await callDomain(namespace, "health.get", {})),
     listAllAppSessions: (onPage) =>
       loadAllPages<ActivityAppSession>(
         (offset, limit) =>
@@ -195,4 +219,20 @@ function isDomainError(value: unknown): value is DomainErrorPayload {
       typeof (error as { code?: unknown }).code === "string" &&
       typeof (error as { message?: unknown }).message === "string",
   );
+}
+
+function validateActivityHealth(value: unknown): ActivityHealth {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  const detectedVersion =
+    record && Number.isInteger(record.ProtocolVersion) ? (record.ProtocolVersion as number) : null;
+  const modVersion = record && typeof record.ModVersion === "string" ? record.ModVersion : null;
+
+  if (detectedVersion !== SUPPORTED_PROTOCOL_VERSION)
+    throw new ActivityProtocolMismatchError(
+      SUPPORTED_PROTOCOL_VERSION,
+      detectedVersion,
+      modVersion,
+    );
+
+  return value as ActivityHealth;
 }

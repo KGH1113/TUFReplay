@@ -166,7 +166,7 @@ export interface LevelMetadata {
   source: "tuf" | "local" | "fallback";
 }
 
-export type ConnectionStatus = "connecting" | "online" | "error";
+export type ConnectionStatus = "connecting" | "online" | "incompatible" | "error";
 
 export interface MicrophoneDevice {
   Id: string;

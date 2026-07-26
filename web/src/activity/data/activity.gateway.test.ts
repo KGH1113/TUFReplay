@@ -7,9 +7,65 @@ import type {
   ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
-import { ActivityDomainError, createActivityGateway, loadAllPages } from "./activity.gateway";
+import {
+  ActivityDomainError,
+  ActivityProtocolMismatchError,
+  createActivityGateway,
+  loadAllPages,
+  SUPPORTED_PROTOCOL_VERSION,
+} from "./activity.gateway";
 
 describe("activity IPC contract", () => {
+  test("accepts the supported TUFReplay protocol version", async () => {
+    const health = {
+      Ok: true,
+      Mod: "TUFReplay",
+      ModVersion: "0.1.0",
+      ProtocolVersion: SUPPORTED_PROTOCOL_VERSION,
+      ServerVersion: 1,
+    };
+    const gateway = createActivityGateway({ call: async () => health } as never);
+
+    expect(await gateway.health()).toEqual(health);
+  });
+
+  test.each([
+    ["a different version", { ProtocolVersion: SUPPORTED_PROTOCOL_VERSION + 1 }],
+    ["a missing version", {}],
+    ["a non-integer version", { ProtocolVersion: "1" }],
+  ])("rejects %s as an incompatible TUFReplay protocol", async (_name, health) => {
+    const gateway = createActivityGateway({
+      call: async () => ({
+        Ok: true,
+        Mod: "TUFReplay",
+        ModVersion: "0.1.0",
+        ServerVersion: 1,
+        ...health,
+      }),
+    } as never);
+
+    expect(gateway.health()).rejects.toBeInstanceOf(ActivityProtocolMismatchError);
+  });
+
+  test("stops before loading activity when the protocol is incompatible", async () => {
+    const calls: string[] = [];
+    const gateway = createActivityGateway({
+      call: async (method: string) => {
+        calls.push(method);
+        if (method === "health.get") return { ProtocolVersion: 2, ModVersion: "0.2.0" };
+        return [];
+      },
+    } as never);
+
+    try {
+      await gateway.health();
+      await gateway.listAllAppSessions();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ActivityProtocolMismatchError);
+    }
+    expect(calls).toEqual(["health.get"]);
+  });
+
   test("paging consumes raw arrays and continues past 1000 until a short page", async () => {
     const source = Array.from({ length: 1_237 }, (_, index) => index);
     const offsets: number[] = [];
