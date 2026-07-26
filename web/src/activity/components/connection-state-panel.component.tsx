@@ -1,5 +1,6 @@
 import { Button } from "@/ui/button.component";
 import type { ConnectionStatus } from "../activity.model";
+import { getConnectionStatePanelCopy } from "./connection-state-panel.copy";
 
 export function ConnectionStatePanel({
   status,
@@ -11,6 +12,7 @@ export function ConnectionStatePanel({
   onRetry: () => void;
 }) {
   const connecting = status === "connecting";
+  const copy = getConnectionStatePanelCopy(status);
   return (
     <div className="grid flex-1 place-items-center px-6 py-10">
       <section className="w-full max-w-md" aria-live="polite">
@@ -22,17 +24,11 @@ export function ConnectionStatePanel({
             />
           </span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-heading text-lg font-semibold tracking-tight">
-              {connecting ? "Connecting to TUFReplay…" : "Waiting for TUFReplay"}
-            </h2>
-            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
-              {connecting
-                ? "Checking the local ADOFAI connection."
-                : "Open ADOFAI and make sure the mod is enabled."}
-            </p>
+            <h2 className="font-heading text-lg font-semibold tracking-tight">{copy.title}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{copy.description}</p>
             {!connecting ? (
               <Button className="mt-5" onClick={onRetry}>
-                Retry connection
+                {copy.retryLabel}
               </Button>
             ) : null}
           </div>
@@ -41,12 +37,12 @@ export function ConnectionStatePanel({
         <div className="mt-6 border-t border-border/70 pt-3 text-sm">
           <details className="group py-1.5">
             <summary className="cursor-pointer select-none text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground">
-              How to connect
+              {copy.guideLabel}
             </summary>
             <ol className="mt-2 space-y-1.5 pl-5 text-xs leading-relaxed text-muted-foreground">
-              <li>Start ADOFAI.</li>
-              <li>Enable TUFReplay in UnityModManager.</li>
-              <li>Make sure AdofaiIpc is running.</li>
+              {copy.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
             </ol>
           </details>
           <details className="group py-1.5">

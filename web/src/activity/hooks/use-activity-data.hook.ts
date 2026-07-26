@@ -1,7 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 
 import type { ActivityAppSession, ConnectionStatus } from "../activity.model";
-import { type ActivityGateway, connectActivityGateway } from "../data/activity.gateway";
+import {
+  type ActivityGateway,
+  ActivityProtocolMismatchError,
+  connectActivityGateway,
+} from "../data/activity.gateway";
 import { createMockActivityGateway } from "../mock/activity.mock";
 import { useVisiblePolling } from "./use-visible-polling.hook";
 
@@ -10,6 +14,10 @@ const mockActivityEnabled =
   (import.meta.env.VITE_USE_MOCK_ACTIVITY === "true" ||
     (typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("mock") === "1"));
+
+export function connectionStatusForError(cause: unknown): ConnectionStatus {
+  return cause instanceof ActivityProtocolMismatchError ? "incompatible" : "error";
+}
 
 export function useActivityData() {
   const gatewayRef = useRef<ActivityGateway | null>(null);
@@ -38,7 +46,7 @@ export function useActivityData() {
       }
     } catch (cause) {
       gatewayRef.current = null;
-      setStatus("error");
+      setStatus(connectionStatusForError(cause));
       setError(cause instanceof Error ? cause.message : "Could not connect to TUFReplay");
     } finally {
       loadingRef.current = false;

@@ -33,6 +33,7 @@ export function DashboardHeader({
             status === "online" && "border-primary/25 bg-primary/8 text-primary",
             status === "connecting" && "border-border bg-muted/40 text-muted-foreground",
             status === "error" && "border-amber-400/25 bg-amber-400/8 text-amber-300",
+            status === "incompatible" && "border-amber-400/25 bg-amber-400/8 text-amber-300",
           )}
         >
           <span
@@ -41,9 +42,15 @@ export function DashboardHeader({
               status === "connecting" && "animate-pulse",
             )}
           />
-          {status === "online" ? "Online" : status === "connecting" ? "Connecting" : "Offline"}
+          {status === "online"
+            ? "Online"
+            : status === "connecting"
+              ? "Connecting"
+              : status === "incompatible"
+                ? "Update required"
+                : "Offline"}
         </span>
-        {status === "error" ? (
+        {status === "error" || status === "incompatible" ? (
           <Button size="sm" variant="ghost" onClick={onRetry}>
             Retry connection
           </Button>

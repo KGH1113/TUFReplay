@@ -89,7 +89,13 @@ export function createMockActivityGateway(): ActivityGateway {
     MicrophoneVolumeDb: 0,
   };
   return {
-    health: async () => ({ Status: "mock" }),
+    health: async () => ({
+      Ok: true,
+      Mod: "TUFReplay",
+      ModVersion: "mock",
+      ProtocolVersion: 1,
+      ServerVersion: 1,
+    }),
     listAllAppSessions: async (onPage) => {
       onPage?.(appSessions);
       return appSessions;

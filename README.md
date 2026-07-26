@@ -250,6 +250,24 @@ Registered methods:
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
 
+`health.get` returns the TUFReplay namespace protocol and installed mod version:
+
+```json
+{
+  "Ok": true,
+  "Mod": "TUFReplay",
+  "ModVersion": "0.1.0-beta.5",
+  "ProtocolVersion": 1,
+  "ServerVersion": 1
+}
+```
+
+Web clients must compare `ProtocolVersion` with the protocol they support before calling other
+TUFReplay methods. A missing or different protocol version means the installed mod is incompatible.
+The companion web UI asks the user to fully quit and restart ADOFAI so the startup updater can install
+a compatible TUFReplay release. `ServerVersion` remains as a legacy compatibility field and is not the
+TUFReplay namespace protocol version.
+
 Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin song and microphone waveforms to the web editor. The precomputed song reference is aligned from ADOFAI's actual playback sample position on the recorded run timeline. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
 
 ## Tech Stack

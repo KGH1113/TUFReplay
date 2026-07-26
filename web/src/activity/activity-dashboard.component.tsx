@@ -179,7 +179,13 @@ export function ActivityDashboard() {
               metadataFor={metadataFor}
               onSelectLevelSession={handleLevel}
             />
-            {!selectedLevel ? (
+            {activity.status === "incompatible" ? (
+              <ConnectionStatePanel
+                status={activity.status}
+                error={activity.error}
+                onRetry={() => void activity.retry()}
+              />
+            ) : !selectedLevel ? (
               activity.status !== "online" ? (
                 <ConnectionStatePanel
                   status={activity.status}
