@@ -1,13 +1,53 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Domain.Microphone;
+using TUFReplay.Domain.ReplayData;
 
 namespace TUFReplay.Application.Calibration;
 
 public static class CalibrationWaveformBuilder
 {
   public const int BinCount = 2048;
+  private const int InputPulseRadiusBins = 3;
+
+  public static float[] FromInputEvents(IReadOnlyList<RecordedInput> inputs, double durationMs)
+  {
+    var result = new float[BinCount];
+    if (inputs == null || durationMs <= 0d)
+      return result;
+
+    double durationUs = durationMs * 1000d;
+    for (int inputIndex = 0; inputIndex < inputs.Count; inputIndex++)
+    {
+      RecordedInput input = inputs[inputIndex];
+      if (!input.Down || input.TimeUs < 0L || input.TimeUs >= durationUs)
+        continue;
+      int centerBin = Math.Min(BinCount - 1, (int)(input.TimeUs / durationUs * BinCount));
+      for (int delta = -InputPulseRadiusBins; delta <= InputPulseRadiusBins; delta++)
+      {
+        int bin = centerBin + delta;
+        if (bin < 0 || bin >= BinCount)
+          continue;
+        float amplitude = 1f - Math.Abs(delta) / (float)(InputPulseRadiusBins + 1);
+        result[bin] = Math.Max(result[bin], amplitude);
+      }
+    }
+    return result;
+  }
+
+  public static bool HasSignal(float[] waveform)
+  {
+    if (waveform == null)
+      return false;
+    for (int i = 0; i < waveform.Length; i++)
+    {
+      if (waveform[i] > 0f)
+        return true;
+    }
+    return false;
+  }
 
   public static float[] FromPcm16(CapturedMicrophoneRecording recording, double durationMs)
   {

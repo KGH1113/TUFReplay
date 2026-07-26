@@ -41,4 +41,16 @@ describe("microphone offset calibration reducer", () => {
     const state = createMicrophoneOffsetCalibrationState(0);
     expect(microphoneOffsetCalibrationReducer(state, { type: "run_cleared" })).toBe(state);
   });
+
+  test("preserves state identity when a polled sync contains no changes", () => {
+    const state = createMicrophoneOffsetCalibrationState(42, 3);
+    expect(
+      microphoneOffsetCalibrationReducer(state, {
+        type: "sync",
+        phase: "closed",
+        offsetMs: 42,
+        microphoneVolumeDb: 3,
+      }),
+    ).toBe(state);
+  });
 });
