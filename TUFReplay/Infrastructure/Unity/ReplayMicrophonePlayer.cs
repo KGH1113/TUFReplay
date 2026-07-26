@@ -14,6 +14,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private readonly object _streamGate = new object();
   private readonly StoredMicrophoneRecording _recording;
   private readonly Pcm16WaveInfo _wave;
+  private readonly Pcm16Limiter _limiter;
   private readonly FileStream _stream;
   private readonly GameObject _gameObject;
   private readonly AudioSource _source;
@@ -28,15 +29,17 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private volatile bool _failed;
   private bool _disposed;
 
-  public ReplayMicrophonePlayer(
+  internal ReplayMicrophonePlayer(
     StoredMicrophoneRecording recording,
     Pcm16WaveInfo wave,
+    Pcm16LimiterEnvelope limiterEnvelope,
     int userOffsetMs = 0,
     int volumeDb = 0
   )
   {
     _recording = recording ?? throw new ArgumentNullException(nameof(recording));
     _wave = wave ?? throw new ArgumentNullException(nameof(wave));
+    _limiter = new Pcm16Limiter(limiterEnvelope, wave.SampleRate);
     SetLatency(userOffsetMs);
     SetVolume(volumeDb);
     if (wave.FrameCount > int.MaxValue)
@@ -307,15 +310,23 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           int bytesRead = ReadFully(_readBuffer, requestedBytes);
           int samplesRead = bytesRead / 2;
           samplesRead -= samplesRead % channelCount;
-          for (int index = 0; index < samplesRead; index++)
+          int framesRead = samplesRead / channelCount;
+          float requestedGain = _gain;
+          for (int frame = 0; frame < framesRead; frame++)
           {
-            int byteIndex = index * 2;
-            short sample = (short)(_readBuffer[byteIndex] | (_readBuffer[byteIndex + 1] << 8));
-            data[outputOffset + index] = Mathf.Clamp(sample / 32768f * _gain, -1f, 1f);
+            float effectiveGain = _limiter.NextEffectiveGain(_readerFrame + frame, requestedGain);
+            int frameSampleOffset = frame * channelCount;
+            for (int channel = 0; channel < channelCount; channel++)
+            {
+              int sampleIndex = frameSampleOffset + channel;
+              int byteIndex = sampleIndex * 2;
+              short sample = (short)(_readBuffer[byteIndex] | (_readBuffer[byteIndex + 1] << 8));
+              data[outputOffset + sampleIndex] = Mathf.Clamp(sample / 32768f * effectiveGain, -1f, 1f);
+            }
           }
 
           outputOffset += samplesRead;
-          _readerFrame += samplesRead / channelCount;
+          _readerFrame += framesRead;
           if (samplesRead < chunkSamples)
             break;
         }
@@ -347,6 +358,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       if (_disposed)
         return;
       _readerFrame = Math.Max(0, Math.Min(frame, checked((int)_wave.FrameCount)));
+      _limiter.Reset();
       _stream.Position = _wave.DataOffset + _readerFrame * _wave.Channels * 2L;
     }
   }

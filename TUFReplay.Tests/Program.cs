@@ -28,6 +28,7 @@ internal static class Program
       NativeSqliteLoader.Initialize();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
+      TestPlaybackLimiter(root);
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
       TestCalibrationWaveforms(root);
@@ -380,6 +381,89 @@ internal static class Program
     AssertThrows<InvalidDataException>(
       () => Pcm16WaveFile.ReadAndValidate(PlaybackRecording(floatPath, 4)),
       "Non-PCM16 playback WAV was accepted."
+    );
+  }
+
+  private static void TestPlaybackLimiter(string root)
+  {
+    const int sampleRate = 48000;
+    const int frameCount = sampleRate / 2;
+    int transientFrame = sampleRate / 10;
+    var samples = new float[frameCount];
+    Array.Fill(samples, 0.01f);
+    samples[transientFrame] = 1f;
+
+    string path = Path.Combine(root, "playback-limiter.wav");
+    using (var writer = new Pcm16WavWriter(path))
+    {
+      Assert(writer.TryEnqueue(samples, samples.Length, 1), "Limiter WAV was not queued.");
+      Assert(writer.Complete() == frameCount, "Limiter WAV frame count is incorrect.");
+    }
+
+    StoredMicrophoneRecording recording = PlaybackRecording(path, frameCount);
+    Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
+    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(
+      recording,
+      wave,
+      System.Threading.CancellationToken.None
+    );
+    Assert(envelope.BinCount == 500, "Limiter envelope did not use one-millisecond bins.");
+    Assert(
+      Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f,
+      "Limiter attenuated a quiet section."
+    );
+    Assert(
+      envelope.RequiredLimiterGain(transientFrame - sampleRate * 4 / 1000, 10f) < 1f,
+      "Limiter look-ahead did not anticipate a loud transient."
+    );
+    Assert(
+      Math.Abs(envelope.RequiredLimiterGain(transientFrame - sampleRate * 7 / 1000, 10f) - 1f) < 0.0001f,
+      "Limiter look-ahead started too early."
+    );
+
+    float limitedGain = envelope.RequiredLimiterGain(transientFrame, 10f) * 10f;
+    Assert(limitedGain <= Pcm16LimiterEnvelope.Ceiling + 0.0001f, "Limiter exceeded its true-peak ceiling.");
+
+    var limiter = new Pcm16Limiter(envelope, sampleRate);
+    float peakGain = 10f;
+    for (int frame = transientFrame - sampleRate * 7 / 1000; frame <= transientFrame; frame++)
+      peakGain = limiter.NextEffectiveGain(frame, 10f);
+    float releaseGain = peakGain;
+    for (int frame = transientFrame + 1; frame <= transientFrame + sampleRate / 10; frame++)
+      releaseGain = limiter.NextEffectiveGain(frame, 10f);
+    Assert(releaseGain > peakGain && releaseGain < 10f, "Limiter release did not recover smoothly.");
+
+    limiter.Reset();
+    float resetPeakGain = limiter.NextEffectiveGain(transientFrame, 10f);
+    Assert(Math.Abs(resetPeakGain - limitedGain) < 0.0001f, "Limiter reset did not seek by absolute PCM frame.");
+    limiter.Reset();
+    Assert(
+      Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f,
+      "A safe gain change was unnecessarily limited."
+    );
+
+    string stereoPath = Path.Combine(root, "playback-limiter-stereo.wav");
+    short[] stereoSamples = new short[32];
+    stereoSamples[16] = short.MaxValue;
+    stereoSamples[17] = short.MaxValue / 4;
+    WriteTestPcm16Wave(stereoPath, sampleRate, 2, stereoSamples);
+    StoredMicrophoneRecording stereoRecording = PlaybackRecording(stereoPath, 16, sampleRate, 2);
+    Pcm16WaveInfo stereoWave = Pcm16WaveFile.ReadAndValidate(stereoRecording);
+    Pcm16LimiterEnvelope stereoEnvelope = Pcm16WaveAnalyzer.Analyze(
+      stereoRecording,
+      stereoWave,
+      System.Threading.CancellationToken.None
+    );
+    Assert(
+      stereoEnvelope.RequiredLimiterGain(8, 10f) < 0.1f,
+      "Limiter did not link channels using the loudest channel."
+    );
+
+    using var cancelled = new System.Threading.CancellationTokenSource();
+    cancelled.Cancel();
+    AssertThrows<OperationCanceledException>(
+      () => Pcm16WaveAnalyzer.Analyze(recording, wave, cancelled.Token),
+      "Cancelled limiter analysis completed."
     );
   }
 
@@ -953,19 +1037,45 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,
     throw new InvalidOperationException(message);
   }
 
-  private static StoredMicrophoneRecording PlaybackRecording(string path, long frameCount)
+  private static StoredMicrophoneRecording PlaybackRecording(
+    string path,
+    long frameCount,
+    int sampleRate = 48000,
+    int channels = 1
+  )
   {
     return new StoredMicrophoneRecording
     {
       RunId = "test-run",
       FilePath = path,
       Format = "wav/pcm16",
-      SampleRate = 48000,
-      Channels = 1,
+      SampleRate = sampleRate,
+      Channels = channels,
       FrameCount = frameCount,
       CaptureStartOffsetUs = 0L,
       ByteLength = new FileInfo(path).Length,
     };
+  }
+
+  private static void WriteTestPcm16Wave(string path, int sampleRate, short channels, short[] samples)
+  {
+    using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+    using var writer = new BinaryWriter(stream);
+    int dataLength = samples.Length * 2;
+    writer.Write(System.Text.Encoding.ASCII.GetBytes("RIFF"));
+    writer.Write(36 + dataLength);
+    writer.Write(System.Text.Encoding.ASCII.GetBytes("WAVEfmt "));
+    writer.Write(16);
+    writer.Write((short)1);
+    writer.Write(channels);
+    writer.Write(sampleRate);
+    writer.Write(sampleRate * channels * 2);
+    writer.Write((short)(channels * 2));
+    writer.Write((short)16);
+    writer.Write(System.Text.Encoding.ASCII.GetBytes("data"));
+    writer.Write(dataLength);
+    foreach (short sample in samples)
+      writer.Write(sample);
   }
 
   private sealed class CapturingEmitter : INativeInputEmitter
