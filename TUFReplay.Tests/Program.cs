@@ -35,6 +35,7 @@ internal static class Program
       TestSchemaMigrationAndBlob(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
+      TestReplayNoFailPolicy();
       TestNativeInputUmmWindowInterlock();
       TestWindowsSkyHookRawKeyPreservation();
       TestNativeInputMigrationCompatibility();
@@ -68,6 +69,16 @@ internal static class Program
     Assert(inputs.Count == 4, "Replay input parser dropped valid events.");
     Assert(inputs[0].Key == 7, "Replay input parser did not sort timestamps.");
     Assert(inputs[1].Key == 9 && inputs[2].Key == 8 && inputs[3].Key == 9, "Same-time input order changed.");
+  }
+
+  private static void TestReplayNoFailPolicy()
+  {
+    Assert(!ReplayFailPolicy.ShouldUseReplayNoFail(null), "Missing replay context enabled No-Fail.");
+    Assert(!ReplayFailPolicy.ShouldUseReplayNoFail(new ActiveReplayContext()), "A normal replay enabled No-Fail.");
+    Assert(
+      ReplayFailPolicy.ShouldUseReplayNoFail(new ActiveReplayContext { NoFailMode = true }),
+      "A No-Fail replay did not enable No-Fail."
+    );
   }
 
   private static void TestNativeInputUmmWindowInterlock()
@@ -527,6 +538,13 @@ internal static class Program
       InsertRun(connection);
     }
 
+    StoredReplayRun replayRun = RunRepository.GetReplayRun("run");
+    Assert(
+      replayRun?.JudgmentDifficulty == RunJudgmentDifficulty.Normal,
+      "Replay run did not preserve its judgment difficulty."
+    );
+    Assert(replayRun.NoFailMode, "Replay run did not preserve its No-Fail mode.");
+
     string wavPath = Path.Combine(root, "blob.wav.save-pending");
     using (var writer = new Pcm16WavWriter(wavPath))
     {
@@ -778,7 +796,7 @@ PRAGMA user_version=9;";
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01',0);
 INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test','2026-01-01','2026-01-01');
 INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc) VALUES('level','logical','app','test.adofai','2026-01-01');
-INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result) VALUES('run','level',0,'2026-01-01',0,'cleared');";
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,judgment_difficulty,no_fail_mode) VALUES('run','level',0,'2026-01-01',0,'cleared',1,1);";
     command.ExecuteNonQuery();
   }
 

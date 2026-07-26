@@ -341,5 +341,7 @@ public sealed class MicrophoneCalibrationFeature
       MetaJson = run.MetaJson,
       GameplayHash = run.GameplayHash,
       GameplayHashVersion = run.GameplayHashVersion,
+      JudgmentDifficulty = run.JudgmentDifficulty,
+      NoFailMode = run.NoFailMode,
     };
 }

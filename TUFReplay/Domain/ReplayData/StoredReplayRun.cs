@@ -1,3 +1,5 @@
+using TUFReplay.Domain.Activity;
+
 namespace TUFReplay.Domain.ReplayData;
 
 public sealed class StoredReplayRun
@@ -15,4 +17,6 @@ public sealed class StoredReplayRun
   public string MetaJson;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public RunJudgmentDifficulty? JudgmentDifficulty;
+  public bool NoFailMode;
 }
