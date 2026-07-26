@@ -290,6 +290,10 @@ internal static class Program
   {
     var prepared = new ActiveReplayContext { Phase = ReplayPlaybackPhase.Prepared, RunStarted = false };
     Assert(
+      ReplayRunController.ShouldInitializeFromPreRoll(prepared),
+      "Prepared middle-start replay was not eligible for pre-roll initialization."
+    );
+    Assert(
       ReplayRunController.ShouldInitializeFromPlayerControl(prepared),
       "Prepared middle-start replay was not eligible for PlayerControl initialization."
     );
@@ -304,6 +308,10 @@ internal static class Program
     Assert(
       !ReplayRunController.ShouldInitializeFromPlayerControl(armed),
       "Countdown-armed replay incorrectly used the middle-start fallback."
+    );
+    Assert(
+      !ReplayRunController.ShouldInitializeFromPreRoll(armed),
+      "Pre-roll attempted to initialize an already armed replay."
     );
   }
 

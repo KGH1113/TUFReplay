@@ -2,6 +2,11 @@ namespace TUFReplay.Application.Replay;
 
 public static class ReplayRunController
 {
+  public static bool ShouldInitializeFromPreRoll(ActiveReplayContext context)
+  {
+    return context != null && !context.RunStarted && context.Phase == ReplayPlaybackPhase.Prepared;
+  }
+
   public static bool ShouldInitializeFromPlayerControl(ActiveReplayContext context)
   {
     return context != null && !context.RunStarted && context.Phase == ReplayPlaybackPhase.Prepared;
