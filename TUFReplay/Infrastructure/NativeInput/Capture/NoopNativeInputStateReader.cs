@@ -11,6 +11,8 @@ internal sealed class NoopNativeInputStateReader : INativeInputStateReader
 
   public void Refresh() { }
 
+  public void RefreshPhysicalState() => Refresh();
+
   public bool TryGetIsDown(int keyCode, out bool isDown)
   {
     isDown = false;

@@ -1,4 +1,5 @@
 using ADOFAI;
+using TUFReplay.Application.Activity;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Unity;
@@ -38,7 +39,7 @@ public static class ReplayLevelHashValidator
     errorCode = null;
     errorMessage = null;
     if (canonicalPath == null)
-      return Error("level_unavailable", "The selected level file is unavailable.", out errorCode, out errorMessage);
+      return Error("level_file_missing", LevelFileAccessValidator.MissingMessage, out errorCode, out errorMessage);
 
     return ValidateStoredHash(run, out errorCode, out errorMessage);
   }
@@ -55,8 +56,9 @@ public static class ReplayLevelHashValidator
     errorMessage = null;
     if (!ValidateStoredHash(run, out errorCode, out errorMessage))
       return false;
-    if (!GameplayChartHash.TryCompute(levelData, out byte[] actualHash, out string hashError))
-      return Error("level_hash_failed", hashError, out errorCode, out errorMessage);
+    int hashVersion = run.GameplayHashVersion ?? GameplayChartHash.Version;
+    if (!GameplayChartHash.TryCompute(levelData, hashVersion, out byte[] actualHash, out string hashError))
+      return Error("level_file_invalid", hashError, out errorCode, out errorMessage);
 
     if (run.GameplayHash == null)
     {
@@ -79,12 +81,36 @@ public static class ReplayLevelHashValidator
     }
 
     return GameplayChartHash.Equals(run.GameplayHash, actualHash)
-      || Error(
-        "level_gameplay_mismatch",
-        "The loaded level no longer matches the recorded gameplay.",
-        out errorCode,
-        out errorMessage
-      );
+      || MatchesVerifiedOriginalSemantics(run, run.GameplayHash, levelData)
+      || Error("level_gameplay_modified", LevelFileAccessValidator.ModifiedMessage, out errorCode, out errorMessage);
+  }
+
+  public static bool MatchesVerifiedOriginalSemantics(
+    StoredReplayRun run,
+    byte[] referenceHash,
+    LevelData candidateLevelData
+  )
+  {
+    string originalPath = LevelPathIdentity.Canonicalize(run?.LevelPath);
+    if (originalPath == null || referenceHash == null || candidateLevelData == null)
+      return false;
+
+    int hashVersion = run.GameplayHashVersion ?? GameplayChartHash.Version;
+    if (
+      !GameplayChartHash.TryLoadCustomLevel(
+        originalPath,
+        hashVersion,
+        out LevelData originalLevelData,
+        out byte[] originalHash,
+        out _
+      )
+      || !GameplayChartHash.Equals(referenceHash, originalHash)
+      || !GameplayChartHash.TryComputeSemantic(originalLevelData, out byte[] originalSemanticHash, out _)
+      || !GameplayChartHash.TryComputeSemantic(candidateLevelData, out byte[] candidateSemanticHash, out _)
+    )
+      return false;
+
+    return GameplayChartHash.Equals(originalSemanticHash, candidateSemanticHash);
   }
 
   private static bool Error(string code, string message, out string errorCode, out string errorMessage)

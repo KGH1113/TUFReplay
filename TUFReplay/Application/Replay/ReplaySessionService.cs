@@ -139,8 +139,9 @@ public static class ReplaySessionService
     switch (newState)
     {
       case States.Countdown:
-        if (_activeContext.Phase == ReplayPlaybackPhase.Prepared)
-          ResetReplayRun("state_countdown", ReplayPlaybackPhase.Armed);
+      case States.Checkpoint:
+        if (ReplayRunController.ShouldInitializeFromPreRoll(_activeContext))
+          ResetReplayRun("state_preroll_" + newState, ReplayPlaybackPhase.Armed);
         break;
 
       case States.PlayerControl:
@@ -182,7 +183,12 @@ public static class ReplaySessionService
   {
     return _activeContext != null
       && GameplayChartHash.IsSupported(_activeContext.GameplayHashVersion, _activeContext.GameplayHash)
-      && GameplayChartHash.TryComputeCurrent(out byte[] currentHash, out _)
+      && GameplayChartHash.TryCompute(
+        ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData,
+        _activeContext.GameplayHashVersion,
+        out byte[] currentHash,
+        out _
+      )
       && GameplayChartHash.Equals(_activeContext.GameplayHash, currentHash);
   }
 
@@ -364,12 +370,7 @@ public static class ReplaySessionService
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null)
       return;
-    if (
-      !TryGetControllerState(out States state)
-      || (
-        state != States.Countdown && state != States.Checkpoint && state != States.PlayerControl && state != States.Won
-      )
-    )
+    if (!TryGetControllerState(out States state) || !IsReplayTimelinePlaybackState(state))
       return;
 
     player.Tick(nowUs, CurrentGameplayRate(), CurrentWonTimeUs(), ADOBase.controller.paused);
@@ -477,7 +478,7 @@ public static class ReplaySessionService
     if (!TryGetControllerState(out States state))
       return false;
 
-    if (state != States.Countdown && state != States.PlayerControl && state != States.Won)
+    if (!IsReplayTimelinePlaybackState(state))
       return false;
 
     if (!TryComputeReplayTimeUs(out nowUs, out _))
@@ -491,6 +492,14 @@ public static class ReplaySessionService
     }
 
     return true;
+  }
+
+  private static bool IsReplayTimelinePlaybackState(States state)
+  {
+    return state == States.Countdown
+      || state == States.Checkpoint
+      || state == States.PlayerControl
+      || state == States.Won;
   }
 
   internal static void SuspendNativeInputForUmmWindow()

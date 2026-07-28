@@ -52,7 +52,8 @@ describe("activity IPC contract", () => {
     const gateway = createActivityGateway({
       call: async (method: string) => {
         calls.push(method);
-        if (method === "health.get") return { ProtocolVersion: 2, ModVersion: "0.2.0" };
+        if (method === "health.get")
+          return { ProtocolVersion: SUPPORTED_PROTOCOL_VERSION + 1, ModVersion: "0.2.0" };
         return [];
       },
     } as never);
@@ -177,6 +178,7 @@ describe("activity IPC contract", () => {
       Message: null,
     } satisfies ReplayStatus;
     const pickerResult = {
+      OperationId: null,
       RunId: "run-1",
       Outcome: "selected",
       LevelPath: "/levels/replay.adofai",
@@ -203,6 +205,41 @@ describe("activity IPC contract", () => {
       },
       { method: "replay.status.get", params: {} },
       { method: "replay.level-file.pick", params: { runId: "run-1" } },
+    ]);
+  });
+
+  test("polls a level picker operation without holding the initial IPC request open", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const responses: ReplayLevelFilePickerResult[] = [
+      {
+        OperationId: "picker-1",
+        RunId: "run-1",
+        Outcome: "picking",
+        LevelPath: null,
+        ErrorCode: null,
+        Message: null,
+      },
+      {
+        OperationId: "picker-1",
+        RunId: "run-1",
+        Outcome: "selected",
+        LevelPath: "/levels/replay.adofai",
+        ErrorCode: null,
+        Message: null,
+      },
+    ];
+    const pickerNamespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return responses.shift();
+      },
+    };
+    const gateway = createActivityGateway(pickerNamespace as never, pickerNamespace as never);
+
+    expect((await gateway.pickReplayLevelFile("run-1")).Outcome).toBe("selected");
+    expect(calls).toEqual([
+      { method: "replay.level-file.pick", params: { runId: "run-1" } },
+      { method: "replay.level-file.status.get", params: { operationId: "picker-1" } },
     ]);
   });
 

@@ -138,9 +138,15 @@ export interface ReplayStatus {
   Message: string | null;
 }
 
-export type ReplayLevelFilePickerOutcome = "selected" | "mismatch" | "cancelled" | "error";
+export type ReplayLevelFilePickerOutcome =
+  | "picking"
+  | "selected"
+  | "mismatch"
+  | "cancelled"
+  | "error";
 
 export interface ReplayLevelFilePickerResult {
+  OperationId: string | null;
   RunId: string;
   Outcome: ReplayLevelFilePickerOutcome;
   LevelPath: string | null;

@@ -9,10 +9,10 @@ namespace TUFReplay.Infrastructure.Database.Repositories;
 public static class ActivityRepository
 {
   private const string Select =
-    @"SELECT l.id,l.logical_level_id,l.app_session_id,l.tuf_level_id,l.opened_at_utc,l.closed_at_utc,l.level_tile_count,
+    @"SELECT l.id,l.level_id,l.app_session_id,g.tuf_level_id,l.opened_at_utc,l.closed_at_utc,g.level_tile_count,
 count(r.id),coalesce(sum(CASE WHEN r.result='cleared' THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
-l.level_path,l.song,l.author,l.artist,l.metadata_state
-FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id ";
+g.adofai_path,g.song,g.author,g.artist,g.metadata_state
+FROM level_sessions l JOIN levels g ON g.id=l.level_id LEFT JOIN runs r ON r.level_session_id=l.id ";
 
   public static LevelSessionOverview GetLevelSessionOverview(string id)
   {
@@ -30,11 +30,11 @@ FROM level_sessions l LEFT JOIN runs r ON r.level_session_id=l.id ";
     using SqliteCommand q = c.CreateCommand();
     q.CommandText =
       @"SELECT g.id,g.tuf_level_id,g.song,g.author,g.artist,g.first_seen_at_utc,g.last_seen_at_utc,
-coalesce(max(l.level_tile_count),0),count(DISTINCT l.id),count(r.id),
+g.level_tile_count,count(DISTINCT l.id),count(r.id),
 coalesce(sum(CASE WHEN r.result='cleared' THEN 1 ELSE 0 END),0),
 coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile)
-FROM logical_levels g
-LEFT JOIN level_sessions l ON l.logical_level_id=g.id
+FROM levels g
+LEFT JOIN level_sessions l ON l.level_id=g.id
 LEFT JOIN runs r ON r.level_session_id=l.id
 WHERE g.id=@id GROUP BY g.id";
     q.Parameters.AddWithValue("@id", id);
@@ -120,7 +120,7 @@ WHERE g.id=@id GROUP BY g.id";
   {
     using SqliteConnection connection = DatabaseStore.OpenConnection();
     using SqliteCommand q = connection.CreateCommand();
-    q.CommandText = "SELECT level_path FROM level_sessions WHERE logical_level_id=@id ORDER BY opened_at_utc DESC";
+    q.CommandText = "SELECT adofai_path FROM levels WHERE id=@id";
     q.Parameters.AddWithValue("@id", id);
     using SqliteDataReader r = q.ExecuteReader();
     while (r.Read())

@@ -93,7 +93,7 @@ export function createMockActivityGateway(): ActivityGateway {
       Ok: true,
       Mod: "TUFReplay",
       ModVersion: "mock",
-      ProtocolVersion: 1,
+      ProtocolVersion: 4,
       ServerVersion: 1,
     }),
     listAllAppSessions: async (onPage) => {
@@ -203,6 +203,7 @@ export function createMockActivityGateway(): ActivityGateway {
     getReplayStatus: async () => replayStatus,
     pickReplayLevelFile: async (runId): Promise<ReplayLevelFilePickerResult> => {
       return {
+        OperationId: null,
         RunId: runId,
         Outcome: "selected",
         LevelPath: `/mock/${runId}.adofai`,

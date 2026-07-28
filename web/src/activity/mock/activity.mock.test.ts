@@ -42,7 +42,6 @@ describe("activity mock", () => {
       MicrophoneRecordingPermanent: true,
       MicrophoneRecordingExpiresAtUtc: null,
     });
-
     expect(await gateway.deleteMicrophoneRecording(recordedRun.Id)).toEqual({
       RunId: recordedRun.Id,
       Deleted: true,

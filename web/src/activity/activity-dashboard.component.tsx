@@ -228,6 +228,7 @@ export function ActivityDashboard() {
         run={replayChoiceRun}
         pickerResult={replay.pickerResult}
         pickingRunId={replay.pickingRunId}
+        replayStatus={replay.status}
         playError={replay.error}
         playErrorRunId={replay.errorRunId}
         onClose={() => setReplayChoiceRun(null)}

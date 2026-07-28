@@ -12,7 +12,6 @@ public static class MicrophoneRecordingIpcHandlers
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
       return IpcDomainError.Create("run_not_found", "Run was not found.");
-
     return new MicrophoneRecordingDeleteResultDto
     {
       RunId = runId,

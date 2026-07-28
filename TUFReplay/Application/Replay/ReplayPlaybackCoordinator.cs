@@ -5,6 +5,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Newtonsoft.Json;
+using TUFReplay.Application.Activity;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Recording;
 using TUFReplay.Bootstrap;
@@ -49,6 +50,19 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
+  public static bool ShouldCancelForEditorQuitToMenu
+  {
+    get
+    {
+      lock (Gate)
+      {
+        return _status.State == ReplayPlaybackStates.WaitingForFocus
+          || _status.State == ReplayPlaybackStates.Starting
+          || _status.State == ReplayPlaybackStates.Playing;
+      }
+    }
+  }
+
   public static ReplayPlaybackStatus Play(string runId, string levelPath = null)
   {
     lock (CommandGate)
@@ -84,10 +98,12 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
-  public static ReplayPlaybackStatus PlayEphemeral(
+  internal static ReplayPlaybackStatus PlayEphemeral(
     StoredReplayRun run,
     string levelPath,
-    StoredMicrophoneRecording microphoneRecording
+    StoredMicrophoneRecording microphoneRecording,
+    Pcm16WaveInfo microphoneWave,
+    Pcm16LimiterEnvelope microphoneLimiterEnvelope
   )
   {
     lock (CommandGate)
@@ -119,7 +135,8 @@ public static class ReplayPlaybackCoordinator
         {
           AllowBackground = true,
           MicrophoneRecording = microphoneRecording,
-          MicrophoneWave = microphoneRecording == null ? null : Pcm16WaveFile.ReadAndValidate(microphoneRecording),
+          MicrophoneWave = microphoneWave,
+          MicrophoneLimiterEnvelope = microphoneLimiterEnvelope,
         };
         CancelPendingPreparation();
         CancelCurrentReplayForReplacement(operationId);
@@ -192,23 +209,16 @@ public static class ReplayPlaybackCoordinator
       {
         WaitForFocusOrStart(operation);
       }
+      else if (operation.HasLoadedLevelValidation && !operation.LoadedLevelValidationPassed)
+      {
+        Fail(
+          operation.LoadedLevelValidationCode ?? "level_gameplay_modified",
+          operation.LoadedLevelValidationMessage ?? LevelFileAccessValidator.ModifiedMessage
+        );
+      }
       else if (Time.realtimeSinceStartupAsDouble - operation.LevelOpenStartedAt > LevelOpenTimeoutSeconds)
       {
-        scnEditor editor = scnEditor.instance;
-        if (
-          IsEditorReady()
-          && operation.Run.GameplayHash != null
-          && !ReplayLevelHashValidator.ValidateLoaded(
-            operation.Run,
-            editor.levelData,
-            LevelPathIdentity.Current(),
-            out string validationCode,
-            out string validationMessage
-          )
-        )
-          Fail(validationCode, validationMessage);
-        else
-          Fail("level_open_timeout", "ADOFAI did not finish opening the recorded level.");
+        Fail("level_open_timeout", "ADOFAI did not finish opening the recorded level.");
       }
       return;
     }
@@ -429,7 +439,7 @@ public static class ReplayPlaybackCoordinator
       string.IsNullOrWhiteSpace(requestedLevelPath) ? run.LevelPath : requestedLevelPath
     );
     if (playbackLevelPath == null)
-      return Error("level_unavailable", "The replay level file is unavailable.", out errorCode, out errorMessage);
+      return Error("level_file_missing", LevelFileAccessValidator.MissingMessage, out errorCode, out errorMessage);
 
     ReplayMetadata meta;
     try
@@ -539,6 +549,14 @@ public static class ReplayPlaybackCoordinator
     operation.LevelDataBeforeOpen = scnEditor.instance?.levelData;
     operation.LevelOpenRequested = true;
     operation.LevelOpenObservedTransition = false;
+    operation.HasLoadedLevelValidation = false;
+    operation.ValidatedLevelData = null;
+    operation.ValidatedLevelPath = null;
+    operation.LoadedLevelValidationPassed = false;
+    operation.LoadedLevelValidationCode = null;
+    operation.LoadedLevelValidationMessage = null;
+    operation.ValidatedLoadedGameplayHash = null;
+    operation.ValidatedLoadedGameplayHashVersion = 0;
     SetOperationState(operation, ReplayPlaybackStates.OpeningLevel, "Opening recorded level in ADOFAI.");
     ReplayLevelOpenService.OpenEditor(operation.PlaybackLevelPath);
   }
@@ -568,25 +586,14 @@ public static class ReplayPlaybackCoordinator
   {
     if (!IsExpectedLevelReady(operation))
     {
-      Fail("level_not_ready", "The recorded level is no longer ready.");
+      Fail(
+        operation.LoadedLevelValidationCode ?? "level_not_ready",
+        operation.LoadedLevelValidationMessage ?? "The recorded level is no longer ready."
+      );
       return;
     }
 
     scnEditor editor = scnEditor.instance;
-    if (
-      !ReplayLevelHashValidator.ValidateLoaded(
-        operation.Run,
-        editor.levelData,
-        LevelPathIdentity.Current(),
-        out string validationCode,
-        out string validationMessage
-      )
-    )
-    {
-      Fail(validationCode, validationMessage);
-      return;
-    }
-
     string loadedLevelPath = LevelPathIdentity.Current();
     if (loadedLevelPath != null)
       operation.PlaybackLevelPath = loadedLevelPath;
@@ -635,8 +642,8 @@ public static class ReplayPlaybackCoordinator
       OperationId = operation.OperationId,
       RunId = operation.Run.Id,
       LevelPath = operation.PlaybackLevelPath,
-      GameplayHash = (byte[])operation.Run.GameplayHash.Clone(),
-      GameplayHashVersion = operation.Run.GameplayHashVersion.Value,
+      GameplayHash = (byte[])operation.ValidatedLoadedGameplayHash.Clone(),
+      GameplayHashVersion = operation.ValidatedLoadedGameplayHashVersion,
       Result = operation.Run.Result,
       TufLevelId = operation.Run.TufLevelId,
       StartTile = operation.Run.StartTile,
@@ -671,27 +678,55 @@ public static class ReplayPlaybackCoordinator
     if (!IsEditorReady())
       return false;
 
-    if (operation.Run.GameplayHash == null)
-    {
-      if (
-        !operation.LevelOpenRequested
-        || !LevelPathIdentity.Equals(operation.PlaybackLevelPath, LevelPathIdentity.Current())
-        || (!operation.LevelOpenObservedTransition && ReferenceEquals(operation.LevelDataBeforeOpen, editor.levelData))
-      )
-        return false;
+    string currentPath = LevelPathIdentity.Current();
+    if (!LevelPathIdentity.Equals(operation.PlaybackLevelPath, currentPath))
+      return false;
 
-      return ReplayLevelHashValidator.ValidateLoaded(
-        operation.Run,
+    if (
+      operation.LevelOpenRequested
+      && !operation.LevelOpenObservedTransition
+      && ReferenceEquals(operation.LevelDataBeforeOpen, editor.levelData)
+    )
+      return false;
+
+    if (
+      operation.HasLoadedLevelValidation
+      && ReferenceEquals(operation.ValidatedLevelData, editor.levelData)
+      && LevelPathIdentity.Equals(operation.ValidatedLevelPath, currentPath)
+    )
+      return operation.LoadedLevelValidationPassed;
+
+    bool passed = ReplayLevelHashValidator.ValidateLoaded(
+      operation.Run,
+      editor.levelData,
+      currentPath,
+      out operation.LoadedLevelValidationCode,
+      out operation.LoadedLevelValidationMessage
+    );
+    operation.HasLoadedLevelValidation = true;
+    operation.ValidatedLevelData = editor.levelData;
+    operation.ValidatedLevelPath = currentPath;
+    operation.LoadedLevelValidationPassed = passed;
+    if (
+      passed
+      && GameplayChartHash.TryCompute(
         editor.levelData,
-        LevelPathIdentity.Current(),
-        out _,
+        operation.Run.GameplayHashVersion.Value,
+        out byte[] loadedGameplayHash,
         out _
-      );
+      )
+    )
+    {
+      operation.ValidatedLoadedGameplayHash = loadedGameplayHash;
+      operation.ValidatedLoadedGameplayHashVersion = operation.Run.GameplayHashVersion.Value;
     }
-
-    return GameplayChartHash.IsSupported(operation.Run.GameplayHashVersion, operation.Run.GameplayHash)
-      && GameplayChartHash.TryCompute(editor.levelData, out byte[] currentHash, out _)
-      && GameplayChartHash.Equals(operation.Run.GameplayHash, currentHash);
+    else if (passed)
+    {
+      operation.LoadedLevelValidationPassed = false;
+      operation.LoadedLevelValidationCode = "level_file_invalid";
+      operation.LoadedLevelValidationMessage = LevelFileAccessValidator.InvalidMessage;
+    }
+    return operation.LoadedLevelValidationPassed;
   }
 
   private static bool IsEditorReady()
@@ -929,6 +964,14 @@ public static class ReplayPlaybackCoordinator
     public object LevelDataBeforeOpen;
     public bool LevelOpenRequested;
     public bool LevelOpenObservedTransition;
+    public bool HasLoadedLevelValidation;
+    public object ValidatedLevelData;
+    public string ValidatedLevelPath;
+    public bool LoadedLevelValidationPassed;
+    public string LoadedLevelValidationCode;
+    public string LoadedLevelValidationMessage;
+    public byte[] ValidatedLoadedGameplayHash;
+    public int ValidatedLoadedGameplayHashVersion;
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
