@@ -34,6 +34,7 @@ internal static class Program
       TestCalibrationWaveforms(root);
       TestGameplayChartHashVersioning();
       TestSchemaMigrationAndBlob(root);
+      TestBrokenRenamedForeignKeyRepair(root);
       TestRunDeletionHierarchy(root);
       TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
@@ -863,6 +864,58 @@ internal static class Program
     );
     Assert(GameplayChartHash.IsSupported(1, v1Before), "Legacy v1 hash is not supported.");
     Assert(GameplayChartHash.IsSupported(2, v2Before), "Current v2 hash is not supported.");
+  }
+
+  private static void TestBrokenRenamedForeignKeyRepair(string root)
+  {
+    string path = Path.Combine(root, "broken-renamed-foreign-keys.sqlite");
+    SetDatabasePath(path);
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      InsertRun(connection);
+
+      using SqliteCommand breakSchema = connection.CreateCommand();
+      breakSchema.CommandText =
+        @"PRAGMA writable_schema=ON;
+UPDATE sqlite_master
+SET sql=replace(sql,'REFERENCES levels(id)','REFERENCES levels_new(id)')
+WHERE type='table' AND name='level_sessions';
+UPDATE sqlite_master
+SET sql=replace(sql,'REFERENCES level_sessions(id)','REFERENCES level_sessions_new(id)')
+WHERE type='table' AND name='runs';
+PRAGMA writable_schema=OFF;
+PRAGMA user_version=13;";
+      breakSchema.ExecuteNonQuery();
+    }
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+
+      using SqliteCommand verify = connection.CreateCommand();
+      verify.CommandText = "PRAGMA user_version;";
+      Assert(Convert.ToInt32(verify.ExecuteScalar()) == ActivitySchema.Version, "Broken schema was not upgraded.");
+
+      verify.CommandText =
+        "SELECT \"table\" FROM pragma_foreign_key_list('level_sessions') WHERE \"from\"='level_id';";
+      Assert(Convert.ToString(verify.ExecuteScalar()) == "levels", "Level-session foreign key was not repaired.");
+
+      verify.CommandText =
+        "SELECT \"table\" FROM pragma_foreign_key_list('runs') WHERE \"from\"='level_session_id';";
+      Assert(Convert.ToString(verify.ExecuteScalar()) == "level_sessions", "Run foreign key was not repaired.");
+
+      verify.CommandText = "SELECT count(*) FROM levels WHERE id='logical';";
+      Assert(Convert.ToInt32(verify.ExecuteScalar()) == 1, "Foreign-key repair lost the level.");
+      verify.CommandText = "SELECT count(*) FROM level_sessions WHERE id='level';";
+      Assert(Convert.ToInt32(verify.ExecuteScalar()) == 1, "Foreign-key repair lost the level session.");
+      verify.CommandText = "SELECT count(*) FROM runs WHERE id='run';";
+      Assert(Convert.ToInt32(verify.ExecuteScalar()) == 1, "Foreign-key repair lost the run.");
+
+      verify.CommandText = "PRAGMA foreign_key_check;";
+      using SqliteDataReader violations = verify.ExecuteReader();
+      Assert(!violations.Read(), "Foreign-key repair left a violation.");
+    }
   }
 
   private static byte[] ComputeVersion2Hash(float bpm, string songFilename)
