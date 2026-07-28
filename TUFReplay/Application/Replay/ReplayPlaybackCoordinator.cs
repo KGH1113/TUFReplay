@@ -98,10 +98,12 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
-  public static ReplayPlaybackStatus PlayEphemeral(
+  internal static ReplayPlaybackStatus PlayEphemeral(
     StoredReplayRun run,
     string levelPath,
-    StoredMicrophoneRecording microphoneRecording
+    StoredMicrophoneRecording microphoneRecording,
+    Pcm16WaveInfo microphoneWave,
+    Pcm16LimiterEnvelope microphoneLimiterEnvelope
   )
   {
     lock (CommandGate)
@@ -133,7 +135,8 @@ public static class ReplayPlaybackCoordinator
         {
           AllowBackground = true,
           MicrophoneRecording = microphoneRecording,
-          MicrophoneWave = microphoneRecording == null ? null : Pcm16WaveFile.ReadAndValidate(microphoneRecording),
+          MicrophoneWave = microphoneWave,
+          MicrophoneLimiterEnvelope = microphoneLimiterEnvelope,
         };
         CancelPendingPreparation();
         CancelCurrentReplayForReplacement(operationId);
