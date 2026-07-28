@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Button } from "@/ui/button.component";
 import type { ConnectionStatus } from "../activity.model";
 import { getConnectionStatePanelCopy } from "./connection-state-panel.copy";
@@ -11,8 +12,10 @@ export function ConnectionStatePanel({
   error: string;
   onRetry: () => void;
 }) {
+  const { t: activityT } = useTranslation("activity");
+  const { t: commonT } = useTranslation("common");
   const connecting = status === "connecting";
-  const copy = getConnectionStatePanelCopy(status);
+  const copy = getConnectionStatePanelCopy(status, activityT);
   return (
     <div className="grid flex-1 place-items-center px-6 py-10">
       <section className="w-full max-w-md" aria-live="polite">
@@ -47,10 +50,10 @@ export function ConnectionStatePanel({
           </details>
           <details className="group py-1.5">
             <summary className="cursor-pointer select-none text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground">
-              Details
+              {commonT("details")}
             </summary>
             <p className="mt-2 break-words rounded-md bg-muted/35 px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
-              {error || "The local IPC endpoint did not respond."}
+              {error || commonT("errors.localEndpoint")}
             </p>
           </details>
         </div>

@@ -1,9 +1,10 @@
 import type { RefObject } from "react";
-
+import { useTranslation } from "react-i18next";
 import { Button } from "@/ui/button.component";
 import { cn } from "@/ui/ui-class.utils";
 import type { ConnectionStatus } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
+import { LanguageMenu } from "./language-menu.component";
 import { MicrophoneControls } from "./microphone-controls.component";
 
 export function DashboardHeader({
@@ -17,9 +18,10 @@ export function DashboardHeader({
   gatewayRef: RefObject<ActivityGateway | null>;
   mockEnabled: boolean;
 }) {
+  const { t } = useTranslation("common");
   return (
     <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 py-2">
-      <h1 className="font-heading text-2xl font-semibold tracking-tight">TUFReplay</h1>
+      <h1 className="font-heading text-2xl font-semibold tracking-tight">{t("appName")}</h1>
       <div className="flex items-center gap-2">
         <MicrophoneControls
           gatewayRef={gatewayRef}
@@ -42,19 +44,22 @@ export function DashboardHeader({
               status === "connecting" && "animate-pulse",
             )}
           />
-          {status === "online"
-            ? "Online"
-            : status === "connecting"
-              ? "Connecting"
-              : status === "incompatible"
-                ? "Update required"
-                : "Offline"}
+          {t(
+            status === "online"
+              ? "status.online"
+              : status === "connecting"
+                ? "status.connecting"
+                : status === "incompatible"
+                  ? "status.updateRequired"
+                  : "status.offline",
+          )}
         </span>
         {status === "error" || status === "incompatible" ? (
           <Button size="sm" variant="ghost" onClick={onRetry}>
-            Retry connection
+            {t("actions.retryConnection")}
           </Button>
         ) : null}
+        <LanguageMenu />
       </div>
     </header>
   );
