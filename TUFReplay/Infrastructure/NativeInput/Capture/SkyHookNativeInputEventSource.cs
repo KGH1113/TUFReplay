@@ -1,37 +1,38 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using SkyHook;
 using TUFReplay.Infrastructure.NativeInput;
-using UnityEngine.Events;
 
 namespace TUFReplay.Infrastructure.NativeInput.Capture;
 
 internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
 {
-  private readonly UnityAction<SkyHookEvent> _listener;
+  private static SkyHookNativeInputEventSource _activeSource;
+
   private Action<NativeInputTransition> _onTransition;
-  private bool _listenerAttached;
+  private bool _registered;
   private bool _ownsHook;
 
-  public SkyHookNativeInputEventSource()
-  {
-    _listener = OnKeyUpdated;
-  }
-
-  public string Name => "skyhook-native-events";
+  public string Name => "skyhook-raw-callback-events";
   public bool IsRunning => AsyncInputManager.isActive;
 
   public void Start(Action<NativeInputTransition> onTransition)
   {
     if (onTransition == null)
       throw new ArgumentNullException(nameof(onTransition));
-    if (_listenerAttached)
+    if (_registered)
       return;
 
     _onTransition = onTransition;
+    if (Interlocked.CompareExchange(ref _activeSource, this, null) != null)
+    {
+      _onTransition = null;
+      throw new InvalidOperationException("Another SkyHook raw input source is already registered.");
+    }
+
+    _registered = true;
     bool wasRunning = IsRunning;
-    SkyHookManager.KeyUpdated.AddListener(_listener);
-    _listenerAttached = true;
 
     try
     {
@@ -43,8 +44,8 @@ internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
     }
     catch
     {
-      SkyHookManager.KeyUpdated.RemoveListener(_listener);
-      _listenerAttached = false;
+      Interlocked.CompareExchange(ref _activeSource, null, this);
+      _registered = false;
       _onTransition = null;
       _ownsHook = false;
       throw;
@@ -53,10 +54,10 @@ internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
 
   public void Stop()
   {
-    if (_listenerAttached)
+    if (_registered)
     {
-      SkyHookManager.KeyUpdated.RemoveListener(_listener);
-      _listenerAttached = false;
+      Interlocked.CompareExchange(ref _activeSource, null, this);
+      _registered = false;
     }
 
     _onTransition = null;
@@ -69,7 +70,12 @@ internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
     }
   }
 
-  private void OnKeyUpdated(SkyHookEvent inputEvent)
+  internal static void PublishRawEvent(SkyHookEvent inputEvent)
+  {
+    Volatile.Read(ref _activeSource)?.OnRawEvent(inputEvent);
+  }
+
+  private void OnRawEvent(SkyHookEvent inputEvent)
   {
     if (IsMouseButton(inputEvent.Label))
       return;
