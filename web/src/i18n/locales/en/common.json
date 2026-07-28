@@ -1,0 +1,34 @@
+{
+  "appName": "TUFReplay",
+  "language": {
+    "label": "Language",
+    "english": "English",
+    "korean": "한국어"
+  },
+  "status": {
+    "online": "Online",
+    "connecting": "Connecting",
+    "updateRequired": "Update required",
+    "offline": "Offline"
+  },
+  "actions": {
+    "retryConnection": "Retry connection",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "close": "Close",
+    "refresh": "Refresh",
+    "save": "Save"
+  },
+  "details": "Details",
+  "unknown": "Unknown",
+  "errors": {
+    "notConnected": "TUFReplay is not connected.",
+    "notConnectedToGame": "TUFReplay is not connected to ADOFAI.",
+    "localEndpoint": "The local IPC endpoint did not respond."
+  },
+  "units": {
+    "milliseconds": "{{value}} ms",
+    "seconds": "{{value}} s",
+    "hertz": "{{value}} Hz"
+  }
+}

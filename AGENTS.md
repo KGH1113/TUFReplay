@@ -14,3 +14,5 @@
     - [TUFHelper](https://github.com/coyami-ke/TUFHelper)
 - Here is also a documentation about AdofaiIpc
     - [AdofaiIpc-Documentation](https://github.com/KGH1113/adofai-ipc/tree/main/docs)
+- Use shadcn mcp server actively.
+- Use shadcn components.

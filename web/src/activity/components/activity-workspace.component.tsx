@@ -9,7 +9,9 @@ import {
   PlayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { TFunction } from "i18next";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -21,6 +23,7 @@ import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../act
 import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
 import { runsForMarker } from "../lib/activity-data.utils";
 import { formatTimeWithOffsetParts } from "../lib/activity-date.utils";
+import { translatedDomainError } from "../lib/localized-error";
 import { formatXAccuracy } from "../lib/x-accuracy.format";
 import { RunActionsMenu } from "./run-actions-menu.component";
 import { RunDifficultyIcon } from "./run-difficulty-icon.component";
@@ -34,12 +37,7 @@ type PendingRunSortLayout = {
   scrollTop: number;
 };
 
-const runSortOptions: { value: RunSortKey; label: string }[] = [
-  { value: "progress", label: "Progress" },
-  { value: "time", label: "Time" },
-  { value: "pitch", label: "Pitch" },
-  { value: "accuracy", label: "Accuracy" },
-];
+const runSortOptions: RunSortKey[] = ["progress", "time", "pitch", "accuracy"];
 
 export function ActivityWorkspace({
   chartAvailable,
@@ -84,6 +82,7 @@ export function ActivityWorkspace({
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
+  const { t } = useTranslation("activity");
   const chartRef = useRef<EmbeddedChartHandle>(null);
   const runListRef = useRef<HTMLDivElement>(null);
   const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
@@ -164,23 +163,14 @@ export function ActivityWorkspace({
       animation.id = "run-sort";
     }
   }, [runSort, sortDirection]);
-  if (error) return <StatePanel title="Could not load activity" body={error} />;
+  if (error) return <StatePanel title={t("chart.loadError")} body={error} />;
   if (!chartAvailable)
-    return (
-      <StatePanel
-        title="Chart unavailable"
-        body="This session has no stored chart text. Its level remains listed and browsable."
-      />
-    );
+    return <StatePanel title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
   if (!chart)
     return (
       <StatePanel
-        title={loading ? "Loading session…" : "Chart unavailable"}
-        body={
-          loading
-            ? "Runs and chart pages are loading incrementally."
-            : "No chart data was returned."
-        }
+        title={loading ? t("chart.loading") : t("chart.unavailable")}
+        body={loading ? t("chart.loadingIncrementally") : t("chart.noData")}
       />
     );
   return (
@@ -216,25 +206,22 @@ export function ActivityWorkspace({
           <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col">
             <div className="mb-3 shrink-0">
               <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Sort by
+                {t("run.sortBy")}
               </div>
-              <fieldset
-                className="flex min-w-0 items-center gap-2"
-                aria-label="Run sorting controls"
-              >
+              <fieldset className="flex min-w-0 items-center gap-2" aria-label={t("sort.label")}>
                 <div className="grid min-w-0 flex-1 grid-cols-4 rounded-md border border-border bg-background/70 p-1">
                   {runSortOptions.map((option) => (
                     <button
-                      key={option.value}
+                      key={option}
                       type="button"
-                      aria-pressed={runSort === option.value}
-                      onClick={() => changeRunSort(option.value)}
+                      aria-pressed={runSort === option}
+                      onClick={() => changeRunSort(option)}
                       className={cn(
                         "h-7 rounded-sm px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        runSort === option.value && "bg-muted text-foreground shadow-sm",
+                        runSort === option && "bg-muted text-foreground shadow-sm",
                       )}
                     >
-                      {option.label}
+                      {t(`sort.${option}`)}
                     </button>
                   ))}
                 </div>
@@ -315,6 +302,7 @@ function RunCard({
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
+  const { t } = useTranslation("activity");
   const statusMatches = replayStatus.RunId === run.Id;
   const runDeleteDisabled =
     replayPendingRunId === run.Id ||
@@ -360,7 +348,7 @@ function RunCard({
 
       <button
         type="button"
-        aria-label={`Select run ${run.RunIndex}`}
+        aria-label={t("run.select", { runIndex: run.RunIndex })}
         aria-pressed={active}
         onClick={onSelect}
         className="block w-full rounded-b-md p-3 pt-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
@@ -373,12 +361,14 @@ function RunCard({
 }
 
 function MicrophoneRecordingIndicator() {
+  const { t } = useTranslation("activity");
+  const label = t("run.microphoneAvailable");
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <span
           role="img"
-          aria-label="Microphone recording available"
+          aria-label={label}
           className="-ml-1 grid size-6 shrink-0 place-items-center text-white"
         >
           <svg
@@ -397,34 +387,40 @@ function MicrophoneRecordingIndicator() {
           </svg>
         </span>
       </TooltipTrigger>
-      <TooltipContent side="top">Microphone recording available</TooltipContent>
+      <TooltipContent side="top">{label}</TooltipContent>
     </Tooltip>
   );
 }
 
 function RunCardContent({ run, timeZone }: { run: ActivityRun; timeZone: string }) {
-  const startedAt = formatTimeWithOffsetParts(run.StartedAtUtc, timeZone);
+  const { t, i18n } = useTranslation("activity");
+  const startedAt = formatTimeWithOffsetParts(
+    run.StartedAtUtc,
+    i18n.resolvedLanguage ?? "en",
+    t("time.open"),
+    timeZone,
+  );
 
   return (
     <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-md bg-muted/25 p-2.5">
       <ScoreboardMetric
         icon={PercentIcon}
-        label="Progress"
+        label={t("sort.progress")}
         value={`${runStartProgressPercent(run)}% → ${runProgressPercent(run)}%`}
       />
       <ScoreboardMetric
         icon={DashboardSpeed01Icon}
-        label="Pitch"
+        label={t("sort.pitch")}
         value={`${run.LevelPitchPercent ?? "?"}%`}
       />
       <ScoreboardMetric
         icon={ChartAverageIcon}
-        label="X-Accuracy"
-        value={formatXAccuracy(run.XAccuracy)}
+        label={t("run.xAccuracy")}
+        value={formatXAccuracy(run.XAccuracy, i18n.resolvedLanguage ?? "en")}
       />
       <ScoreboardMetric
         icon={Clock01Icon}
-        label="Started at"
+        label={t("run.startedAt")}
         value={startedAt.time}
         suffix={startedAt.offset ? `(${startedAt.offset})` : undefined}
       />
@@ -483,7 +479,9 @@ function RunReplayButton({
   onPlay: (run: ActivityRun) => void;
   disabled: boolean;
 }) {
-  const message = describeReplay(run.Id, status, pendingRunId, error, errorRunId);
+  const { t: activityT } = useTranslation("activity");
+  const { t: replayT } = useTranslation("replay");
+  const message = describeReplay(run.Id, status, pendingRunId, error, errorRunId, replayT);
   const statusMatches = status.RunId === run.Id;
   const starting =
     pendingRunId === run.Id ||
@@ -507,7 +505,7 @@ function RunReplayButton({
     const timeout = setTimeout(() => setFailureVisible(false), 5_000);
     return () => clearTimeout(timeout);
   }, [failureKey]);
-  const label = `Play replay for run ${run.RunIndex}${message ? `. ${message}` : ""}`;
+  const label = `${activityT("run.playReplayForRun", { runIndex: run.RunIndex })}${message ? `. ${message}` : ""}`;
 
   return (
     <Tooltip>
@@ -534,11 +532,11 @@ function RunReplayButton({
             fill={starting ? "none" : "currentColor"}
             strokeWidth={starting ? 2.2 : 0}
           />
-          <span>{playing ? "Playing" : "Play"}</span>
+          <span>{playing ? activityT("run.playing") : activityT("run.play")}</span>
         </button>
       </TooltipTrigger>
       <TooltipContent side="top" align="end">
-        {message || "Play replay"}
+        {message || activityT("run.playReplay")}
       </TooltipContent>
     </Tooltip>
   );
@@ -564,7 +562,8 @@ function SortDirectionButton({
   selected: boolean;
   onSelect: (direction: SortDirection) => void;
 }) {
-  const label = direction === "asc" ? "Ascending" : "Descending";
+  const { t } = useTranslation("activity");
+  const label = t(direction === "asc" ? "run.ascending" : "run.descending");
   return (
     <button
       type="button"
@@ -629,19 +628,26 @@ function describeReplay(
   pendingRunId: string | null,
   error: string,
   errorRunId: string | null,
+  t: TFunction<"replay">,
 ) {
-  if (pendingRunId === runId) return "Sending replay to ADOFAI…";
+  if (pendingRunId === runId) return t("status.sending");
   if (errorRunId === runId && error) return error;
   if (status.RunId === runId) {
-    if (status.State === "preparing") return "Preparing replay…";
-    if (status.State === "opening_level") return "Opening the recorded level…";
-    if (status.State === "waiting_for_focus") return "Waiting for ADOFAI to regain focus…";
-    if (status.State === "starting") return "Starting replay…";
-    if (status.State === "playing") return "Replay is playing.";
-    if (status.State === "returning_to_editor") return "Returning to the editor…";
-    if (status.State === "completed") return "Replay completed.";
-    if (status.State === "cancelled") return "Replay cancelled.";
-    if (status.State === "error") return status.Message || status.ErrorCode || "Replay failed.";
+    if (status.State === "preparing") return t("status.preparing");
+    if (status.State === "opening_level") return t("status.openingLevel");
+    if (status.State === "waiting_for_focus") return t("status.waitingForFocus");
+    if (status.State === "starting") return t("status.starting");
+    if (status.State === "playing") return t("status.playing");
+    if (status.State === "returning_to_editor") return t("status.returning");
+    if (status.State === "completed") return t("status.completed");
+    if (status.State === "cancelled") return t("status.cancelled");
+    if (status.State === "error")
+      return (
+        translatedDomainError(status.ErrorCode ?? "") ||
+        status.Message ||
+        status.ErrorCode ||
+        t("status.failed")
+      );
     return null;
   }
   if (
@@ -652,7 +658,7 @@ function describeReplay(
     status.State === "playing" ||
     status.State === "returning_to_editor"
   ) {
-    return "Starting this run will replace the active replay.";
+    return t("status.replaceActive");
   }
   return null;
 }

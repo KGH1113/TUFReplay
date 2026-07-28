@@ -6,11 +6,13 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button.component";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog.component";
 
 import type { ActivityRun, ReplayLevelFilePickerResult, ReplayStatus } from "../activity.model";
+import { translatedDomainError } from "../lib/localized-error";
 
 export function ReplayLevelChoiceDialog({
   run,
@@ -35,6 +37,8 @@ export function ReplayLevelChoiceDialog({
   onChooseAnother: (runId: string) => Promise<boolean>;
   onResetPicker: () => void;
 }) {
+  const { t } = useTranslation("replay");
+  const { t: commonT } = useTranslation("common");
   const autoPlayKeyRef = useRef("");
   const [startingAction, setStartingAction] = useState<"original" | "picker" | null>(null);
   const currentPicker = pickerResult?.RunId === run?.Id ? pickerResult : null;
@@ -93,7 +97,10 @@ export function ReplayLevelChoiceDialog({
     playErrorRunId === run?.Id
       ? playError
       : replayStatus.RunId === run?.Id && replayStatus.State === "error"
-        ? replayStatus.Message || replayStatus.ErrorCode || "Replay failed."
+        ? translatedDomainError(replayStatus.ErrorCode ?? "") ||
+          replayStatus.Message ||
+          replayStatus.ErrorCode ||
+          t("dialog.failed")
         : "";
   const pickerMessage =
     currentPlayError ||
@@ -117,12 +124,12 @@ export function ReplayLevelChoiceDialog({
         onPointerDownOutside={(event) => isPicking && event.preventDefault()}
       >
         <div className="px-5 pb-4 pt-5">
-          <DialogTitle>Play replay</DialogTitle>
+          <DialogTitle>{t("dialog.title")}</DialogTitle>
           <p
             id="replay-level-choice-description"
             className="mt-1.5 text-sm leading-relaxed text-muted-foreground"
           >
-            Use the original level or choose another file with matching gameplay.
+            {t("dialog.description")}
           </p>
         </div>
 
@@ -142,9 +149,9 @@ export function ReplayLevelChoiceDialog({
               />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">Original level</span>
+              <span className="block text-sm font-medium">{t("dialog.original")}</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
-                {originalBusy ? "Starting replay…" : "Use the level recorded for this run"}
+                {originalBusy ? t("dialog.starting") : t("dialog.useRecorded")}
               </span>
             </span>
             {originalBusy ? (
@@ -156,7 +163,7 @@ export function ReplayLevelChoiceDialog({
               />
             ) : (
               <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
-                Default
+                {t("dialog.default")}
               </span>
             )}
           </button>
@@ -176,15 +183,15 @@ export function ReplayLevelChoiceDialog({
               />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-sm font-medium">Choose matching level…</span>
+              <span className="block text-sm font-medium">{t("dialog.chooseMatching")}</span>
               <span className="mt-0.5 block text-xs text-muted-foreground">
                 {isPicking
-                  ? "Choose a file, then verifying gameplay…"
+                  ? t("dialog.choosingAndVerifying")
                   : startingAction === "picker"
                     ? currentPicker?.Outcome === "selected"
-                      ? "Starting replay…"
-                      : "Opening file picker…"
-                    : "Use another file with identical gameplay"}
+                      ? t("dialog.starting")
+                      : t("dialog.openingPicker")
+                    : t("dialog.useAnother")}
               </span>
             </span>
             {pickerBusy ? (
@@ -220,7 +227,7 @@ export function ReplayLevelChoiceDialog({
 
         <div className="flex justify-end px-4 py-3">
           <Button type="button" variant="ghost" size="sm" disabled={busy} onClick={close}>
-            Cancel
+            {commonT("actions.cancel")}
           </Button>
         </div>
       </DialogContent>

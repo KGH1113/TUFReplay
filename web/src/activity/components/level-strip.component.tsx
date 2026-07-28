@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/ui/ui-class.utils";
 import type { ActivityLogicalLevelOverview, LevelMetadata } from "../activity.model";
 import { formatTime } from "../lib/activity-date.utils";
@@ -15,11 +16,25 @@ export function LevelStrip({
   metadataFor: (session: ActivityLogicalLevelOverview) => LevelMetadata;
   onSelectLevelSession: (id: string) => void;
 }) {
+  const { t, i18n } = useTranslation("activity");
+  const locale = i18n.resolvedLanguage ?? "en";
   return (
     <div className="border-b border-border bg-muted/10 px-3 py-2">
       <div className="flex gap-2 overflow-x-auto">
         {levelSessions.map((session) => {
           const metadata = metadataFor(session);
+          const artist =
+            metadata.artist ||
+            (metadata.levelId === null ? t("metadata.localLevel") : t("metadata.tufDatabase"));
+          const name =
+            metadata.name ||
+            (metadata.levelId === null
+              ? t("metadata.customLevel")
+              : t("metadata.levelNumber", { levelId: metadata.levelId }));
+          const creator = metadata.creator || t("metadata.unknownCreator");
+          const difficulty =
+            metadata.difficulty ||
+            (metadata.levelId === null ? t("metadata.local") : t("metadata.unknownDifficulty"));
           return (
             <button
               key={session.Id}
@@ -35,35 +50,39 @@ export function LevelStrip({
                 {metadata.difficultyIconUrl ? (
                   <img
                     src={metadata.difficultyIconUrl}
-                    alt={metadata.difficulty}
+                    alt={difficulty}
                     className="size-full object-contain drop-shadow-[0_3px_6px_rgb(0_0_0/0.75)]"
                     loading="lazy"
                     decoding="async"
                   />
                 ) : (
                   <div className="grid size-full place-items-center rounded-full bg-primary/15 text-xs font-semibold ring-1 ring-primary/50">
-                    {metadata.difficulty}
+                    {difficulty}
                   </div>
                 )}
               </div>
               <div className="min-w-0">
                 <p className="truncate text-xs text-muted-foreground">
                   {metadata.levelId === null
-                    ? metadata.artist === "Local level"
-                      ? "Local / unknown metadata"
-                      : `Local · ${metadata.artist}`
-                    : `#${metadata.levelId} · ${metadata.artist}`}
+                    ? metadata.artist
+                      ? t("metadata.localArtist", { artist })
+                      : t("metadata.localUnknown")
+                    : t("metadata.tufArtist", { levelId: metadata.levelId, artist })}
                 </p>
-                <div className="truncate font-heading text-lg font-semibold">{metadata.name}</div>
-                <p className="truncate text-xs text-muted-foreground" title={metadata.creator}>
-                  Chart by <span className="text-foreground/75">{metadata.creator}</span>
+                <div className="truncate font-heading text-lg font-semibold">{name}</div>
+                <p className="truncate text-xs text-muted-foreground" title={creator}>
+                  {t("metadata.chartBy", { creator })}
                 </p>
                 <div className="mt-1 flex gap-1.5 text-xs text-muted-foreground">
-                  <span>{session.RunCount} runs</span>
+                  <span>
+                    {session.RunCount} {t("counts.runs", { count: session.RunCount })}
+                  </span>
                   <span>·</span>
-                  <span>{session.ClearRunCount} clears</span>
+                  <span>
+                    {session.ClearRunCount} {t("counts.clears", { count: session.ClearRunCount })}
+                  </span>
                   <span>·</span>
-                  <span>{formatTime(session.LastSeenAtUtc, timeZone)}</span>
+                  <span>{formatTime(session.LastSeenAtUtc, locale, t("time.open"), timeZone)}</span>
                 </div>
               </div>
             </button>

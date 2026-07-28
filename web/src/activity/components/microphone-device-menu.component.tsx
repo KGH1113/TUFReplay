@@ -1,6 +1,8 @@
 import { Loading03Icon, Mic01Icon, Tick02Icon, WaveSquareIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { TFunction } from "i18next";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button.component";
 import { Switch } from "@/ui/switch.component";
@@ -39,10 +41,13 @@ export function MicrophoneDeviceMenu({
   onSelect: (deviceId: string | null) => void;
   onAdjustOffset: () => void;
 }) {
+  const { t, i18n } = useTranslation("microphone");
+  const { t: commonT } = useTranslation("common");
+  const locale = i18n.resolvedLanguage ?? "en";
   const connected = connectionStatus === "online";
   const selectedName =
     selectedDeviceId === null
-      ? "System default"
+      ? t("systemDefault")
       : (devices.find((device) => device.Id === selectedDeviceId)?.Name ?? selectedDeviceId);
   const selectedValue = selectedDeviceId ?? SYSTEM_DEFAULT_VALUE;
   const saving = pendingDeviceId !== undefined || pendingEnabled !== undefined;
@@ -55,17 +60,13 @@ export function MicrophoneDeviceMenu({
           variant="ghost"
           size="icon-sm"
           disabled={!connected}
-          aria-label={
-            enabled
-              ? `Select microphone. Current input: ${selectedName}`
-              : "Microphone input is off"
-          }
+          aria-label={enabled ? t("selectCurrent", { name: selectedName }) : t("inputOff")}
           title={
             connected
               ? enabled
-                ? `Microphone: ${selectedName}`
-                : "Microphone input is off"
-              : "Connect to TUFReplay to select a microphone"
+                ? t("current", { name: selectedName })
+                : t("inputOff")
+              : t("connectToSelect")
           }
           className="rounded-full text-muted-foreground hover:text-foreground data-[state=open]:bg-muted/60 data-[state=open]:text-foreground"
         >
@@ -81,15 +82,15 @@ export function MicrophoneDeviceMenu({
         >
           <div className="flex items-center justify-between gap-3 px-2.5 py-2">
             <div className="min-w-0">
-              <p className="text-sm font-semibold">Microphone input</p>
+              <p className="text-sm font-semibold">{t("title")}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {enabled ? selectedName : "Off"}
+                {enabled ? selectedName : t("off")}
               </p>
             </div>
             <div className="flex items-center gap-2">
               {loading || saving ? (
                 <HugeiconsIcon
-                  aria-label={saving ? "Saving microphone" : "Refreshing microphones"}
+                  aria-label={saving ? t("saving") : t("refreshing")}
                   icon={Loading03Icon}
                   size={15}
                   strokeWidth={2}
@@ -99,7 +100,7 @@ export function MicrophoneDeviceMenu({
               <Switch
                 checked={enabled}
                 disabled={!connected || saving || toggleLocked}
-                aria-label="Enable microphone input"
+                aria-label={t("enable")}
                 onCheckedChange={onSetEnabled}
                 onClick={(event) => event.stopPropagation()}
               />
@@ -107,7 +108,7 @@ export function MicrophoneDeviceMenu({
           </div>
           {toggleLocked ? (
             <p className="mx-1 mb-1 rounded-md bg-muted/55 px-2 py-1.5 text-xs text-muted-foreground">
-              Finish the current run or calibration to change microphone access.
+              {t("locked")}
             </p>
           ) : null}
           {enabled ? (
@@ -120,8 +121,8 @@ export function MicrophoneDeviceMenu({
               >
                 <MicrophoneItem
                   value={SYSTEM_DEFAULT_VALUE}
-                  name="System default"
-                  description="Use the operating system input device"
+                  name={t("systemDefault")}
+                  description={t("systemDefaultDescription")}
                   disabled={saving}
                 />
                 {devices.map((device) => (
@@ -129,15 +130,18 @@ export function MicrophoneDeviceMenu({
                     key={device.Id}
                     value={device.Id}
                     name={device.Name}
-                    description={frequencyDescription(device)}
+                    description={frequencyDescription(
+                      device,
+                      locale,
+                      t("availableDevice"),
+                      commonT,
+                    )}
                     disabled={saving}
                   />
                 ))}
               </DropdownMenuPrimitive.RadioGroup>
               {!loading && devices.length === 0 ? (
-                <p className="px-2.5 py-2 text-xs text-muted-foreground">
-                  No microphone devices were detected.
-                </p>
+                <p className="px-2.5 py-2 text-xs text-muted-foreground">{t("noneDetected")}</p>
               ) : null}
             </>
           ) : null}
@@ -165,9 +169,9 @@ export function MicrophoneDeviceMenu({
                   />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-sm font-medium">Adjust timing offset</span>
+                  <span className="block text-sm font-medium">{t("adjustOffset")}</span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    Align microphone and game audio
+                    {t("alignAudio")}
                   </span>
                 </span>
               </DropdownMenuPrimitive.Item>
@@ -208,9 +212,16 @@ function MicrophoneItem({
   );
 }
 
-function frequencyDescription(device: MicrophoneDevice) {
-  if (device.MinFrequency <= 0 || device.MaxFrequency <= 0) return "Available input device";
+function frequencyDescription(
+  device: MicrophoneDevice,
+  locale: string,
+  availableLabel: string,
+  commonT: TFunction<"common">,
+) {
+  if (device.MinFrequency <= 0 || device.MaxFrequency <= 0) return availableLabel;
   if (device.MinFrequency === device.MaxFrequency)
-    return `${device.MaxFrequency.toLocaleString()} Hz`;
-  return `${device.MinFrequency.toLocaleString()}–${device.MaxFrequency.toLocaleString()} Hz`;
+    return commonT("units.hertz", { value: device.MaxFrequency.toLocaleString(locale) });
+  return commonT("units.hertz", {
+    value: `${device.MinFrequency.toLocaleString(locale)}–${device.MaxFrequency.toLocaleString(locale)}`,
+  });
 }

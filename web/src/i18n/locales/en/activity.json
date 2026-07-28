@@ -1,0 +1,104 @@
+{
+  "days": "Days",
+  "counts": {
+    "runs_one": "run",
+    "runs_other": "runs",
+    "levels_one": "level",
+    "levels_other": "levels",
+    "clears_one": "clear",
+    "clears_other": "clears"
+  },
+  "connection": {
+    "connectingTitle": "Connecting to TUFReplay…",
+    "connectingDescription": "Checking the local ADOFAI connection.",
+    "waitingTitle": "Waiting for TUFReplay",
+    "waitingDescription": "Open ADOFAI and make sure the mod is enabled.",
+    "updateTitle": "TUFReplay update required",
+    "updateDescription": "Fully quit ADOFAI, then start it again to update TUFReplay.",
+    "retryAfterRestarting": "Retry after restarting",
+    "retry": "Retry connection",
+    "connectGuide": "How to connect",
+    "updateGuide": "How to update",
+    "connectSteps": [
+      "Start ADOFAI.",
+      "Enable TUFReplay in UnityModManager.",
+      "Make sure AdofaiIpc is running."
+    ],
+    "updateSteps": [
+      "Fully quit ADOFAI.",
+      "Start ADOFAI again and wait for TUFReplay to update.",
+      "Return here; this page will retry automatically."
+    ]
+  },
+  "empty": "No recorded activity yet.",
+  "errors": {
+    "load": "Could not load TUFReplay activity",
+    "connect": "Could not connect to TUFReplay",
+    "loadSession": "Could not load level session"
+  },
+  "time": {
+    "open": "Open",
+    "noClear": "No clear time"
+  },
+  "metadata": {
+    "unknownArtist": "Unknown artist",
+    "unknownCreator": "Unknown creator",
+    "unknownDifficulty": "Unknown",
+    "local": "Local",
+    "localLevel": "Local level",
+    "localUnknown": "Local / unknown metadata",
+    "customLevel": "Custom level",
+    "levelNumber": "Level #{{levelId}}",
+    "tufDatabase": "TUF database",
+    "localArtist": "Local · {{artist}}",
+    "tufArtist": "#{{levelId}} · {{artist}}",
+    "chartBy": "Chart by {{creator}}"
+  },
+  "sort": {
+    "label": "Run sorting controls",
+    "progress": "Progress",
+    "time": "Time",
+    "pitch": "Pitch",
+    "accuracy": "Accuracy"
+  },
+  "chart": {
+    "unavailable": "Chart unavailable",
+    "loading": "Loading session…",
+    "loadError": "Could not load activity",
+    "missingStoredChart": "This session has no stored chart text. Its level remains listed and browsable.",
+    "loadingIncrementally": "Runs and chart pages are loading incrementally.",
+    "noData": "No chart data was returned.",
+    "viewerTitle": "ADOFAI level chart",
+    "loadingViewer": "Loading chart…",
+    "viewerLoadFailed": "The embedded chart could not be loaded.",
+    "missingEmbedUrl": "Set VITE_WEB_ADOFAI_EMBED_URL to load the ADOFAI chart viewer.",
+    "invalidEmbedUrl": "VITE_WEB_ADOFAI_EMBED_URL must be a valid absolute URL."
+  },
+  "run": {
+    "select": "Select run {{runIndex}}",
+    "openActions": "Open actions for run {{runIndex}}",
+    "microphoneAvailable": "Microphone recording available",
+    "difficulty": "{{difficulty}} judgment difficulty",
+    "noFail": "No Fail mode",
+    "xAccuracy": "X-Accuracy",
+    "startedAt": "Started at",
+    "play": "Play",
+    "playing": "Playing",
+    "playReplay": "Play replay",
+    "playReplayForRun": "Play replay for run {{runIndex}}",
+    "sortBy": "Sort by",
+    "ascending": "Sort ascending",
+    "descending": "Sort descending"
+  },
+  "judgments": {
+    "Overload": "Overload",
+    "TooEarly": "Too Early",
+    "Early": "Early",
+    "EarlyPerfect": "Early Perfect",
+    "Perfect": "Perfect",
+    "LatePerfect": "Late Perfect",
+    "Late": "Late",
+    "TooLate": "Too Late",
+    "Miss": "Miss"
+  }
+}

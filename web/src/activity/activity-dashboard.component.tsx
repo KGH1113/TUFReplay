@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { ActivityRun, RunMarker } from "./activity.model";
 import { ActivityWorkspace } from "./components/activity-workspace.component";
@@ -14,6 +15,8 @@ import { useReplayControl } from "./hooks/use-replay-control.hook";
 import { aggregateRunMarkers, groupSessionsByDay } from "./lib/activity-data.utils";
 
 export function ActivityDashboard() {
+  const { t: activityT } = useTranslation("activity");
+  const { t: commonT } = useTranslation("common");
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
   const clearLevelFilePicker = replay.clearLevelFilePicker;
@@ -127,7 +130,7 @@ export function ActivityDashboard() {
   };
   const handleDeleteMicrophoneRecording = async (run: ActivityRun) => {
     const gateway = activity.gatewayRef.current;
-    if (!gateway) throw new Error("TUFReplay is not connected");
+    if (!gateway) throw new Error(commonT("errors.notConnected"));
     await gateway.deleteMicrophoneRecording(run.Id);
     levelData.updateRun(run.Id, {
       HasMicrophoneRecording: false,
@@ -141,7 +144,7 @@ export function ActivityDashboard() {
   };
   const handleKeepMicrophoneRecording = async (run: ActivityRun) => {
     const gateway = activity.gatewayRef.current;
-    if (!gateway) throw new Error("TUFReplay is not connected");
+    if (!gateway) throw new Error(commonT("errors.notConnected"));
     await gateway.keepMicrophoneRecording(run.Id);
     levelData.updateRun(run.Id, {
       MicrophoneRecordingPermanent: true,
@@ -150,7 +153,7 @@ export function ActivityDashboard() {
   };
   const handleDeleteRun = async (run: ActivityRun) => {
     const gateway = activity.gatewayRef.current;
-    if (!gateway) throw new Error("TUFReplay is not connected");
+    if (!gateway) throw new Error(commonT("errors.notConnected"));
     await gateway.deleteRun(run.Id);
     levelData.removeRun(run.Id);
     setSelectedRunId((current) => (current === run.Id ? null : current));
@@ -194,7 +197,7 @@ export function ActivityDashboard() {
                 />
               ) : (
                 <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
-                  No recorded activity yet.
+                  {activityT("empty")}
                 </div>
               )
             ) : (
