@@ -36,6 +36,22 @@ interface CalibrationStatusPollingOptions {
   cancelSchedule?: (timer: CalibrationPollTimer) => void;
 }
 
+export function createCalibrationOffsetSaveQueue(onError: (cause: unknown) => void) {
+  let tail = Promise.resolve();
+
+  return {
+    enqueue(save: () => Promise<unknown>) {
+      tail = tail.then(save).then(
+        () => undefined,
+        (cause) => onError(cause),
+      );
+    },
+    flush() {
+      return tail;
+    },
+  };
+}
+
 export function installCalibrationStatusPolling({
   getGateway,
   getOperationId,
@@ -99,6 +115,11 @@ export function useMicrophoneOffsetCalibration(
   const resultRevisionRef = useRef(0);
   const positionAnchorRef = useRef({ positionMs: 0, sampledAtMs: 0 });
   const durationRef = useRef(mockMicrophoneOffsetCalibration.durationMs);
+  const offsetSaveQueueRef = useRef(
+    createCalibrationOffsetSaveQueue((cause) =>
+      setAudioError(errorMessage(cause, "Could not save the offset.")),
+    ),
+  );
   const pendingVolumeRef = useRef<number | null>(null);
   const volumeTimerRef = useRef<number | null>(null);
   const requestGenerationRef = useRef(0);
@@ -236,6 +257,7 @@ export function useMicrophoneOffsetCalibration(
     requestGenerationRef.current += 1;
     const gateway = gatewayRef.current ?? activeGatewayRef.current;
     const operationId = operationIdRef.current;
+    const pendingOffsetSaves = offsetSaveQueueRef.current.flush();
     const pendingVolume = pendingVolumeRef.current;
     pendingVolumeRef.current = null;
     if (volumeTimerRef.current !== null) {
@@ -251,6 +273,7 @@ export function useMicrophoneOffsetCalibration(
     dispatch({ type: "close" });
     if (!mockEnabled && gateway && operationId)
       void (async () => {
+        await pendingOffsetSaves;
         if (pendingVolume !== null)
           await gateway.setMicrophoneCalibrationVolume(operationId, pendingVolume);
         await gateway.closeMicrophoneCalibration(operationId);
@@ -268,9 +291,9 @@ export function useMicrophoneOffsetCalibration(
       const gateway = gatewayRef.current;
       const operationId = operationIdRef.current;
       if (gateway && operationId)
-        void gateway
-          .setMicrophoneCalibrationOffset(operationId, nextOffsetMs)
-          .catch((cause) => setAudioError(errorMessage(cause, "Could not save the offset.")));
+        offsetSaveQueueRef.current.enqueue(() =>
+          gateway.setMicrophoneCalibrationOffset(operationId, nextOffsetMs),
+        );
     },
     [gatewayRef, mockEnabled],
   );

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Threading;
 using TUFReplay.Application.Calibration;
+using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
 using TUFReplay.Bootstrap;
 using TUFReplay.Domain.Microphone;
@@ -119,7 +120,13 @@ internal sealed class MicrophoneCalibrationPreview
         CaptureStartOffsetUs = source.CaptureStartOffsetUs,
         ByteLength = new FileInfo(copyPath).Length,
       };
-      UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored));
+      Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(stored);
+      Pcm16LimiterEnvelope limiterEnvelope = Pcm16WaveAnalyzer.Analyze(
+        stored,
+        wave,
+        CancellationToken.None
+      );
+      UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored, wave, limiterEnvelope));
     }
     catch (Exception exception)
     {
@@ -132,7 +139,13 @@ internal sealed class MicrophoneCalibrationPreview
     }
   }
 
-  private void StartPrepared(string operationId, string levelPath, StoredMicrophoneRecording recording)
+  private void StartPrepared(
+    string operationId,
+    string levelPath,
+    StoredMicrophoneRecording recording,
+    Pcm16WaveInfo wave,
+    Pcm16LimiterEnvelope limiterEnvelope
+  )
   {
     if (!_state.IsState(operationId, MicrophoneCalibrationStates.PreviewStarting) || _run == null)
     {
@@ -142,7 +155,13 @@ internal sealed class MicrophoneCalibrationPreview
     _originalRunInBackground = UnityEngine.Application.runInBackground;
     _changedRunInBackground = true;
     UnityEngine.Application.runInBackground = true;
-    ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.PlayEphemeral(_run, levelPath, recording);
+    ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.PlayEphemeral(
+      _run,
+      levelPath,
+      recording,
+      wave,
+      limiterEnvelope
+    );
     if (replayStatus.State == ReplayPlaybackStates.Error)
     {
       RestoreRunInBackground();
