@@ -2,6 +2,7 @@ namespace TUFReplay.Application.Replay;
 
 public sealed class ReplayLevelFilePickerResult
 {
+  public string OperationId;
   public string RunId;
   public string Outcome;
   public string LevelPath;
@@ -11,6 +12,7 @@ public sealed class ReplayLevelFilePickerResult
 
 public static class ReplayLevelFilePickerOutcomes
 {
+  public const string Picking = "picking";
   public const string Selected = "selected";
   public const string Mismatch = "mismatch";
   public const string Cancelled = "cancelled";

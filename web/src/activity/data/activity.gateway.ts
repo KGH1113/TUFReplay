@@ -14,14 +14,13 @@ import type {
   MicrophoneRecordingKeepResult,
   ReplayLevelFilePickerResult,
   ReplayStatus,
-  RunExportResult,
 } from "../activity.model";
 import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
-const FILE_PICKER_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-export const SUPPORTED_PROTOCOL_VERSION = 2;
+const FILE_PICKER_POLL_INTERVAL_MS = 100;
+export const SUPPORTED_PROTOCOL_VERSION = 4;
 
 export interface ActivityHealth {
   Ok: boolean;
@@ -77,7 +76,6 @@ export interface ActivityGateway {
   getChart(id: string): Promise<ActivityChart>;
   getLogicalLevelChart(id: string): Promise<ActivityChart>;
   deleteRun(runId: string): Promise<ActivityRunDeleteResult>;
-  exportRun(runId: string): Promise<RunExportResult>;
   deleteMicrophoneRecording(runId: string): Promise<MicrophoneRecordingDeleteResult>;
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
@@ -109,11 +107,7 @@ export async function connectActivityGateway(): Promise<ActivityGateway> {
   const client = await tryConnect({
     fetch: adofaiIpcFetch,
   });
-  const pickerClient = new AdofaiIpcClient({
-    baseUrl: client.baseUrl,
-    fetch: adofaiIpcFetch,
-    timeoutMs: FILE_PICKER_TIMEOUT_MS,
-  });
+  const pickerClient = new AdofaiIpcClient({ baseUrl: client.baseUrl, fetch: adofaiIpcFetch });
   return createActivityGateway(client.namespace(NAMESPACE), pickerClient.namespace(NAMESPACE));
 }
 
@@ -158,7 +152,6 @@ export function createActivityGateway(
       ),
     getLogicalLevelChart: (id) => callDomain(namespace, "activity.logical-level.chart.get", { id }),
     deleteRun: (runId) => callDomain(namespace, "activity.run.delete", { runId }),
-    exportRun: (runId) => callDomain(pickerNamespace, "activity.run.export", { runId }),
     deleteMicrophoneRecording: (runId) =>
       callDomain(namespace, "microphone.recording.delete", { runId }),
     keepMicrophoneRecording: (runId) =>
@@ -166,8 +159,22 @@ export function createActivityGateway(
     playReplay: (runId, levelPath) =>
       callDomain(namespace, "replay.play", levelPath ? { runId, levelPath } : { runId }),
     getReplayStatus: () => callDomain(namespace, "replay.status.get", {}),
-    pickReplayLevelFile: (runId) =>
-      callDomain(pickerNamespace, "replay.level-file.pick", { runId }),
+    pickReplayLevelFile: async (runId) => {
+      let result = await callDomain<ReplayLevelFilePickerResult>(
+        pickerNamespace,
+        "replay.level-file.pick",
+        { runId },
+      );
+      while (result.Outcome === "picking" && result.OperationId) {
+        await delay(FILE_PICKER_POLL_INTERVAL_MS);
+        result = await callDomain<ReplayLevelFilePickerResult>(
+          pickerNamespace,
+          "replay.level-file.status.get",
+          { operationId: result.OperationId },
+        );
+      }
+      return result;
+    },
     getMicrophoneDevices: () => callDomain(namespace, "microphone.devices.get", {}),
     setMicrophoneEnabled: (enabled) => callDomain(namespace, "microphone.enabled.set", { enabled }),
     selectMicrophoneDevice: (deviceId) =>
@@ -188,6 +195,10 @@ export function createActivityGateway(
     closeMicrophoneCalibration: (operationId) =>
       callDomain(namespace, "microphone.calibration.close", { operationId }),
   };
+}
+
+function delay(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }
 
 export async function loadAllPages<T>(

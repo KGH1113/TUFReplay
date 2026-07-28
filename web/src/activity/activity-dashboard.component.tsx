@@ -148,11 +148,6 @@ export function ActivityDashboard() {
       MicrophoneRecordingExpiresAtUtc: null,
     });
   };
-  const handleExportRun = async (run: ActivityRun) => {
-    const gateway = activity.gatewayRef.current;
-    if (!gateway) throw new Error("TUFReplay is not connected");
-    await gateway.exportRun(run.Id);
-  };
   const handleDeleteRun = async (run: ActivityRun) => {
     const gateway = activity.gatewayRef.current;
     if (!gateway) throw new Error("TUFReplay is not connected");
@@ -221,7 +216,6 @@ export function ActivityDashboard() {
                 onSelectMarker={handleMarker}
                 onSelectRun={handleRun}
                 onPlayReplay={setReplayChoiceRun}
-                onExportRun={handleExportRun}
                 onDeleteRun={handleDeleteRun}
                 onDeleteMicrophoneRecording={handleDeleteMicrophoneRecording}
                 onKeepMicrophoneRecording={handleKeepMicrophoneRecording}
@@ -234,6 +228,7 @@ export function ActivityDashboard() {
         run={replayChoiceRun}
         pickerResult={replay.pickerResult}
         pickingRunId={replay.pickingRunId}
+        replayStatus={replay.status}
         playError={replay.error}
         playErrorRunId={replay.errorRunId}
         onClose={() => setReplayChoiceRun(null)}

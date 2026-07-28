@@ -19,14 +19,12 @@ id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,r
 gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
-gameplay_hash,gameplay_hash_version,
 input_count,hit_context_count,input_csv,hit_context_csv,meta_json
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
 @song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
-@gameplayHash,@gameplayHashVersion,
 @inputs,@hits,@inputCsv,@hitCsv,@meta
 )";
     q.Parameters.AddWithValue("@id", r.Id);
@@ -55,8 +53,6 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.Parameters.AddWithValue("@judgmentLate", judgments.Late);
     q.Parameters.AddWithValue("@judgmentTooLate", judgments.TooLate);
     q.Parameters.AddWithValue("@judgmentMiss", judgments.Miss);
-    q.Parameters.AddWithValue("@gameplayHash", (object)r.GameplayHash ?? System.DBNull.Value);
-    q.Parameters.AddWithValue("@gameplayHashVersion", DbValue.From(r.GameplayHashVersion));
     q.Parameters.AddWithValue("@inputs", r.InputCount);
     q.Parameters.AddWithValue("@hits", r.HitContextCount);
     q.Parameters.AddWithValue("@inputCsv", r.InputCsv ?? new byte[0]);
@@ -109,7 +105,7 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     using SqliteCommand q = c.CreateCommand();
     q.Transaction = transaction;
     q.CommandText =
-      @"SELECT r.level_session_id,l.logical_level_id,l.app_session_id,l.closed_at_utc,a.ended_at_utc
+      @"SELECT r.level_session_id,l.level_id,l.app_session_id,l.closed_at_utc,a.ended_at_utc
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 JOIN app_sessions a ON a.id=l.app_session_id
@@ -118,7 +114,7 @@ LIMIT 1";
     q.Parameters.AddWithValue("@id", runId);
 
     string levelSessionId;
-    string logicalLevelId;
+    string levelId;
     string appSessionId;
     bool levelSessionClosed;
     bool appSessionClosed;
@@ -127,7 +123,7 @@ LIMIT 1";
       if (!reader.Read())
         return false;
       levelSessionId = reader.GetString(0);
-      logicalLevelId = reader.GetString(1);
+      levelId = reader.GetString(1);
       appSessionId = reader.GetString(2);
       levelSessionClosed = !reader.IsDBNull(3);
       appSessionClosed = !reader.IsDBNull(4);
@@ -149,7 +145,7 @@ WHERE id=@level
       int levelDeleted = q.ExecuteNonQuery();
       if (levelDeleted > 0)
       {
-        LogicalLevelRepository.DeleteIfOrphaned(c, transaction, logicalLevelId);
+        LevelRepository.DeleteIfOrphaned(c, transaction, levelId);
         if (appSessionClosed)
         {
           q.CommandText =
@@ -203,7 +199,7 @@ WHERE id=@app
     }
     q.CommandText =
       Select
-      + " WHERE l.logical_level_id=@id AND l.app_session_id IN ("
+      + " WHERE l.level_id=@id AND l.app_session_id IN ("
       + string.Join(",", appSessionParameters)
       + ") ORDER BY r.started_at_utc ASC,r.id ASC LIMIT @limit OFFSET @offset";
     q.Parameters.AddWithValue("@id", id);
@@ -224,11 +220,12 @@ WHERE id=@app
     using SqliteCommand q = c.CreateCommand();
     q.CommandText =
       @"
-SELECT r.id,r.level_session_id,l.tuf_level_id,l.level_path,l.level_tile_count,
+SELECT r.id,r.level_session_id,g.tuf_level_id,g.adofai_path,g.level_tile_count,
        r.start_tile,r.last_tile,r.result,r.input_csv,r.hit_context_csv,r.meta_json,
-       r.gameplay_hash,r.gameplay_hash_version,r.judgment_difficulty,r.no_fail_mode
+       g.gameplay_hash,g.gameplay_hash_version,r.judgment_difficulty,r.no_fail_mode
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
+JOIN levels g ON g.id=l.level_id
 WHERE r.id=@id
 LIMIT 1";
     q.Parameters.AddWithValue("@id", runId);
@@ -263,26 +260,25 @@ LIMIT 1";
 
     using SqliteConnection c = DatabaseStore.OpenConnection();
     using SqliteCommand q = c.CreateCommand();
-    q.CommandText =
-      "UPDATE runs SET gameplay_hash=@hash,gameplay_hash_version=@version WHERE id=@id AND gameplay_hash IS NULL";
-    q.Parameters.AddWithValue("@hash", hash);
-    q.Parameters.AddWithValue("@version", version);
+    q.CommandText = "SELECT l.level_id FROM runs r JOIN level_sessions l ON l.id=r.level_session_id WHERE r.id=@id";
     q.Parameters.AddWithValue("@id", runId);
-    q.ExecuteNonQuery();
+    string levelId = q.ExecuteScalar() as string;
+    LevelRepository.UpdateGameplayHashIfMissing(levelId, hash, version);
   }
 
   private const string Select =
     @"SELECT
-r.id,l.app_session_id,r.level_session_id,l.tuf_level_id,r.run_index,r.started_at_utc,r.ended_at_utc,
-l.level_tile_count,r.start_tile,r.last_tile,r.result,r.no_fail_mode,r.gameplay_start_song_position,
+r.id,l.app_session_id,r.level_session_id,g.tuf_level_id,r.run_index,r.started_at_utc,r.ended_at_utc,
+g.level_tile_count,r.start_tile,r.last_tile,r.result,r.no_fail_mode,r.gameplay_start_song_position,
 r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,
 r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfect,r.judgment_perfect,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
-r.gameplay_hash,r.gameplay_hash_version,
+g.gameplay_hash,g.gameplay_hash_version,
 r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json,
 coalesce(length(m.audio_wav),0),m.sample_rate,m.channels,m.frame_count,m.is_permanent,m.expires_at_utc
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
+JOIN levels g ON g.id=l.level_id
 LEFT JOIN microphone_recordings m ON m.run_id=r.id";
 
   private static RunRecord Read(SqliteDataReader r) =>

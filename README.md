@@ -39,13 +39,13 @@ The project is built around preserving low-level play data instead of trusting f
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
-- Stores lean activity records, replay payloads, level paths, level-file fingerprints, and recorder timezone context in SQLite. Visits remain attached to their original app session, while the activity UI groups the same logical level across sessions by TUF ID, gameplay hash, or local path-and-file identity.
+- Stores lean activity records, replay payloads, immutable level revisions, and recorder timezone context in SQLite. Level files themselves are never copied into the database; visits point to a shared level row containing its source, local path, and gameplay hash.
 - Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
-- Serves chart text to the companion web UI only while the local file still matches the recorded level-session fingerprint; pre-v9 sessions without a fingerprint retain legacy path-based access.
+- Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash.
 - Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels continue directly into replay from the run's recorded start tile.
-- Stores a JipperResourcePack-compatible gameplay hash so replays can use a visually different `.adofai` file with the same tiles and judgment-affecting events.
+- Stores a versioned gameplay hash so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. Hash v1 remains supported for existing records; new records use SHA-256 hash v2.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
@@ -234,7 +234,6 @@ Registered methods:
 - `activity.logical-level.get`
 - `activity.logical-level.runs.list` (`appSessionIds` scopes the logical level's runs to the selected day)
 - `activity.logical-level.chart.get`
-- `activity.run.export` (`runId` identifies the run; opens ADOFAI's native save dialog and writes a `.tufreplay` file)
 - `activity.run.delete` (`runId` identifies the run; active replays cannot be deleted)
 - `replay.play`
 - `replay.status.get`
@@ -251,12 +250,6 @@ Registered methods:
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
 
-Exported `.tufreplay` files are ZIP archives with format version 1. They contain `manifest.json`,
-`replay/inputs.csv`, `replay/hit-contexts.csv`, `replay/meta.json`, and, when available,
-`microphone/recording.wav`. The manifest records replay and level metadata plus the byte length and
-SHA-256 digest of each payload. Local level paths, chart files, song assets, and microphone device IDs
-are not exported.
-
 `health.get` returns the TUFReplay namespace protocol and installed mod version:
 
 ```json
@@ -264,7 +257,7 @@ are not exported.
   "Ok": true,
   "Mod": "TUFReplay",
   "ModVersion": "0.1.0-beta.6",
-  "ProtocolVersion": 2,
+  "ProtocolVersion": 4,
   "ServerVersion": 1
 }
 ```

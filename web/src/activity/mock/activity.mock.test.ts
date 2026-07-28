@@ -42,7 +42,6 @@ describe("activity mock", () => {
       MicrophoneRecordingPermanent: true,
       MicrophoneRecordingExpiresAtUtc: null,
     });
-
     expect(await gateway.deleteMicrophoneRecording(recordedRun.Id)).toEqual({
       RunId: recordedRun.Id,
       Deleted: true,
@@ -56,23 +55,6 @@ describe("activity mock", () => {
       HasMicrophoneRecording: false,
       MicrophoneRecordingBytes: 0,
       MicrophoneDurationSeconds: null,
-    });
-  });
-
-  test("returns a deterministic run export result", async () => {
-    const gateway = createMockActivityGateway();
-    const sessions = await gateway.listAllAppSessions();
-    const levelId = sessions[0]?.LevelSessions[0]?.Id;
-    if (!levelId) throw new Error("mock level is missing");
-    const run = (await gateway.listAllRuns(levelId))[0];
-    if (!run) throw new Error("mock run is missing");
-
-    expect(await gateway.exportRun(run.Id)).toEqual({
-      RunId: run.Id,
-      Outcome: "exported",
-      FileName: `mock-run-${run.RunIndex}.tufreplay`,
-      ByteLength: 4096,
-      IncludedMicrophone: run.HasMicrophoneRecording,
     });
   });
 });

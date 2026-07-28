@@ -183,7 +183,12 @@ public static class ReplaySessionService
   {
     return _activeContext != null
       && GameplayChartHash.IsSupported(_activeContext.GameplayHashVersion, _activeContext.GameplayHash)
-      && GameplayChartHash.TryComputeCurrent(out byte[] currentHash, out _)
+      && GameplayChartHash.TryCompute(
+        ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData,
+        _activeContext.GameplayHashVersion,
+        out byte[] currentHash,
+        out _
+      )
       && GameplayChartHash.Equals(_activeContext.GameplayHash, currentHash);
   }
 

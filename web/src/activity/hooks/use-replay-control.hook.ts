@@ -117,6 +117,7 @@ export function useReplayControl(
       const gateway = gatewayRef.current;
       if (!gateway) {
         setPickerResult({
+          OperationId: null,
           RunId: runId,
           Outcome: "error",
           LevelPath: null,
@@ -138,6 +139,7 @@ export function useReplayControl(
       } catch (cause) {
         if (generation === pickerGenerationRef.current) {
           setPickerResult({
+            OperationId: null,
             RunId: runId,
             Outcome: "error",
             LevelPath: null,

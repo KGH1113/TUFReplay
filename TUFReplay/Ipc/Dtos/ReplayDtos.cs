@@ -26,6 +26,7 @@ public sealed class ReplayPlaybackStatusDto
 
 public sealed class ReplayLevelFilePickerResultDto
 {
+  public string OperationId;
   public string RunId;
   public string Outcome;
   public string LevelPath;
@@ -36,6 +37,7 @@ public sealed class ReplayLevelFilePickerResultDto
   {
     return new ReplayLevelFilePickerResultDto
     {
+      OperationId = result.OperationId,
       RunId = result.RunId,
       Outcome = result.Outcome,
       LevelPath = result.LevelPath,

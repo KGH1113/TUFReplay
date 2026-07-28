@@ -1,12 +1,8 @@
 using System.Reflection;
-using System.IO.Compression;
-using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
-using Newtonsoft.Json.Linq;
 using SkyHook;
 using TUFReplay;
 using TUFReplay.Application.Calibration;
-using TUFReplay.Application.Export;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Activity;
@@ -36,9 +32,8 @@ internal static class Program
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
       TestCalibrationWaveforms(root);
-      TestAdofaiLevelFileHash(root);
+      TestGameplayChartHashVersioning();
       TestSchemaMigrationAndBlob(root);
-      TestRunExport(root);
       TestRunDeletionHierarchy(root);
       TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
@@ -718,7 +713,7 @@ internal static class Program
       ActivitySchema.Ensure(connection);
       using SqliteCommand version = connection.CreateCommand();
       version.CommandText = "PRAGMA user_version";
-      Assert(Convert.ToInt32(version.ExecuteScalar()) == 11, "Fresh schema version is not 11.");
+      Assert(Convert.ToInt32(version.ExecuteScalar()) == ActivitySchema.Version, "Fresh schema version is incorrect.");
       InsertRun(connection);
     }
 
@@ -728,6 +723,12 @@ internal static class Program
       "Replay run did not preserve its judgment difficulty."
     );
     Assert(replayRun.NoFailMode, "Replay run did not preserve its No-Fail mode.");
+
+    LogicalLevelOverview logicalLevel = ActivityRepository.GetLogicalLevelOverview("logical");
+    Assert(logicalLevel != null, "Logical level overview was not available from the current schema.");
+    Assert(logicalLevel.LevelTileCount == 0, "Logical level overview did not read the level tile count.");
+    Assert(logicalLevel.VisitCount == 1, "Logical level overview did not count its level session.");
+    Assert(logicalLevel.RunCount == 1, "Logical level overview did not count its run.");
 
     string wavPath = Path.Combine(root, "blob.wav.save-pending");
     using (var writer = new Pcm16WavWriter(wavPath))
@@ -837,241 +838,118 @@ internal static class Program
       Assert(Convert.ToInt32(cascade.ExecuteScalar()) == 0, "Run deletion did not cascade to microphone recording.");
     }
 
-    string migrationPath = Path.Combine(root, "migration.sqlite");
-    File.Copy(path, migrationPath);
-    using var migration = new SqliteConnection("Data Source=" + migrationPath);
-    migration.Open();
-    using (SqliteCommand setup = migration.CreateCommand())
-    {
-      setup.CommandText =
-        "DROP INDEX idx_level_sessions_logical; ALTER TABLE level_sessions DROP COLUMN logical_level_id; ALTER TABLE level_sessions DROP COLUMN gameplay_hash; ALTER TABLE level_sessions DROP COLUMN gameplay_hash_version; DROP TABLE logical_levels; ALTER TABLE level_sessions DROP COLUMN level_file_hash; DROP TABLE microphone_recordings; PRAGMA user_version=7; PRAGMA foreign_keys=ON;";
-      setup.ExecuteNonQuery();
-    }
-    ActivitySchema.Ensure(migration);
-    using SqliteCommand migrated = migration.CreateCommand();
-    migrated.CommandText = "SELECT user_version FROM pragma_user_version";
-    Assert(Convert.ToInt32(migrated.ExecuteScalar()) == 11, "Schema 7 to 11 migration failed.");
+    TestLegacyLevelMigration(root, 11);
+    TestLegacyLevelMigration(root, 12);
+  }
 
-    string retentionMigrationPath = Path.Combine(root, "retention-migration.sqlite");
-    using var retentionMigration = new SqliteConnection("Data Source=" + retentionMigrationPath);
-    retentionMigration.Open();
-    using (SqliteCommand setup = retentionMigration.CreateCommand())
+  private static void TestGameplayChartHashVersioning()
+  {
+    byte[] v1Before;
+    using (var writer = new GameplayChartHashCanonicalWriter())
+    {
+      writer.WriteAngles(new[] { 0f, 90f, 180f });
+      v1Before = writer.ComputeMd5Hash();
+    }
+
+    byte[] v2Before = ComputeVersion2Hash(100f, "song.ogg");
+    Assert(v1Before.Length == 16 && v2Before.Length == 32, "Gameplay hash sizes are incorrect.");
+
+    byte[] v2After = ComputeVersion2Hash(101f, "song.ogg");
+    Assert(GameplayChartHash.Equals(v1Before, v1Before), "Legacy v1 hash comparison failed.");
+    Assert(!GameplayChartHash.Equals(v2Before, v2After), "Gameplay BPM did not change the v2 hash.");
+    Assert(
+      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "other.ogg")),
+      "Gameplay audio did not change the v2 hash."
+    );
+    Assert(GameplayChartHash.IsSupported(1, v1Before), "Legacy v1 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(2, v2Before), "Current v2 hash is not supported.");
+  }
+
+  private static byte[] ComputeVersion2Hash(float bpm, string songFilename)
+  {
+    using var writer = new GameplayChartHashCanonicalWriter();
+    writer.WriteFormatVersion(2);
+    writer.WriteGameplaySettings(15, songFilename, bpm, 100, 0, 100, 0, 100, false, 4, 0f, false);
+    writer.WriteChartKind(false);
+    writer.WriteAngles(new[] { 0f, 90f, 180f });
+    return writer.ComputeSha256Hash();
+  }
+
+  private static void TestLegacyLevelMigration(string root, int version)
+  {
+    string path = Path.Combine(root, "level-migration-v" + version + ".sqlite");
+    using var connection = new SqliteConnection("Data Source=" + path);
+    connection.Open();
+    using (SqliteCommand setup = connection.CreateCommand())
     {
       setup.CommandText =
-        @"
-CREATE TABLE app_sessions(id TEXT PRIMARY KEY,started_at_utc TEXT NOT NULL);
+        @"CREATE TABLE app_sessions(
+  id TEXT PRIMARY KEY,started_at_utc TEXT NOT NULL,ended_at_utc TEXT,
+  recorder_time_zone_id TEXT,recorder_utc_offset_minutes INTEGER NOT NULL
+);
+CREATE TABLE logical_levels(
+  id TEXT PRIMARY KEY,identity_key TEXT NOT NULL UNIQUE,tuf_level_id INTEGER,gameplay_hash BLOB,
+  gameplay_hash_version INTEGER,song TEXT,author TEXT,artist TEXT,
+  first_seen_at_utc TEXT NOT NULL,last_seen_at_utc TEXT NOT NULL
+);
 CREATE TABLE level_sessions(
-  id TEXT PRIMARY KEY,app_session_id TEXT NOT NULL,tuf_level_id INTEGER,level_path TEXT NOT NULL,
-  opened_at_utc TEXT NOT NULL,closed_at_utc TEXT,level_tile_count INTEGER NOT NULL DEFAULT 0,
-  level_file_hash BLOB,song TEXT,author TEXT,artist TEXT,metadata_state INTEGER NOT NULL DEFAULT 0
+  id TEXT PRIMARY KEY,logical_level_id TEXT NOT NULL,app_session_id TEXT NOT NULL,tuf_level_id INTEGER,
+  level_path TEXT NOT NULL,opened_at_utc TEXT NOT NULL,closed_at_utc TEXT,
+  level_tile_count INTEGER NOT NULL DEFAULT 0,level_file_hash BLOB,gameplay_hash BLOB,
+  gameplay_hash_version INTEGER,song TEXT,author TEXT,artist TEXT,metadata_state INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE runs(
-  id TEXT PRIMARY KEY,level_session_id TEXT NOT NULL,run_index INTEGER NOT NULL,start_tile INTEGER NOT NULL,
-  gameplay_hash BLOB,gameplay_hash_version INTEGER
+  id TEXT PRIMARY KEY,level_session_id TEXT NOT NULL,run_index INTEGER NOT NULL,started_at_utc TEXT NOT NULL,
+  ended_at_utc TEXT,start_tile INTEGER NOT NULL DEFAULT 0,last_tile INTEGER,result TEXT NOT NULL DEFAULT 'unknown',
+  no_fail_mode INTEGER NOT NULL DEFAULT 0,gameplay_start_song_position REAL,level_pitch_percent INTEGER,
+  effective_pitch REAL,x_accuracy REAL,judgment_difficulty INTEGER,judgment_overload INTEGER NOT NULL DEFAULT 0,
+  judgment_too_early INTEGER NOT NULL DEFAULT 0,judgment_early INTEGER NOT NULL DEFAULT 0,
+  judgment_early_perfect INTEGER NOT NULL DEFAULT 0,judgment_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_late_perfect INTEGER NOT NULL DEFAULT 0,judgment_late INTEGER NOT NULL DEFAULT 0,
+  judgment_too_late INTEGER NOT NULL DEFAULT 0,judgment_miss INTEGER NOT NULL DEFAULT 0,
+  gameplay_hash BLOB,gameplay_hash_version INTEGER,input_count INTEGER NOT NULL DEFAULT 0,
+  hit_context_count INTEGER NOT NULL DEFAULT 0,input_csv BLOB NOT NULL DEFAULT X'',
+  hit_context_csv BLOB NOT NULL DEFAULT X'',meta_json TEXT NOT NULL DEFAULT '{}'
 );
 CREATE TABLE microphone_recordings(
-  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
-  audio_wav BLOB NOT NULL,format TEXT NOT NULL,sample_rate INTEGER NOT NULL,
-  channels INTEGER NOT NULL,frame_count INTEGER NOT NULL,device_id TEXT,
-  capture_start_offset_us INTEGER NOT NULL DEFAULT 0
+  run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,audio_wav BLOB NOT NULL,format TEXT NOT NULL,
+  sample_rate INTEGER NOT NULL,channels INTEGER NOT NULL,frame_count INTEGER NOT NULL,device_id TEXT,
+  capture_start_offset_us INTEGER NOT NULL DEFAULT 0,is_permanent INTEGER NOT NULL DEFAULT 0,expires_at_utc TEXT
 );
-INSERT INTO app_sessions(id,started_at_utc) VALUES('legacy-app','2026-01-01T00:00:00Z');
-INSERT INTO level_sessions(id,app_session_id,level_path,opened_at_utc)
-VALUES('legacy-level','legacy-app','legacy.adofai','2026-01-01T00:00:00Z');
-INSERT INTO runs(id,level_session_id,run_index,start_tile) VALUES('legacy-run','legacy-level',0,0);
-INSERT INTO microphone_recordings(run_id,audio_wav,format,sample_rate,channels,frame_count)
-VALUES('legacy-run',X'00','wav/pcm16',48000,1,1);
-PRAGMA user_version=9;";
+CREATE INDEX idx_level_sessions_logical ON level_sessions(logical_level_id,opened_at_utc,id);
+CREATE INDEX idx_level_sessions_app ON level_sessions(app_session_id,opened_at_utc,id);
+CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
+CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
+INSERT INTO app_sessions VALUES('legacy-app','2026-01-01',NULL,NULL,0);
+INSERT INTO logical_levels VALUES('legacy-logical','legacy',NULL,X'01020304',1,NULL,NULL,NULL,'2026-01-01','2026-01-01');
+INSERT INTO level_sessions VALUES(
+  'legacy-session','legacy-logical','legacy-app',NULL,'legacy.adofai','2026-01-01',NULL,12,NULL,
+  X'0102030405060708090A0B0C0D0E0F10',1,'Song','Author','Artist',1
+);
+INSERT INTO runs(
+  id,level_session_id,run_index,started_at_utc,start_tile,result,gameplay_hash,gameplay_hash_version
+) VALUES('legacy-run','legacy-session',0,'2026-01-01',0,'cleared',X'0102030405060708090A0B0C0D0E0F10',1);";
+      setup.ExecuteNonQuery();
+      if (version == 12)
+      {
+        setup.CommandText =
+          @"CREATE TABLE gameplay_snapshots(
+  gameplay_hash BLOB NOT NULL,gameplay_hash_version INTEGER NOT NULL,chart_json_utf8 BLOB NOT NULL,
+  created_at_utc TEXT NOT NULL,PRIMARY KEY(gameplay_hash,gameplay_hash_version)
+);";
+        setup.ExecuteNonQuery();
+      }
+      setup.CommandText = "PRAGMA user_version=" + version;
       setup.ExecuteNonQuery();
     }
-    ActivitySchema.Ensure(retentionMigration);
-    using SqliteCommand retention = retentionMigration.CreateCommand();
-    retention.CommandText = "SELECT is_permanent,expires_at_utc FROM microphone_recordings WHERE run_id='legacy-run'";
-    using SqliteDataReader retentionReader = retention.ExecuteReader();
-    Assert(retentionReader.Read(), "Legacy microphone recording was lost during retention migration.");
-    Assert(
-      retentionReader.GetInt32(0) == 1 && retentionReader.IsDBNull(1),
-      "Legacy microphone recording was not migrated as permanent."
-    );
-  }
 
-  private static void TestRunExport(string root)
-  {
-    string databasePath = Path.Combine(root, "export.sqlite");
-    SetDatabasePath(databasePath);
-    using (SqliteConnection connection = Database.OpenConnection())
-    {
-      ActivitySchema.Ensure(connection);
-      InsertRun(connection);
-      using SqliteCommand update = connection.CreateCommand();
-      update.CommandText =
-        @"UPDATE level_sessions
-SET tuf_level_id=871,song='Export Song',author='Chart Author',artist='Song Artist',level_tile_count=42,
-    gameplay_hash=@hash,gameplay_hash_version=1
-WHERE id='level';
-UPDATE runs
-SET ended_at_utc='2026-01-01T00:01:00Z',last_tile=41,input_count=2,hit_context_count=1,
-    input_csv=@inputs,hit_context_csv=@hits,meta_json=@meta,gameplay_hash=@hash,
-    gameplay_hash_version=1,x_accuracy=99.5,effective_pitch=1.0
-WHERE id='run';";
-      byte[] gameplayHash = { 0x01, 0x02, 0xA0, 0xFF };
-      update.Parameters.AddWithValue("@hash", gameplayHash);
-      update.Parameters.AddWithValue("@inputs", System.Text.Encoding.UTF8.GetBytes("time,key\n1,A\n2,B\n"));
-      update.Parameters.AddWithValue("@hits", System.Text.Encoding.UTF8.GetBytes("time,angle\n1,90\n"));
-      update.Parameters.AddWithValue("@meta", "{\"source\":\"test\"}");
-      update.ExecuteNonQuery();
-    }
-
-    string wavPath = Path.Combine(root, "export-source.wav");
-    using (var writer = new Pcm16WavWriter(wavPath))
-    {
-      Assert(writer.TryEnqueue(new[] { 0f, 0.5f, -0.5f }, 3, 1), "Export WAV chunk was not queued.");
-      writer.Complete();
-    }
-    MicrophoneRecordingRepository.Save(
-      new CapturedMicrophoneRecording
-      {
-        RunId = "run",
-        TempPath = wavPath,
-        SampleRate = 48000,
-        Channels = 1,
-        FrameCount = 3,
-        DeviceId = "private-device-id",
-        CaptureStartOffsetUs = 321,
-      }
-    );
-
-    byte[] archiveBytes;
-    RunExportArchiveResult result;
-    using (var destination = new MemoryStream())
-    {
-      result = RunExportArchiveWriter.Write(
-        "run",
-        destination,
-        CancellationToken.None,
-        new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc)
-      );
-      archiveBytes = destination.ToArray();
-    }
-    Assert(result.IncludedMicrophone, "Run export omitted an available microphone recording.");
-
-    using (var cancelledMicrophone = new CancellationTokenSource())
-    {
-      cancelledMicrophone.Cancel();
-      AssertThrows<OperationCanceledException>(
-        () => MicrophoneRecordingRepository.WriteTo(
-          "run",
-          new MemoryStream(),
-          cancelledMicrophone.Token
-        ),
-        "Cancelled microphone export completed."
-      );
-    }
-
-    using (var archiveStream = new MemoryStream(archiveBytes))
-    using (var archive = new ZipArchive(archiveStream, ZipArchiveMode.Read))
-    {
-      string[] expected =
-      {
-        "manifest.json",
-        "replay/inputs.csv",
-        "replay/hit-contexts.csv",
-        "replay/meta.json",
-        "microphone/recording.wav",
-      };
-      Assert(
-        archive.Entries.Select(entry => entry.FullName).OrderBy(name => name).SequenceEqual(expected.OrderBy(name => name)),
-        "Run export archive entries are incorrect."
-      );
-
-      byte[] manifestBytes = ReadZipEntry(archive, "manifest.json");
-      string manifestText = System.Text.Encoding.UTF8.GetString(manifestBytes);
-      JObject manifest = JObject.Parse(manifestText);
-      Assert((string)manifest["format"] == "tufreplay", "Run export format is incorrect.");
-      Assert((int)manifest["formatVersion"] == 1, "Run export format version is incorrect.");
-      Assert(
-        ((DateTime)manifest["exportedAtUtc"]).ToUniversalTime()
-          == new DateTime(2026, 1, 2, 3, 4, 5, DateTimeKind.Utc),
-        "Export time is incorrect."
-      );
-      Assert((int)manifest["level"]["tufLevelId"] == 871, "TUF level ID was not exported.");
-      Assert((string)manifest["level"]["gameplayHash"] == "0102a0ff", "Gameplay hash was not exported.");
-      Assert((long)manifest["microphone"]["captureStartOffsetUs"] == 321, "Microphone offset was not exported.");
-      Assert(!manifestText.Contains("test.adofai"), "Run export leaked the local level path.");
-      Assert(!manifestText.Contains("private-device-id"), "Run export leaked the microphone device ID.");
-
-      AssertExportEntryHash(archive, manifest, "inputs", "replay/inputs.csv");
-      AssertExportEntryHash(archive, manifest, "hitContexts", "replay/hit-contexts.csv");
-      AssertExportEntryHash(archive, manifest, "meta", "replay/meta.json");
-      AssertExportEntryHash(archive, manifest, "microphone", "microphone/recording.wav");
-      Assert(
-        ReadZipEntry(archive, "microphone/recording.wav").SequenceEqual(File.ReadAllBytes(wavPath)),
-        "Run export changed the microphone WAV bytes."
-      );
-    }
-
-    Assert(MicrophoneRecordingRepository.Delete("run"), "Export test microphone recording was not deleted.");
-    using var withoutMicrophone = new MemoryStream();
-    RunExportArchiveResult withoutResult = RunExportArchiveWriter.Write(
-      "run",
-      withoutMicrophone,
-      CancellationToken.None
-    );
-    Assert(!withoutResult.IncludedMicrophone, "Run export reported a missing microphone recording.");
-    withoutMicrophone.Position = 0;
-    using var withoutArchive = new ZipArchive(withoutMicrophone, ZipArchiveMode.Read);
-    Assert(withoutArchive.GetEntry("microphone/recording.wav") == null, "Run export wrote a missing microphone recording.");
-
-    using var cancelled = new CancellationTokenSource();
-    cancelled.Cancel();
-    AssertThrows<OperationCanceledException>(
-      () => RunExportArchiveWriter.Write("run", new MemoryStream(), cancelled.Token),
-      "Cancelled run export completed."
-    );
-    AssertThrows<InvalidOperationException>(
-      () => RunExportArchiveWriter.Write("missing-run", new MemoryStream(), CancellationToken.None),
-      "Missing run export completed."
-    );
-  }
-
-  private static void AssertExportEntryHash(
-    ZipArchive archive,
-    JObject manifest,
-    string manifestName,
-    string entryPath
-  )
-  {
-    byte[] bytes = ReadZipEntry(archive, entryPath);
-    using SHA256 sha256 = SHA256.Create();
-    string hash = Convert.ToHexString(sha256.ComputeHash(bytes)).ToLowerInvariant();
-    JToken descriptor = manifest["entries"][manifestName];
-    Assert((string)descriptor["path"] == entryPath, "Export entry path is incorrect: " + entryPath);
-    Assert((long)descriptor["bytes"] == bytes.LongLength, "Export entry length is incorrect: " + entryPath);
-    Assert((string)descriptor["sha256"] == hash, "Export entry hash is incorrect: " + entryPath);
-  }
-
-  private static byte[] ReadZipEntry(ZipArchive archive, string path)
-  {
-    ZipArchiveEntry entry = archive.GetEntry(path);
-    Assert(entry != null, "Missing ZIP entry: " + path);
-    using Stream source = entry.Open();
-    using var destination = new MemoryStream();
-    source.CopyTo(destination);
-    return destination.ToArray();
-  }
-
-  private static void TestAdofaiLevelFileHash(string root)
-  {
-    string path = Path.Combine(root, "level-hash.adofai");
-    File.WriteAllText(path, "{\"angleData\":[0,90]}");
-    Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] first), "Level file hash was not computed.");
-    Assert(first.Length == AdofaiLevelFileHash.Size, "Level file hash length is invalid.");
-    Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] same), "Repeated level file hash failed.");
-    Assert(AdofaiLevelFileHash.Equals(first, same), "Unchanged level file hash changed.");
-
-    File.WriteAllText(path, "{\"angleData\":[0,180]}");
-    Assert(AdofaiLevelFileHash.TryCompute(path, out byte[] changed), "Changed level file hash failed.");
-    Assert(!AdofaiLevelFileHash.Equals(first, changed), "Changed level file was treated as identical.");
+    ActivitySchema.Ensure(connection);
+    using SqliteCommand verify = connection.CreateCommand();
+    verify.CommandText =
+      "SELECT s.level_id,l.adofai_path,l.gameplay_hash_version FROM level_sessions s JOIN levels l ON l.id=s.level_id";
+    using SqliteDataReader reader = verify.ExecuteReader();
+    Assert(reader.Read(), "Legacy level session was not migrated from v" + version + ".");
+    Assert(reader.GetString(1) == "legacy.adofai" && reader.GetInt32(2) == 1, "Legacy level data changed.");
   }
 
   private static void TestRunDeletionHierarchy(string root)
@@ -1085,11 +963,13 @@ WHERE id='run';";
         @"
 INSERT INTO app_sessions(id,started_at_utc,ended_at_utc,recorder_utc_offset_minutes)
 VALUES('closed-app','2026-01-01','2026-01-02',0),('open-app','2026-01-03',NULL,0);
-INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc)
-VALUES('closed-logical','closed','2026-01-01','2026-01-02'),('open-logical','open','2026-01-03','2026-01-03');
-INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc,closed_at_utc)
-VALUES('closed-level','closed-logical','closed-app','closed.adofai','2026-01-01','2026-01-02'),
-      ('open-level','open-logical','open-app','open.adofai','2026-01-03',NULL);
+INSERT INTO levels(
+  id,identity_key,source_kind,adofai_path,first_seen_at_utc,last_seen_at_utc
+) VALUES('closed-logical','closed',0,'closed.adofai','2026-01-01','2026-01-02'),
+        ('open-logical','open',0,'open.adofai','2026-01-03','2026-01-03');
+INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc,closed_at_utc)
+VALUES('closed-level','closed-logical','closed-app','2026-01-01','2026-01-02'),
+      ('open-level','open-logical','open-app','2026-01-03',NULL);
 INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
 VALUES('closed-run-1','closed-level',0,'2026-01-01',0,'clear'),
       ('closed-run-2','closed-level',1,'2026-01-01',0,'clear'),
@@ -1109,12 +989,12 @@ INSERT INTO microphone_recordings(
 
     Assert(RunRepository.Delete("closed-run-2"), "Last closed-session run was not deleted.");
     Assert(CountRows("level_sessions", "id='closed-level'") == 0, "Empty closed level session remained.");
-    Assert(CountRows("logical_levels", "id='closed-logical'") == 0, "Orphan logical level remained.");
+    Assert(CountRows("levels", "id='closed-logical'") == 0, "Orphan level remained.");
     Assert(CountRows("app_sessions", "id='closed-app'") == 0, "Empty closed app session remained.");
 
     Assert(RunRepository.Delete("open-run"), "Open-session run was not deleted.");
     Assert(CountRows("level_sessions", "id='open-level'") == 1, "Open level session was pruned.");
-    Assert(CountRows("logical_levels", "id='open-logical'") == 1, "Open logical level was pruned.");
+    Assert(CountRows("levels", "id='open-logical'") == 1, "Open level was pruned.");
     Assert(CountRows("app_sessions", "id='open-app'") == 1, "Open app session was pruned.");
   }
 
@@ -1137,11 +1017,11 @@ INSERT INTO microphone_recordings(
         @"
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes)
 VALUES('day-a','2026-01-01',0),('day-b','2026-01-02',0);
-INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc)
-VALUES('shared-logical','shared','2026-01-01','2026-01-02');
-INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc)
-VALUES('level-a','shared-logical','day-a','shared.adofai','2026-01-01'),
-      ('level-b','shared-logical','day-b','shared.adofai','2026-01-02');
+INSERT INTO levels(id,identity_key,source_kind,adofai_path,first_seen_at_utc,last_seen_at_utc)
+VALUES('shared-logical','shared',0,'shared.adofai','2026-01-01','2026-01-02');
+INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc)
+VALUES('level-a','shared-logical','day-a','2026-01-01'),
+      ('level-b','shared-logical','day-b','2026-01-02');
 INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result)
 VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
       ('run-b','level-b',0,'2026-01-02',0,'clear');";
@@ -1171,54 +1051,69 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
       }
     );
 
-    LevelSession gameplayA = LogicalVisit("gameplay-a", "/tmp/a.adofai", null, new byte[16], new byte[] { 1 });
-    LevelSession gameplayB = LogicalVisit("gameplay-b", "/tmp/b.adofai", null, new byte[16], new byte[] { 2 });
+    LevelSession gameplayA = LogicalVisit("gameplay-a", "/tmp/a.adofai", null, new byte[32]);
+    LevelSession gameplayB = LogicalVisit("gameplay-b", "/tmp/b.adofai", null, new byte[32]);
     LevelSessionRepository.Save(gameplayA);
     LevelSessionRepository.Save(gameplayB);
-    Assert(gameplayA.LogicalLevelId == gameplayB.LogicalLevelId, "Equal gameplay hashes were not merged.");
+    Assert(gameplayA.LevelId != gameplayB.LevelId, "Different local paths were incorrectly merged.");
 
-    LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[16], new byte[] { 3 });
+    LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[32]);
     LevelSession tufB = LogicalVisit(
       "tuf-b",
       "/tmp/tuf-b.adofai",
       77,
-      Enumerable.Repeat((byte)9, 16).ToArray(),
-      new byte[] { 4 }
+      Enumerable.Repeat((byte)9, 32).ToArray()
     );
     LevelSessionRepository.Save(tufA);
     LevelSessionRepository.Save(tufB);
-    Assert(tufA.LogicalLevelId == tufB.LogicalLevelId, "Equal TUF IDs were not merged after chart updates.");
+    Assert(tufA.LevelId != tufB.LevelId, "Different TUF gameplay revisions were incorrectly merged.");
 
-    LevelSession fileA = LogicalVisit("file-a", "/tmp/local.adofai", null, null, new byte[] { 5 });
-    LevelSession fileB = LogicalVisit("file-b", "/tmp/local.adofai", null, null, new byte[] { 5 });
-    LevelSession fileChanged = LogicalVisit("file-changed", "/tmp/local.adofai", null, null, new byte[] { 6 });
+    LevelSession fileA = LogicalVisit("file-a", "/tmp/local.adofai", null, new byte[32]);
+    LevelSession fileB = LogicalVisit("file-b", "/tmp/local.adofai", null, new byte[32]);
+    LevelSession fileChanged = LogicalVisit(
+      "file-changed",
+      "/tmp/local.adofai",
+      null,
+      Enumerable.Repeat((byte)6, 32).ToArray()
+    );
     LevelSessionRepository.Save(fileA);
     LevelSessionRepository.Save(fileB);
     LevelSessionRepository.Save(fileChanged);
-    Assert(fileA.LogicalLevelId == fileB.LogicalLevelId, "Equal local file identities were not merged.");
-    Assert(fileA.LogicalLevelId != fileChanged.LogicalLevelId, "Changed local files were incorrectly merged.");
+    Assert(fileA.LevelId == fileB.LevelId, "Equal local gameplay revisions were not merged.");
+    Assert(fileA.LevelId != fileChanged.LevelId, "Changed local gameplay revisions were incorrectly merged.");
   }
 
   private static LevelSession LogicalVisit(
     string id,
     string path,
     int? tufLevelId,
-    byte[] gameplayHash,
-    byte[] fileHash
-  ) =>
-    new LevelSession
+    byte[] gameplayHash
+  )
+  {
+    string timestamp = "2026-01-01T00:00:00Z";
+    string levelId = LevelRepository.ResolveOrCreate(
+      new LevelRecord
+      {
+        Id = id,
+        SourceKind = tufLevelId.HasValue ? LevelSourceKind.Tuf : LevelSourceKind.Local,
+        TufLevelId = tufLevelId,
+        LevelPath = path,
+        LevelTileCount = 100,
+        GameplayHash = gameplayHash,
+        GameplayHashVersion = GameplayChartHash.Version,
+        MetadataState = LevelMetadataState.Unavailable,
+        FirstSeenAtUtc = timestamp,
+        LastSeenAtUtc = timestamp,
+      }
+    );
+    return new LevelSession
     {
       Id = id,
+      LevelId = levelId,
       AppSessionId = "logical-app",
-      TufLevelId = tufLevelId,
-      LevelPath = path,
-      OpenedAtUtc = "2026-01-01T00:00:00Z",
-      LevelTileCount = 100,
-      GameplayHash = gameplayHash,
-      GameplayHashVersion = gameplayHash == null ? null : (int?)GameplayChartHash.Version,
-      LevelFileHash = fileHash,
-      MetadataState = LevelMetadataState.Unavailable,
+      OpenedAtUtc = timestamp,
     };
+  }
 
   private static void InsertRun(SqliteConnection connection)
   {
@@ -1226,8 +1121,8 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
     command.CommandText =
       @"
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01',0);
-INSERT INTO logical_levels(id,identity_key,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test','2026-01-01','2026-01-01');
-INSERT INTO level_sessions(id,logical_level_id,app_session_id,level_path,opened_at_utc) VALUES('level','logical','app','test.adofai','2026-01-01');
+INSERT INTO levels(id,identity_key,source_kind,adofai_path,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test',0,'test.adofai','2026-01-01','2026-01-01');
+INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc) VALUES('level','logical','app','2026-01-01');
 INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,judgment_difficulty,no_fail_mode) VALUES('run','level',0,'2026-01-01',0,'cleared',1,1);";
     command.ExecuteNonQuery();
   }
