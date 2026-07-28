@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.IO;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database.Repositories;
@@ -73,7 +72,7 @@ public static class ActivityQueryService
   )
   {
     runs = null;
-    if (!LogicalLevelRepository.Exists(id))
+    if (!LevelRepository.Exists(id))
       return false;
     runs = RunRepository.ListByLogicalLevel(id, appSessionIds, offset, limit);
     return true;
@@ -81,27 +80,27 @@ public static class ActivityQueryService
 
   public static ChartData GetLogicalLevelChart(string id)
   {
-    if (!LogicalLevelRepository.Exists(id))
+    if (!LevelRepository.Exists(id))
       return null;
     List<LevelSession> sessions = LevelSessionRepository.ListByLogicalLevelNewestFirst(id);
     int floorCount = sessions.Count == 0 ? 0 : sessions[0].LevelTileCount;
     foreach (LevelSession session in sessions)
     {
       floorCount = System.Math.Max(floorCount, session.LevelTileCount);
-      if (string.IsNullOrEmpty(session.LevelPath) || !File.Exists(session.LevelPath))
-        continue;
       if (
-        session.LevelFileHash != null
-        && (
-          !AdofaiLevelFileHash.TryCompute(session.LevelPath, out byte[] currentFileHash)
-          || !AdofaiLevelFileHash.Equals(session.LevelFileHash, currentFileHash)
+        !LevelFileAccessValidator.TryValidate(
+          session,
+          out _,
+          out string levelText,
+          out string errorCode,
+          out string errorMessage
         )
       )
-        continue;
+        return new ChartData { id = id, floorCount = floorCount, errorCode = errorCode, errorMessage = errorMessage };
       return new ChartData
       {
         id = id,
-        levelText = File.ReadAllText(session.LevelPath),
+        levelText = levelText,
         floorCount = session.LevelTileCount,
       };
     }
@@ -113,20 +112,20 @@ public static class ActivityQueryService
     LevelSession s = LevelSessionRepository.Get(id);
     if (s == null)
       return null;
-    if (string.IsNullOrEmpty(s.LevelPath) || !File.Exists(s.LevelPath))
-      return new ChartData { id = id, floorCount = s.LevelTileCount };
     if (
-      s.LevelFileHash != null
-      && (
-        !AdofaiLevelFileHash.TryCompute(s.LevelPath, out byte[] currentFileHash)
-        || !AdofaiLevelFileHash.Equals(s.LevelFileHash, currentFileHash)
+      !LevelFileAccessValidator.TryValidate(
+        s,
+        out _,
+        out string levelText,
+        out string errorCode,
+        out string errorMessage
       )
     )
-      return new ChartData { id = id, floorCount = s.LevelTileCount };
+      return new ChartData { id = id, floorCount = s.LevelTileCount, errorCode = errorCode, errorMessage = errorMessage };
     return new ChartData
     {
       id = id,
-      levelText = File.ReadAllText(s.LevelPath),
+      levelText = levelText,
       floorCount = s.LevelTileCount,
     };
   }
@@ -170,4 +169,6 @@ public sealed class ChartData
   public string id;
   public string levelText;
   public int floorCount;
+  public string errorCode;
+  public string errorMessage;
 }

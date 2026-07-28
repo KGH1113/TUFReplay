@@ -151,32 +151,6 @@ describe("activity IPC contract", () => {
     expect(calls).toEqual([{ method: "activity.run.delete", params: { runId: "run-9" } }]);
   });
 
-  test("exports a run through the long-running picker namespace", async () => {
-    const calls: Array<{ method: string; params: unknown }> = [];
-    const result = {
-      RunId: "run-9",
-      Outcome: "exported" as const,
-      FileName: "run-9.tufreplay",
-      ByteLength: 8192,
-      IncludedMicrophone: true,
-    };
-    const namespace = {
-      call: async () => {
-        throw new Error("export used the default IPC namespace");
-      },
-    };
-    const pickerNamespace = {
-      call: async (method: string, params: unknown) => {
-        calls.push({ method, params });
-        return result;
-      },
-    };
-    const gateway = createActivityGateway(namespace as never, pickerNamespace as never);
-
-    expect(await gateway.exportRun("run-9")).toBe(result);
-    expect(calls).toEqual([{ method: "activity.run.export", params: { runId: "run-9" } }]);
-  });
-
   test("keeps a microphone recording permanently with the exact command and params", async () => {
     const calls: Array<{ method: string; params: unknown }> = [];
     const namespace = {
@@ -204,6 +178,7 @@ describe("activity IPC contract", () => {
       Message: null,
     } satisfies ReplayStatus;
     const pickerResult = {
+      OperationId: null,
       RunId: "run-1",
       Outcome: "selected",
       LevelPath: "/levels/replay.adofai",
@@ -230,6 +205,41 @@ describe("activity IPC contract", () => {
       },
       { method: "replay.status.get", params: {} },
       { method: "replay.level-file.pick", params: { runId: "run-1" } },
+    ]);
+  });
+
+  test("polls a level picker operation without holding the initial IPC request open", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const responses: ReplayLevelFilePickerResult[] = [
+      {
+        OperationId: "picker-1",
+        RunId: "run-1",
+        Outcome: "picking",
+        LevelPath: null,
+        ErrorCode: null,
+        Message: null,
+      },
+      {
+        OperationId: "picker-1",
+        RunId: "run-1",
+        Outcome: "selected",
+        LevelPath: "/levels/replay.adofai",
+        ErrorCode: null,
+        Message: null,
+      },
+    ];
+    const pickerNamespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return responses.shift();
+      },
+    };
+    const gateway = createActivityGateway(pickerNamespace as never, pickerNamespace as never);
+
+    expect((await gateway.pickReplayLevelFile("run-1")).Outcome).toBe("selected");
+    expect(calls).toEqual([
+      { method: "replay.level-file.pick", params: { runId: "run-1" } },
+      { method: "replay.level-file.status.get", params: { operationId: "picker-1" } },
     ]);
   });
 

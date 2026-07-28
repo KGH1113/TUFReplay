@@ -59,7 +59,6 @@ export function ActivityWorkspace({
   onSelectMarker,
   onSelectRun,
   onPlayReplay,
-  onExportRun,
   onDeleteRun,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
@@ -81,7 +80,6 @@ export function ActivityWorkspace({
   onSelectMarker: (marker: RunMarker | null) => void;
   onSelectRun: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
-  onExportRun: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -272,7 +270,6 @@ export function ActivityWorkspace({
                         replayErrorRunId={replayErrorRunId}
                         onSelect={() => onSelectRun(run)}
                         onPlayReplay={onPlayReplay}
-                        onExportRun={onExportRun}
                         onDeleteRun={onDeleteRun}
                         onKeepMicrophoneRecording={onKeepMicrophoneRecording}
                         onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
@@ -300,7 +297,6 @@ function RunCard({
   replayErrorRunId,
   onSelect,
   onPlayReplay,
-  onExportRun,
   onDeleteRun,
   onKeepMicrophoneRecording,
   onDeleteMicrophoneRecording,
@@ -315,7 +311,6 @@ function RunCard({
   replayErrorRunId: string | null;
   onSelect: () => void;
   onPlayReplay: (run: ActivityRun) => void;
-  onExportRun: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -357,7 +352,6 @@ function RunCard({
           run={run}
           disabled={readOnly}
           runDeleteDisabled={runDeleteDisabled}
-          onExportRun={onExportRun}
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
           onDeleteRun={onDeleteRun}

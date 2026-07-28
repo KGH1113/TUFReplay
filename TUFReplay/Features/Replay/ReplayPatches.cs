@@ -237,6 +237,11 @@ public static class ReplayInputPatches
       if (!IsActive)
         return;
 
+      // Loading another editor scene tears down the current editor through QuitToMenu.
+      // That transition is expected while a replay level is being opened.
+      if (!ReplayPlaybackCoordinator.ShouldCancelForEditorQuitToMenu)
+        return;
+
       ReplayPlaybackCoordinator.Fail("editor_quit_to_menu", "The editor was closed during replay.");
       ReplaySessionService.StopActiveReplay("editor_quit_to_menu");
     }

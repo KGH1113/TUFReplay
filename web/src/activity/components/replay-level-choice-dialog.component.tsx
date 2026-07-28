@@ -10,12 +10,13 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/ui/button.component";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog.component";
 
-import type { ActivityRun, ReplayLevelFilePickerResult } from "../activity.model";
+import type { ActivityRun, ReplayLevelFilePickerResult, ReplayStatus } from "../activity.model";
 
 export function ReplayLevelChoiceDialog({
   run,
   pickerResult,
   pickingRunId,
+  replayStatus,
   playError,
   playErrorRunId,
   onClose,
@@ -26,6 +27,7 @@ export function ReplayLevelChoiceDialog({
   run: ActivityRun | null;
   pickerResult: ReplayLevelFilePickerResult | null;
   pickingRunId: string | null;
+  replayStatus: ReplayStatus;
   playError: string;
   playErrorRunId: string | null;
   onClose: () => void;
@@ -45,13 +47,26 @@ export function ReplayLevelChoiceDialog({
     autoPlayKeyRef.current = key;
     setStartingAction("picker");
     void onPlay(run.Id, currentPicker.LevelPath).then((started) => {
-      setStartingAction(null);
-      if (started) {
-        onResetPicker();
-        onClose();
-      }
+      if (!started) setStartingAction(null);
     });
-  }, [currentPicker, onClose, onPlay, onResetPicker, run]);
+  }, [currentPicker, onPlay, run]);
+
+  useEffect(() => {
+    if (!run || !startingAction || replayStatus.RunId !== run.Id) return;
+    if (replayStatus.State === "error" || replayStatus.State === "cancelled") {
+      setStartingAction(null);
+      return;
+    }
+    if (
+      replayStatus.State === "waiting_for_focus" ||
+      replayStatus.State === "starting" ||
+      replayStatus.State === "playing"
+    ) {
+      setStartingAction(null);
+      onResetPicker();
+      onClose();
+    }
+  }, [onClose, onResetPicker, replayStatus, run, startingAction]);
 
   const close = () => {
     if (isPicking) return;
@@ -65,8 +80,7 @@ export function ReplayLevelChoiceDialog({
     if (!run || isPicking || startingAction) return;
     setStartingAction("original");
     const started = await onPlay(run.Id);
-    setStartingAction(null);
-    if (started) close();
+    if (!started) setStartingAction(null);
   };
 
   const chooseAnother = async () => {
@@ -75,7 +89,12 @@ export function ReplayLevelChoiceDialog({
     await onChooseAnother(run.Id);
   };
 
-  const currentPlayError = playErrorRunId === run?.Id ? playError : "";
+  const currentPlayError =
+    playErrorRunId === run?.Id
+      ? playError
+      : replayStatus.RunId === run?.Id && replayStatus.State === "error"
+        ? replayStatus.Message || replayStatus.ErrorCode || "Replay failed."
+        : "";
   const pickerMessage =
     currentPlayError ||
     (currentPicker?.Outcome === "mismatch" || currentPicker?.Outcome === "error"
