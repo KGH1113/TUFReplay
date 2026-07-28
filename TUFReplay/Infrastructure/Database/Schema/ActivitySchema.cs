@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 13;
+  public const int Version = 14;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -129,6 +129,11 @@ PRAGMA user_version = 12;"
       MigrateLevels(connection);
       version = 13;
     }
+    if (version == 13)
+    {
+      RepairRenamedForeignKeys(connection);
+      version = 14;
+    }
 
     if (version != 0 && version != Version)
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -221,7 +226,7 @@ CREATE INDEX idx_level_sessions_app ON level_sessions(app_session_id,opened_at_u
 CREATE INDEX idx_level_sessions_level ON level_sessions(level_id,opened_at_utc,id);
 CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
 CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
-PRAGMA user_version = 13;";
+PRAGMA user_version = 14;";
     command.ExecuteNonQuery();
   }
 
@@ -386,6 +391,146 @@ PRAGMA user_version = 13;";
     using SqliteCommand foreignKeyCheck = connection.CreateCommand();
     foreignKeyCheck.CommandText = "PRAGMA foreign_keys=ON; PRAGMA foreign_key_check;";
     using SqliteDataReader violations = foreignKeyCheck.ExecuteReader();
+    if (violations.Read())
+      throw new InvalidOperationException("Database migration created a foreign-key violation.");
+  }
+
+  private static void RepairRenamedForeignKeys(SqliteConnection connection)
+  {
+    if (
+      ForeignKeyTargetsTable(connection, "level_sessions", "level_id", "levels")
+      && ForeignKeyTargetsTable(connection, "runs", "level_session_id", "level_sessions")
+    )
+    {
+      Migrate(connection, "PRAGMA user_version = 14;");
+      return;
+    }
+
+    SetForeignKeys(connection, enabled: false);
+    try
+    {
+      using SqliteTransaction transaction = connection.BeginTransaction();
+      using (SqliteCommand command = connection.CreateCommand())
+      {
+        command.Transaction = transaction;
+        command.CommandText =
+          @"CREATE TEMP TABLE level_sessions_v14_backup AS SELECT * FROM level_sessions;
+CREATE TEMP TABLE runs_v14_backup AS SELECT * FROM runs;
+DROP INDEX IF EXISTS idx_level_sessions_app;
+DROP INDEX IF EXISTS idx_level_sessions_level;
+DROP INDEX IF EXISTS idx_runs_level_index;
+DROP INDEX IF EXISTS idx_runs_start_tile;
+DROP TABLE runs;
+DROP TABLE level_sessions;
+CREATE TABLE level_sessions (
+  id TEXT PRIMARY KEY,
+  level_id TEXT NOT NULL REFERENCES levels(id),
+  app_session_id TEXT NOT NULL REFERENCES app_sessions(id),
+  opened_at_utc TEXT NOT NULL,
+  closed_at_utc TEXT
+);
+INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc,closed_at_utc)
+SELECT id,level_id,app_session_id,opened_at_utc,closed_at_utc FROM level_sessions_v14_backup;
+CREATE TABLE runs (
+  id TEXT PRIMARY KEY,
+  level_session_id TEXT NOT NULL REFERENCES level_sessions(id),
+  run_index INTEGER NOT NULL,
+  started_at_utc TEXT NOT NULL,
+  ended_at_utc TEXT,
+  start_tile INTEGER NOT NULL DEFAULT 0,
+  last_tile INTEGER,
+  result TEXT NOT NULL DEFAULT 'unknown',
+  no_fail_mode INTEGER NOT NULL DEFAULT 0,
+  gameplay_start_song_position REAL,
+  level_pitch_percent INTEGER,
+  effective_pitch REAL,
+  x_accuracy REAL,
+  judgment_difficulty INTEGER,
+  judgment_overload INTEGER NOT NULL DEFAULT 0,
+  judgment_too_early INTEGER NOT NULL DEFAULT 0,
+  judgment_early INTEGER NOT NULL DEFAULT 0,
+  judgment_early_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_late_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_late INTEGER NOT NULL DEFAULT 0,
+  judgment_too_late INTEGER NOT NULL DEFAULT 0,
+  judgment_miss INTEGER NOT NULL DEFAULT 0,
+  input_count INTEGER NOT NULL DEFAULT 0,
+  hit_context_count INTEGER NOT NULL DEFAULT 0,
+  input_csv BLOB NOT NULL DEFAULT X'',
+  hit_context_csv BLOB NOT NULL DEFAULT X'',
+  meta_json TEXT NOT NULL DEFAULT '{}',
+  UNIQUE(level_session_id,run_index)
+);
+INSERT INTO runs(
+  id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,result,no_fail_mode,
+  gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
+  judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
+  judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
+  input_count,hit_context_count,input_csv,hit_context_csv,meta_json
+)
+SELECT id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,result,no_fail_mode,
+  gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
+  judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
+  judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
+  input_count,hit_context_count,input_csv,hit_context_csv,meta_json
+FROM runs_v14_backup;
+DROP TABLE level_sessions_v14_backup;
+DROP TABLE runs_v14_backup;
+CREATE INDEX idx_level_sessions_app ON level_sessions(app_session_id,opened_at_utc,id);
+CREATE INDEX idx_level_sessions_level ON level_sessions(level_id,opened_at_utc,id);
+CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
+CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
+PRAGMA user_version = 14;";
+        command.ExecuteNonQuery();
+      }
+
+      EnsureNoForeignKeyViolations(connection, transaction);
+      transaction.Commit();
+    }
+    finally
+    {
+      SetForeignKeys(connection, enabled: true);
+    }
+  }
+
+  private static bool ForeignKeyTargetsTable(
+    SqliteConnection connection,
+    string table,
+    string column,
+    string targetTable
+  )
+  {
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "PRAGMA foreign_key_list(" + table + ");";
+    using SqliteDataReader reader = command.ExecuteReader();
+    while (reader.Read())
+    {
+      if (
+        string.Equals(reader.GetString(3), column, StringComparison.OrdinalIgnoreCase)
+        && string.Equals(reader.GetString(2), targetTable, StringComparison.OrdinalIgnoreCase)
+      )
+      {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private static void SetForeignKeys(SqliteConnection connection, bool enabled)
+  {
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = enabled ? "PRAGMA foreign_keys=ON;" : "PRAGMA foreign_keys=OFF;";
+    command.ExecuteNonQuery();
+  }
+
+  private static void EnsureNoForeignKeyViolations(SqliteConnection connection, SqliteTransaction transaction)
+  {
+    using SqliteCommand command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = "PRAGMA foreign_key_check;";
+    using SqliteDataReader violations = command.ExecuteReader();
     if (violations.Read())
       throw new InvalidOperationException("Database migration created a foreign-key violation.");
   }
