@@ -10,11 +10,42 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
 {
   private readonly MemoryStream _payload = new MemoryStream();
 
+  public void WriteFormatVersion(int version) => WriteInt(version);
+
+  public void WriteChartKind(bool legacy) => _payload.WriteByte(legacy ? (byte)0 : (byte)1);
+
+  public void WriteGameplaySettings(
+    int levelVersion,
+    string songFilename,
+    float bpm,
+    int volume,
+    int offset,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume,
+    bool separateCountdownTime,
+    int countdownTicks,
+    float speedTrialAim,
+    bool legacySpriteTiles
+  )
+  {
+    WriteInt(levelVersion);
+    WriteString(songFilename);
+    WriteFloat(bpm);
+    WriteInt(volume);
+    WriteInt(offset);
+    WriteInt(pitch);
+    _payload.WriteByte(hitsound);
+    WriteInt(hitsoundVolume);
+    _payload.WriteByte(separateCountdownTime ? (byte)1 : (byte)0);
+    WriteInt(countdownTicks);
+    WriteFloat(speedTrialAim);
+    _payload.WriteByte(legacySpriteTiles ? (byte)1 : (byte)0);
+  }
+
   public void WriteLegacyPath(string pathData)
   {
-    byte[] bytes = Encoding.UTF8.GetBytes(pathData ?? string.Empty);
-    WriteInt(bytes.Length);
-    _payload.Write(bytes, 0, bytes.Length);
+    WriteString(pathData);
   }
 
   public void WriteAngles(IReadOnlyList<float> angleData)
@@ -23,6 +54,14 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
     WriteInt(count);
     for (int index = 0; index < count; index++)
       WriteFloat(angleData[index]);
+  }
+
+  public void WriteNormalizedAngles(IReadOnlyList<float> angleData)
+  {
+    int count = angleData?.Count ?? 0;
+    WriteInt(count);
+    for (int index = 0; index < count; index++)
+      WriteFloat(NormalizeAngle(angleData[index]));
   }
 
   public void WriteSetSpeed(int floor, byte speedType, float value)
@@ -72,11 +111,18 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
 
   public void WriteKillPlayer(int floor) => WriteEventHeader(floor, 8);
 
-  public byte[] ComputeHash()
+  public byte[] ComputeMd5Hash()
   {
     _payload.Position = 0;
     using MD5 md5 = MD5.Create();
     return md5.ComputeHash(_payload);
+  }
+
+  public byte[] ComputeSha256Hash()
+  {
+    _payload.Position = 0;
+    using SHA256 sha256 = SHA256.Create();
+    return sha256.ComputeHash(_payload);
   }
 
   public void Dispose() => _payload.Dispose();
@@ -95,11 +141,28 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
     _payload.WriteByte((byte)value);
   }
 
+  private void WriteString(string value)
+  {
+    byte[] bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
+    WriteInt(bytes.Length);
+    _payload.Write(bytes, 0, bytes.Length);
+  }
+
   private void WriteFloat(float value)
   {
     byte[] bytes = BitConverter.GetBytes(value);
     if (BitConverter.IsLittleEndian)
       Array.Reverse(bytes);
     _payload.Write(bytes, 0, bytes.Length);
+  }
+
+  private static float NormalizeAngle(float value)
+  {
+    if (value == 999f)
+      return value;
+    float normalized = value % 360f;
+    if (normalized < 0f)
+      normalized += 360f;
+    return normalized == 0f ? 0f : normalized;
   }
 }

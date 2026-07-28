@@ -67,7 +67,10 @@ public static class ActivityIpcHandlers
       if (chart == null)
         return IpcDomainError.Create("level_session_not_found", "Level session was not found.");
       if (chart.levelText == null)
-        return IpcDomainError.Create("chart_unavailable", "The recorded chart file is unavailable or has changed.");
+        return IpcDomainError.Create(
+          chart.errorCode ?? "chart_unavailable",
+          chart.errorMessage ?? "The recorded chart file is unavailable."
+        );
       return new ActivityChartDto
       {
         LevelSessionId = chart.id,
@@ -125,7 +128,10 @@ public static class ActivityIpcHandlers
       if (chart == null)
         return IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
       if (chart.levelText == null)
-        return IpcDomainError.Create("chart_unavailable", "The recorded chart file is unavailable or has changed.");
+        return IpcDomainError.Create(
+          chart.errorCode ?? "chart_unavailable",
+          chart.errorMessage ?? "The recorded chart file is unavailable."
+        );
       return new ActivityChartDto
       {
         LevelSessionId = chart.id,
@@ -146,7 +152,6 @@ public static class ActivityIpcHandlers
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
       return IpcDomainError.Create("run_not_found", "Run was not found.");
-
     ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.GetStatus();
     if (ReplayPlaybackCoordinator.IsBusy && replayStatus.RunId == runId)
       return IpcDomainError.Create("run_in_use", "Stop this replay before deleting its run.");

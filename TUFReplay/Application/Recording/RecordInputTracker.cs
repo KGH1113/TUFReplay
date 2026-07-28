@@ -43,7 +43,9 @@ public static class RecordInputTracker
     get
     {
       lock (StateLock)
-        return _usingEvents ? "skyhook-events-high-resolution" : "native-state-polling-low-resolution";
+        return _usingEvents
+          ? NativeInputKeyCodeMapper.PhysicalStateCapture
+          : "native-state-polling-low-resolution";
     }
   }
 
@@ -308,7 +310,7 @@ public static class RecordInputTracker
   {
     try
     {
-      StateReader.Refresh();
+      StateReader.RefreshPhysicalState();
     }
     catch
     {

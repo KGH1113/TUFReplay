@@ -72,24 +72,30 @@ public sealed class RecordingActivityTracker
     _gameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone();
     _gameplayHashVersion = gameplayHashVersion;
     bool metadataAvailable = AdofaiLevelMetadataReader.TryRead(levelPath, out LevelMetadataSnapshot metadata);
-    AdofaiLevelFileHash.TryCompute(levelPath, out byte[] levelFileHash);
+    string openedAtUtc = DateTime.UtcNow.ToString("O");
+    var level = new LevelRecord
+    {
+      Id = Guid.NewGuid().ToString("N"),
+      SourceKind = tufLevelId.HasValue ? LevelSourceKind.Tuf : LevelSourceKind.Local,
+      TufLevelId = tufLevelId,
+      LevelPath = levelPath,
+      LevelTileCount = levelTileCount,
+      GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
+      GameplayHashVersion = gameplayHashVersion,
+      Song = metadata?.Song,
+      Author = metadata?.Author,
+      Artist = metadata?.Artist,
+      MetadataState = metadataAvailable ? LevelMetadataState.Captured : LevelMetadataState.Unavailable,
+      FirstSeenAtUtc = openedAtUtc,
+      LastSeenAtUtc = openedAtUtc,
+    };
     var levelSession = new LevelSession
     {
-        Id = LevelSessionId,
-        AppSessionId = AppSessionId,
-        TufLevelId = tufLevelId,
-        LevelPath = levelPath,
-        OpenedAtUtc = DateTime.UtcNow.ToString("O"),
-        LevelTileCount = levelTileCount,
-        LevelFileHash = levelFileHash,
-        GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
-        GameplayHashVersion = gameplayHashVersion,
-        Song = metadata?.Song,
-        Author = metadata?.Author,
-        Artist = metadata?.Artist,
-        MetadataState = metadataAvailable ? LevelMetadataState.Captured : LevelMetadataState.Unavailable,
+      Id = LevelSessionId,
+      LevelId = LevelRepository.ResolveOrCreate(level),
+      AppSessionId = AppSessionId,
+      OpenedAtUtc = openedAtUtc,
     };
-    levelSession.LogicalLevelId = LogicalLevelRepository.ResolveOrCreate(levelSession);
     LevelSessionRepository.Save(levelSession);
   }
 

@@ -16,7 +16,7 @@ public class RecordedRunPayload
   public long? WonTimeUs;
   public long? TerminalTimeUs;
   public string InputTimeBase = TUFReplay.Application.Recording.RecordingClock.HybridInputTimeBase;
-  public string InputCapture = "skyhook-events-high-resolution";
+  public string InputCapture = "skyhook-events-high-resolution-physical-state";
   public bool NoFailMode;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;

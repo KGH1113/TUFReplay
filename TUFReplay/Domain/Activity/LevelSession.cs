@@ -3,20 +3,44 @@ namespace TUFReplay.Domain.Activity;
 public class LevelSession
 {
   public string Id;
-  public string LogicalLevelId;
+  public string LevelId;
   public string AppSessionId;
+  public LevelSourceKind SourceKind;
   public int? TufLevelId;
   public string LevelPath;
   public string OpenedAtUtc;
   public string ClosedAtUtc;
   public int LevelTileCount;
-  public byte[] LevelFileHash;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
   public string Song;
   public string Author;
   public string Artist;
   public LevelMetadataState MetadataState;
+}
+
+public sealed class LevelRecord
+{
+  public string Id;
+  public string IdentityKey;
+  public LevelSourceKind SourceKind;
+  public int? TufLevelId;
+  public string LevelPath;
+  public int LevelTileCount;
+  public byte[] GameplayHash;
+  public int? GameplayHashVersion;
+  public string Song;
+  public string Author;
+  public string Artist;
+  public LevelMetadataState MetadataState;
+  public string FirstSeenAtUtc;
+  public string LastSeenAtUtc;
+}
+
+public enum LevelSourceKind
+{
+  Local = 0,
+  Tuf = 1,
 }
 
 public sealed class LogicalLevelOverview

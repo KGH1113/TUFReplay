@@ -1,7 +1,6 @@
 import {
   ArrowLeft01Icon,
   Delete02Icon,
-  Download04Icon,
   FloppyDiskIcon,
   Loading03Icon,
   Mic01Icon,
@@ -43,6 +42,7 @@ export function RunActionsMenu({
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   const [recordingDialogOpen, setRecordingDialogOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
@@ -95,7 +95,13 @@ export function RunActionsMenu({
 
   return (
     <>
-      <DropdownMenu onOpenChange={(open) => open && setMenuError("")}>
+      <DropdownMenu
+        open={menuOpen}
+        onOpenChange={(open) => {
+          setMenuOpen(open);
+          if (open) setMenuError("");
+        }}
+      >
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
@@ -168,11 +174,6 @@ export function RunActionsMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={() => undefined}>
-            <span aria-hidden="true" className="size-4" />
-            <HugeiconsIcon aria-hidden="true" icon={Download04Icon} className="size-4" />
-            Export run
-          </DropdownMenuItem>
           <DropdownMenuItem disabled>
             <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Upload04Icon} className="size-4" />

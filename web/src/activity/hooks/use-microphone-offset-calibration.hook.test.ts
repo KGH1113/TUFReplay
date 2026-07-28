@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { MicrophoneCalibrationStatus } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
 import {
+  createCalibrationOffsetSaveQueue,
   extrapolateCalibrationPlaybackPosition,
   installCalibrationStatusPolling,
 } from "./use-microphone-offset-calibration.hook";
@@ -18,6 +19,29 @@ const waitingStatus: MicrophoneCalibrationStatus = {
   MicrophoneOffsetMs: 0,
   MicrophoneVolumeDb: 0,
 };
+
+describe("microphone calibration offset saving", () => {
+  test("waits for the final offset save before closing calibration", async () => {
+    const events: string[] = [];
+    let finishSave = () => {};
+    const queue = createCalibrationOffsetSaveQueue(() => {});
+    queue.enqueue(
+      () =>
+        new Promise<void>((resolve) => {
+          events.push("save started");
+          finishSave = resolve;
+        }),
+    );
+
+    const close = queue.flush().then(() => events.push("closed"));
+    await Promise.resolve();
+    expect(events).toEqual(["save started"]);
+
+    finishSave();
+    await close;
+    expect(events).toEqual(["save started", "closed"]);
+  });
+});
 
 describe("microphone calibration status polling", () => {
   test("keeps the playhead at zero until gameplay starts after countdown", () => {

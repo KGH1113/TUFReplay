@@ -168,6 +168,66 @@ LIMIT 1";
     }
   }
 
+  public static StoredMicrophoneRecording WriteTo(
+    string runId,
+    Stream destination,
+    CancellationToken cancellationToken
+  )
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      throw new ArgumentException("A run ID is required.", nameof(runId));
+    if (destination == null)
+      throw new ArgumentNullException(nameof(destination));
+    if (!destination.CanWrite)
+      throw new ArgumentException("The microphone destination must be writable.", nameof(destination));
+
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    long rowId;
+    StoredMicrophoneRecording recording;
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText =
+        @"SELECT rowid,format,sample_rate,channels,frame_count,capture_start_offset_us,length(audio_wav)
+FROM microphone_recordings
+WHERE run_id=@run
+LIMIT 1";
+      command.Parameters.AddWithValue("@run", runId);
+      using SqliteDataReader reader = command.ExecuteReader();
+      if (!reader.Read())
+        return null;
+
+      rowId = reader.GetInt64(0);
+      recording = new StoredMicrophoneRecording
+      {
+        RunId = runId,
+        Format = reader.GetString(1),
+        SampleRate = reader.GetInt32(2),
+        Channels = reader.GetInt32(3),
+        FrameCount = reader.GetInt64(4),
+        CaptureStartOffsetUs = reader.GetInt64(5),
+        ByteLength = reader.GetInt64(6),
+      };
+    }
+
+    cancellationToken.ThrowIfCancellationRequested();
+    long written = 0;
+    using (var blob = new SqliteBlob(connection, "microphone_recordings", "audio_wav", rowId, true))
+    {
+      byte[] buffer = new byte[BlobBufferSize];
+      int read;
+      while ((read = blob.Read(buffer, 0, buffer.Length)) > 0)
+      {
+        cancellationToken.ThrowIfCancellationRequested();
+        destination.Write(buffer, 0, read);
+        written += read;
+      }
+    }
+
+    if (written != recording.ByteLength)
+      throw new InvalidDataException("The copied microphone BLOB length is invalid.");
+    return recording;
+  }
+
   private static void DeleteIfExists(string path)
   {
     if (File.Exists(path))

@@ -7,61 +7,52 @@ namespace TUFReplay.Infrastructure.Database.Repositories;
 
 public static class LevelSessionRepository
 {
-  public static void Save(LevelSession s)
+  private const string Select =
+    @"SELECT s.id,s.level_id,s.app_session_id,s.opened_at_utc,s.closed_at_utc,
+l.source_kind,l.tuf_level_id,l.adofai_path,l.level_tile_count,l.gameplay_hash,l.gameplay_hash_version,
+l.song,l.author,l.artist,l.metadata_state
+FROM level_sessions s JOIN levels l ON l.id=s.level_id";
+
+  public static void Save(LevelSession session)
   {
-    if (string.IsNullOrWhiteSpace(s.LogicalLevelId))
-      s.LogicalLevelId = LogicalLevelRepository.ResolveOrCreate(s);
-    using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteCommand q = c.CreateCommand();
-    q.CommandText =
-      @"INSERT INTO level_sessions(
-id,logical_level_id,app_session_id,tuf_level_id,level_path,opened_at_utc,closed_at_utc,level_tile_count,
-level_file_hash,gameplay_hash,gameplay_hash_version,song,author,artist,metadata_state
-) VALUES(@id,@logical,@app,@tuf,@path,@open,@close,@tiles,@levelFileHash,@gameplayHash,@gameplayVersion,@song,@author,@artist,@metadataState)";
-    q.Parameters.AddWithValue("@id", s.Id);
-    q.Parameters.AddWithValue("@logical", s.LogicalLevelId);
-    q.Parameters.AddWithValue("@app", s.AppSessionId);
-    q.Parameters.AddWithValue("@tuf", DbValue.From(s.TufLevelId));
-    q.Parameters.AddWithValue("@path", s.LevelPath);
-    q.Parameters.AddWithValue("@open", s.OpenedAtUtc);
-    q.Parameters.AddWithValue("@close", DbValue.From(s.ClosedAtUtc));
-    q.Parameters.AddWithValue("@tiles", s.LevelTileCount);
-    q.Parameters.AddWithValue("@levelFileHash", (object)s.LevelFileHash ?? System.DBNull.Value);
-    q.Parameters.AddWithValue("@gameplayHash", (object)s.GameplayHash ?? System.DBNull.Value);
-    q.Parameters.AddWithValue("@gameplayVersion", DbValue.From(s.GameplayHashVersion));
-    q.Parameters.AddWithValue("@song", DbValue.From(s.Song));
-    q.Parameters.AddWithValue("@author", DbValue.From(s.Author));
-    q.Parameters.AddWithValue("@artist", DbValue.From(s.Artist));
-    q.Parameters.AddWithValue("@metadataState", (int)s.MetadataState);
-    q.ExecuteNonQuery();
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      @"INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc,closed_at_utc)
+VALUES(@id,@level,@app,@open,@close)";
+    command.Parameters.AddWithValue("@id", session.Id);
+    command.Parameters.AddWithValue("@level", session.LevelId);
+    command.Parameters.AddWithValue("@app", session.AppSessionId);
+    command.Parameters.AddWithValue("@open", session.OpenedAtUtc);
+    command.Parameters.AddWithValue("@close", DbValue.From(session.ClosedAtUtc));
+    command.ExecuteNonQuery();
   }
 
   public static bool CloseOrDeleteIfEmpty(string id, string end)
   {
-    using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteTransaction transaction = c.BeginTransaction();
-    using SqliteCommand q = c.CreateCommand();
-    q.Transaction = transaction;
-    q.CommandText = "SELECT logical_level_id FROM level_sessions WHERE id=@id";
-    q.Parameters.AddWithValue("@id", id);
-    string logicalLevelId = q.ExecuteScalar() as string;
-    q.CommandText =
-      @"
-DELETE FROM level_sessions
-WHERE id=@id
-  AND NOT EXISTS (SELECT 1 FROM runs WHERE level_session_id=@id);";
-    int deleted = q.ExecuteNonQuery();
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteTransaction transaction = connection.BeginTransaction();
+    using SqliteCommand command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = "SELECT level_id FROM level_sessions WHERE id=@id";
+    command.Parameters.AddWithValue("@id", id);
+    string levelId = command.ExecuteScalar() as string;
+    command.CommandText =
+      @"DELETE FROM level_sessions
+WHERE id=@id AND NOT EXISTS (SELECT 1 FROM runs WHERE level_session_id=@id)";
+    int deleted = command.ExecuteNonQuery();
 
     if (deleted == 0)
     {
-      q.CommandText = "UPDATE level_sessions SET closed_at_utc=@end WHERE id=@id";
-      q.Parameters.AddWithValue("@end", end);
-      q.ExecuteNonQuery();
-      LogicalLevelRepository.TouchLastSeen(c, transaction, logicalLevelId, end);
+      command.CommandText = "UPDATE level_sessions SET closed_at_utc=@end WHERE id=@id";
+      command.Parameters.AddWithValue("@end", end);
+      command.ExecuteNonQuery();
+      LevelRepository.TouchLastSeen(connection, transaction, levelId, end);
     }
-
-    if (deleted > 0)
-      LogicalLevelRepository.DeleteIfOrphaned(c, transaction, logicalLevelId);
+    else
+    {
+      LevelRepository.DeleteIfOrphaned(connection, transaction, levelId);
+    }
 
     transaction.Commit();
     return deleted > 0;
@@ -69,98 +60,46 @@ WHERE id=@id
 
   public static LevelSession Get(string id)
   {
-    using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteCommand q = c.CreateCommand();
-    q.CommandText =
-      @"SELECT id,logical_level_id,app_session_id,tuf_level_id,level_path,opened_at_utc,closed_at_utc,level_tile_count,
-level_file_hash,gameplay_hash,gameplay_hash_version,song,author,artist,metadata_state FROM level_sessions WHERE id=@id";
-    q.Parameters.AddWithValue("@id", id);
-    using SqliteDataReader r = q.ExecuteReader();
-    return r.Read()
-      ? new LevelSession
-      {
-        Id = r.GetString(0),
-        LogicalLevelId = r.GetString(1),
-        AppSessionId = r.GetString(2),
-        TufLevelId = DbValue.NullableInt(r, 3),
-        LevelPath = r.GetString(4),
-        OpenedAtUtc = r.GetString(5),
-        ClosedAtUtc = DbValue.NullableString(r, 6),
-        LevelTileCount = r.GetInt32(7),
-        LevelFileHash = r.IsDBNull(8) ? null : (byte[])r.GetValue(8),
-        GameplayHash = r.IsDBNull(9) ? null : (byte[])r.GetValue(9),
-        GameplayHashVersion = DbValue.NullableInt(r, 10),
-        Song = DbValue.NullableString(r, 11),
-        Author = DbValue.NullableString(r, 12),
-        Artist = DbValue.NullableString(r, 13),
-        MetadataState = (LevelMetadataState)r.GetInt32(14),
-      }
-      : null;
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    return Get(connection, null, id);
+  }
+
+  public static LevelSession Get(SqliteConnection connection, SqliteTransaction transaction, string id)
+  {
+    using SqliteCommand command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = Select + " WHERE s.id=@id LIMIT 1";
+    command.Parameters.AddWithValue("@id", id);
+    using SqliteDataReader reader = command.ExecuteReader();
+    return reader.Read() ? Read(reader) : null;
   }
 
   public static bool Exists(string id)
   {
-    using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteCommand q = c.CreateCommand();
-    q.CommandText = "SELECT 1 FROM level_sessions WHERE id=@id LIMIT 1";
-    q.Parameters.AddWithValue("@id", id);
-    return q.ExecuteScalar() != null;
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT 1 FROM level_sessions WHERE id=@id LIMIT 1";
+    command.Parameters.AddWithValue("@id", id);
+    return command.ExecuteScalar() != null;
   }
 
   public static List<LevelSession> ListByLogicalLevelNewestFirst(string id)
   {
     var result = new List<LevelSession>();
-    using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteCommand q = c.CreateCommand();
-    q.CommandText =
-      @"SELECT id,logical_level_id,app_session_id,tuf_level_id,level_path,opened_at_utc,closed_at_utc,level_tile_count,
-level_file_hash,gameplay_hash,gameplay_hash_version,song,author,artist,metadata_state
-FROM level_sessions WHERE logical_level_id=@id ORDER BY opened_at_utc DESC,id DESC";
-    q.Parameters.AddWithValue("@id", id);
-    using SqliteDataReader r = q.ExecuteReader();
-    while (r.Read())
-    {
-      result.Add(
-        new LevelSession
-        {
-          Id = r.GetString(0),
-          LogicalLevelId = r.GetString(1),
-          AppSessionId = r.GetString(2),
-          TufLevelId = DbValue.NullableInt(r, 3),
-          LevelPath = r.GetString(4),
-          OpenedAtUtc = r.GetString(5),
-          ClosedAtUtc = DbValue.NullableString(r, 6),
-          LevelTileCount = r.GetInt32(7),
-          LevelFileHash = r.IsDBNull(8) ? null : (byte[])r.GetValue(8),
-          GameplayHash = r.IsDBNull(9) ? null : (byte[])r.GetValue(9),
-          GameplayHashVersion = DbValue.NullableInt(r, 10),
-          Song = DbValue.NullableString(r, 11),
-          Author = DbValue.NullableString(r, 12),
-          Artist = DbValue.NullableString(r, 13),
-          MetadataState = (LevelMetadataState)r.GetInt32(14),
-        }
-      );
-    }
+    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = Select + " WHERE s.level_id=@id ORDER BY s.opened_at_utc DESC,s.id DESC";
+    command.Parameters.AddWithValue("@id", id);
+    using SqliteDataReader reader = command.ExecuteReader();
+    while (reader.Read())
+      result.Add(Read(reader));
     return result;
   }
 
   public static void UpdateMetadata(string id, LevelMetadataSnapshot metadata, LevelMetadataState state)
   {
-    using SqliteConnection c = DatabaseStore.OpenConnection();
-    using SqliteCommand q = c.CreateCommand();
-    q.CommandText =
-      @"UPDATE level_sessions
-SET song=@song,author=@author,artist=@artist,metadata_state=@state
-WHERE id=@id AND metadata_state=@pending";
-    q.Parameters.AddWithValue("@song", DbValue.From(metadata?.Song));
-    q.Parameters.AddWithValue("@author", DbValue.From(metadata?.Author));
-    q.Parameters.AddWithValue("@artist", DbValue.From(metadata?.Artist));
-    q.Parameters.AddWithValue("@state", (int)state);
-    q.Parameters.AddWithValue("@id", id);
-    q.Parameters.AddWithValue("@pending", (int)LevelMetadataState.Pending);
-    q.ExecuteNonQuery();
     LevelSession session = Get(id);
-    LogicalLevelRepository.UpdateMetadata(session?.LogicalLevelId, metadata);
+    LevelRepository.UpdateMetadata(session?.LevelId, metadata, state);
   }
 
   public static string UpdateTufLevelIdIfMissing(string id, int tufLevelId)
@@ -168,8 +107,28 @@ WHERE id=@id AND metadata_state=@pending";
     LevelSession session = Get(id);
     if (session == null)
       return null;
-    if (session.TufLevelId.HasValue)
-      return session.LogicalLevelId;
-    return LogicalLevelRepository.PromoteToTufIdentity(id, tufLevelId);
+    if (session.SourceKind == LevelSourceKind.Tuf && session.TufLevelId.HasValue)
+      return session.LevelId;
+    return LevelRepository.PromoteToTufIdentity(id, tufLevelId);
   }
+
+  private static LevelSession Read(SqliteDataReader reader) =>
+    new LevelSession
+    {
+      Id = reader.GetString(0),
+      LevelId = reader.GetString(1),
+      AppSessionId = reader.GetString(2),
+      OpenedAtUtc = reader.GetString(3),
+      ClosedAtUtc = DbValue.NullableString(reader, 4),
+      SourceKind = (LevelSourceKind)reader.GetInt32(5),
+      TufLevelId = DbValue.NullableInt(reader, 6),
+      LevelPath = reader.GetString(7),
+      LevelTileCount = reader.GetInt32(8),
+      GameplayHash = reader.IsDBNull(9) ? null : (byte[])reader.GetValue(9),
+      GameplayHashVersion = DbValue.NullableInt(reader, 10),
+      Song = DbValue.NullableString(reader, 11),
+      Author = DbValue.NullableString(reader, 12),
+      Artist = DbValue.NullableString(reader, 13),
+      MetadataState = (LevelMetadataState)reader.GetInt32(14),
+    };
 }
