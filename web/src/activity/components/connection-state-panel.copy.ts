@@ -1,3 +1,4 @@
+import type { TFunction } from "i18next";
 import type { ConnectionStatus } from "../activity.model";
 
 interface ConnectionStatePanelCopy {
@@ -8,42 +9,33 @@ interface ConnectionStatePanelCopy {
   steps: string[];
 }
 
-export function getConnectionStatePanelCopy(status: ConnectionStatus): ConnectionStatePanelCopy {
+export function getConnectionStatePanelCopy(
+  status: ConnectionStatus,
+  t: TFunction<"activity">,
+): ConnectionStatePanelCopy {
   if (status === "connecting")
     return {
-      title: "Connecting to TUFReplay…",
-      description: "Checking the local ADOFAI connection.",
-      retryLabel: "Retry connection",
-      guideLabel: "How to connect",
-      steps: [
-        "Start ADOFAI.",
-        "Enable TUFReplay in UnityModManager.",
-        "Make sure AdofaiIpc is running.",
-      ],
+      title: t("connection.connectingTitle"),
+      description: t("connection.connectingDescription"),
+      retryLabel: t("connection.retry"),
+      guideLabel: t("connection.connectGuide"),
+      steps: t("connection.connectSteps", { returnObjects: true }),
     };
 
   if (status === "incompatible")
     return {
-      title: "TUFReplay update required",
-      description: "Fully quit ADOFAI, then start it again to update TUFReplay.",
-      retryLabel: "Retry after restarting",
-      guideLabel: "How to update",
-      steps: [
-        "Fully quit ADOFAI.",
-        "Start ADOFAI again and wait for TUFReplay to update.",
-        "Return here; this page will retry automatically.",
-      ],
+      title: t("connection.updateTitle"),
+      description: t("connection.updateDescription"),
+      retryLabel: t("connection.retryAfterRestarting"),
+      guideLabel: t("connection.updateGuide"),
+      steps: t("connection.updateSteps", { returnObjects: true }),
     };
 
   return {
-    title: "Waiting for TUFReplay",
-    description: "Open ADOFAI and make sure the mod is enabled.",
-    retryLabel: "Retry connection",
-    guideLabel: "How to connect",
-    steps: [
-      "Start ADOFAI.",
-      "Enable TUFReplay in UnityModManager.",
-      "Make sure AdofaiIpc is running.",
-    ],
+    title: t("connection.waitingTitle"),
+    description: t("connection.waitingDescription"),
+    retryLabel: t("connection.retry"),
+    guideLabel: t("connection.connectGuide"),
+    steps: t("connection.connectSteps", { returnObjects: true }),
   };
 }

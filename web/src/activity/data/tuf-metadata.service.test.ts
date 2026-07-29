@@ -87,7 +87,7 @@ describe("TUF metadata live API contract", () => {
     });
     const metadata = await getTufMetadata(3118, fetcher);
     expect(metadata.name).toBe("First Town");
-    expect(metadata.difficulty).toBe("Unknown");
+    expect(metadata.difficulty).toBe("");
     expect(metadata.source).toBe("tuf");
   });
 });
@@ -109,7 +109,7 @@ describe("recorded .adofai metadata fallback", () => {
       name: "First Song",
       creator: "First Creator",
       artist: "First Artist",
-      difficulty: "Local",
+      difficulty: "",
       source: "local",
     });
     expect(second.name).toBe("Second Song");
@@ -127,7 +127,7 @@ describe("recorded .adofai metadata fallback", () => {
       name: "Recorded Song",
       creator: "Recorded Creator",
       artist: "Recorded Artist",
-      difficulty: "Unknown",
+      difficulty: "",
       difficultyIconUrl: "",
       source: "fallback",
     });
@@ -135,9 +135,9 @@ describe("recorded .adofai metadata fallback", () => {
 
   test("falls back per field when recorded values are empty", () => {
     expect(getFallbackMetadata(null, { Song: "", Author: " ", Artist: null })).toMatchObject({
-      name: "Custom level",
-      creator: "Unknown creator",
-      artist: "Unknown artist",
+      name: "",
+      creator: "",
+      artist: "",
     });
   });
 

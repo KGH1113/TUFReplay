@@ -18,7 +18,7 @@ public static class AppSessionRepository
     q.Parameters.AddWithValue("@end", DbValue.From(s.EndedAtUtc));
     q.Parameters.AddWithValue("@tz", DbValue.From(s.RecorderTimeZoneId));
     q.Parameters.AddWithValue("@offset", s.RecorderUtcOffsetMinutes);
-    q.ExecuteNonQuery();
+    DatabaseStore.ExecuteNonQueryWithLockRetry(q);
   }
 
   public static bool CloseOrDeleteIfEmpty(string id, string end)
