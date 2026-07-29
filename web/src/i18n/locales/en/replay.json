@@ -1,0 +1,43 @@
+{
+  "dialog": {
+    "title": "Play replay",
+    "description": "Use the original level or choose another file with matching gameplay.",
+    "original": "Original level",
+    "starting": "Starting replay…",
+    "useRecorded": "Use the level recorded for this run",
+    "default": "Default",
+    "chooseMatching": "Choose matching level…",
+    "choosingAndVerifying": "Choose a file, then verifying gameplay…",
+    "openingPicker": "Opening file picker…",
+    "useAnother": "Use another file with identical gameplay",
+    "failed": "Replay failed."
+  },
+  "status": {
+    "sending": "Sending replay to ADOFAI…",
+    "preparing": "Preparing replay…",
+    "openingLevel": "Opening the recorded level…",
+    "waitingForFocus": "Waiting for ADOFAI to regain focus…",
+    "starting": "Starting replay…",
+    "playing": "Replay is playing.",
+    "returning": "Returning to the editor…",
+    "completed": "Replay completed.",
+    "cancelled": "Replay cancelled.",
+    "failed": "Replay failed.",
+    "replaceActive": "Starting this run will replace the active replay."
+  },
+  "controlFailed": "Could not control replay",
+  "run": {
+    "submit": "Submit run",
+    "delete": "Delete run",
+    "deleteTitle": "Delete run?",
+    "deleteDescription": "This permanently deletes run #{{runIndex}}, its replay data, and its microphone recording. This cannot be undone.",
+    "deleteFailed": "Could not delete run",
+    "deleting": "Deleting…"
+  },
+  "errors": {
+    "run_not_found": "The selected run could not be found.",
+    "level_gameplay_modified": "The selected level's gameplay does not match the recorded run.",
+    "level_file_invalid": "The selected level file is invalid.",
+    "calibration_operation_stale": "The calibration operation is no longer active."
+  }
+}

@@ -1,11 +1,13 @@
 import { useCallback, useRef, useState } from "react";
 
+import i18n from "../../i18n/i18n";
 import type { ActivityAppSession, ConnectionStatus } from "../activity.model";
 import {
   type ActivityGateway,
   ActivityProtocolMismatchError,
   connectActivityGateway,
 } from "../data/activity.gateway";
+import { localizedErrorMessage } from "../lib/localized-error";
 import { createMockActivityGateway } from "../mock/activity.mock";
 import { useVisiblePolling } from "./use-visible-polling.hook";
 
@@ -42,12 +44,12 @@ export function useActivityData() {
         const next = await gateway.listAllAppSessions(setSessions);
         setSessions(next);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : "Could not load TUFReplay activity");
+        setError(localizedErrorMessage(cause, i18n.t("errors.load", { ns: "activity" })));
       }
     } catch (cause) {
       gatewayRef.current = null;
       setStatus(connectionStatusForError(cause));
-      setError(cause instanceof Error ? cause.message : "Could not connect to TUFReplay");
+      setError(localizedErrorMessage(cause, i18n.t("errors.connect", { ns: "activity" })));
     } finally {
       loadingRef.current = false;
     }

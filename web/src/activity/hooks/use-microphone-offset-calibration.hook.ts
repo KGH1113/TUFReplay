@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
+import i18n from "../../i18n/i18n";
 import type {
   ConnectionStatus,
   MicrophoneCalibrationResult,
@@ -9,6 +10,7 @@ import type {
   MicrophoneOffsetCalibrationData,
 } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
+import { localizedErrorMessage } from "../lib/localized-error";
 import { clampMicrophoneOffset } from "../lib/microphone-offset.utils";
 import {
   createMicrophoneOffsetCalibrationState,
@@ -117,7 +119,7 @@ export function useMicrophoneOffsetCalibration(
   const durationRef = useRef(mockMicrophoneOffsetCalibration.durationMs);
   const offsetSaveQueueRef = useRef(
     createCalibrationOffsetSaveQueue((cause) =>
-      setAudioError(errorMessage(cause, "Could not save the offset.")),
+      setAudioError(errorMessage(cause, i18n.t("errors.saveOffset", { ns: "microphone" }))),
     ),
   );
   const pendingVolumeRef = useRef<number | null>(null);
@@ -169,7 +171,11 @@ export function useMicrophoneOffsetCalibration(
     };
     playbackPositionRef.current = status.PlaybackPositionMs;
     if (!previewActive) setPlaybackPositionMs(status.PlaybackPositionMs);
-    setAudioError(status.State === "error" ? status.Message || "Calibration failed." : "");
+    setAudioError(
+      status.State === "error"
+        ? status.Message || i18n.t("errors.calibrationFailed", { ns: "microphone" })
+        : "",
+    );
   }, []);
 
   const loadBackendResult = useCallback(
@@ -190,7 +196,7 @@ export function useMicrophoneOffsetCalibration(
         applyBackendResult(await gateway.getMicrophoneCalibrationResult(operationId, revision));
       } catch (cause) {
         resultRevisionRef.current = 0;
-        setAudioError(errorMessage(cause, "Could not load the calibration waveforms."));
+        setAudioError(errorMessage(cause, i18n.t("errors.loadWaveforms", { ns: "microphone" })));
       }
     },
     [applyBackendResult, gatewayRef],
@@ -214,7 +220,7 @@ export function useMicrophoneOffsetCalibration(
 
     const gateway = gatewayRef.current;
     if (!gateway || connectionStatus !== "online") {
-      setAudioError("TUFReplay is not connected to ADOFAI.");
+      setAudioError(i18n.t("errors.notConnectedToGame", { ns: "common" }));
       dispatch({
         type: "sync",
         phase: "error",
@@ -234,7 +240,7 @@ export function useMicrophoneOffsetCalibration(
       applyBackendStatus(status);
       await loadBackendResult(status);
     } catch (cause) {
-      setAudioError(errorMessage(cause, "Could not start microphone calibration."));
+      setAudioError(errorMessage(cause, i18n.t("errors.startCalibration", { ns: "microphone" })));
       dispatch({
         type: "sync",
         phase: "error",
@@ -317,7 +323,9 @@ export function useMicrophoneOffsetCalibration(
         if (!gateway || !operationId || pendingVolume === null) return;
         void gateway
           .setMicrophoneCalibrationVolume(operationId, pendingVolume)
-          .catch((cause) => setAudioError(errorMessage(cause, "Could not save the volume.")));
+          .catch((cause) =>
+            setAudioError(errorMessage(cause, i18n.t("errors.saveVolume", { ns: "microphone" }))),
+          );
       }, VOLUME_UPDATE_INTERVAL_MS);
     },
     [gatewayRef, mockEnabled],
@@ -336,7 +344,7 @@ export function useMicrophoneOffsetCalibration(
         if (operationIdRef.current !== operationId) return;
         applyBackendStatus(status);
       } catch (cause) {
-        setAudioError(errorMessage(cause, "Could not control the calibration preview."));
+        setAudioError(errorMessage(cause, i18n.t("errors.controlPreview", { ns: "microphone" })));
       }
       return;
     }
@@ -375,7 +383,7 @@ export function useMicrophoneOffsetCalibration(
       playerRef.current?.dispose();
       playerRef.current = null;
       stopLocalPlayback();
-      setAudioError(errorMessage(cause, "Could not start the mock audio preview."));
+      setAudioError(errorMessage(cause, i18n.t("errors.startMockPreview", { ns: "microphone" })));
     }
   }, [
     applyBackendStatus,
@@ -416,7 +424,7 @@ export function useMicrophoneOffsetCalibration(
         applyBackendStatus(status);
       },
       onError: (cause) =>
-        setAudioError(errorMessage(cause, "Could not refresh calibration status.")),
+        setAudioError(errorMessage(cause, i18n.t("errors.refreshStatus", { ns: "microphone" }))),
     });
   }, [applyBackendStatus, gatewayRef, loadBackendResult, mockEnabled, state.phase]);
 
@@ -489,5 +497,5 @@ export function extrapolateCalibrationPlaybackPosition(
 }
 
 function errorMessage(cause: unknown, fallback: string) {
-  return cause instanceof Error ? cause.message : fallback;
+  return localizedErrorMessage(cause, fallback);
 }

@@ -1,7 +1,9 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
+import i18n from "../../i18n/i18n";
 import type { ActivityChart, ActivityLogicalLevelOverview, ActivityRun } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
+import { localizedErrorMessage } from "../lib/localized-error";
 
 export function useLevelSessionData(
   id: string | null,
@@ -81,7 +83,7 @@ export function useLevelSessionData(
     Promise.all(tasks)
       .catch((cause) => {
         if (active)
-          setError(cause instanceof Error ? cause.message : "Could not load level session");
+          setError(localizedErrorMessage(cause, i18n.t("errors.loadSession", { ns: "activity" })));
       })
       .finally(() => {
         if (active) setLoading(false);

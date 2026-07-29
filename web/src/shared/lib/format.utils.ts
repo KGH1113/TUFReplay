@@ -1,20 +1,31 @@
-export function formatDateTime(value: string | null | undefined) {
-  if (!value) return "No clear time";
+export function formatDateTime(
+  value: string | null | undefined,
+  locale: string,
+  emptyValue: string,
+) {
+  if (!value) return emptyValue;
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return date.toLocaleString();
+  return date.toLocaleString(locale);
 }
 
-export function formatBytes(bytes: number | null | undefined) {
+export function formatBytes(bytes: number | null | undefined, locale: string) {
   const value = bytes ?? 0;
 
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  if (value < 1024) return `${value.toLocaleString(locale)} B`;
+  if (value < 1024 * 1024) return `${formatDecimal(value / 1024, locale)} KB`;
+  return `${formatDecimal(value / 1024 / 1024, locale)} MB`;
 }
 
-export function formatNumber(value: number | null | undefined) {
-  return (value ?? 0).toLocaleString();
+export function formatNumber(value: number | null | undefined, locale: string) {
+  return (value ?? 0).toLocaleString(locale);
+}
+
+function formatDecimal(value: number, locale: string) {
+  return new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value);
 }

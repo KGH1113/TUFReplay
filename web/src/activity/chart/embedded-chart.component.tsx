@@ -1,4 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import type { ActivityChart, ActivityRun, RunMarker } from "../activity.model";
 import { ChartBridge } from "./chart-bridge";
@@ -21,6 +22,7 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
     { chart, markers, selectedMarker, selectedRun, onMarkerSelect, onFloorSelect },
     ref,
   ) {
+    const { t } = useTranslation("activity");
     const frameRef = useRef<HTMLIFrameElement>(null);
     const bridgeRef = useRef<ChartBridge | null>(null);
     const callbacksRef = useRef({ onFloorSelect, onMarkerSelect });
@@ -28,9 +30,9 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
     const embed = useMemo(resolveEmbedConfig, []);
     const [frameSrc, setFrameSrc] = useState("about:blank");
     const [state, setState] = useState<"loading" | "ready" | "error">(
-      embed.error ? "error" : "loading",
+      embed.errorKey ? "error" : "loading",
     );
-    const [error, setError] = useState(embed.error);
+    const [error, setError] = useState("");
 
     useEffect(() => {
       if (!embed.src || !embed.origin) return;
@@ -123,36 +125,42 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
           <iframe
             ref={frameRef}
             src={frameSrc}
-            title="ADOFAI level chart"
+            title={t("chart.viewerTitle")}
             className="absolute inset-0 size-full border-0"
           />
         ) : null}
-        {state === "loading" ? <ChartOverlay>Loading chart…</ChartOverlay> : null}
+        {state === "loading" ? <ChartOverlay>{t("chart.loadingViewer")}</ChartOverlay> : null}
         {state === "error" ? (
-          <ChartOverlay>{error || "The embedded chart could not be loaded."}</ChartOverlay>
+          <ChartOverlay>
+            {error || (embed.errorKey ? t(embed.errorKey) : t("chart.viewerLoadFailed"))}
+          </ChartOverlay>
         ) : null}
       </div>
     );
   },
 );
 
-function resolveEmbedConfig(): { src: string; origin: string; error: string } {
+function resolveEmbedConfig(): {
+  src: string;
+  origin: string;
+  errorKey: "chart.missingEmbedUrl" | "chart.invalidEmbedUrl" | null;
+} {
   const configuredUrl = import.meta.env.VITE_WEB_ADOFAI_EMBED_URL?.trim();
   if (!configuredUrl)
     return {
       src: "",
       origin: "",
-      error: "Set VITE_WEB_ADOFAI_EMBED_URL to load the ADOFAI chart viewer.",
+      errorKey: "chart.missingEmbedUrl",
     };
   try {
     const url = new URL(configuredUrl);
     url.searchParams.set("parentOrigin", window.location.origin);
-    return { src: url.toString(), origin: url.origin, error: "" };
+    return { src: url.toString(), origin: url.origin, errorKey: null };
   } catch {
     return {
       src: "",
       origin: "",
-      error: "VITE_WEB_ADOFAI_EMBED_URL must be a valid absolute URL.",
+      errorKey: "chart.invalidEmbedUrl",
     };
   }
 }

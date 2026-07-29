@@ -22,12 +22,10 @@ export function getFallbackMetadata(
   if (hasStoredMetadata) {
     return {
       levelId,
-      artist: cleanUnityMetadata(stored.Artist) || "Unknown artist",
-      name:
-        cleanUnityMetadata(stored.Song) ||
-        (levelId === null ? "Custom level" : `Level #${levelId}`),
-      creator: cleanUnityMetadata(stored.Author) || "Unknown creator",
-      difficulty: levelId === null ? "Local" : "Unknown",
+      artist: cleanUnityMetadata(stored.Artist),
+      name: cleanUnityMetadata(stored.Song) || "",
+      creator: cleanUnityMetadata(stored.Author),
+      difficulty: "",
       difficultyIconUrl: "",
       source: levelId === null ? "local" : "fallback",
     };
@@ -36,20 +34,20 @@ export function getFallbackMetadata(
   if (levelId === null) {
     return {
       levelId,
-      artist: "Local level",
-      name: "Custom level",
-      creator: "Unknown creator",
-      difficulty: "Local",
+      artist: "",
+      name: "",
+      creator: "",
+      difficulty: "",
       difficultyIconUrl: "",
       source: "local",
     };
   }
   return {
     levelId,
-    artist: "TUF database",
-    name: `Level #${levelId}`,
-    creator: "Unknown creator",
-    difficulty: "Unknown",
+    artist: "",
+    name: "",
+    creator: "",
+    difficulty: "",
     difficultyIconUrl: "",
     source: "fallback",
   };
@@ -92,12 +90,10 @@ async function loadMetadata(levelId: number, fetchImpl: typeof fetch): Promise<L
       : ((await getDifficultyCatalog(fetchImpl).catch(() => new Map())).get(difficultyId) ?? null));
   return {
     levelId,
-    artist: text(level, "artist", "Artist", "songAuthor", "SongAuthor") || "Unknown artist",
-    name: text(level, "song", "name", "Name", "levelName", "LevelName") || `Level #${levelId}`,
-    creator: text(level, "creator", "Creator", "levelAuthor", "LevelAuthor") || "Unknown creator",
-    difficulty: difficulty
-      ? text(difficulty, "name", "Name", "displayName", "DisplayName") || "Unknown"
-      : "Unknown",
+    artist: text(level, "artist", "Artist", "songAuthor", "SongAuthor"),
+    name: text(level, "song", "name", "Name", "levelName", "LevelName"),
+    creator: text(level, "creator", "Creator", "levelAuthor", "LevelAuthor"),
+    difficulty: difficulty ? text(difficulty, "name", "Name", "displayName", "DisplayName") : "",
     difficultyIconUrl: difficulty ? text(difficulty, "icon", "Icon", "iconUrl", "IconUrl") : "",
     source: "tuf",
   };

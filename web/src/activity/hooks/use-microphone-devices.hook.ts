@@ -1,7 +1,9 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
+import i18n from "../../i18n/i18n";
 import type { ConnectionStatus, MicrophoneDevice, MicrophoneDevicesState } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
+import { localizedErrorMessage } from "../lib/localized-error";
 
 const EMPTY_STATE: MicrophoneDevicesState = {
   Enabled: true,
@@ -111,7 +113,7 @@ export function useMicrophoneDevices(
     setLoading(false);
     loadedRef.current = false;
     lastRefreshAtRef.current = 0;
-    if (connectionStatus === "error") setError("TUFReplay is not connected");
+    if (connectionStatus === "error") setError(i18n.t("errors.notConnected", { ns: "common" }));
   }, [connectionStatus, refresh]);
 
   return {
@@ -150,5 +152,5 @@ function microphoneStatesEqual(left: MicrophoneDevicesState, right: MicrophoneDe
 }
 
 function errorMessage(cause: unknown) {
-  return cause instanceof Error ? cause.message : "Could not read microphone devices";
+  return localizedErrorMessage(cause, i18n.t("errors.readDevices", { ns: "microphone" }));
 }

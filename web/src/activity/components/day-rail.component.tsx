@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/ui/ui-class.utils";
 import type { ActivityDay } from "../activity.model";
 import { formatDayLabel } from "../lib/activity-date.utils";
@@ -12,6 +13,8 @@ export function DayRail({
   selectedDate: string | null;
   onSelectDate: (date: string) => void;
 }) {
+  const { t, i18n } = useTranslation("activity");
+  const locale = i18n.resolvedLanguage ?? "en";
   const refs = useRef(new Map<string, HTMLButtonElement>());
   useEffect(() => {
     if (selectedDate) refs.current.get(selectedDate)?.scrollIntoView({ block: "nearest" });
@@ -19,7 +22,7 @@ export function DayRail({
   return (
     <aside className="flex min-h-0 flex-col bg-muted/20">
       <div className="border-b border-border px-3 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Days
+        {t("days")}
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {days.map((day) => (
@@ -36,13 +39,21 @@ export function DayRail({
             )}
             onClick={() => onSelectDate(day.date)}
           >
-            <div className="font-heading text-lg font-semibold">{formatDayLabel(day.date)}</div>
+            <div className="font-heading text-lg font-semibold">
+              {formatDayLabel(day.date, locale)}
+            </div>
             <div className="mt-2 grid grid-cols-2 gap-x-2 gap-y-1 text-xs">
-              <span className="text-muted-foreground">runs</span>
+              <span className="text-muted-foreground">
+                {t("counts.runs", { count: day.runCount })}
+              </span>
               <span className="text-right font-medium">{day.runCount}</span>
-              <span className="text-muted-foreground">levels</span>
+              <span className="text-muted-foreground">
+                {t("counts.levels", { count: day.levelSessions.length })}
+              </span>
               <span className="text-right font-medium">{day.levelSessions.length}</span>
-              <span className="text-muted-foreground">clears</span>
+              <span className="text-muted-foreground">
+                {t("counts.clears", { count: day.clearRunCount })}
+              </span>
               <span className="text-right font-medium">{day.clearRunCount}</span>
             </div>
           </button>

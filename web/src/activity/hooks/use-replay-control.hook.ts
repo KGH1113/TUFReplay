@@ -1,11 +1,13 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
+import i18n from "../../i18n/i18n";
 import type {
   ConnectionStatus,
   ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
+import { localizedErrorMessage } from "../lib/localized-error";
 import { ReplayStatusPoller } from "../lib/replay-status.poller";
 import { useVisiblePolling } from "./use-visible-polling.hook";
 
@@ -42,7 +44,7 @@ export function useReplayControl(
     pollerRef.current = new ReplayStatusPoller(
       async () => {
         const gateway = gatewayRef.current;
-        if (!gateway) throw new Error("TUFReplay is not connected");
+        if (!gateway) throw new Error(i18n.t("errors.notConnected", { ns: "common" }));
         return gateway.getReplayStatus();
       },
       (next) => {
@@ -79,7 +81,7 @@ export function useReplayControl(
     async (runId: string, levelPath?: string) => {
       const gateway = gatewayRef.current;
       if (!gateway) {
-        setError("TUFReplay is not connected");
+        setError(i18n.t("errors.notConnected", { ns: "common" }));
         return false;
       }
 
@@ -122,7 +124,7 @@ export function useReplayControl(
           Outcome: "error",
           LevelPath: null,
           ErrorCode: "not_connected",
-          Message: "TUFReplay is not connected",
+          Message: i18n.t("errors.notConnected", { ns: "common" }),
         });
         return false;
       }
@@ -186,5 +188,5 @@ export function shouldPollReplayStatus(status: ReplayStatus) {
 }
 
 function errorMessage(cause: unknown) {
-  return cause instanceof Error ? cause.message : "Could not control replay";
+  return localizedErrorMessage(cause, i18n.t("controlFailed", { ns: "replay" }));
 }

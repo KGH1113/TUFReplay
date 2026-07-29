@@ -9,7 +9,9 @@ import {
   WaveSquareIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { TFunction } from "i18next";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button.component";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog.component";
@@ -119,6 +121,8 @@ function CalibrationProgress({
   error: string;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("microphone");
+  const { t: commonT } = useTranslation("common");
   const waiting = phase === "waiting_for_clear";
   const failed = phase === "error";
   return (
@@ -145,17 +149,17 @@ function CalibrationProgress({
           />
         </span>
         <div className="min-w-0">
-          <DialogTitle>Calibrate microphone timing</DialogTitle>
+          <DialogTitle>{t("calibration.launchTitle")}</DialogTitle>
           <p
             id="microphone-offset-description"
             aria-live="polite"
             className="mt-1 text-sm text-muted-foreground"
           >
             {failed
-              ? error || "Calibration could not be started."
+              ? error || t("calibration.failedToStart")
               : waiting
-                ? "Playing the calibration run and waiting for its clear."
-                : "Opening the built-in calibration level."}
+                ? t("calibration.waitingForClear")
+                : t("calibration.openingLevel")}
           </p>
         </div>
       </div>
@@ -171,17 +175,21 @@ function CalibrationProgress({
       </div>
       <ol className="mt-5 grid grid-cols-3 gap-3 text-xs">
         <ProgressStep
-          label="Open level"
+          label={t("calibration.openLevel")}
           active={!waiting && !failed}
           complete={waiting || failed}
         />
-        <ProgressStep label="Clear run" active={waiting || failed} complete={false} />
-        <ProgressStep label="Align audio" active={false} complete={false} />
+        <ProgressStep
+          label={t("calibration.clearRun")}
+          active={waiting || failed}
+          complete={false}
+        />
+        <ProgressStep label={t("calibration.alignAudio")} active={false} complete={false} />
       </ol>
 
       <div className="mt-8 flex justify-end border-t border-border pt-5">
         <Button type="button" variant="ghost" onClick={onClose}>
-          Cancel
+          {commonT("actions.cancel")}
         </Button>
       </div>
     </section>
@@ -257,6 +265,8 @@ function OffsetEditor({
   onTogglePlayback: () => void;
   onClose: () => void;
 }) {
+  const { t } = useTranslation("microphone");
+  const { t: commonT, i18n } = useTranslation("common");
   const songPath = useMemo(() => buildWaveformAreaPath(data.songWaveform), [data.songWaveform]);
   const microphonePath = useMemo(
     () => buildWaveformAreaPath(data.microphoneWaveform),
@@ -332,14 +342,14 @@ function OffsetEditor({
     <section className="flex max-h-[calc(100svh-2rem)] min-h-0 flex-col">
       <header className="flex shrink-0 flex-col gap-4 border-b border-border px-5 py-5 sm:flex-row sm:items-start sm:justify-between sm:px-7">
         <div className="min-w-0">
-          <DialogTitle>Microphone timing</DialogTitle>
+          <DialogTitle>{t("calibration.title")}</DialogTitle>
           <p id="microphone-offset-description" className="mt-1 text-sm text-muted-foreground">
-            Drag the microphone waveform until its key sounds line up with the recorded inputs.
+            {t("calibration.description")}
           </p>
         </div>
         <div className="shrink-0 text-left sm:text-right">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-            Microphone offset
+            {t("calibration.offset")}
           </p>
           <p className="mt-0.5 font-heading text-2xl font-semibold tabular-nums tracking-tight">
             {formatMicrophoneOffset(draftOffsetMs)}
@@ -349,17 +359,15 @@ function OffsetEditor({
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">
-            Positive values mean the microphone is late. Use arrow keys for 1ms or Shift for 10ms.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("calibration.offsetHelp")}</p>
           <div className="flex items-center gap-2">
             <fieldset className="flex items-center rounded-full border border-border bg-muted/20 p-0.5">
-              <legend className="sr-only">Timeline zoom</legend>
+              <legend className="sr-only">{t("calibration.timelineZoom")}</legend>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Zoom out timeline"
+                aria-label={t("calibration.zoomOut")}
                 disabled={timelineVisibleMs >= data.durationMs}
                 onClick={() => changeTimelineZoom("out")}
               >
@@ -368,13 +376,13 @@ function OffsetEditor({
                 </span>
               </Button>
               <output className="w-12 text-center text-[10px] font-semibold tabular-nums text-muted-foreground">
-                {formatTimelineDuration(timelineVisibleMs)}
+                {formatTimelineDuration(timelineVisibleMs, i18n.resolvedLanguage ?? "en", commonT)}
               </output>
               <Button
                 type="button"
                 variant="ghost"
                 size="icon-xs"
-                aria-label="Zoom in timeline"
+                aria-label={t("calibration.zoomIn")}
                 disabled={
                   timelineVisibleMs <=
                   Math.min(data.durationMs, MIN_CALIBRATION_TIMELINE_VISIBLE_MS)
@@ -402,7 +410,7 @@ function OffsetEditor({
                 size={14}
                 strokeWidth={2}
               />
-              Reset to 0
+              {t("calibration.reset")}
             </Button>
           </div>
         </div>
@@ -411,8 +419,16 @@ function OffsetEditor({
           <div className="grid grid-cols-[5.75rem_minmax(0,1fr)] sm:grid-cols-[7.25rem_minmax(0,1fr)]">
             <div className="grid grid-rows-[2.25rem_7rem_7rem]">
               <div className="border-b border-border bg-muted/25" />
-              <TrackLabel icon={KeyboardIcon} label="Key input" description="Recorded timing" />
-              <TrackLabel icon={Mic02Icon} label="Microphone" description="Drag to align" />
+              <TrackLabel
+                icon={KeyboardIcon}
+                label={t("calibration.keyInput")}
+                description={t("calibration.recordedTiming")}
+              />
+              <TrackLabel
+                icon={Mic02Icon}
+                label={t("calibration.microphone")}
+                description={t("calibration.dragToAlign")}
+              />
             </div>
 
             <div ref={timelineViewportRef} className="min-w-0 overflow-x-auto overscroll-x-contain">
@@ -462,7 +478,11 @@ function OffsetEditor({
               size={15}
               strokeWidth={2}
             />
-            {playing ? "Stop" : playbackPositionMs >= data.durationMs ? "Replay test" : "Play test"}
+            {playing
+              ? t("calibration.stop")
+              : playbackPositionMs >= data.durationMs
+                ? t("calibration.replayTest")
+                : t("calibration.playTest")}
           </Button>
           <MicrophoneVolumeControl
             volumeDb={microphoneVolumeDb}
@@ -474,7 +494,7 @@ function OffsetEditor({
           className="w-full bg-primary text-primary-foreground hover:bg-primary/90 sm:w-auto"
           onClick={onClose}
         >
-          Done
+          {t("calibration.done")}
         </Button>
       </footer>
     </section>
@@ -488,6 +508,7 @@ function MicrophoneVolumeControl({
   volumeDb: number;
   onChange: (volumeDb: number) => void;
 }) {
+  const { t } = useTranslation("microphone");
   return (
     <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:min-w-64 sm:flex-none">
       <HugeiconsIcon
@@ -501,7 +522,7 @@ function MicrophoneVolumeControl({
         htmlFor="microphone-preview-volume"
         className="shrink-0 text-xs font-medium text-muted-foreground"
       >
-        Mic gain
+        {t("calibration.micGain")}
       </label>
       <input
         id="microphone-preview-volume"
@@ -525,12 +546,14 @@ function MicrophoneVolumeControl({
 }
 
 function TimelineRuler({ durationMs, visibleMs }: { durationMs: number; visibleMs: number }) {
+  const { t, i18n } = useTranslation("common");
+  const locale = i18n.resolvedLanguage ?? "en";
   const tickIntervalMs = visibleMs <= 1_000 ? 250 : visibleMs <= 2_000 ? 500 : 1_000;
   const ticks: Array<{ id: string; label: string; position: number }> = [];
   for (let elapsedMs = 0; elapsedMs <= durationMs; elapsedMs += tickIntervalMs) {
     ticks.push({
       id: `time-${elapsedMs}ms`,
-      label: formatTimelineTimestamp(elapsedMs),
+      label: formatTimelineTimestamp(elapsedMs, locale, t),
       position: (elapsedMs / durationMs) * 100,
     });
   }
@@ -556,13 +579,18 @@ function TimelineRuler({ durationMs, visibleMs }: { durationMs: number; visibleM
   );
 }
 
-function formatTimelineDuration(durationMs: number) {
-  if (durationMs >= 1_000) return `${Number((durationMs / 1_000).toFixed(1))} s`;
-  return `${Math.round(durationMs)} ms`;
+function formatTimelineDuration(durationMs: number, locale: string, t: TFunction<"common">) {
+  if (durationMs >= 1_000)
+    return t("units.seconds", {
+      value: new Intl.NumberFormat(locale, { maximumFractionDigits: 1 }).format(durationMs / 1_000),
+    });
+  return t("units.milliseconds", { value: Math.round(durationMs).toLocaleString(locale) });
 }
 
-function formatTimelineTimestamp(elapsedMs: number) {
-  return `${Number((elapsedMs / 1_000).toFixed(2))}s`;
+function formatTimelineTimestamp(elapsedMs: number, locale: string, t: TFunction<"common">) {
+  return t("units.seconds", {
+    value: new Intl.NumberFormat(locale, { maximumFractionDigits: 2 }).format(elapsedMs / 1_000),
+  });
 }
 
 function TrackLabel({
@@ -629,6 +657,7 @@ function MicrophoneWaveformTrack({
   onDraggingChange: (dragging: boolean) => void;
   onCommitOffset: (offsetMs: number) => void;
 }) {
+  const { t } = useTranslation("microphone");
   const dragRef = useRef<{
     pointerId: number;
     startX: number;
@@ -663,7 +692,7 @@ function MicrophoneWaveformTrack({
     <div
       role="slider"
       tabIndex={0}
-      aria-label="Microphone timing offset"
+      aria-label={t("calibration.offsetSlider")}
       aria-valuemin={MIN_MICROPHONE_OFFSET_MS}
       aria-valuemax={MAX_MICROPHONE_OFFSET_MS}
       aria-valuenow={draftOffsetMs}

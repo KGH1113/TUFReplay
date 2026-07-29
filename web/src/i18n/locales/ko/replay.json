@@ -1,0 +1,43 @@
+{
+  "dialog": {
+    "title": "리플레이 재생",
+    "description": "원본 레벨을 사용하거나 플레이 구성이 일치하는 다른 파일을 선택하세요.",
+    "original": "원본 레벨",
+    "starting": "리플레이 시작 중…",
+    "useRecorded": "이 플레이를 기록한 레벨 사용",
+    "default": "기본값",
+    "chooseMatching": "일치하는 레벨 선택…",
+    "choosingAndVerifying": "파일을 선택한 뒤 플레이 구성을 확인합니다…",
+    "openingPicker": "파일 선택 창 여는 중…",
+    "useAnother": "플레이 구성이 동일한 다른 파일 사용",
+    "failed": "리플레이에 실패했습니다."
+  },
+  "status": {
+    "sending": "얼불춤으로 리플레이 전송 중…",
+    "preparing": "리플레이 준비 중…",
+    "openingLevel": "기록된 레벨 여는 중…",
+    "waitingForFocus": "얼불춤이 다시 활성화되기를 기다리는 중…",
+    "starting": "리플레이 시작 중…",
+    "playing": "리플레이 재생 중입니다.",
+    "returning": "에디터로 돌아가는 중…",
+    "completed": "리플레이가 완료되었습니다.",
+    "cancelled": "리플레이가 취소되었습니다.",
+    "failed": "리플레이에 실패했습니다.",
+    "replaceActive": "이 플레이를 시작하면 현재 리플레이가 중단됩니다."
+  },
+  "controlFailed": "리플레이를 제어하지 못했습니다",
+  "run": {
+    "submit": "플레이 제출",
+    "delete": "플레이 삭제",
+    "deleteTitle": "플레이를 삭제할까요?",
+    "deleteDescription": "플레이 #{{runIndex}}, 리플레이 데이터 및 마이크 녹음을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+    "deleteFailed": "플레이를 삭제하지 못했습니다",
+    "deleting": "삭제 중…"
+  },
+  "errors": {
+    "run_not_found": "선택한 플레이를 찾을 수 없습니다.",
+    "level_gameplay_modified": "선택한 레벨의 플레이 구성이 기록된 플레이와 일치하지 않습니다.",
+    "level_file_invalid": "선택한 레벨 파일이 올바르지 않습니다.",
+    "calibration_operation_stale": "마이크 보정 작업이 더 이상 활성 상태가 아닙니다."
+  }
+}

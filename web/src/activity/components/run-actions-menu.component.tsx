@@ -8,7 +8,9 @@ import {
   Upload04Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import type { TFunction } from "i18next";
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
 import { Button } from "@/ui/button.component";
 import { Dialog, DialogContent, DialogTitle } from "@/ui/dialog.component";
@@ -42,6 +44,10 @@ export function RunActionsMenu({
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
 }) {
+  const { t } = useTranslation("replay");
+  const { t: activityT } = useTranslation("activity");
+  const { t: microphoneT, i18n } = useTranslation("microphone");
+  const locale = i18n.resolvedLanguage ?? "en";
   const [menuOpen, setMenuOpen] = useState(false);
   const [recordingDialogOpen, setRecordingDialogOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
@@ -57,7 +63,7 @@ export function RunActionsMenu({
     try {
       await onKeepMicrophoneRecording(run);
     } catch (cause) {
-      setMenuError(cause instanceof Error ? cause.message : "Could not keep microphone recording");
+      setMenuError(cause instanceof Error ? cause.message : microphoneT("recording.keepFailed"));
     } finally {
       setPendingAction(null);
     }
@@ -72,7 +78,7 @@ export function RunActionsMenu({
       setRecordingDialogOpen(false);
     } catch (cause) {
       setDialogError(
-        cause instanceof Error ? cause.message : "Could not delete microphone recording",
+        cause instanceof Error ? cause.message : microphoneT("recording.deleteFailed"),
       );
     } finally {
       setPendingAction(null);
@@ -87,7 +93,7 @@ export function RunActionsMenu({
       await onDeleteRun(run);
       setRunDialogOpen(false);
     } catch (cause) {
-      setDialogError(cause instanceof Error ? cause.message : "Could not delete run");
+      setDialogError(cause instanceof Error ? cause.message : t("run.deleteFailed"));
     } finally {
       setPendingAction(null);
     }
@@ -107,7 +113,7 @@ export function RunActionsMenu({
             type="button"
             variant="ghost"
             size="icon-sm"
-            aria-label={`Open actions for run ${run.RunIndex}`}
+            aria-label={activityT("run.openActions", { runIndex: run.RunIndex })}
           >
             <HugeiconsIcon aria-hidden="true" icon={MoreVerticalIcon} className="size-4" />
           </Button>
@@ -118,17 +124,17 @@ export function RunActionsMenu({
               <DropdownMenuSubTrigger>
                 <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} className="size-4" />
                 <HugeiconsIcon aria-hidden="true" icon={Mic01Icon} className="size-4" />
-                <span>Microphone</span>
+                <span>{microphoneT("recording.label")}</span>
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="w-fit min-w-0 whitespace-nowrap">
                 <div className="px-2 py-1.5">
                   <p className="text-xs font-medium">
-                    {formatFileSize(run.MicrophoneRecordingBytes)}
+                    {formatFileSize(run.MicrophoneRecordingBytes, locale)}
                   </p>
                   <p className="mt-0.5 text-[11px] text-muted-foreground">
                     {run.MicrophoneRecordingPermanent
-                      ? "Permanent"
-                      : formatRemaining(run.MicrophoneRecordingExpiresAtUtc)}
+                      ? microphoneT("recording.permanent")
+                      : formatRemaining(run.MicrophoneRecordingExpiresAtUtc, microphoneT)}
                   </p>
                 </div>
                 <DropdownMenuSeparator />
@@ -145,7 +151,7 @@ export function RunActionsMenu({
                       icon={pendingAction === "keep" ? Loading03Icon : FloppyDiskIcon}
                       className={pendingAction === "keep" ? "size-4 animate-spin" : "size-4"}
                     />
-                    Keep permanently
+                    {microphoneT("recording.keep")}
                   </DropdownMenuItem>
                 ) : null}
                 <DropdownMenuItem
@@ -157,7 +163,7 @@ export function RunActionsMenu({
                   }}
                 >
                   <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
-                  Delete recording
+                  {microphoneT("recording.delete")}
                 </DropdownMenuItem>
                 {menuError ? (
                   <p aria-live="polite" className="px-2 py-1 text-xs text-destructive">
@@ -170,14 +176,14 @@ export function RunActionsMenu({
             <DropdownMenuItem disabled>
               <span aria-hidden="true" className="size-4" />
               <HugeiconsIcon aria-hidden="true" icon={Mic01Icon} className="size-4" />
-              Microphone
+              {microphoneT("recording.label")}
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled>
             <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Upload04Icon} className="size-4" />
-            Submit run
+            {t("run.submit")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -190,16 +196,19 @@ export function RunActionsMenu({
           >
             <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
-            Delete run
+            {t("run.delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
       <ConfirmDeleteDialog
         open={recordingDialogOpen}
-        title="Delete microphone recording?"
-        description={`This permanently deletes the ${formatFileSize(run.MicrophoneRecordingBytes)} recording for run #${run.RunIndex}. The run and replay will remain.`}
-        actionLabel="Delete recording"
+        title={microphoneT("recording.deleteTitle")}
+        description={microphoneT("recording.deleteDescription", {
+          size: formatFileSize(run.MicrophoneRecordingBytes, locale),
+          runIndex: run.RunIndex,
+        })}
+        actionLabel={microphoneT("recording.delete")}
         pending={pendingAction === "delete-recording"}
         error={dialogError}
         onOpenChange={setRecordingDialogOpen}
@@ -207,9 +216,9 @@ export function RunActionsMenu({
       />
       <ConfirmDeleteDialog
         open={runDialogOpen}
-        title="Delete run?"
-        description={`This permanently deletes run #${run.RunIndex}, its replay data, and its microphone recording. This cannot be undone.`}
-        actionLabel="Delete run"
+        title={t("run.deleteTitle")}
+        description={t("run.deleteDescription", { runIndex: run.RunIndex })}
+        actionLabel={t("run.delete")}
         pending={pendingAction === "delete-run"}
         error={dialogError}
         onOpenChange={setRunDialogOpen}
@@ -238,6 +247,8 @@ function ConfirmDeleteDialog({
   onOpenChange: (open: boolean) => void;
   onConfirm: () => void;
 }) {
+  const { t: commonT } = useTranslation("common");
+  const { t } = useTranslation("replay");
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => !pending && onOpenChange(nextOpen)}>
       <DialogContent
@@ -260,7 +271,7 @@ function ConfirmDeleteDialog({
             disabled={pending}
             onClick={() => onOpenChange(false)}
           >
-            Cancel
+            {commonT("actions.cancel")}
           </Button>
           <Button
             type="button"
@@ -269,7 +280,7 @@ function ConfirmDeleteDialog({
             disabled={pending}
             onClick={onConfirm}
           >
-            {pending ? "Deleting…" : actionLabel}
+            {pending ? t("run.deleting") : actionLabel}
           </Button>
         </div>
       </DialogContent>
@@ -277,13 +288,13 @@ function ConfirmDeleteDialog({
   );
 }
 
-function formatRemaining(value: string | null) {
-  if (!value) return "Deletes soon";
+function formatRemaining(value: string | null, t: TFunction<"microphone">) {
+  if (!value) return t("recording.deletesSoon");
   const expiresAt = Date.parse(value);
-  if (Number.isNaN(expiresAt)) return "Deletes soon";
+  if (Number.isNaN(expiresAt)) return t("recording.deletesSoon");
   const remaining = expiresAt - Date.now();
-  if (remaining <= 0) return "Deletes soon";
+  if (remaining <= 0) return t("recording.deletesSoon");
   const hours = Math.ceil(remaining / 3_600_000);
-  if (hours < 24) return `Deletes in ${hours}h`;
-  return `Deletes in ${Math.ceil(hours / 24)}d`;
+  if (hours < 24) return t("recording.deletesInHours", { count: hours });
+  return t("recording.deletesInDays", { count: Math.ceil(hours / 24) });
 }
