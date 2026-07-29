@@ -2,6 +2,7 @@ using System.Reflection;
 using Microsoft.Data.Sqlite;
 using SkyHook;
 using TUFReplay;
+using TUFReplay.Application.Activity;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Application.Replay;
@@ -34,6 +35,7 @@ internal static class Program
       TestCalibrationWaveforms(root);
       TestGameplayChartHashVersioning();
       TestSchemaMigrationAndBlob(root);
+      TestAppSessionTransientLockRecovery(root);
       TestBrokenRenamedForeignKeyRepair(root);
       TestRunDeletionHierarchy(root);
       TestLogicalRunSessionFilter(root);
@@ -866,6 +868,35 @@ internal static class Program
     Assert(GameplayChartHash.IsSupported(2, v2Before), "Current v2 hash is not supported.");
   }
 
+  private static void TestAppSessionTransientLockRecovery(string root)
+  {
+    string path = Path.Combine(root, "app-session-lock.sqlite");
+    SetDatabasePath(path);
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+
+    using var lockAcquired = new System.Threading.ManualResetEventSlim();
+    System.Threading.Tasks.Task blocker = System.Threading.Tasks.Task.Run(() =>
+    {
+      using SqliteConnection connection = Database.OpenConnection();
+      using SqliteCommand command = connection.CreateCommand();
+      command.CommandText = "BEGIN IMMEDIATE;";
+      command.ExecuteNonQuery();
+      lockAcquired.Set();
+      System.Threading.Thread.Sleep(2500);
+      command.CommandText = "ROLLBACK;";
+      command.ExecuteNonQuery();
+    });
+
+    Assert(lockAcquired.Wait(TimeSpan.FromSeconds(5)), "Test writer did not acquire the activity database lock.");
+    var tracker = new RecordingActivityTracker();
+    Assert(tracker.StartAppSession(), "App session did not recover from a transient SQLite write lock.");
+    blocker.GetAwaiter().GetResult();
+    Assert(tracker.AppSessionId != null, "Recovered app session did not publish its ID.");
+    Assert(CountRows("app_sessions", "id='" + tracker.AppSessionId + "'") == 1, "Recovered app session was not saved.");
+    tracker.StopAppSession();
+  }
+
   private static void TestBrokenRenamedForeignKeyRepair(string root)
   {
     string path = Path.Combine(root, "broken-renamed-foreign-keys.sqlite");
@@ -1003,6 +1034,22 @@ INSERT INTO runs(
     using SqliteDataReader reader = verify.ExecuteReader();
     Assert(reader.Read(), "Legacy level session was not migrated from v" + version + ".");
     Assert(reader.GetString(1) == "legacy.adofai" && reader.GetInt32(2) == 1, "Legacy level data changed.");
+    reader.Close();
+    connection.Close();
+
+    SetDatabasePath(path);
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "post-migration-app-" + version,
+        StartedAtUtc = "2026-01-02",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+    Assert(
+      CountRows("app_sessions", "id='post-migration-app-" + version + "'") == 1,
+      "First app-session write failed after migrating v" + version + "."
+    );
   }
 
   private static void TestRunDeletionHierarchy(string root)

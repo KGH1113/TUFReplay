@@ -1,9 +1,11 @@
 using System;
+using Microsoft.Data.Sqlite;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Unity;
+using DatabaseStore = TUFReplay.Infrastructure.Database.Database;
 
 namespace TUFReplay.Application.Activity;
 
@@ -16,22 +18,31 @@ public sealed class RecordingActivityTracker
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
 
-  public void StartAppSession()
+  public bool StartAppSession()
   {
     if (AppSessionId != null)
-      return;
+      return true;
 
-    AppSessionId = Guid.NewGuid().ToString("N");
+    string appSessionId = Guid.NewGuid().ToString("N");
     DateTimeOffset now = DateTimeOffset.Now;
-    AppSessionRepository.Save(
-      new AppSession
-      {
-        Id = AppSessionId,
-        StartedAtUtc = now.UtcDateTime.ToString("O"),
-        RecorderTimeZoneId = TimeZoneInfo.Local.Id,
-        RecorderUtcOffsetMinutes = (int)now.Offset.TotalMinutes,
-      }
-    );
+    try
+    {
+      AppSessionRepository.Save(
+        new AppSession
+        {
+          Id = appSessionId,
+          StartedAtUtc = now.UtcDateTime.ToString("O"),
+          RecorderTimeZoneId = TimeZoneInfo.Local.Id,
+          RecorderUtcOffsetMinutes = (int)now.Offset.TotalMinutes,
+        }
+      );
+      AppSessionId = appSessionId;
+      return true;
+    }
+    catch (SqliteException exception) when (DatabaseStore.IsTransientLock(exception))
+    {
+      return false;
+    }
   }
 
   public void StopAppSession()
@@ -45,7 +56,7 @@ public sealed class RecordingActivityTracker
     AppSessionId = null;
   }
 
-  public void OpenLevel(
+  public bool OpenLevel(
     string levelPath,
     int? tufLevelId,
     int levelTileCount,
@@ -53,7 +64,8 @@ public sealed class RecordingActivityTracker
     int? gameplayHashVersion
   )
   {
-    StartAppSession();
+    if (!StartAppSession())
+      return false;
 
     if (
       LevelSessionId != null
@@ -62,15 +74,11 @@ public sealed class RecordingActivityTracker
       && GameplayChartHash.IsSupported(gameplayHashVersion, gameplayHash)
       && GameplayChartHash.Equals(_gameplayHash, gameplayHash)
     )
-      return;
+      return true;
 
     CloseLevel();
 
-    LevelSessionId = Guid.NewGuid().ToString("N");
-    TufLevelId = tufLevelId;
-    LevelPath = levelPath;
-    _gameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone();
-    _gameplayHashVersion = gameplayHashVersion;
+    string levelSessionId = Guid.NewGuid().ToString("N");
     bool metadataAvailable = AdofaiLevelMetadataReader.TryRead(levelPath, out LevelMetadataSnapshot metadata);
     string openedAtUtc = DateTime.UtcNow.ToString("O");
     var level = new LevelRecord
@@ -91,12 +99,18 @@ public sealed class RecordingActivityTracker
     };
     var levelSession = new LevelSession
     {
-      Id = LevelSessionId,
+      Id = levelSessionId,
       LevelId = LevelRepository.ResolveOrCreate(level),
       AppSessionId = AppSessionId,
       OpenedAtUtc = openedAtUtc,
     };
     LevelSessionRepository.Save(levelSession);
+    LevelSessionId = levelSessionId;
+    TufLevelId = tufLevelId;
+    LevelPath = levelPath;
+    _gameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone();
+    _gameplayHashVersion = gameplayHashVersion;
+    return true;
   }
 
   public void CloseLevel()
