@@ -149,7 +149,8 @@ public class RecordingFeature
     Active = true;
 
     RecordInputTracker.Reset();
-    _activity.StartAppSession();
+    if (!_activity.StartAppSession())
+      Main.Instance.Log("[Recording] Activity database is busy; recording will retry when a level opens.");
   }
 
   public void Disable()
@@ -236,7 +237,11 @@ public class RecordingFeature
 
     int levelTileCount = RecordingSession.GetLevelTileCount();
     CaptureGameplayHash();
-    _activity.OpenLevel(levelPath, tufLevelId, levelTileCount, _gameplayHash, _gameplayHashVersion);
+    if (!_activity.OpenLevel(levelPath, tufLevelId, levelTileCount, _gameplayHash, _gameplayHashVersion))
+    {
+      Main.Instance.Log("[Recording] Activity database is busy; recording will retry on the next play.");
+      return;
+    }
     RecordingPatches.ResetHitContextState();
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
     if (Session.IsRecording)

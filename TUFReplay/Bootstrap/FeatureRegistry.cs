@@ -39,9 +39,9 @@ public static class FeatureRegistry
         throw new System.InvalidOperationException("Harmony did not apply any TUFReplay patches.");
       MicrophoneRecording.Enable();
       MicrophoneCalibration.Enable();
-      Ipc.Enable();
       Recording.Enable();
       Replay.Enable();
+      Ipc.Enable();
     }
     catch
     {
@@ -52,9 +52,9 @@ public static class FeatureRegistry
 
   public static void Shutdown()
   {
+    Ipc?.Disable();
     Replay?.Disable();
     Recording?.Disable();
-    Ipc?.Disable();
     MicrophoneCalibration?.Disable();
     MicrophoneRecording?.Disable();
 

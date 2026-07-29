@@ -132,7 +132,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline and must be installed manually once; later releases can update it in place.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline and must be installed manually once; later releases can update it in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration.
 
 ## Web Development
 
@@ -259,7 +259,7 @@ Registered methods:
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.1.0-beta.6",
+  "ModVersion": "0.1.0-beta.7",
   "ProtocolVersion": 4,
   "ServerVersion": 1
 }
