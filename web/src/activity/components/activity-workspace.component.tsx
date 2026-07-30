@@ -103,10 +103,12 @@ export function ActivityWorkspace({
   const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
-    if (!runList) return;
+    const scroller = runScrollRef.current;
+    if (!runList || !scroller) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const positions = new Map<string, DOMRect>();
-    for (const element of runList.querySelectorAll<HTMLElement>("[data-run-id]")) {
+    for (const element of visibleRunElements(runList, scroller, runRowStride)) {
       const runId = element.dataset.runId;
       if (!runId) continue;
       for (const animation of element.getAnimations()) {
@@ -117,9 +119,9 @@ export function ActivityWorkspace({
 
     pendingRunSortLayoutRef.current = {
       positions,
-      scrollTop: runList.parentElement?.scrollTop ?? 0,
+      scrollTop: scroller.scrollTop,
     };
-  }, []);
+  }, [runRowStride]);
   const changeRunSort = useCallback(
     (nextSort: RunSortKey) => {
       if (nextSort === runSort) return;
@@ -219,11 +221,12 @@ export function ActivityWorkspace({
     const pendingLayout = pendingRunSortLayoutRef.current;
     pendingRunSortLayoutRef.current = null;
     const runList = runListRef.current;
-    if (!pendingLayout || !runList) return;
+    const scroller = runScrollRef.current;
+    if (!pendingLayout || !runList || !scroller) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    const scrollDelta = (runList.parentElement?.scrollTop ?? 0) - pendingLayout.scrollTop;
-    for (const element of runList.querySelectorAll<HTMLElement>("[data-run-id]")) {
+    const scrollDelta = scroller.scrollTop - pendingLayout.scrollTop;
+    for (const element of visibleRunElements(runList, scroller, runRowStride)) {
       const runId = element.dataset.runId;
       if (!runId) continue;
       const previousPosition = pendingLayout.positions.get(runId);
@@ -240,7 +243,7 @@ export function ActivityWorkspace({
       );
       animation.id = "run-sort";
     }
-  }, [runSort, sortDirection]);
+  }, [runRowStride, runSort, sortDirection]);
   if (error) return <StatePanel title={t("chart.loadError")} body={error} />;
   if (!chartAvailable)
     return <StatePanel title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
@@ -324,6 +327,7 @@ export function ActivityWorkspace({
               <TooltipProvider>
                 <div
                   ref={runListRef}
+                  data-run-count={sortedRuns.length}
                   className="relative"
                   style={{ height: Math.max(0, sortedRuns.length * runRowStride - runRowGap) }}
                 >
@@ -336,6 +340,7 @@ export function ActivityWorkspace({
                         <div
                           key={run.Id}
                           ref={offset === 0 ? measureRunRow : undefined}
+                          data-run-index={index}
                           className="absolute inset-x-0"
                           style={{ transform: `translateY(${index * runRowStride}px)` }}
                         >
@@ -693,6 +698,31 @@ function sortRuns(runs: ActivityRun[], sort: RunSortKey, direction: SortDirectio
       (direction === "asc" ? left.RunIndex - right.RunIndex : right.RunIndex - left.RunIndex)
     );
   });
+}
+
+function visibleRunElements(
+  runList: HTMLDivElement,
+  scroller: HTMLDivElement,
+  runRowStride: number,
+): HTMLElement[] {
+  const itemCount = Number(runList.dataset.runCount) || 0;
+  const range = calculateVirtualRunRange(
+    itemCount,
+    scroller.scrollTop,
+    scroller.clientHeight,
+    runRowStride,
+    0,
+  );
+  const elements: HTMLElement[] = [];
+
+  for (const row of runList.querySelectorAll<HTMLElement>("[data-run-index]")) {
+    const index = Number(row.dataset.runIndex);
+    if (!Number.isInteger(index) || index < range.start || index >= range.end) continue;
+    const element = row.querySelector<HTMLElement>("[data-run-id]");
+    if (element) elements.push(element);
+  }
+
+  return elements;
 }
 
 function runSortValue(run: ActivityRun, sort: RunSortKey) {
