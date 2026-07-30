@@ -64,6 +64,7 @@ export class ActivityProtocolMismatchError extends Error {
 
 export interface ActivityGateway {
   health(): Promise<ActivityHealth>;
+  listAppSessions(offset: number, limit: number): Promise<ActivityAppSession[]>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   getLogicalLevel(id: string): Promise<ActivityLogicalLevelOverview>;
@@ -115,17 +116,13 @@ export function createActivityGateway(
   namespace: Pick<AdofaiIpcNamespaceClient, "call">,
   pickerNamespace: Pick<AdofaiIpcNamespaceClient, "call"> = namespace,
 ): ActivityGateway {
+  const listAppSessions = (offset: number, limit: number) =>
+    callDomain<ActivityAppSession[]>(namespace, "activity.app-sessions.list", { offset, limit });
+
   return {
     health: async () => validateActivityHealth(await callDomain(namespace, "health.get", {})),
-    listAllAppSessions: (onPage) =>
-      loadAllPages<ActivityAppSession>(
-        (offset, limit) =>
-          callDomain<ActivityAppSession[]>(namespace, "activity.app-sessions.list", {
-            offset,
-            limit,
-          }),
-        onPage,
-      ),
+    listAppSessions,
+    listAllAppSessions: (onPage) => loadAllPages<ActivityAppSession>(listAppSessions, onPage),
     getLevelSession: (id) => callDomain(namespace, "activity.level-session.get", { id }),
     getLogicalLevel: (id) => callDomain(namespace, "activity.logical-level.get", { id }),
     listAllRuns: (id, onPage) =>

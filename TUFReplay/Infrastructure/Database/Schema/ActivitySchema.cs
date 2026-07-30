@@ -5,7 +5,7 @@ namespace TUFReplay.Infrastructure.Database.Schema;
 
 public static class ActivitySchema
 {
-  public const int Version = 14;
+  public const int Version = 15;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -134,6 +134,21 @@ PRAGMA user_version = 12;"
       RepairRenamedForeignKeys(connection);
       version = 14;
     }
+    if (version == 14)
+    {
+      Migrate(
+        connection,
+        @"CREATE TABLE IF NOT EXISTS gameplay_hash_migration_attempts (
+  level_id TEXT PRIMARY KEY REFERENCES levels(id) ON DELETE CASCADE,
+  file_size INTEGER,
+  file_modified_utc_ticks INTEGER,
+  result TEXT NOT NULL,
+  attempted_at_utc TEXT NOT NULL
+);
+PRAGMA user_version = 15;"
+      );
+      version = 15;
+    }
 
     if (version != 0 && version != Version)
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -221,12 +236,19 @@ CREATE TABLE microphone_recordings (
   is_permanent INTEGER NOT NULL DEFAULT 0,
   expires_at_utc TEXT
 );
+CREATE TABLE gameplay_hash_migration_attempts (
+  level_id TEXT PRIMARY KEY REFERENCES levels(id) ON DELETE CASCADE,
+  file_size INTEGER,
+  file_modified_utc_ticks INTEGER,
+  result TEXT NOT NULL,
+  attempted_at_utc TEXT NOT NULL
+);
 CREATE INDEX idx_app_sessions_page ON app_sessions(started_at_utc DESC,id);
 CREATE INDEX idx_level_sessions_app ON level_sessions(app_session_id,opened_at_utc,id);
 CREATE INDEX idx_level_sessions_level ON level_sessions(level_id,opened_at_utc,id);
 CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
 CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
-PRAGMA user_version = 14;";
+PRAGMA user_version = 15;";
     command.ExecuteNonQuery();
   }
 

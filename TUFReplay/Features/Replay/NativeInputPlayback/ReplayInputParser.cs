@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Text;
 using TUFReplay.Domain.ReplayData;
 
 namespace TUFReplay.Features.Replay;
@@ -10,19 +9,45 @@ public static class ReplayInputParser
 {
   public static List<RecordedInput> Parse(byte[] inputCsv)
   {
-    List<ParsedInput> parsed = new List<ParsedInput>();
+    return Parse(inputCsv, out _);
+  }
+
+  public static List<RecordedInput> Parse(byte[] inputCsv, out long maxTimeUs)
+  {
+    maxTimeUs = 0;
     if (inputCsv == null || inputCsv.Length == 0)
       return new List<RecordedInput>();
 
-    string text = Encoding.UTF8.GetString(inputCsv);
-    string[] lines = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+    ReadOnlySpan<byte> payload = inputCsv;
+    List<RecordedInput> events = new List<RecordedInput>(Utf8Csv.CountNonEmptyLines(payload));
+    bool requiresSort = false;
+    long previousTimeUs = 0;
+    int offset = 0;
 
-    for (int sequence = 0; sequence < lines.Length; sequence++)
+    while (Utf8Csv.TryReadNonEmptyLine(payload, ref offset, out ReadOnlySpan<byte> line))
     {
-      if (!TryParseLine(lines[sequence], out RecordedInput input))
+      if (!TryParseLine(line, out RecordedInput input))
         continue;
-      parsed.Add(new ParsedInput(input, sequence));
+
+      if (events.Count > 0 && input.TimeUs < previousTimeUs)
+        requiresSort = true;
+      previousTimeUs = input.TimeUs;
+      if (input.TimeUs > maxTimeUs)
+        maxTimeUs = input.TimeUs;
+      events.Add(input);
     }
+
+    if (requiresSort)
+      SortLegacyPayload(events);
+
+    return events;
+  }
+
+  private static void SortLegacyPayload(List<RecordedInput> events)
+  {
+    List<ParsedInput> parsed = new List<ParsedInput>(events.Count);
+    for (int i = 0; i < events.Count; i++)
+      parsed.Add(new ParsedInput(events[i], i));
 
     parsed.Sort(
       (a, b) =>
@@ -32,10 +57,8 @@ public static class ReplayInputParser
       }
     );
 
-    List<RecordedInput> events = new List<RecordedInput>(parsed.Count);
     for (int i = 0; i < parsed.Count; i++)
-      events.Add(parsed[i].Input);
-    return events;
+      events[i] = parsed[i].Input;
   }
 
   private readonly struct ParsedInput
@@ -54,17 +77,37 @@ public static class ReplayInputParser
   {
     input = default;
 
-    string[] parts = line.Split(',');
-    if (parts.Length != 3)
+    if (line == null)
+      return false;
+    ReadOnlySpan<char> value = line.AsSpan();
+    Span<Range> parts = stackalloc Range[3];
+    if (!Utf8Csv.TrySplit(value, parts))
       return false;
 
-    if (!long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long timeUs))
+    if (!long.TryParse(value[parts[0]], NumberStyles.Integer, CultureInfo.InvariantCulture, out long timeUs))
       return false;
 
-    if (!int.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int key))
+    if (!int.TryParse(value[parts[1]], NumberStyles.Integer, CultureInfo.InvariantCulture, out int key))
       return false;
 
-    if (!ushort.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
+    if (!ushort.TryParse(value[parts[2]], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
+      return false;
+
+    input = new RecordedInput(timeUs, key, (RecordInputFlags)rawFlags);
+    return true;
+  }
+
+  private static bool TryParseLine(ReadOnlySpan<byte> line, out RecordedInput input)
+  {
+    input = default;
+    Span<Range> parts = stackalloc Range[3];
+    if (!Utf8Csv.TrySplit(line, parts))
+      return false;
+    if (!Utf8Csv.TryParseInt64(line[parts[0]], out long timeUs))
+      return false;
+    if (!Utf8Csv.TryParseInt32(line[parts[1]], out int key))
+      return false;
+    if (!Utf8Csv.TryParseUInt16(line[parts[2]], out ushort rawFlags))
       return false;
 
     input = new RecordedInput(timeUs, key, (RecordInputFlags)rawFlags);

@@ -11,13 +11,13 @@ namespace TUFReplay.Features.Recording;
 public static class RecordingPatches
 {
   private static scrFloor _hitFloor;
-  private static int[] _hitMarginsCount;
+  private static readonly HitMarginSnapshot HitMargins = new();
   private static bool IsActive => RecordingFeature.Instance != null && RecordingFeature.Instance.Active;
 
   public static void ResetHitContextState()
   {
     _hitFloor = null;
-    _hitMarginsCount = null;
+    HitMargins.Reset();
   }
 
   [HarmonyPatch(typeof(scrController), "Countdown_Update")]
@@ -108,7 +108,7 @@ public static class RecordingPatches
 
     scrController controller = scrController.instance;
     scrFloor currentHitFloor = controller.chosenPlanet.currfloor;
-    int[] currentHitMarginsCount = CopyHitMargins(controller.playerOne);
+    int[] currentHitMarginsCount = controller.playerOne.marginTracker.hitMarginsCount;
 
     if (session.HitContextCount > 0 && PreviousHitWasInvalid(currentHitFloor, currentHitMarginsCount))
     {
@@ -116,7 +116,7 @@ public static class RecordingPatches
     }
 
     _hitFloor = currentHitFloor;
-    _hitMarginsCount = currentHitMarginsCount;
+    HitMargins.Capture(currentHitMarginsCount);
     session.AddHitContext(BuildHitContext(controller, isAuto));
 
     return true;
@@ -297,30 +297,12 @@ public static class RecordingPatches
     return angle;
   }
 
-  private static int[] CopyHitMargins(scrPlayer player)
-  {
-    int[] source = player.marginTracker.hitMarginsCount;
-    int[] copy = new int[source.Length];
-    Array.Copy(source, copy, source.Length);
-    return copy;
-  }
-
   private static bool PreviousHitWasInvalid(scrFloor currentHitFloor, int[] currentHitMarginsCount)
   {
     if (_hitFloor != currentHitFloor)
       return false;
-    if (_hitMarginsCount == null || currentHitMarginsCount == null)
-      return false;
-    if (_hitMarginsCount.Length != currentHitMarginsCount.Length)
-      return false;
 
-    for (int i = 0; i < _hitMarginsCount.Length; i++)
-    {
-      if (_hitMarginsCount[i] != currentHitMarginsCount[i])
-        return false;
-    }
-
-    return true;
+    return HitMargins.Matches(currentHitMarginsCount);
   }
 
   [HarmonyPatch(typeof(scnEditor), "Play")]

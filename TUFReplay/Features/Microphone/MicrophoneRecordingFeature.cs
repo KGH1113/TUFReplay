@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Domain.Microphone;
@@ -20,6 +21,8 @@ public sealed class MicrophoneRecordingFeature
   private readonly HashSet<string> _persistedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _deletedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly ManualResetEventSlim _savesIdle = new ManualResetEventSlim(true);
+  private readonly ManualResetEventSlim _finalizationsIdle = new ManualResetEventSlim(true);
+  private int _finalizationCount;
   private IMicrophoneCaptureBackend _backend;
   private MicrophoneCaptureTicker _ticker;
   private System.Threading.Timer _retentionTimer;
@@ -81,6 +84,7 @@ public sealed class MicrophoneRecordingFeature
     _active = false;
     _retentionTimer?.Dispose();
     _retentionTimer = null;
+    _finalizationsIdle.Wait(TimeSpan.FromSeconds(2));
     DeactivateCaptureBackend();
     _savesIdle.Wait(TimeSpan.FromSeconds(2));
     lock (_gate)
@@ -195,16 +199,59 @@ public sealed class MicrophoneRecordingFeature
     }
   }
 
-  public CapturedMicrophoneRecording EndRun()
+  public void EndRun(Action<CapturedMicrophoneRecording> completed)
   {
+    Task<CapturedMicrophoneRecording> finalization;
     try
     {
-      return _backend?.EndRun();
+      finalization = _backend?.EndRunAsync() ?? Task.FromResult<CapturedMicrophoneRecording>(null);
     }
     catch (Exception exception)
     {
       Main.Instance?.Log("[Microphone] Capture finalization failed. error=" + exception.Message);
-      return null;
+      finalization = Task.FromResult<CapturedMicrophoneRecording>(null);
+    }
+
+    lock (_gate)
+    {
+      _finalizationCount++;
+      _finalizationsIdle.Reset();
+    }
+    finalization.ContinueWith(
+      task => CompleteFinalization(task, completed),
+      CancellationToken.None,
+      TaskContinuationOptions.None,
+      TaskScheduler.Default
+    );
+  }
+
+  private void CompleteFinalization(
+    Task<CapturedMicrophoneRecording> task,
+    Action<CapturedMicrophoneRecording> completed
+  )
+  {
+    CapturedMicrophoneRecording recording = null;
+    try
+    {
+      if (task.Status == TaskStatus.RanToCompletion)
+        recording = task.Result;
+      else if (task.Exception != null)
+        Main.Instance?.Log("[Microphone] Capture finalization failed. error=" + task.Exception.GetBaseException().Message);
+      completed?.Invoke(recording);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Capture completion failed. error=" + exception.Message);
+      Discard(recording);
+    }
+    finally
+    {
+      lock (_gate)
+      {
+        _finalizationCount--;
+        if (_finalizationCount == 0)
+          _finalizationsIdle.Set();
+      }
     }
   }
 
@@ -256,11 +303,35 @@ public sealed class MicrophoneRecordingFeature
     try
     {
       backend.Disarm();
-      backend.Dispose();
+      bool finalizing;
+      lock (_gate)
+        finalizing = _finalizationCount > 0;
+      if (finalizing)
+      {
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+          _finalizationsIdle.Wait();
+          DisposeBackend(backend);
+        });
+      }
+      else
+        backend.Dispose();
     }
     catch (Exception exception)
     {
       Main.Instance?.Log("[Microphone] Shutdown failed. error=" + exception.Message);
+    }
+  }
+
+  private static void DisposeBackend(IMicrophoneCaptureBackend backend)
+  {
+    try
+    {
+      backend.Dispose();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Deferred shutdown failed. error=" + exception.Message);
     }
   }
 
@@ -383,6 +454,14 @@ public sealed class MicrophoneRecordingFeature
   {
     lock (_gate)
       _persistedRuns.Remove(runId);
+    try
+    {
+      MicrophoneRecordingRepository.Delete(runId);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Orphan cleanup deferred. runId=" + runId + ", error=" + exception.Message);
+    }
     string pending = PendingPath(runId);
     Delete(pending);
     Delete(MetadataPath(pending));

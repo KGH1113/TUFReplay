@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using TUFReplay.Domain.Microphone;
 
 namespace TUFReplay.Application.Microphone;
@@ -11,7 +12,7 @@ public interface IMicrophoneCaptureBackend : IDisposable
   bool Arm(string deviceId, out string error);
   MicrophoneArmStatus GetArmStatus();
   bool BeginRun(string runId, string tempPath, out string error);
-  CapturedMicrophoneRecording EndRun();
+  Task<CapturedMicrophoneRecording> EndRunAsync();
   void Tick();
   void Disarm();
 }

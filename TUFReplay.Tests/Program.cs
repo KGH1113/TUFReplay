@@ -5,6 +5,7 @@ using TUFReplay;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
+using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
@@ -27,13 +28,20 @@ internal static class Program
     try
     {
       NativeSqliteLoader.Initialize();
+      TestMicrophoneCaptureChunking();
+      TestPendingMicrophoneDisposition();
+      TestHitMarginSnapshotReuse();
+      TestTufLevelIdResolverCache();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
+      TestPcm16PrefetchBuffer();
       TestPlaybackLimiter(root);
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
       TestCalibrationWaveforms(root);
       TestGameplayChartHashVersioning();
+      TestGameplayHashIdentityUpgrade(root);
+      TestGameplayHashV3Migration(root);
       TestSchemaMigrationAndBlob(root);
       TestAppSessionTransientLockRecovery(root);
       TestBrokenRenamedForeignKeyRepair(root);
@@ -41,6 +49,7 @@ internal static class Program
       TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
+      TestReplayCsvParserCompatibility();
       TestReplayNoFailPolicy();
       TestNativeInputUmmWindowInterlock();
       TestWindowsSkyHookRawKeyPreservation();
@@ -72,11 +81,37 @@ internal static class Program
   private static void TestReplayInputStableOrder()
   {
     byte[] csv = System.Text.Encoding.UTF8.GetBytes("100,9,3\n100,8,3\n100,9,2\n99,7,3\n");
-    List<RecordedInput> inputs = ReplayInputParser.Parse(csv);
+    List<RecordedInput> inputs = ReplayInputParser.Parse(csv, out long maxTimeUs);
 
     Assert(inputs.Count == 4, "Replay input parser dropped valid events.");
+    Assert(maxTimeUs == 100, "Replay input parser did not report the maximum timestamp.");
     Assert(inputs[0].Key == 7, "Replay input parser did not sort timestamps.");
     Assert(inputs[1].Key == 9 && inputs[2].Key == 8 && inputs[3].Key == 9, "Same-time input order changed.");
+  }
+
+  private static void TestReplayCsvParserCompatibility()
+  {
+    byte[] inputCsv = System.Text.Encoding.UTF8.GetBytes(
+      "\r\n 200 , 11 , 3 \r\ninvalid\n100,7,2\r\n200,12,1\n"
+    );
+    List<RecordedInput> inputs = ReplayInputParser.Parse(inputCsv);
+
+    Assert(inputs.Count == 3, "Replay input parser did not ignore malformed or empty lines.");
+    Assert(inputs[0].TimeUs == 100 && inputs[0].Key == 7, "Replay input parser changed legacy sorting.");
+    Assert(inputs[1].Key == 11 && inputs[2].Key == 12, "Replay input parser changed stable tie ordering.");
+
+    byte[] hitCsv = System.Text.Encoding.UTF8.GetBytes(
+      "\n1,90.5,1.25,1,False,TRUE,-2.5,3E2,0,true,-4\r\nmalformed\r\n"
+    );
+    List<ReplayHitContext> contexts = ReplayHitContextParser.Parse(hitCsv);
+
+    Assert(contexts.Count == 1, "Replay hit context parser did not ignore malformed or empty lines.");
+    ReplayHitContext context = contexts[0];
+    Assert(context.CurrentFloorID == 1 && context.CurrAngle == 90.5, "Replay hit context numbers changed.");
+    Assert(context.OverloadCounter == 1.25f && context.TargetExitAngle == 300, "Replay float parsing changed.");
+    Assert(context.NoFailHit && !context.IsAuto && context.NextFloorAuto, "Replay boolean parsing changed.");
+    Assert(!context.MidspinInfiniteMargin && context.RDCAuto, "Replay boolean flag parsing changed.");
+    Assert(context.CurFreeRoamSection == -4, "Replay signed integer parsing changed.");
   }
 
   private static void TestReplayNoFailPolicy()
@@ -103,6 +138,33 @@ internal static class Program
     Assert(
       !NativeInputUmmWindowInterlock.IsBlockedAt(long.MaxValue),
       "Native input remained blocked after the stabilization window."
+    );
+
+    NativeInputUmmWindowInterlock.Reset();
+    Assert(
+      NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L),
+      "UMM fallback did not poll immediately."
+    );
+    Assert(
+      !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L),
+      "UMM fallback polled twice in the same interval."
+    );
+    Assert(
+      !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(
+        10_000L + NativeInputUmmWindowInterlock.FallbackPollIntervalTicks - 1
+      ),
+      "UMM fallback ignored its polling interval."
+    );
+    Assert(
+      NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(
+        10_000L + NativeInputUmmWindowInterlock.FallbackPollIntervalTicks
+      ),
+      "UMM fallback did not resume after its polling interval."
+    );
+    NativeInputUmmWindowInterlock.ConfigureManagerWindowPatch(available: true, synchronize: false);
+    Assert(
+      !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(long.MaxValue),
+      "UMM reflection fallback remained active after the Harmony patch was available."
     );
     NativeInputUmmWindowInterlock.Reset();
   }
@@ -369,6 +431,158 @@ internal static class Program
     return new RecordedInput(timeUs, key, flags);
   }
 
+  private static void TestMicrophoneCaptureChunking()
+  {
+    int chunkFrames = UnityMicrophoneCaptureBackend.CaptureChunkFrames;
+    int clipFrames = 48000 * 10;
+
+    Assert(chunkFrames == 12000, "Microphone capture chunk duration changed unexpectedly.");
+    Assert(
+      UnityMicrophoneCaptureBackend.WriterQueueCapacity > clipFrames / chunkFrames,
+      "Microphone writer queue cannot absorb a full loop-buffer backlog."
+    );
+    Assert(
+      MicrophoneCaptureChunking.AvailableFrames(clipFrames - 1000, 1000, clipFrames) == 2000,
+      "Microphone capture wraparound distance is incorrect."
+    );
+    Assert(
+      MicrophoneCaptureChunking.NextChunkFrames(chunkFrames * 8, chunkFrames, false) == chunkFrames,
+      "A capture hitch expanded the reusable read chunk."
+    );
+    Assert(
+      MicrophoneCaptureChunking.NextChunkFrames(800, chunkFrames, false) == 0,
+      "A partial live chunk was read before it was full."
+    );
+    Assert(
+      MicrophoneCaptureChunking.NextChunkFrames(800, chunkFrames, true) == 800,
+      "The final microphone tail was not drained."
+    );
+    Assert(
+      MicrophoneCaptureChunking.AdvanceCursor(clipFrames - 1000, 2000, clipFrames) == 1000,
+      "Microphone capture cursor did not wrap correctly."
+    );
+  }
+
+  private static void TestPendingMicrophoneDisposition()
+  {
+    var recording = new CapturedMicrophoneRecording { RunId = "run" };
+    int completed = 0;
+    CapturedMicrophoneRecording observed = null;
+    bool persisted = false;
+    var disposition = new PendingMicrophoneDisposition((value, shouldPersist) =>
+    {
+      completed++;
+      observed = value;
+      persisted = shouldPersist;
+    });
+
+    disposition.CompleteDisposition(persist: true);
+    Assert(completed == 0, "Microphone disposition ran before capture finalization.");
+    disposition.CompleteCapture(recording);
+    Assert(completed == 1, "Microphone disposition did not run after both gates completed.");
+    Assert(ReferenceEquals(observed, recording) && persisted, "Microphone persistence decision was lost.");
+    disposition.CompleteDisposition(persist: false);
+    disposition.CompleteCapture(recording);
+    Assert(completed == 1, "Microphone disposition completed more than once.");
+
+    completed = 0;
+    var captureFirst = new PendingMicrophoneDisposition((_, shouldPersist) =>
+    {
+      completed++;
+      persisted = shouldPersist;
+    });
+    captureFirst.CompleteCapture(recording);
+    Assert(completed == 0, "Finalized microphone capture ignored the editor-return gate.");
+    captureFirst.CompleteDisposition(persist: false);
+    Assert(completed == 1 && !persisted, "Deferred microphone discard decision was lost.");
+  }
+
+  private static void TestHitMarginSnapshotReuse()
+  {
+    var snapshot = new HitMarginSnapshot();
+    int[] firstMargins = { 1, 2, 3 };
+
+    Assert(!snapshot.Matches(firstMargins), "An empty hit margin snapshot matched values.");
+    snapshot.Capture(firstMargins);
+    int[] initialBuffer = snapshot.BufferForTesting;
+
+    Assert(snapshot.Matches(new[] { 1, 2, 3 }), "Captured hit margins did not match.");
+    Assert(!snapshot.Matches(new[] { 1, 2, 4 }), "Different hit margins matched the snapshot.");
+
+    snapshot.Capture(new[] { 4, 5, 6 });
+    Assert(
+      ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
+      "Capturing same-length hit margins allocated a new buffer."
+    );
+    Assert(snapshot.Matches(new[] { 4, 5, 6 }), "Reused hit margin buffer was not updated.");
+
+    snapshot.Reset();
+    Assert(!snapshot.Matches(new[] { 4, 5, 6 }), "Reset hit margin snapshot remained valid.");
+    snapshot.Capture(new[] { 7, 8, 9 });
+    Assert(
+      ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
+      "Reset discarded the reusable hit margin buffer."
+    );
+
+    snapshot.Capture(new[] { 1, 2 });
+    Assert(
+      !ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
+      "A changed hit margin count did not resize the snapshot buffer."
+    );
+  }
+
+  private static void TestTufLevelIdResolverCache()
+  {
+    int now = 1000;
+    int factoryCalls = 0;
+    int resolverCalls = 0;
+    var cache = new TufLevelIdResolverCache(
+      () =>
+      {
+        factoryCalls++;
+        return path =>
+        {
+          resolverCalls++;
+          return path == "/levels/known.adofai" ? 42 : null;
+        };
+      },
+      null,
+      50,
+      () => now
+    );
+
+    Assert(cache.Resolve("/levels/known.adofai") == 42, "TUF level resolver did not return a positive result.");
+    Assert(cache.Resolve("/levels/known.adofai") == 42, "Cached TUF level result changed.");
+    Assert(factoryCalls == 1 && resolverCalls == 1, "Positive TUF level resolution was not cached.");
+
+    Assert(cache.Resolve("/levels/missing.adofai") == null, "Missing TUF level unexpectedly resolved.");
+    Assert(cache.Resolve("/levels/missing.adofai") == null, "Negative TUF level cache changed its result.");
+    Assert(resolverCalls == 2, "Negative TUF level resolution was repeated before its TTL.");
+    now += 50;
+    Assert(cache.Resolve("/levels/missing.adofai") == null, "Expired negative TUF cache changed its result.");
+    Assert(resolverCalls == 3, "Negative TUF level resolution did not retry after its TTL.");
+
+    bool resolverAvailable = false;
+    factoryCalls = 0;
+    var lateResolver = new TufLevelIdResolverCache(
+      () =>
+      {
+        factoryCalls++;
+        return resolverAvailable ? _ => 99 : null;
+      },
+      null,
+      50,
+      () => now
+    );
+    Assert(lateResolver.Resolve("/levels/late.adofai") == null, "Unavailable TUF resolver returned a value.");
+    resolverAvailable = true;
+    Assert(lateResolver.Resolve("/levels/other.adofai") == null, "Resolver lookup ignored its negative TTL.");
+    Assert(factoryCalls == 1, "Unavailable TUF resolver reflection was repeated before its TTL.");
+    now += 50;
+    Assert(lateResolver.Resolve("/levels/late.adofai") == 99, "Late TUF resolver was not discovered after TTL.");
+    Assert(factoryCalls == 2, "Late TUF resolver discovery did not retry exactly once.");
+  }
+
   private static void TestWavWriter(string root)
   {
     string path = Path.Combine(root, "writer.wav");
@@ -438,6 +652,51 @@ internal static class Program
     );
   }
 
+  private static void TestPcm16PrefetchBuffer()
+  {
+    byte[] source = new byte[24];
+    for (int i = 0; i < source.Length; i++)
+      source[i] = (byte)i;
+
+    int callbackThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+    using var stream = new ThreadTrackingMemoryStream(source);
+    using var prefetch = new Pcm16PrefetchBuffer(stream, 4, 16, 8);
+
+    byte[] first = new byte[6];
+    Assert(ReadPrefetched(prefetch, first, 6) == 6, "PCM prefetch did not fill the initial read.");
+    Assert(
+      first[0] == 4 && first[5] == 9,
+      "PCM prefetch did not honor the WAV data offset or preserve byte order."
+    );
+
+    prefetch.Seek(8);
+    byte[] sought = new byte[6];
+    Assert(ReadPrefetched(prefetch, sought, 6) == 6, "PCM prefetch did not refill after seek.");
+    Assert(sought[0] == 12 && sought[5] == 17, "PCM prefetch seek returned stale buffered data.");
+
+    prefetch.Seek(14);
+    byte[] tail = new byte[4];
+    Assert(ReadPrefetched(prefetch, tail, 2, 4) == 2, "PCM prefetch did not stop at the data boundary.");
+    Assert(tail[0] == 18 && tail[1] == 19, "PCM prefetch returned the wrong tail bytes.");
+    Assert(stream.ReadThreadId != callbackThreadId, "PCM bytes were read on the consumer thread.");
+    Assert(prefetch.Failure == null, "PCM prefetch worker failed during normal reads.");
+  }
+
+  private static int ReadPrefetched(Pcm16PrefetchBuffer prefetch, byte[] destination, int expected, int count = -1)
+  {
+    int requested = count < 0 ? destination.Length : count;
+    int total = 0;
+    for (int attempt = 0; attempt < 100 && total < expected; attempt++)
+    {
+      int read = prefetch.Read(destination, total, requested - total, 2);
+      total += read;
+      if (read == 0)
+        System.Threading.Thread.Sleep(1);
+    }
+
+    return total;
+  }
+
   private static void TestPlaybackLimiter(string root)
   {
     const int sampleRate = 48000;
@@ -456,16 +715,9 @@ internal static class Program
 
     StoredMicrophoneRecording recording = PlaybackRecording(path, frameCount);
     Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
-    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(
-      recording,
-      wave,
-      System.Threading.CancellationToken.None
-    );
+    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(recording, wave, System.Threading.CancellationToken.None);
     Assert(envelope.BinCount == 500, "Limiter envelope did not use one-millisecond bins.");
-    Assert(
-      Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f,
-      "Limiter attenuated a quiet section."
-    );
+    Assert(Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f, "Limiter attenuated a quiet section.");
     Assert(
       envelope.RequiredLimiterGain(transientFrame - sampleRate * 4 / 1000, 10f) < 1f,
       "Limiter look-ahead did not anticipate a loud transient."
@@ -491,10 +743,7 @@ internal static class Program
     float resetPeakGain = limiter.NextEffectiveGain(transientFrame, 10f);
     Assert(Math.Abs(resetPeakGain - limitedGain) < 0.0001f, "Limiter reset did not seek by absolute PCM frame.");
     limiter.Reset();
-    Assert(
-      Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f,
-      "A safe gain change was unnecessarily limited."
-    );
+    Assert(Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f, "A safe gain change was unnecessarily limited.");
 
     string stereoPath = Path.Combine(root, "playback-limiter-stereo.wav");
     short[] stereoSamples = new short[32];
@@ -577,8 +826,7 @@ internal static class Program
     TUFReplaySetting migratedOffset = TUFReplaySetting.Load(offsetPath);
     Assert(migratedOffset.MicrophoneOffsetMs == 80, "Legacy microphone offset sign was not migrated.");
     Assert(
-      migratedOffset.MicrophoneOffsetConventionVersion
-        == TUFReplaySetting.CurrentMicrophoneOffsetConventionVersion,
+      migratedOffset.MicrophoneOffsetConventionVersion == TUFReplaySetting.CurrentMicrophoneOffsetConventionVersion,
       "Microphone offset convention version was not migrated."
     );
     migratedOffset.Save(offsetPath);
@@ -819,7 +1067,7 @@ internal static class Program
       );
     }
 
-    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteConnection connection = MicrophoneDatabase.OpenConnection())
     {
       using SqliteCommand verify = connection.CreateCommand();
       verify.CommandText =
@@ -831,15 +1079,70 @@ internal static class Program
         reader.GetInt32(1) == 48000 && reader.GetInt32(2) == 1 && reader.GetInt64(3) == 3,
         "BLOB metadata is incorrect."
       );
-      reader.Close();
+    }
 
+    RunRecord runWithMicrophone = RunRepository.Get("run");
+    Assert(
+      runWithMicrophone?.MicrophoneRecordingBytes == new FileInfo(wavPath).Length,
+      "Run query did not hydrate microphone metadata from the separate database."
+    );
+    List<RunRecord> metadataPage = Enumerable
+      .Range(0, 1000)
+      .Select(index => new RunRecord { Id = "missing-" + index })
+      .ToList();
+    metadataPage.Add(new RunRecord { Id = "run" });
+    MicrophoneRecordingRepository.PopulateMetadata(metadataPage);
+    Assert(
+      metadataPage[metadataPage.Count - 1].MicrophoneRecordingBytes == new FileInfo(wavPath).Length,
+      "Large run pages did not batch microphone metadata lookups."
+    );
+
+    using (SqliteConnection audioLock = MicrophoneDatabase.OpenConnection())
+    using (SqliteTransaction audioTransaction = audioLock.BeginTransaction())
+    {
+      using SqliteCommand holdAudioWriter = audioLock.CreateCommand();
+      holdAudioWriter.Transaction = audioTransaction;
+      holdAudioWriter.CommandText = "UPDATE microphone_recordings SET expires_at_utc=expires_at_utc WHERE run_id='run'";
+      holdAudioWriter.ExecuteNonQuery();
+
+      using SqliteConnection activityWrite = Database.OpenConnection();
+      using SqliteCommand insertNextRun = activityWrite.CreateCommand();
+      insertNextRun.CommandText =
+        "INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result) VALUES('run-isolation','level',1,'2026-01-02',0,'failed')";
+      insertNextRun.ExecuteNonQuery();
+      audioTransaction.Rollback();
+    }
+    Assert(RunRepository.Exists("run-isolation"), "Audio writer lock blocked the next activity run write.");
+    RunRepository.Delete("run-isolation");
+
+    MicrophoneRecordingRepository.Delete("run");
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      using SqliteCommand legacy = connection.CreateCommand();
+      legacy.CommandText =
+        @"INSERT INTO microphone_recordings(
+run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,is_permanent,expires_at_utc
+) VALUES('run',@audio,'wav/pcm16',48000,1,3,'legacy-device',123,1,NULL)";
+      legacy.Parameters.AddWithValue("@audio", File.ReadAllBytes(wavPath));
+      legacy.ExecuteNonQuery();
+    }
+    Assert(MicrophoneRecordingRepository.MigrateLegacyRecordings() == 1, "Legacy migration count is incorrect.");
+    Assert(MicrophoneRecordingRepository.Exists("run"), "Legacy microphone recording was not migrated.");
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      using SqliteCommand remaining = connection.CreateCommand();
+      remaining.CommandText = "SELECT count(*) FROM microphone_recordings";
+      Assert(Convert.ToInt32(remaining.ExecuteScalar()) == 0, "Legacy microphone row was not retired.");
+    }
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
       using SqliteCommand delete = connection.CreateCommand();
       delete.CommandText = "DELETE FROM runs WHERE id='run'";
       delete.ExecuteNonQuery();
-      using SqliteCommand cascade = connection.CreateCommand();
-      cascade.CommandText = "SELECT count(*) FROM microphone_recordings";
-      Assert(Convert.ToInt32(cascade.ExecuteScalar()) == 0, "Run deletion did not cascade to microphone recording.");
     }
+    Assert(MicrophoneRecordingRepository.Exists("run"), "Orphan recovery test lost its microphone row early.");
+    Assert(MicrophoneRecordingRepository.DeleteOrphans() == 1, "Orphan microphone recording was not removed.");
 
     TestLegacyLevelMigration(root, 11);
     TestLegacyLevelMigration(root, 12);
@@ -854,18 +1157,39 @@ internal static class Program
       v1Before = writer.ComputeMd5Hash();
     }
 
-    byte[] v2Before = ComputeVersion2Hash(100f, "song.ogg");
-    Assert(v1Before.Length == 16 && v2Before.Length == 32, "Gameplay hash sizes are incorrect.");
+    byte[] v2Before = ComputeVersion2Hash(100f, "song.ogg", 100, 0, 100);
+    byte[] v3Before = ComputeVersion3Hash(100f, "song.ogg", 100, 0, 100);
+    Assert(
+      v1Before.Length == 16 && v2Before.Length == 32 && v3Before.Length == 32,
+      "Gameplay hash sizes are incorrect."
+    );
 
-    byte[] v2After = ComputeVersion2Hash(101f, "song.ogg");
+    byte[] v2After = ComputeVersion2Hash(101f, "song.ogg", 100, 0, 100);
     Assert(GameplayChartHash.Equals(v1Before, v1Before), "Legacy v1 hash comparison failed.");
     Assert(!GameplayChartHash.Equals(v2Before, v2After), "Gameplay BPM did not change the v2 hash.");
     Assert(
-      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "other.ogg")),
+      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "other.ogg", 100, 0, 100)),
       "Gameplay audio did not change the v2 hash."
     );
+    Assert(
+      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "song.ogg", 70, 1, 40)),
+      "Legacy v2 playback presentation fields unexpectedly stopped affecting its hash."
+    );
+    Assert(
+      !GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(101f, "song.ogg", 100, 0, 100)),
+      "Gameplay BPM did not change the v3 hash."
+    );
+    Assert(
+      !GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(100f, "other.ogg", 100, 0, 100)),
+      "Gameplay audio did not change the v3 hash."
+    );
+    Assert(
+      GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(100f, "song.ogg", 70, 1, 40)),
+      "Pitch or hit-sound presentation changed the v3 chart identity."
+    );
     Assert(GameplayChartHash.IsSupported(1, v1Before), "Legacy v1 hash is not supported.");
-    Assert(GameplayChartHash.IsSupported(2, v2Before), "Current v2 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(2, v2Before), "Legacy v2 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(3, v3Before), "Current v3 hash is not supported.");
   }
 
   private static void TestAppSessionTransientLockRecovery(string root)
@@ -895,6 +1219,230 @@ internal static class Program
     Assert(tracker.AppSessionId != null, "Recovered app session did not publish its ID.");
     Assert(CountRows("app_sessions", "id='" + tracker.AppSessionId + "'") == 1, "Recovered app session was not saved.");
     tracker.StopAppSession();
+  }
+
+  private static void TestGameplayHashIdentityUpgrade(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "gameplay-hash-identity-upgrade.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "hash-upgrade-app",
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+
+    byte[] legacyHash = new byte[GameplayChartHash.Version2Size];
+    legacyHash[0] = 2;
+    var legacyLevel = new LevelRecord
+    {
+      Id = "legacy-hash-level",
+      SourceKind = LevelSourceKind.Local,
+      LevelPath = Path.Combine(root, "hash-upgrade.adofai"),
+      GameplayHash = legacyHash,
+      GameplayHashVersion = 2,
+      FirstSeenAtUtc = "2026-01-01T00:00:00Z",
+      LastSeenAtUtc = "2026-01-01T00:00:00Z",
+    };
+    string legacyLevelId = LevelRepository.ResolveOrCreate(legacyLevel);
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = "legacy-hash-session",
+        LevelId = legacyLevelId,
+        AppSessionId = "hash-upgrade-app",
+        OpenedAtUtc = "2026-01-01T00:00:00Z",
+      }
+    );
+
+    byte[] currentHash = new byte[GameplayChartHash.Version3Size];
+    currentHash[0] = 3;
+    var currentLevel = new LevelRecord
+    {
+      Id = "current-hash-level",
+      SourceKind = LevelSourceKind.Local,
+      LevelPath = legacyLevel.LevelPath,
+      GameplayHash = currentHash,
+      GameplayHashVersion = 3,
+      FirstSeenAtUtc = "2026-01-01T00:01:00Z",
+      LastSeenAtUtc = "2026-01-01T00:01:00Z",
+    };
+    string currentLevelId = LevelRepository.ResolveOrCreate(currentLevel, legacyHash, 2);
+
+    Assert(currentLevelId != legacyLevelId, "Gameplay hash upgrade kept the obsolete v2 level identity.");
+    Assert(
+      LevelSessionRepository.Get("legacy-hash-session")?.LevelId == currentLevelId,
+      "Gameplay hash upgrade did not repoint the legacy level session."
+    );
+    Assert(!LevelRepository.Exists(legacyLevelId), "Gameplay hash upgrade left an orphaned v2 level.");
+
+    byte[] alternateLegacyHash = new byte[GameplayChartHash.Version2Size];
+    alternateLegacyHash[0] = 4;
+    legacyLevel.Id = "alternate-legacy-hash-level";
+    legacyLevel.GameplayHash = alternateLegacyHash;
+    string alternateLegacyLevelId = LevelRepository.ResolveOrCreate(legacyLevel);
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = "alternate-legacy-hash-session",
+        LevelId = alternateLegacyLevelId,
+        AppSessionId = "hash-upgrade-app",
+        OpenedAtUtc = "2026-01-01T00:02:00Z",
+      }
+    );
+
+    LevelRepository.MergeLegacyIdentity(currentLevelId, alternateLegacyHash, 2);
+    Assert(
+      LevelSessionRepository.Get("alternate-legacy-hash-session")?.LevelId == currentLevelId,
+      "Same-session gameplay hash upgrade did not merge an alternate v2 identity."
+    );
+    Assert(
+      !LevelRepository.Exists(alternateLegacyLevelId),
+      "Same-session gameplay hash upgrade left an orphaned alternate v2 level."
+    );
+  }
+
+  private static void TestGameplayHashV3Migration(string root)
+  {
+    string chartPath = Path.Combine(root, "gameplay-hash-v3-migration.adofai");
+    File.WriteAllText(chartPath, "{}");
+    byte[] currentHash = ComputeVersion3Hash(130f, "song.ogg", 100, 0, 100);
+    byte[] version2Pitch100 = ComputeVersion2Hash(130f, "song.ogg", 100, 0, 100);
+    byte[] version2Pitch150 = ComputeVersion2Hash(130f, "song.ogg", 150, 0, 100);
+    byte[] version2Pitch70Quiet = ComputeVersion2Hash(130f, "song.ogg", 70, 0, 40);
+    byte[] version1Hash;
+    using (var writer = new GameplayChartHashCanonicalWriter())
+    {
+      writer.WriteAngles(new[] { 0f, 90f, 180f });
+      version1Hash = writer.ComputeMd5Hash();
+    }
+
+    SetDatabasePath(Path.Combine(root, "gameplay-hash-v3-migration.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "hash-v3-migration-app",
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+
+    string v1Session = SaveLegacyGameplayLevel(chartPath, version1Hash, 1, 100, "beta6");
+    string v2Pitch100Session = SaveLegacyGameplayLevel(chartPath, version2Pitch100, 2, 100, "beta7-100");
+    string v2Pitch150Session = SaveLegacyGameplayLevel(chartPath, version2Pitch150, 2, 150, "beta7-150");
+    string v2QuietSession = SaveLegacyGameplayLevel(chartPath, version2Pitch70Quiet, 2, 70, "beta7-quiet");
+
+    byte[] unmatchedHash = new byte[GameplayChartHash.Version2Size];
+    unmatchedHash[0] = 0x7f;
+    string unmatchedSession = SaveLegacyGameplayLevel(chartPath, unmatchedHash, 2, 120, "unmatched");
+    string unmatchedLevelId = LevelSessionRepository.Get(unmatchedSession)?.LevelId;
+
+    GameplayHashV3MigrationResult migrated = GameplayHashV3Migration.Run(
+      (_, legacyHash, _, _) => GameplayChartHash.Equals(legacyHash, unmatchedHash) ? null : currentHash
+    );
+    Assert(migrated.Scanned == 5, "Gameplay hash migration did not scan every beta6/beta7 level.");
+    Assert(migrated.Migrated == 4, "Gameplay hash migration did not merge every verified legacy level.");
+    Assert(migrated.Deferred == 1, "Gameplay hash migration did not defer the unverifiable level.");
+
+    string migratedLevelId = LevelSessionRepository.Get(v1Session)?.LevelId;
+    Assert(!string.IsNullOrWhiteSpace(migratedLevelId), "Migrated beta6 level session disappeared.");
+    Assert(
+      LevelSessionRepository.Get(v2Pitch100Session)?.LevelId == migratedLevelId
+        && LevelSessionRepository.Get(v2Pitch150Session)?.LevelId == migratedLevelId
+        && LevelSessionRepository.Get(v2QuietSession)?.LevelId == migratedLevelId,
+      "Verified beta6/beta7 pitch and hit-sound variants were not merged."
+    );
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "SELECT gameplay_hash,gameplay_hash_version FROM levels WHERE id=@id";
+      command.Parameters.AddWithValue("@id", migratedLevelId);
+      using (SqliteDataReader reader = command.ExecuteReader())
+      {
+        Assert(reader.Read(), "Merged v3 level disappeared.");
+        Assert(
+          GameplayChartHash.Equals((byte[])reader.GetValue(0), currentHash)
+            && reader.GetInt32(1) == GameplayChartHash.Version,
+          "Merged legacy levels did not receive the v3 gameplay hash."
+        );
+      }
+
+      command.Parameters["@id"].Value = unmatchedLevelId;
+      using SqliteDataReader unmatchedReader = command.ExecuteReader();
+      Assert(
+        unmatchedReader.Read()
+          && unmatchedReader.GetInt32(1) == 2
+          && LevelSessionRepository.Get(unmatchedSession)?.LevelId == unmatchedLevelId,
+        "Unverifiable beta7 data was modified instead of preserved."
+      );
+    }
+
+    GameplayHashV3MigrationResult retried = GameplayHashV3Migration.Run((_, _, _, _) => currentHash);
+    Assert(
+      retried.Scanned == 1 && retried.Skipped == 1 && retried.Migrated == 0,
+      "Unchanged deferred migration work was needlessly repeated."
+    );
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "UPDATE gameplay_hash_migration_attempts SET result='unverified' WHERE level_id=@level";
+      command.Parameters.AddWithValue("@level", unmatchedLevelId);
+      command.ExecuteNonQuery();
+    }
+    GameplayHashV3MigrationResult recovered = GameplayHashV3Migration.Run((_, _, _, _) => currentHash);
+    Assert(
+      recovered.Scanned == 1 && recovered.Migrated == 1,
+      "A beta migration row cached by the old startup timing was not retried."
+    );
+  }
+
+  private static string SaveLegacyGameplayLevel(
+    string chartPath,
+    byte[] gameplayHash,
+    int gameplayHashVersion,
+    int pitch,
+    string suffix
+  )
+  {
+    string levelId = LevelRepository.ResolveOrCreate(
+      new LevelRecord
+      {
+        SourceKind = LevelSourceKind.Local,
+        LevelPath = chartPath,
+        GameplayHash = gameplayHash,
+        GameplayHashVersion = gameplayHashVersion,
+        FirstSeenAtUtc = "2026-01-01T00:00:00Z",
+        LastSeenAtUtc = "2026-01-01T00:00:00Z",
+      }
+    );
+    string levelSessionId = "hash-v3-session-" + suffix;
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = levelSessionId,
+        LevelId = levelId,
+        AppSessionId = "hash-v3-migration-app",
+        OpenedAtUtc = "2026-01-01T00:00:00Z",
+      }
+    );
+    RunRepository.Save(
+      new RunRecord
+      {
+        Id = "hash-v3-run-" + suffix,
+        LevelSessionId = levelSessionId,
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        Result = "quit",
+        LevelPitchPercent = pitch,
+      }
+    );
+    return levelSessionId;
   }
 
   private static void TestBrokenRenamedForeignKeyRepair(string root)
@@ -928,12 +1476,10 @@ PRAGMA user_version=13;";
       verify.CommandText = "PRAGMA user_version;";
       Assert(Convert.ToInt32(verify.ExecuteScalar()) == ActivitySchema.Version, "Broken schema was not upgraded.");
 
-      verify.CommandText =
-        "SELECT \"table\" FROM pragma_foreign_key_list('level_sessions') WHERE \"from\"='level_id';";
+      verify.CommandText = "SELECT \"table\" FROM pragma_foreign_key_list('level_sessions') WHERE \"from\"='level_id';";
       Assert(Convert.ToString(verify.ExecuteScalar()) == "levels", "Level-session foreign key was not repaired.");
 
-      verify.CommandText =
-        "SELECT \"table\" FROM pragma_foreign_key_list('runs') WHERE \"from\"='level_session_id';";
+      verify.CommandText = "SELECT \"table\" FROM pragma_foreign_key_list('runs') WHERE \"from\"='level_session_id';";
       Assert(Convert.ToString(verify.ExecuteScalar()) == "level_sessions", "Run foreign key was not repaired.");
 
       verify.CommandText = "SELECT count(*) FROM levels WHERE id='logical';";
@@ -949,11 +1495,36 @@ PRAGMA user_version=13;";
     }
   }
 
-  private static byte[] ComputeVersion2Hash(float bpm, string songFilename)
+  private static byte[] ComputeVersion2Hash(
+    float bpm,
+    string songFilename,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume
+  )
   {
     using var writer = new GameplayChartHashCanonicalWriter();
     writer.WriteFormatVersion(2);
-    writer.WriteGameplaySettings(15, songFilename, bpm, 100, 0, 100, 0, 100, false, 4, 0f, false);
+    writer.WriteGameplaySettingsV2(15, songFilename, bpm, 100, 0, pitch, hitsound, hitsoundVolume, false, 4, 0f, false);
+    writer.WriteChartKind(false);
+    writer.WriteAngles(new[] { 0f, 90f, 180f });
+    return writer.ComputeSha256Hash();
+  }
+
+  private static byte[] ComputeVersion3Hash(
+    float bpm,
+    string songFilename,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume
+  )
+  {
+    _ = pitch;
+    _ = hitsound;
+    _ = hitsoundVolume;
+    using var writer = new GameplayChartHashCanonicalWriter();
+    writer.WriteFormatVersion(3);
+    writer.WriteGameplaySettingsV3(15, songFilename, bpm, 100, 0, false, 4, 0f, false);
     writer.WriteChartKind(false);
     writer.WriteAngles(new[] { 0f, 90f, 180f });
     return writer.ComputeSha256Hash();
@@ -1035,6 +1606,9 @@ INSERT INTO runs(
     Assert(reader.Read(), "Legacy level session was not migrated from v" + version + ".");
     Assert(reader.GetString(1) == "legacy.adofai" && reader.GetInt32(2) == 1, "Legacy level data changed.");
     reader.Close();
+    verify.CommandText =
+      "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='gameplay_hash_migration_attempts'";
+    Assert(Convert.ToInt32(verify.ExecuteScalar()) == 1, "Gameplay hash migration state table is missing.");
     connection.Close();
 
     SetDatabasePath(path);
@@ -1128,12 +1702,7 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
       seed.ExecuteNonQuery();
     }
 
-    List<RunRecord> firstDay = RunRepository.ListByLogicalLevel(
-      "shared-logical",
-      new List<string> { "day-a" },
-      0,
-      200
-    );
+    List<RunRecord> firstDay = RunRepository.ListByLogicalLevel("shared-logical", new List<string> { "day-a" }, 0, 200);
     Assert(firstDay.Count == 1 && firstDay[0].Id == "run-a", "Logical run query crossed day sessions.");
   }
 
@@ -1158,12 +1727,7 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
     Assert(gameplayA.LevelId != gameplayB.LevelId, "Different local paths were incorrectly merged.");
 
     LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[32]);
-    LevelSession tufB = LogicalVisit(
-      "tuf-b",
-      "/tmp/tuf-b.adofai",
-      77,
-      Enumerable.Repeat((byte)9, 32).ToArray()
-    );
+    LevelSession tufB = LogicalVisit("tuf-b", "/tmp/tuf-b.adofai", 77, Enumerable.Repeat((byte)9, 32).ToArray());
     LevelSessionRepository.Save(tufA);
     LevelSessionRepository.Save(tufB);
     Assert(tufA.LevelId != tufB.LevelId, "Different TUF gameplay revisions were incorrectly merged.");
@@ -1183,12 +1747,7 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
     Assert(fileA.LevelId != fileChanged.LevelId, "Changed local gameplay revisions were incorrectly merged.");
   }
 
-  private static LevelSession LogicalVisit(
-    string id,
-    string path,
-    int? tufLevelId,
-    byte[] gameplayHash
-  )
+  private static LevelSession LogicalVisit(string id, string path, int? tufLevelId, byte[] gameplayHash)
   {
     string timestamp = "2026-01-01T00:00:00Z";
     string levelId = LevelRepository.ResolveOrCreate(
@@ -1231,6 +1790,28 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,
   {
     PropertyInfo property = typeof(Database).GetProperty("DbPath", BindingFlags.Public | BindingFlags.Static);
     property.SetValue(null, path);
+    MicrophoneDatabase.Initialize(
+      Path.Combine(
+        Path.GetDirectoryName(path) ?? "",
+        Path.GetFileNameWithoutExtension(path) + ".microphones.sqlite"
+      )
+    );
+  }
+
+  private sealed class ThreadTrackingMemoryStream : MemoryStream
+  {
+    private int _readThreadId;
+
+    public ThreadTrackingMemoryStream(byte[] buffer)
+      : base(buffer) { }
+
+    public int ReadThreadId => System.Threading.Volatile.Read(ref _readThreadId);
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+      System.Threading.Volatile.Write(ref _readThreadId, System.Threading.Thread.CurrentThread.ManagedThreadId);
+      return base.Read(buffer, offset, count);
+    }
   }
 
   private static void Assert(bool condition, string message)

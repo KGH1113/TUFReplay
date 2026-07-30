@@ -6,13 +6,20 @@ import type {
   RunMarker,
 } from "../activity.model";
 
+const dateKeyFormatters = new Map<string, Intl.DateTimeFormat>();
+
 export function dateKeyInTimeZone(utc: string, timeZone: string): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(new Date(utc));
+  let formatter = dateKeyFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    dateKeyFormatters.set(timeZone, formatter);
+  }
+  const parts = formatter.formatToParts(new Date(utc));
   const get = (type: Intl.DateTimeFormatPartTypes) =>
     parts.find((part) => part.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
@@ -25,7 +32,9 @@ export function groupSessionsByDay(
   const groups = new Map<string, ActivityAppSession[]>();
   for (const session of sessions) {
     const key = dateKeyInTimeZone(session.StartedAtUtc, timeZone);
-    groups.set(key, [...(groups.get(key) ?? []), session]);
+    const group = groups.get(key);
+    if (group) group.push(session);
+    else groups.set(key, [session]);
   }
   return [...groups.entries()]
     .sort(([left], [right]) => right.localeCompare(left))
@@ -105,7 +114,11 @@ function maxNullable(left: number | null, right: number | null): number | null {
 
 export function aggregateRunMarkers(runs: ActivityRun[]): RunMarker[] {
   const groups = new Map<number, ActivityRun[]>();
-  for (const run of runs) groups.set(run.StartTile, [...(groups.get(run.StartTile) ?? []), run]);
+  for (const run of runs) {
+    const group = groups.get(run.StartTile);
+    if (group) group.push(run);
+    else groups.set(run.StartTile, [run]);
+  }
   return [...groups.entries()]
     .sort(([left], [right]) => left - right)
     .map(([floorIndex, markerRuns]) => ({

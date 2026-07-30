@@ -61,7 +61,9 @@ public sealed class RecordingActivityTracker
     int? tufLevelId,
     int levelTileCount,
     byte[] gameplayHash,
-    int? gameplayHashVersion
+    int? gameplayHashVersion,
+    byte[] legacyGameplayHash,
+    int? legacyGameplayHashVersion
   )
   {
     if (!StartAppSession())
@@ -74,7 +76,11 @@ public sealed class RecordingActivityTracker
       && GameplayChartHash.IsSupported(gameplayHashVersion, gameplayHash)
       && GameplayChartHash.Equals(_gameplayHash, gameplayHash)
     )
+    {
+      LevelSession currentSession = LevelSessionRepository.Get(LevelSessionId);
+      LevelRepository.MergeLegacyIdentity(currentSession?.LevelId, legacyGameplayHash, legacyGameplayHashVersion);
       return true;
+    }
 
     CloseLevel();
 
@@ -100,7 +106,7 @@ public sealed class RecordingActivityTracker
     var levelSession = new LevelSession
     {
       Id = levelSessionId,
-      LevelId = LevelRepository.ResolveOrCreate(level),
+      LevelId = LevelRepository.ResolveOrCreate(level, legacyGameplayHash, legacyGameplayHashVersion),
       AppSessionId = AppSessionId,
       OpenedAtUtc = openedAtUtc,
     };
