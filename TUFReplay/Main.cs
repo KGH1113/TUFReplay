@@ -79,6 +79,7 @@ public sealed class Main
 
   private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)
   {
+    ModBootstrap.UpdateRuntime();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 

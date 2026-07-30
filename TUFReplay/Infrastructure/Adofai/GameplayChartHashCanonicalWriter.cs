@@ -14,7 +14,7 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
 
   public void WriteChartKind(bool legacy) => _payload.WriteByte(legacy ? (byte)0 : (byte)1);
 
-  public void WriteGameplaySettings(
+  public void WriteGameplaySettingsV2(
     int levelVersion,
     string songFilename,
     float bpm,
@@ -37,6 +37,29 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
     WriteInt(pitch);
     _payload.WriteByte(hitsound);
     WriteInt(hitsoundVolume);
+    _payload.WriteByte(separateCountdownTime ? (byte)1 : (byte)0);
+    WriteInt(countdownTicks);
+    WriteFloat(speedTrialAim);
+    _payload.WriteByte(legacySpriteTiles ? (byte)1 : (byte)0);
+  }
+
+  public void WriteGameplaySettingsV3(
+    int levelVersion,
+    string songFilename,
+    float bpm,
+    int volume,
+    int offset,
+    bool separateCountdownTime,
+    int countdownTicks,
+    float speedTrialAim,
+    bool legacySpriteTiles
+  )
+  {
+    WriteInt(levelVersion);
+    WriteString(songFilename);
+    WriteFloat(bpm);
+    WriteInt(volume);
+    WriteInt(offset);
     _payload.WriteByte(separateCountdownTime ? (byte)1 : (byte)0);
     WriteInt(countdownTicks);
     WriteFloat(speedTrialAim);
