@@ -108,6 +108,33 @@ internal static class Program
       !NativeInputUmmWindowInterlock.IsBlockedAt(long.MaxValue),
       "Native input remained blocked after the stabilization window."
     );
+
+    NativeInputUmmWindowInterlock.Reset();
+    Assert(
+      NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L),
+      "UMM fallback did not poll immediately."
+    );
+    Assert(
+      !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L),
+      "UMM fallback polled twice in the same interval."
+    );
+    Assert(
+      !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(
+        10_000L + NativeInputUmmWindowInterlock.FallbackPollIntervalTicks - 1
+      ),
+      "UMM fallback ignored its polling interval."
+    );
+    Assert(
+      NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(
+        10_000L + NativeInputUmmWindowInterlock.FallbackPollIntervalTicks
+      ),
+      "UMM fallback did not resume after its polling interval."
+    );
+    NativeInputUmmWindowInterlock.ConfigureManagerWindowPatch(available: true, synchronize: false);
+    Assert(
+      !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(long.MaxValue),
+      "UMM reflection fallback remained active after the Harmony patch was available."
+    );
     NativeInputUmmWindowInterlock.Reset();
   }
 

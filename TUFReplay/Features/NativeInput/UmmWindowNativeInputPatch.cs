@@ -11,15 +11,19 @@ namespace TUFReplay.Features.NativeInput;
 [HarmonyPatch]
 internal static class UmmWindowNativeInputPatch
 {
+  private static readonly MethodBase ToggleWindowMethod = ResolveTargetMethod();
+
   [HarmonyPrepare]
   private static bool Prepare()
   {
-    return ResolveTargetMethod() != null;
+    bool available = ToggleWindowMethod != null;
+    NativeInputUmmWindowInterlock.ConfigureManagerWindowPatch(available);
+    return available;
   }
 
   private static MethodBase TargetMethod()
   {
-    return ResolveTargetMethod();
+    return ToggleWindowMethod;
   }
 
   private static MethodBase ResolveTargetMethod()
@@ -58,11 +62,5 @@ internal static class UmmWindowNativeInputPatch
     {
       Main.Instance?.LogException("UMM native-input replay suspension", exception);
     }
-  }
-
-  [HarmonyPostfix]
-  private static void Postfix()
-  {
-    NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 }
