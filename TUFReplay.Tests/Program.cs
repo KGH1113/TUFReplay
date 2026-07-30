@@ -878,7 +878,7 @@ internal static class Program
       );
     }
 
-    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteConnection connection = MicrophoneDatabase.OpenConnection())
     {
       using SqliteCommand verify = connection.CreateCommand();
       verify.CommandText =
@@ -890,15 +890,70 @@ internal static class Program
         reader.GetInt32(1) == 48000 && reader.GetInt32(2) == 1 && reader.GetInt64(3) == 3,
         "BLOB metadata is incorrect."
       );
-      reader.Close();
+    }
 
+    RunRecord runWithMicrophone = RunRepository.Get("run");
+    Assert(
+      runWithMicrophone?.MicrophoneRecordingBytes == new FileInfo(wavPath).Length,
+      "Run query did not hydrate microphone metadata from the separate database."
+    );
+    List<RunRecord> metadataPage = Enumerable
+      .Range(0, 1000)
+      .Select(index => new RunRecord { Id = "missing-" + index })
+      .ToList();
+    metadataPage.Add(new RunRecord { Id = "run" });
+    MicrophoneRecordingRepository.PopulateMetadata(metadataPage);
+    Assert(
+      metadataPage[metadataPage.Count - 1].MicrophoneRecordingBytes == new FileInfo(wavPath).Length,
+      "Large run pages did not batch microphone metadata lookups."
+    );
+
+    using (SqliteConnection audioLock = MicrophoneDatabase.OpenConnection())
+    using (SqliteTransaction audioTransaction = audioLock.BeginTransaction())
+    {
+      using SqliteCommand holdAudioWriter = audioLock.CreateCommand();
+      holdAudioWriter.Transaction = audioTransaction;
+      holdAudioWriter.CommandText = "UPDATE microphone_recordings SET expires_at_utc=expires_at_utc WHERE run_id='run'";
+      holdAudioWriter.ExecuteNonQuery();
+
+      using SqliteConnection activityWrite = Database.OpenConnection();
+      using SqliteCommand insertNextRun = activityWrite.CreateCommand();
+      insertNextRun.CommandText =
+        "INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result) VALUES('run-isolation','level',1,'2026-01-02',0,'failed')";
+      insertNextRun.ExecuteNonQuery();
+      audioTransaction.Rollback();
+    }
+    Assert(RunRepository.Exists("run-isolation"), "Audio writer lock blocked the next activity run write.");
+    RunRepository.Delete("run-isolation");
+
+    MicrophoneRecordingRepository.Delete("run");
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      using SqliteCommand legacy = connection.CreateCommand();
+      legacy.CommandText =
+        @"INSERT INTO microphone_recordings(
+run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,is_permanent,expires_at_utc
+) VALUES('run',@audio,'wav/pcm16',48000,1,3,'legacy-device',123,1,NULL)";
+      legacy.Parameters.AddWithValue("@audio", File.ReadAllBytes(wavPath));
+      legacy.ExecuteNonQuery();
+    }
+    Assert(MicrophoneRecordingRepository.MigrateLegacyRecordings() == 1, "Legacy migration count is incorrect.");
+    Assert(MicrophoneRecordingRepository.Exists("run"), "Legacy microphone recording was not migrated.");
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      using SqliteCommand remaining = connection.CreateCommand();
+      remaining.CommandText = "SELECT count(*) FROM microphone_recordings";
+      Assert(Convert.ToInt32(remaining.ExecuteScalar()) == 0, "Legacy microphone row was not retired.");
+    }
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
       using SqliteCommand delete = connection.CreateCommand();
       delete.CommandText = "DELETE FROM runs WHERE id='run'";
       delete.ExecuteNonQuery();
-      using SqliteCommand cascade = connection.CreateCommand();
-      cascade.CommandText = "SELECT count(*) FROM microphone_recordings";
-      Assert(Convert.ToInt32(cascade.ExecuteScalar()) == 0, "Run deletion did not cascade to microphone recording.");
     }
+    Assert(MicrophoneRecordingRepository.Exists("run"), "Orphan recovery test lost its microphone row early.");
+    Assert(MicrophoneRecordingRepository.DeleteOrphans() == 1, "Orphan microphone recording was not removed.");
 
     TestLegacyLevelMigration(root, 11);
     TestLegacyLevelMigration(root, 12);
@@ -1546,6 +1601,12 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,
   {
     PropertyInfo property = typeof(Database).GetProperty("DbPath", BindingFlags.Public | BindingFlags.Static);
     property.SetValue(null, path);
+    MicrophoneDatabase.Initialize(
+      Path.Combine(
+        Path.GetDirectoryName(path) ?? "",
+        Path.GetFileNameWithoutExtension(path) + ".microphones.sqlite"
+      )
+    );
   }
 
   private static void Assert(bool condition, string message)

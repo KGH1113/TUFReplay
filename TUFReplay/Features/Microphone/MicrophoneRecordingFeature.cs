@@ -454,6 +454,14 @@ public sealed class MicrophoneRecordingFeature
   {
     lock (_gate)
       _persistedRuns.Remove(runId);
+    try
+    {
+      MicrophoneRecordingRepository.Delete(runId);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Orphan cleanup deferred. runId=" + runId + ", error=" + exception.Message);
+    }
     string pending = PendingPath(runId);
     Delete(pending);
     Delete(MetadataPath(pending));
