@@ -28,6 +28,7 @@ internal static class Program
     {
       NativeSqliteLoader.Initialize();
       TestMicrophoneCaptureChunking();
+      TestPendingMicrophoneDisposition();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
       TestPlaybackLimiter(root);
@@ -402,6 +403,40 @@ internal static class Program
       MicrophoneCaptureChunking.AdvanceCursor(clipFrames - 1000, 2000, clipFrames) == 1000,
       "Microphone capture cursor did not wrap correctly."
     );
+  }
+
+  private static void TestPendingMicrophoneDisposition()
+  {
+    var recording = new CapturedMicrophoneRecording { RunId = "run" };
+    int completed = 0;
+    CapturedMicrophoneRecording observed = null;
+    bool persisted = false;
+    var disposition = new PendingMicrophoneDisposition((value, shouldPersist) =>
+    {
+      completed++;
+      observed = value;
+      persisted = shouldPersist;
+    });
+
+    disposition.CompleteDisposition(persist: true);
+    Assert(completed == 0, "Microphone disposition ran before capture finalization.");
+    disposition.CompleteCapture(recording);
+    Assert(completed == 1, "Microphone disposition did not run after both gates completed.");
+    Assert(ReferenceEquals(observed, recording) && persisted, "Microphone persistence decision was lost.");
+    disposition.CompleteDisposition(persist: false);
+    disposition.CompleteCapture(recording);
+    Assert(completed == 1, "Microphone disposition completed more than once.");
+
+    completed = 0;
+    var captureFirst = new PendingMicrophoneDisposition((_, shouldPersist) =>
+    {
+      completed++;
+      persisted = shouldPersist;
+    });
+    captureFirst.CompleteCapture(recording);
+    Assert(completed == 0, "Finalized microphone capture ignored the editor-return gate.");
+    captureFirst.CompleteDisposition(persist: false);
+    Assert(completed == 1 && !persisted, "Deferred microphone discard decision was lost.");
   }
 
   private static void TestWavWriter(string root)
