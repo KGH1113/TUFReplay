@@ -122,8 +122,7 @@ export function createActivityGateway(
   return {
     health: async () => validateActivityHealth(await callDomain(namespace, "health.get", {})),
     listAppSessions,
-    listAllAppSessions: (onPage) =>
-      loadAllPages<ActivityAppSession>(listAppSessions, onPage),
+    listAllAppSessions: (onPage) => loadAllPages<ActivityAppSession>(listAppSessions, onPage),
     getLevelSession: (id) => callDomain(namespace, "activity.level-session.get", { id }),
     getLogicalLevel: (id) => callDomain(namespace, "activity.logical-level.get", { id }),
     listAllRuns: (id, onPage) =>
