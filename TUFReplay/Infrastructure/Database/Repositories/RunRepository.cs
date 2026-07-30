@@ -92,7 +92,11 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.CommandText = Select + " WHERE r.id=@id LIMIT 1";
     q.Parameters.AddWithValue("@id", runId);
     using SqliteDataReader r = q.ExecuteReader();
-    return r.Read() ? Read(r) : null;
+    if (!r.Read())
+      return null;
+    RunRecord result = Read(r);
+    MicrophoneRecordingRepository.PopulateMetadata(new[] { result });
+    return result;
   }
 
   public static bool Delete(string runId)
@@ -175,6 +179,7 @@ WHERE id=@app
     using SqliteDataReader x = q.ExecuteReader();
     while (x.Read())
       result.Add(Read(x));
+    MicrophoneRecordingRepository.PopulateMetadata(result);
     return result;
   }
 
@@ -208,6 +213,7 @@ WHERE id=@app
     using SqliteDataReader x = q.ExecuteReader();
     while (x.Read())
       result.Add(Read(x));
+    MicrophoneRecordingRepository.PopulateMetadata(result);
     return result;
   }
 
@@ -274,12 +280,10 @@ r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,
 r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfect,r.judgment_perfect,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 g.gameplay_hash,g.gameplay_hash_version,
-r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json,
-coalesce(length(m.audio_wav),0),m.sample_rate,m.channels,m.frame_count,m.is_permanent,m.expires_at_utc
+r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
-JOIN levels g ON g.id=l.level_id
-LEFT JOIN microphone_recordings m ON m.run_id=r.id";
+JOIN levels g ON g.id=l.level_id";
 
   private static RunRecord Read(SqliteDataReader r) =>
     new RunRecord
@@ -320,12 +324,6 @@ LEFT JOIN microphone_recordings m ON m.run_id=r.id";
       InputCsvBytes = r.GetInt64(30),
       HitContextCsvBytes = r.GetInt64(31),
       MetaJson = r.GetString(32),
-      MicrophoneRecordingBytes = r.GetInt64(33),
-      MicrophoneSampleRate = DbValue.NullableInt(r, 34),
-      MicrophoneChannels = DbValue.NullableInt(r, 35),
-      MicrophoneFrameCount = r.IsDBNull(36) ? null : (long?)r.GetInt64(36),
-      MicrophoneRecordingPermanent = !r.IsDBNull(37) && r.GetInt32(37) != 0,
-      MicrophoneRecordingExpiresAtUtc = DbValue.NullableString(r, 38),
     };
 
   private static RunJudgmentDifficulty? ReadDifficulty(SqliteDataReader reader, int index)

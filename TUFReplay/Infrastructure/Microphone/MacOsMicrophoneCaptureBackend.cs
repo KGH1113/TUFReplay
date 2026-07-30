@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -6,6 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Application.Microphone;
@@ -22,22 +24,38 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   private readonly object _transportGate = new object();
   private readonly object _stateGate = new object();
   private readonly List<MicrophoneDeviceInfo> _cachedDevices = new List<MicrophoneDeviceInfo>();
+  private readonly BlockingCollection<Action> _commands = new BlockingCollection<Action>();
+  private readonly Thread _commandWorker;
   private TcpClient _client;
   private StreamReader _reader;
   private StreamWriter _writer;
   private ArmState _armState;
   private string _armError;
   private int _armGeneration;
-  private string _runId;
-  private string _tempPath;
+  private PendingRun _run;
+  private bool _deviceRefreshQueued;
+  private volatile bool _disposed;
+
+  public MacOsMicrophoneCaptureBackend()
+  {
+    _commandWorker = new Thread(ProcessCommands)
+    {
+      IsBackground = true,
+      Name = "TUFReplay macOS microphone helper",
+    };
+    _commandWorker.Start();
+    _deviceRefreshQueued = true;
+    QueueCommand(RefreshDevices);
+  }
 
   public void RequestPermission()
   {
-    ThreadPool.QueueUserWorkItem(_ =>
+    QueueCommand(() =>
     {
       try
       {
         Send(new JObject { ["command"] = "authorize" });
+        RefreshDevices();
         Main.Instance?.Log("[Microphone] macOS microphone permission is ready.");
       }
       catch (Exception exception)
@@ -51,30 +69,13 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   {
     lock (_stateGate)
     {
-      if (_armState == ArmState.Arming)
-        return new List<MicrophoneDeviceInfo>(_cachedDevices);
+      if (!_deviceRefreshQueued && !_disposed)
+      {
+        _deviceRefreshQueued = true;
+        QueueCommand(RefreshDevices);
+      }
+      return new List<MicrophoneDeviceInfo>(_cachedDevices);
     }
-
-    JObject response = Send(new JObject { ["command"] = "devices" });
-    var result = new List<MicrophoneDeviceInfo>();
-    foreach (JToken item in response["devices"] ?? new JArray())
-    {
-      result.Add(
-        new MicrophoneDeviceInfo
-        {
-          Id = (string)item["id"],
-          Name = (string)item["name"],
-          MinFrequency = (int?)item["minFrequency"] ?? 48000,
-          MaxFrequency = (int?)item["maxFrequency"] ?? 48000,
-        }
-      );
-    }
-    lock (_stateGate)
-    {
-      _cachedDevices.Clear();
-      _cachedDevices.AddRange(result);
-    }
-    return result;
   }
 
   public bool Arm(string deviceId, out string error)
@@ -86,7 +87,16 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       _armState = ArmState.Arming;
       _armError = null;
     }
-    ThreadPool.QueueUserWorkItem(_ => CompleteArm(deviceId, generation));
+    if (!QueueCommand(() => CompleteArm(deviceId, generation)))
+    {
+      lock (_stateGate)
+      {
+        _armState = ArmState.Failed;
+        _armError = "macOS microphone helper is shutting down.";
+      }
+      error = _armError;
+      return false;
+    }
     Main.Instance?.Log("[Microphone] Arming macOS microphone.");
     error = null;
     return true;
@@ -122,62 +132,101 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       }
     }
 
-    try
-    {
-      Send(
-        new JObject
+    var run = new PendingRun(runId, tempPath);
+    lock (_stateGate)
+      _run = run;
+    if (
+      !QueueCommand(() =>
+      {
+        try
         {
-          ["command"] = "begin",
-          ["runId"] = runId,
-          ["path"] = tempPath,
+          Send(
+            new JObject
+            {
+              ["command"] = "begin",
+              ["runId"] = run.RunId,
+              ["path"] = run.TempPath,
+            }
+          );
+          run.BeginSucceeded = true;
         }
-      );
-      _runId = runId;
-      _tempPath = tempPath;
-      error = null;
-      return true;
-    }
-    catch (Exception exception)
+        catch (Exception exception)
+        {
+          Main.Instance?.Log("[Microphone] macOS helper failed to begin capture. error=" + exception.Message);
+        }
+      })
+    )
     {
-      error = exception.Message;
+      lock (_stateGate)
+      {
+        if (ReferenceEquals(_run, run))
+          _run = null;
+      }
+      error = "macOS microphone helper is shutting down.";
       return false;
     }
+    error = null;
+    return true;
   }
 
-  public CapturedMicrophoneRecording EndRun()
+  public Task<CapturedMicrophoneRecording> EndRunAsync()
   {
-    if (_runId == null)
-      return null;
-    try
+    PendingRun run;
+    lock (_stateGate)
     {
-      JObject response = Send(new JObject { ["command"] = "end" });
-      if ((long?)response["frameCount"] <= 0)
+      run = _run;
+      _run = null;
+    }
+    if (run == null)
+      return Task.FromResult<CapturedMicrophoneRecording>(null);
+
+    var completion = new TaskCompletionSource<CapturedMicrophoneRecording>(
+      TaskCreationOptions.RunContinuationsAsynchronously
+    );
+    if (
+      !QueueCommand(() =>
       {
-        DeleteTemp();
-        return null;
-      }
-      return new CapturedMicrophoneRecording
-      {
-        RunId = _runId,
-        TempPath = _tempPath,
-        DeviceId = (string)response["deviceId"],
-        SampleRate = (int?)response["sampleRate"] ?? 48000,
-        Channels = (int?)response["channels"] ?? 1,
-        FrameCount = (long)response["frameCount"],
-        CaptureStartOffsetUs = (long?)response["captureStartOffsetUs"] ?? 0,
-      };
-    }
-    catch (Exception exception)
+        try
+        {
+          if (!run.BeginSucceeded)
+          {
+            DeleteTemp(run.TempPath);
+            completion.TrySetResult(null);
+            return;
+          }
+          JObject response = Send(new JObject { ["command"] = "end" });
+          if ((long?)response["frameCount"] <= 0)
+          {
+            DeleteTemp(run.TempPath);
+            completion.TrySetResult(null);
+            return;
+          }
+          completion.TrySetResult(
+            new CapturedMicrophoneRecording
+            {
+              RunId = run.RunId,
+              TempPath = run.TempPath,
+              DeviceId = (string)response["deviceId"],
+              SampleRate = (int?)response["sampleRate"] ?? 48000,
+              Channels = (int?)response["channels"] ?? 1,
+              FrameCount = (long)response["frameCount"],
+              CaptureStartOffsetUs = (long?)response["captureStartOffsetUs"] ?? 0,
+            }
+          );
+        }
+        catch (Exception exception)
+        {
+          Main.Instance?.Log("[Microphone] macOS helper failed to finalize capture. error=" + exception.Message);
+          DeleteTemp(run.TempPath);
+          completion.TrySetResult(null);
+        }
+      })
+    )
     {
-      Main.Instance?.Log("[Microphone] macOS helper failed to finalize capture. error=" + exception.Message);
-      DeleteTemp();
-      return null;
+      DeleteTemp(run.TempPath);
+      completion.TrySetResult(null);
     }
-    finally
-    {
-      _runId = null;
-      _tempPath = null;
-    }
+    return completion.Task;
   }
 
   public void Tick() { }
@@ -186,22 +235,27 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   {
     bool shouldDisarm;
     int generation;
+    PendingRun run;
     lock (_stateGate)
     {
       generation = ++_armGeneration;
       shouldDisarm = _armState == ArmState.Armed;
       _armState = ArmState.Idle;
       _armError = null;
+      run = _run;
+      _run = null;
     }
-    _runId = null;
-    DeleteTemp();
-    _tempPath = null;
     if (shouldDisarm)
-      QueueDisarm(generation);
+      QueueDisarm(generation, run?.TempPath);
+    else if (!QueueCommand(() => DeleteTemp(run?.TempPath)))
+      DeleteTemp(run?.TempPath);
   }
 
   public void Dispose()
   {
+    if (_disposed)
+      return;
+    _disposed = true;
     lock (_stateGate)
     {
       ++_armGeneration;
@@ -213,8 +267,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       _client?.Close();
     }
     catch { }
-    lock (_transportGate)
-      ResetConnection();
+    _commands.CompleteAdding();
   }
 
   private void CompleteArm(string deviceId, int generation)
@@ -256,24 +309,106 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     );
   }
 
-  private void QueueDisarm(int generation)
+  private void QueueDisarm(int generation, string tempPath = null)
   {
-    ThreadPool.QueueUserWorkItem(_ =>
+    if (
+      !QueueCommand(() =>
+      {
+        lock (_stateGate)
+        {
+          if (generation != _armGeneration || _armState != ArmState.Idle)
+            return;
+        }
+        try
+        {
+          Send(new JObject { ["command"] = "disarm" });
+        }
+        catch (Exception exception)
+        {
+          Main.Instance?.Log("[Microphone] macOS helper disarm failed. error=" + exception.Message);
+        }
+        finally
+        {
+          DeleteTemp(tempPath);
+        }
+      })
+    )
     {
+      DeleteTemp(tempPath);
+    }
+  }
+
+  private bool QueueCommand(Action command)
+  {
+    if (_disposed || _commands.IsAddingCompleted)
+      return false;
+    try
+    {
+      _commands.Add(command);
+      return true;
+    }
+    catch (InvalidOperationException)
+    {
+      return false;
+    }
+  }
+
+  private void ProcessCommands()
+  {
+    try
+    {
+      foreach (Action command in _commands.GetConsumingEnumerable())
+      {
+        try
+        {
+          command();
+        }
+        catch (Exception exception)
+        {
+          Main.Instance?.Log("[Microphone] macOS helper command failed. error=" + exception.Message);
+        }
+      }
+    }
+    finally
+    {
+      lock (_transportGate)
+        ResetConnection();
+    }
+  }
+
+  private void RefreshDevices()
+  {
+    try
+    {
+      JObject response = Send(new JObject { ["command"] = "devices" });
+      var result = new List<MicrophoneDeviceInfo>();
+      foreach (JToken item in response["devices"] ?? new JArray())
+      {
+        result.Add(
+          new MicrophoneDeviceInfo
+          {
+            Id = (string)item["id"],
+            Name = (string)item["name"],
+            MinFrequency = (int?)item["minFrequency"] ?? 48000,
+            MaxFrequency = (int?)item["maxFrequency"] ?? 48000,
+          }
+        );
+      }
       lock (_stateGate)
       {
-        if (generation != _armGeneration || _armState != ArmState.Idle)
-          return;
+        _cachedDevices.Clear();
+        _cachedDevices.AddRange(result);
       }
-      try
-      {
-        Send(new JObject { ["command"] = "disarm" });
-      }
-      catch (Exception exception)
-      {
-        Main.Instance?.Log("[Microphone] macOS helper disarm failed. error=" + exception.Message);
-      }
-    });
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] macOS device refresh failed. error=" + exception.Message);
+    }
+    finally
+    {
+      lock (_stateGate)
+        _deviceRefreshQueued = false;
+    }
   }
 
   private JObject Send(JObject command)
@@ -303,6 +438,8 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
   private void EnsureConnection()
   {
+    if (_disposed)
+      throw new ObjectDisposedException(nameof(MacOsMicrophoneCaptureBackend));
     if (_client != null)
       return;
 
@@ -413,14 +550,26 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     _client = null;
   }
 
-  private void DeleteTemp()
+  private static void DeleteTemp(string path)
   {
     try
     {
-      if (!string.IsNullOrEmpty(_tempPath) && File.Exists(_tempPath))
-        File.Delete(_tempPath);
+      if (!string.IsNullOrEmpty(path) && File.Exists(path))
+        File.Delete(path);
     }
     catch { }
+  }
+
+  private sealed class PendingRun
+  {
+    public readonly string RunId;
+    public readonly string TempPath;
+    public bool BeginSucceeded;
+    public PendingRun(string runId, string tempPath)
+    {
+      RunId = runId;
+      TempPath = tempPath;
+    }
   }
 
   private enum ArmState

@@ -11,11 +11,11 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 {
   private const int DriftThresholdMilliseconds = 50;
 
-  private readonly object _streamGate = new object();
+  private readonly object _readerGate = new object();
   private readonly StoredMicrophoneRecording _recording;
   private readonly Pcm16WaveInfo _wave;
   private readonly Pcm16Limiter _limiter;
-  private readonly FileStream _stream;
+  private readonly Pcm16PrefetchBuffer _prefetch;
   private readonly GameObject _gameObject;
   private readonly AudioSource _source;
   private readonly AudioClip _clip;
@@ -45,10 +45,17 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     if (wave.FrameCount > int.MaxValue)
       throw new InvalidDataException("The microphone recording is too long for Unity audio playback.");
 
-    _stream = new FileStream(recording.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
     AudioSettings.GetDSPBufferSize(out int dspBufferFrames, out _);
     int bufferSamples = Math.Max(8192, checked(Math.Max(1, dspBufferFrames) * wave.Channels));
     _readBuffer = new byte[checked(bufferSamples * 2)];
+    int prefetchFrames = Math.Max(checked(Math.Max(1, dspBufferFrames) * 8), Math.Max(1, wave.SampleRate / 2));
+    int prefetchBytes = Math.Max(checked(prefetchFrames * wave.Channels * 2), checked(_readBuffer.Length * 4));
+    _prefetch = new Pcm16PrefetchBuffer(
+      new FileStream(recording.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read),
+      wave.DataOffset,
+      wave.DataLength,
+      prefetchBytes
+    );
     _driftThresholdFrames = Math.Max(1, wave.SampleRate * DriftThresholdMilliseconds / 1000);
 
     try
@@ -86,7 +93,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
     catch
     {
-      _stream.Dispose();
+      _prefetch?.Dispose();
       if (_gameObject != null)
         UnityEngine.Object.Destroy(_gameObject);
       DeletePlaybackFile();
@@ -223,9 +230,12 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
   public void Dispose()
   {
-    if (_disposed)
-      return;
-    _disposed = true;
+    lock (_readerGate)
+    {
+      if (_disposed)
+        return;
+      _disposed = true;
+    }
 
     try
     {
@@ -234,8 +244,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
     catch { }
 
-    lock (_streamGate)
-      _stream.Dispose();
+    _prefetch.Dispose();
     if (_clip != null)
       UnityEngine.Object.Destroy(_clip);
     if (_gameObject != null)
@@ -285,11 +294,14 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
   private void ReadSamples(float[] data)
   {
-    Array.Clear(data, 0, data.Length);
-    lock (_streamGate)
+    int outputOffset = 0;
+    lock (_readerGate)
     {
       if (_disposed || _failed)
+      {
+        Array.Clear(data, 0, data.Length);
         return;
+      }
 
       try
       {
@@ -297,7 +309,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         long remainingSamples = (_wave.FrameCount - _readerFrame) * channelCount;
         int requestedSamples = (int)Math.Min(data.Length, remainingSamples);
         requestedSamples -= requestedSamples % channelCount;
-        int outputOffset = 0;
 
         while (outputOffset < requestedSamples)
         {
@@ -307,9 +318,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
             break;
 
           int requestedBytes = chunkSamples * 2;
-          int bytesRead = ReadFully(_readBuffer, requestedBytes);
+          int bytesRead = _prefetch.Read(_readBuffer, 0, requestedBytes, channelCount * 2);
           int samplesRead = bytesRead / 2;
-          samplesRead -= samplesRead % channelCount;
           int framesRead = samplesRead / channelCount;
           float requestedGain = _gain;
           for (int frame = 0; frame < framesRead; frame++)
@@ -328,38 +338,37 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           outputOffset += samplesRead;
           _readerFrame += framesRead;
           if (samplesRead < chunkSamples)
+          {
+            int skippedFrames = (chunkSamples - samplesRead) / channelCount;
+            _readerFrame += skippedFrames;
+            _limiter.Reset();
+            _prefetch.Seek(_readerFrame * channelCount * 2L);
             break;
+          }
         }
+
+        if (_prefetch.Failure != null)
+          throw _prefetch.Failure;
       }
       catch
       {
         _failed = true;
       }
-    }
-  }
 
-  private int ReadFully(byte[] buffer, int count)
-  {
-    int total = 0;
-    while (total < count)
-    {
-      int read = _stream.Read(buffer, total, count - total);
-      if (read <= 0)
-        break;
-      total += read;
+      if (outputOffset < data.Length)
+        Array.Clear(data, outputOffset, data.Length - outputOffset);
     }
-    return total;
   }
 
   private void SetReaderPosition(int frame)
   {
-    lock (_streamGate)
+    lock (_readerGate)
     {
       if (_disposed)
         return;
       _readerFrame = Math.Max(0, Math.Min(frame, checked((int)_wave.FrameCount)));
       _limiter.Reset();
-      _stream.Position = _wave.DataOffset + _readerFrame * _wave.Channels * 2L;
+      _prefetch.Seek(_readerFrame * _wave.Channels * 2L);
     }
   }
 

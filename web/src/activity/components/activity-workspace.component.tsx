@@ -10,8 +10,9 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useStableCallback } from "../../hooks/use-stable-callback.hook";
 import {
   Tooltip,
   TooltipContent,
@@ -21,9 +22,9 @@ import {
 import { cn } from "../../ui/ui-class.utils";
 import type { ActivityChart, ActivityRun, ReplayStatus, RunMarker } from "../activity.model";
 import { EmbeddedChart, type EmbeddedChartHandle } from "../chart/embedded-chart.component";
-import { runsForMarker } from "../lib/activity-data.utils";
 import { formatTimeWithOffsetParts } from "../lib/activity-date.utils";
 import { translatedDomainError } from "../lib/localized-error";
+import { calculateVirtualRunRange, type VirtualRunRange } from "../lib/run-list-virtualization";
 import { formatXAccuracy } from "../lib/x-accuracy.format";
 import { RunActionsMenu } from "./run-actions-menu.component";
 import { RunDifficultyIcon } from "./run-difficulty-icon.component";
@@ -38,6 +39,9 @@ type PendingRunSortLayout = {
 };
 
 const runSortOptions: RunSortKey[] = ["progress", "time", "pitch", "accuracy"];
+const runRowGap = 8;
+const estimatedRunRowStride = 188;
+const runRowOverscan = 4;
 
 export function ActivityWorkspace({
   chartAvailable,
@@ -84,16 +88,27 @@ export function ActivityWorkspace({
 }) {
   const { t } = useTranslation("activity");
   const chartRef = useRef<EmbeddedChartHandle>(null);
+  const runScrollRef = useRef<HTMLDivElement>(null);
   const runListRef = useRef<HTMLDivElement>(null);
+  const runRowResizeObserverRef = useRef<ResizeObserver | null>(null);
   const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
   const [runSort, setRunSort] = useState<RunSortKey>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [runRowStride, setRunRowStride] = useState(estimatedRunRowStride);
+  const [visibleRunRange, setVisibleRunRange] = useState<VirtualRunRange>({ start: 0, end: 0 });
+  const selectRun = useStableCallback(onSelectRun);
+  const playReplay = useStableCallback(onPlayReplay);
+  const deleteRun = useStableCallback(onDeleteRun);
+  const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
+  const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
-    if (!runList) return;
+    const scroller = runScrollRef.current;
+    if (!runList || !scroller) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
     const positions = new Map<string, DOMRect>();
-    for (const element of runList.querySelectorAll<HTMLElement>("[data-run-id]")) {
+    for (const element of visibleRunElements(runList, scroller, runRowStride)) {
       const runId = element.dataset.runId;
       if (!runId) continue;
       for (const animation of element.getAnimations()) {
@@ -104,9 +119,9 @@ export function ActivityWorkspace({
 
     pendingRunSortLayoutRef.current = {
       positions,
-      scrollTop: runList.parentElement?.scrollTop ?? 0,
+      scrollTop: scroller.scrollTop,
     };
-  }, []);
+  }, [runRowStride]);
   const changeRunSort = useCallback(
     (nextSort: RunSortKey) => {
       if (nextSort === runSort) return;
@@ -132,8 +147,73 @@ export function ActivityWorkspace({
       onSelectMarker(markers.find((marker) => marker.floorIndex === floor) ?? null),
     [markers, onSelectMarker],
   );
-  const selectedRuns = runsForMarker(runs, selectedMarker);
-  const sortedRuns = sortRuns(selectedRuns, runSort, sortDirection);
+  const selectedFloor = selectedMarker?.floorIndex ?? null;
+  const hasSelectedMarker = selectedMarker !== null;
+  const selectedRuns = useMemo(
+    () => (selectedFloor === null ? [] : runs.filter((run) => run.StartTile === selectedFloor)),
+    [runs, selectedFloor],
+  );
+  const sortedRuns = useMemo(
+    () => sortRuns(selectedRuns, runSort, sortDirection),
+    [selectedRuns, runSort, sortDirection],
+  );
+  const renderedRunRange =
+    visibleRunRange.end > visibleRunRange.start && visibleRunRange.start < sortedRuns.length
+      ? {
+          start: visibleRunRange.start,
+          end: Math.min(visibleRunRange.end, sortedRuns.length),
+        }
+      : calculateVirtualRunRange(sortedRuns.length, 0, 0, runRowStride, runRowOverscan);
+  const measureRunRow = useCallback((element: HTMLDivElement | null) => {
+    runRowResizeObserverRef.current?.disconnect();
+    runRowResizeObserverRef.current = null;
+    if (!element) return;
+
+    const updateStride = () => {
+      const nextStride = element.getBoundingClientRect().height + runRowGap;
+      if (nextStride > runRowGap) {
+        setRunRowStride((current) => (Math.abs(current - nextStride) < 0.5 ? current : nextStride));
+      }
+    };
+    updateStride();
+
+    const observer = new ResizeObserver(updateStride);
+    observer.observe(element);
+    runRowResizeObserverRef.current = observer;
+  }, []);
+  useEffect(() => () => runRowResizeObserverRef.current?.disconnect(), []);
+  useLayoutEffect(() => {
+    if (!hasSelectedMarker) return;
+    const scroller = runScrollRef.current;
+    if (!scroller) return;
+
+    let frame = 0;
+    const updateRange = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const next = calculateVirtualRunRange(
+          sortedRuns.length,
+          scroller.scrollTop,
+          scroller.clientHeight,
+          runRowStride,
+          runRowOverscan,
+        );
+        setVisibleRunRange((current) =>
+          current.start === next.start && current.end === next.end ? current : next,
+        );
+      });
+    };
+
+    updateRange();
+    scroller.addEventListener("scroll", updateRange, { passive: true });
+    const resizeObserver = new ResizeObserver(updateRange);
+    resizeObserver.observe(scroller);
+    return () => {
+      cancelAnimationFrame(frame);
+      scroller.removeEventListener("scroll", updateRange);
+      resizeObserver.disconnect();
+    };
+  }, [hasSelectedMarker, runRowStride, sortedRuns.length]);
   useLayoutEffect(() => {
     void runSort;
     void sortDirection;
@@ -141,11 +221,12 @@ export function ActivityWorkspace({
     const pendingLayout = pendingRunSortLayoutRef.current;
     pendingRunSortLayoutRef.current = null;
     const runList = runListRef.current;
-    if (!pendingLayout || !runList) return;
+    const scroller = runScrollRef.current;
+    if (!pendingLayout || !runList || !scroller) return;
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    const scrollDelta = (runList.parentElement?.scrollTop ?? 0) - pendingLayout.scrollTop;
-    for (const element of runList.querySelectorAll<HTMLElement>("[data-run-id]")) {
+    const scrollDelta = scroller.scrollTop - pendingLayout.scrollTop;
+    for (const element of visibleRunElements(runList, scroller, runRowStride)) {
       const runId = element.dataset.runId;
       if (!runId) continue;
       const previousPosition = pendingLayout.positions.get(runId);
@@ -162,7 +243,7 @@ export function ActivityWorkspace({
       );
       animation.id = "run-sort";
     }
-  }, [runSort, sortDirection]);
+  }, [runRowStride, runSort, sortDirection]);
   if (error) return <StatePanel title={t("chart.loadError")} body={error} />;
   if (!chartAvailable)
     return <StatePanel title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
@@ -239,30 +320,48 @@ export function ActivityWorkspace({
                 </div>
               </fieldset>
             </div>
-            <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1">
+            <div
+              ref={runScrollRef}
+              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1"
+            >
               <TooltipProvider>
-                <div ref={runListRef} className="space-y-2">
-                  {sortedRuns.map((run) => {
-                    const active = selectedRun?.Id === run.Id;
-                    return (
-                      <RunCard
-                        key={run.Id}
-                        run={run}
-                        active={active}
-                        readOnly={readOnly}
-                        timeZone={timeZone}
-                        replayStatus={replayStatus}
-                        replayPendingRunId={replayPendingRunId}
-                        replayError={replayError}
-                        replayErrorRunId={replayErrorRunId}
-                        onSelect={() => onSelectRun(run)}
-                        onPlayReplay={onPlayReplay}
-                        onDeleteRun={onDeleteRun}
-                        onKeepMicrophoneRecording={onKeepMicrophoneRecording}
-                        onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
-                      />
-                    );
-                  })}
+                <div
+                  ref={runListRef}
+                  data-run-count={sortedRuns.length}
+                  className="relative"
+                  style={{ height: Math.max(0, sortedRuns.length * runRowStride - runRowGap) }}
+                >
+                  {sortedRuns
+                    .slice(renderedRunRange.start, renderedRunRange.end)
+                    .map((run, offset) => {
+                      const index = renderedRunRange.start + offset;
+                      const active = selectedRun?.Id === run.Id;
+                      return (
+                        <div
+                          key={run.Id}
+                          ref={offset === 0 ? measureRunRow : undefined}
+                          data-run-index={index}
+                          className="absolute inset-x-0"
+                          style={{ transform: `translateY(${index * runRowStride}px)` }}
+                        >
+                          <RunCard
+                            run={run}
+                            active={active}
+                            readOnly={readOnly}
+                            timeZone={timeZone}
+                            replayStatus={replayStatus}
+                            replayPendingRunId={replayPendingRunId}
+                            replayError={replayError}
+                            replayErrorRunId={replayErrorRunId}
+                            onSelect={selectRun}
+                            onPlayReplay={playReplay}
+                            onDeleteRun={deleteRun}
+                            onKeepMicrophoneRecording={keepMicrophoneRecording}
+                            onDeleteMicrophoneRecording={deleteMicrophoneRecording}
+                          />
+                        </div>
+                      );
+                    })}
                 </div>
               </TooltipProvider>
             </div>
@@ -273,7 +372,7 @@ export function ActivityWorkspace({
   );
 }
 
-function RunCard({
+const RunCard = memo(function RunCard({
   run,
   active,
   readOnly,
@@ -296,7 +395,7 @@ function RunCard({
   replayPendingRunId: string | null;
   replayError: string;
   replayErrorRunId: string | null;
-  onSelect: () => void;
+  onSelect: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -350,7 +449,7 @@ function RunCard({
         type="button"
         aria-label={t("run.select", { runIndex: run.RunIndex })}
         aria-pressed={active}
-        onClick={onSelect}
+        onClick={() => onSelect(run)}
         className="block w-full rounded-b-md p-3 pt-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <RunCardContent run={run} timeZone={timeZone} />
@@ -358,7 +457,7 @@ function RunCard({
       </button>
     </div>
   );
-}
+});
 
 function MicrophoneRecordingIndicator() {
   const { t } = useTranslation("activity");
@@ -599,6 +698,31 @@ function sortRuns(runs: ActivityRun[], sort: RunSortKey, direction: SortDirectio
       (direction === "asc" ? left.RunIndex - right.RunIndex : right.RunIndex - left.RunIndex)
     );
   });
+}
+
+function visibleRunElements(
+  runList: HTMLDivElement,
+  scroller: HTMLDivElement,
+  runRowStride: number,
+): HTMLElement[] {
+  const itemCount = Number(runList.dataset.runCount) || 0;
+  const range = calculateVirtualRunRange(
+    itemCount,
+    scroller.scrollTop,
+    scroller.clientHeight,
+    runRowStride,
+    0,
+  );
+  const elements: HTMLElement[] = [];
+
+  for (const row of runList.querySelectorAll<HTMLElement>("[data-run-index]")) {
+    const index = Number(row.dataset.runIndex);
+    if (!Number.isInteger(index) || index < range.start || index >= range.end) continue;
+    const element = row.querySelector<HTMLElement>("[data-run-id]");
+    if (element) elements.push(element);
+  }
+
+  return elements;
 }
 
 function runSortValue(run: ActivityRun, sort: RunSortKey) {

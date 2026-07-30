@@ -67,6 +67,21 @@ describe("activity IPC contract", () => {
     expect(calls).toEqual(["health.get"]);
   });
 
+  test("loads one bounded app-session page", async () => {
+    const calls: Array<{ method: string; params: unknown }> = [];
+    const gateway = createActivityGateway({
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        return [];
+      },
+    } as never);
+
+    expect(await gateway.listAppSessions(40, 20)).toEqual([]);
+    expect(calls).toEqual([
+      { method: "activity.app-sessions.list", params: { offset: 40, limit: 20 } },
+    ]);
+  });
+
   test("paging consumes raw arrays and continues past 1000 until a short page", async () => {
     const source = Array.from({ length: 1_237 }, (_, index) => index);
     const offsets: number[] = [];

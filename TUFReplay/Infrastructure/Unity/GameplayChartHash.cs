@@ -9,14 +9,21 @@ namespace TUFReplay.Infrastructure.Unity;
 
 public static class GameplayChartHash
 {
-  public const int Version = 2;
+  public const int Version = 3;
   public const int Version1Size = 16;
   public const int Version2Size = 32;
+  public const int Version3Size = 32;
 
   public static bool TryComputeCurrent(out byte[] hash, out string error)
   {
     LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
     return TryCompute(levelData, out hash, out error);
+  }
+
+  public static bool TryComputeCurrent(int hashVersion, out byte[] hash, out string error)
+  {
+    LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
+    return TryCompute(levelData, hashVersion, out hash, out error);
   }
 
   public static bool TryLoadCustomLevel(string levelPath, out LevelData levelData, out byte[] hash, out string error)
@@ -117,6 +124,31 @@ public static class GameplayChartHash
 
   public static bool TryCompute(LevelData levelData, int hashVersion, out byte[] hash, out string error)
   {
+    return TryCompute(levelData, hashVersion, null, null, null, out hash, out error);
+  }
+
+  public static bool TryComputeVersion2(
+    LevelData levelData,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume,
+    out byte[] hash,
+    out string error
+  )
+  {
+    return TryCompute(levelData, 2, pitch, hitsound, hitsoundVolume, out hash, out error);
+  }
+
+  private static bool TryCompute(
+    LevelData levelData,
+    int hashVersion,
+    int? pitch,
+    byte? hitsound,
+    int? hitsoundVolume,
+    out byte[] hash,
+    out string error
+  )
+  {
     hash = null;
     error = null;
     if (levelData == null)
@@ -131,15 +163,31 @@ public static class GameplayChartHash
       if (hashVersion == 2)
       {
         writer.WriteFormatVersion(2);
-        writer.WriteGameplaySettings(
+        writer.WriteGameplaySettingsV2(
           levelData.version,
           levelData.songFilename,
           levelData.bpm,
           levelData.volume,
           levelData.offset,
-          levelData.pitch,
-          (byte)levelData.hitsound,
-          levelData.hitsoundVolume,
+          pitch ?? levelData.pitch,
+          hitsound ?? (byte)levelData.hitsound,
+          hitsoundVolume ?? levelData.hitsoundVolume,
+          levelData.separateCountdownTime,
+          levelData.countdownTicks,
+          Convert.ToSingle(levelData.levelSettings["speedTrialAim"]),
+          levelData.levelSettings.GetBool("legacySpriteTiles")
+        );
+        writer.WriteChartKind(levelData.isOldLevel);
+      }
+      else if (hashVersion == 3)
+      {
+        writer.WriteFormatVersion(3);
+        writer.WriteGameplaySettingsV3(
+          levelData.version,
+          levelData.songFilename,
+          levelData.bpm,
+          levelData.volume,
+          levelData.offset,
           levelData.separateCountdownTime,
           levelData.countdownTicks,
           Convert.ToSingle(levelData.levelSettings["speedTrialAim"]),
@@ -184,16 +232,13 @@ public static class GameplayChartHash
     try
     {
       using var writer = new GameplayChartHashCanonicalWriter();
-      writer.WriteFormatVersion(1);
-      writer.WriteGameplaySettings(
+      writer.WriteFormatVersion(2);
+      writer.WriteGameplaySettingsV3(
         levelData.version,
         levelData.songFilename,
         levelData.bpm,
         levelData.volume,
         levelData.offset,
-        levelData.pitch,
-        (byte)levelData.hitsound,
-        levelData.hitsoundVolume,
         levelData.separateCountdownTime,
         levelData.countdownTicks,
         Convert.ToSingle(levelData.levelSettings["speedTrialAim"]),
@@ -264,7 +309,9 @@ public static class GameplayChartHash
 
   public static bool IsSupported(int? version, byte[] hash)
   {
-    return (version == 1 && hash?.Length == Version1Size) || (version == 2 && hash?.Length == Version2Size);
+    return (version == 1 && hash?.Length == Version1Size)
+      || (version == 2 && hash?.Length == Version2Size)
+      || (version == 3 && hash?.Length == Version3Size);
   }
 
   private static void WriteGameplayEvent(GameplayChartHashCanonicalWriter writer, LevelEvent levelEvent)
