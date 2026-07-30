@@ -34,6 +34,8 @@ internal static class Program
       TestCalibrationSettings(root);
       TestCalibrationWaveforms(root);
       TestGameplayChartHashVersioning();
+      TestGameplayHashIdentityUpgrade(root);
+      TestGameplayHashV3Migration(root);
       TestSchemaMigrationAndBlob(root);
       TestAppSessionTransientLockRecovery(root);
       TestBrokenRenamedForeignKeyRepair(root);
@@ -456,16 +458,9 @@ internal static class Program
 
     StoredMicrophoneRecording recording = PlaybackRecording(path, frameCount);
     Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
-    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(
-      recording,
-      wave,
-      System.Threading.CancellationToken.None
-    );
+    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(recording, wave, System.Threading.CancellationToken.None);
     Assert(envelope.BinCount == 500, "Limiter envelope did not use one-millisecond bins.");
-    Assert(
-      Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f,
-      "Limiter attenuated a quiet section."
-    );
+    Assert(Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f, "Limiter attenuated a quiet section.");
     Assert(
       envelope.RequiredLimiterGain(transientFrame - sampleRate * 4 / 1000, 10f) < 1f,
       "Limiter look-ahead did not anticipate a loud transient."
@@ -491,10 +486,7 @@ internal static class Program
     float resetPeakGain = limiter.NextEffectiveGain(transientFrame, 10f);
     Assert(Math.Abs(resetPeakGain - limitedGain) < 0.0001f, "Limiter reset did not seek by absolute PCM frame.");
     limiter.Reset();
-    Assert(
-      Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f,
-      "A safe gain change was unnecessarily limited."
-    );
+    Assert(Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f, "A safe gain change was unnecessarily limited.");
 
     string stereoPath = Path.Combine(root, "playback-limiter-stereo.wav");
     short[] stereoSamples = new short[32];
@@ -577,8 +569,7 @@ internal static class Program
     TUFReplaySetting migratedOffset = TUFReplaySetting.Load(offsetPath);
     Assert(migratedOffset.MicrophoneOffsetMs == 80, "Legacy microphone offset sign was not migrated.");
     Assert(
-      migratedOffset.MicrophoneOffsetConventionVersion
-        == TUFReplaySetting.CurrentMicrophoneOffsetConventionVersion,
+      migratedOffset.MicrophoneOffsetConventionVersion == TUFReplaySetting.CurrentMicrophoneOffsetConventionVersion,
       "Microphone offset convention version was not migrated."
     );
     migratedOffset.Save(offsetPath);
@@ -854,18 +845,39 @@ internal static class Program
       v1Before = writer.ComputeMd5Hash();
     }
 
-    byte[] v2Before = ComputeVersion2Hash(100f, "song.ogg");
-    Assert(v1Before.Length == 16 && v2Before.Length == 32, "Gameplay hash sizes are incorrect.");
+    byte[] v2Before = ComputeVersion2Hash(100f, "song.ogg", 100, 0, 100);
+    byte[] v3Before = ComputeVersion3Hash(100f, "song.ogg", 100, 0, 100);
+    Assert(
+      v1Before.Length == 16 && v2Before.Length == 32 && v3Before.Length == 32,
+      "Gameplay hash sizes are incorrect."
+    );
 
-    byte[] v2After = ComputeVersion2Hash(101f, "song.ogg");
+    byte[] v2After = ComputeVersion2Hash(101f, "song.ogg", 100, 0, 100);
     Assert(GameplayChartHash.Equals(v1Before, v1Before), "Legacy v1 hash comparison failed.");
     Assert(!GameplayChartHash.Equals(v2Before, v2After), "Gameplay BPM did not change the v2 hash.");
     Assert(
-      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "other.ogg")),
+      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "other.ogg", 100, 0, 100)),
       "Gameplay audio did not change the v2 hash."
     );
+    Assert(
+      !GameplayChartHash.Equals(v2Before, ComputeVersion2Hash(100f, "song.ogg", 70, 1, 40)),
+      "Legacy v2 playback presentation fields unexpectedly stopped affecting its hash."
+    );
+    Assert(
+      !GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(101f, "song.ogg", 100, 0, 100)),
+      "Gameplay BPM did not change the v3 hash."
+    );
+    Assert(
+      !GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(100f, "other.ogg", 100, 0, 100)),
+      "Gameplay audio did not change the v3 hash."
+    );
+    Assert(
+      GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(100f, "song.ogg", 70, 1, 40)),
+      "Pitch or hit-sound presentation changed the v3 chart identity."
+    );
     Assert(GameplayChartHash.IsSupported(1, v1Before), "Legacy v1 hash is not supported.");
-    Assert(GameplayChartHash.IsSupported(2, v2Before), "Current v2 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(2, v2Before), "Legacy v2 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(3, v3Before), "Current v3 hash is not supported.");
   }
 
   private static void TestAppSessionTransientLockRecovery(string root)
@@ -895,6 +907,230 @@ internal static class Program
     Assert(tracker.AppSessionId != null, "Recovered app session did not publish its ID.");
     Assert(CountRows("app_sessions", "id='" + tracker.AppSessionId + "'") == 1, "Recovered app session was not saved.");
     tracker.StopAppSession();
+  }
+
+  private static void TestGameplayHashIdentityUpgrade(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "gameplay-hash-identity-upgrade.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "hash-upgrade-app",
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+
+    byte[] legacyHash = new byte[GameplayChartHash.Version2Size];
+    legacyHash[0] = 2;
+    var legacyLevel = new LevelRecord
+    {
+      Id = "legacy-hash-level",
+      SourceKind = LevelSourceKind.Local,
+      LevelPath = Path.Combine(root, "hash-upgrade.adofai"),
+      GameplayHash = legacyHash,
+      GameplayHashVersion = 2,
+      FirstSeenAtUtc = "2026-01-01T00:00:00Z",
+      LastSeenAtUtc = "2026-01-01T00:00:00Z",
+    };
+    string legacyLevelId = LevelRepository.ResolveOrCreate(legacyLevel);
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = "legacy-hash-session",
+        LevelId = legacyLevelId,
+        AppSessionId = "hash-upgrade-app",
+        OpenedAtUtc = "2026-01-01T00:00:00Z",
+      }
+    );
+
+    byte[] currentHash = new byte[GameplayChartHash.Version3Size];
+    currentHash[0] = 3;
+    var currentLevel = new LevelRecord
+    {
+      Id = "current-hash-level",
+      SourceKind = LevelSourceKind.Local,
+      LevelPath = legacyLevel.LevelPath,
+      GameplayHash = currentHash,
+      GameplayHashVersion = 3,
+      FirstSeenAtUtc = "2026-01-01T00:01:00Z",
+      LastSeenAtUtc = "2026-01-01T00:01:00Z",
+    };
+    string currentLevelId = LevelRepository.ResolveOrCreate(currentLevel, legacyHash, 2);
+
+    Assert(currentLevelId != legacyLevelId, "Gameplay hash upgrade kept the obsolete v2 level identity.");
+    Assert(
+      LevelSessionRepository.Get("legacy-hash-session")?.LevelId == currentLevelId,
+      "Gameplay hash upgrade did not repoint the legacy level session."
+    );
+    Assert(!LevelRepository.Exists(legacyLevelId), "Gameplay hash upgrade left an orphaned v2 level.");
+
+    byte[] alternateLegacyHash = new byte[GameplayChartHash.Version2Size];
+    alternateLegacyHash[0] = 4;
+    legacyLevel.Id = "alternate-legacy-hash-level";
+    legacyLevel.GameplayHash = alternateLegacyHash;
+    string alternateLegacyLevelId = LevelRepository.ResolveOrCreate(legacyLevel);
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = "alternate-legacy-hash-session",
+        LevelId = alternateLegacyLevelId,
+        AppSessionId = "hash-upgrade-app",
+        OpenedAtUtc = "2026-01-01T00:02:00Z",
+      }
+    );
+
+    LevelRepository.MergeLegacyIdentity(currentLevelId, alternateLegacyHash, 2);
+    Assert(
+      LevelSessionRepository.Get("alternate-legacy-hash-session")?.LevelId == currentLevelId,
+      "Same-session gameplay hash upgrade did not merge an alternate v2 identity."
+    );
+    Assert(
+      !LevelRepository.Exists(alternateLegacyLevelId),
+      "Same-session gameplay hash upgrade left an orphaned alternate v2 level."
+    );
+  }
+
+  private static void TestGameplayHashV3Migration(string root)
+  {
+    string chartPath = Path.Combine(root, "gameplay-hash-v3-migration.adofai");
+    File.WriteAllText(chartPath, "{}");
+    byte[] currentHash = ComputeVersion3Hash(130f, "song.ogg", 100, 0, 100);
+    byte[] version2Pitch100 = ComputeVersion2Hash(130f, "song.ogg", 100, 0, 100);
+    byte[] version2Pitch150 = ComputeVersion2Hash(130f, "song.ogg", 150, 0, 100);
+    byte[] version2Pitch70Quiet = ComputeVersion2Hash(130f, "song.ogg", 70, 0, 40);
+    byte[] version1Hash;
+    using (var writer = new GameplayChartHashCanonicalWriter())
+    {
+      writer.WriteAngles(new[] { 0f, 90f, 180f });
+      version1Hash = writer.ComputeMd5Hash();
+    }
+
+    SetDatabasePath(Path.Combine(root, "gameplay-hash-v3-migration.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+    AppSessionRepository.Save(
+      new AppSession
+      {
+        Id = "hash-v3-migration-app",
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        RecorderUtcOffsetMinutes = 0,
+      }
+    );
+
+    string v1Session = SaveLegacyGameplayLevel(chartPath, version1Hash, 1, 100, "beta6");
+    string v2Pitch100Session = SaveLegacyGameplayLevel(chartPath, version2Pitch100, 2, 100, "beta7-100");
+    string v2Pitch150Session = SaveLegacyGameplayLevel(chartPath, version2Pitch150, 2, 150, "beta7-150");
+    string v2QuietSession = SaveLegacyGameplayLevel(chartPath, version2Pitch70Quiet, 2, 70, "beta7-quiet");
+
+    byte[] unmatchedHash = new byte[GameplayChartHash.Version2Size];
+    unmatchedHash[0] = 0x7f;
+    string unmatchedSession = SaveLegacyGameplayLevel(chartPath, unmatchedHash, 2, 120, "unmatched");
+    string unmatchedLevelId = LevelSessionRepository.Get(unmatchedSession)?.LevelId;
+
+    GameplayHashV3MigrationResult migrated = GameplayHashV3Migration.Run(
+      (_, legacyHash, _, _) => GameplayChartHash.Equals(legacyHash, unmatchedHash) ? null : currentHash
+    );
+    Assert(migrated.Scanned == 5, "Gameplay hash migration did not scan every beta6/beta7 level.");
+    Assert(migrated.Migrated == 4, "Gameplay hash migration did not merge every verified legacy level.");
+    Assert(migrated.Deferred == 1, "Gameplay hash migration did not defer the unverifiable level.");
+
+    string migratedLevelId = LevelSessionRepository.Get(v1Session)?.LevelId;
+    Assert(!string.IsNullOrWhiteSpace(migratedLevelId), "Migrated beta6 level session disappeared.");
+    Assert(
+      LevelSessionRepository.Get(v2Pitch100Session)?.LevelId == migratedLevelId
+        && LevelSessionRepository.Get(v2Pitch150Session)?.LevelId == migratedLevelId
+        && LevelSessionRepository.Get(v2QuietSession)?.LevelId == migratedLevelId,
+      "Verified beta6/beta7 pitch and hit-sound variants were not merged."
+    );
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "SELECT gameplay_hash,gameplay_hash_version FROM levels WHERE id=@id";
+      command.Parameters.AddWithValue("@id", migratedLevelId);
+      using (SqliteDataReader reader = command.ExecuteReader())
+      {
+        Assert(reader.Read(), "Merged v3 level disappeared.");
+        Assert(
+          GameplayChartHash.Equals((byte[])reader.GetValue(0), currentHash)
+            && reader.GetInt32(1) == GameplayChartHash.Version,
+          "Merged legacy levels did not receive the v3 gameplay hash."
+        );
+      }
+
+      command.Parameters["@id"].Value = unmatchedLevelId;
+      using SqliteDataReader unmatchedReader = command.ExecuteReader();
+      Assert(
+        unmatchedReader.Read()
+          && unmatchedReader.GetInt32(1) == 2
+          && LevelSessionRepository.Get(unmatchedSession)?.LevelId == unmatchedLevelId,
+        "Unverifiable beta7 data was modified instead of preserved."
+      );
+    }
+
+    GameplayHashV3MigrationResult retried = GameplayHashV3Migration.Run((_, _, _, _) => currentHash);
+    Assert(
+      retried.Scanned == 1 && retried.Skipped == 1 && retried.Migrated == 0,
+      "Unchanged deferred migration work was needlessly repeated."
+    );
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "UPDATE gameplay_hash_migration_attempts SET result='unverified' WHERE level_id=@level";
+      command.Parameters.AddWithValue("@level", unmatchedLevelId);
+      command.ExecuteNonQuery();
+    }
+    GameplayHashV3MigrationResult recovered = GameplayHashV3Migration.Run((_, _, _, _) => currentHash);
+    Assert(
+      recovered.Scanned == 1 && recovered.Migrated == 1,
+      "A beta migration row cached by the old startup timing was not retried."
+    );
+  }
+
+  private static string SaveLegacyGameplayLevel(
+    string chartPath,
+    byte[] gameplayHash,
+    int gameplayHashVersion,
+    int pitch,
+    string suffix
+  )
+  {
+    string levelId = LevelRepository.ResolveOrCreate(
+      new LevelRecord
+      {
+        SourceKind = LevelSourceKind.Local,
+        LevelPath = chartPath,
+        GameplayHash = gameplayHash,
+        GameplayHashVersion = gameplayHashVersion,
+        FirstSeenAtUtc = "2026-01-01T00:00:00Z",
+        LastSeenAtUtc = "2026-01-01T00:00:00Z",
+      }
+    );
+    string levelSessionId = "hash-v3-session-" + suffix;
+    LevelSessionRepository.Save(
+      new LevelSession
+      {
+        Id = levelSessionId,
+        LevelId = levelId,
+        AppSessionId = "hash-v3-migration-app",
+        OpenedAtUtc = "2026-01-01T00:00:00Z",
+      }
+    );
+    RunRepository.Save(
+      new RunRecord
+      {
+        Id = "hash-v3-run-" + suffix,
+        LevelSessionId = levelSessionId,
+        StartedAtUtc = "2026-01-01T00:00:00Z",
+        Result = "quit",
+        LevelPitchPercent = pitch,
+      }
+    );
+    return levelSessionId;
   }
 
   private static void TestBrokenRenamedForeignKeyRepair(string root)
@@ -928,12 +1164,10 @@ PRAGMA user_version=13;";
       verify.CommandText = "PRAGMA user_version;";
       Assert(Convert.ToInt32(verify.ExecuteScalar()) == ActivitySchema.Version, "Broken schema was not upgraded.");
 
-      verify.CommandText =
-        "SELECT \"table\" FROM pragma_foreign_key_list('level_sessions') WHERE \"from\"='level_id';";
+      verify.CommandText = "SELECT \"table\" FROM pragma_foreign_key_list('level_sessions') WHERE \"from\"='level_id';";
       Assert(Convert.ToString(verify.ExecuteScalar()) == "levels", "Level-session foreign key was not repaired.");
 
-      verify.CommandText =
-        "SELECT \"table\" FROM pragma_foreign_key_list('runs') WHERE \"from\"='level_session_id';";
+      verify.CommandText = "SELECT \"table\" FROM pragma_foreign_key_list('runs') WHERE \"from\"='level_session_id';";
       Assert(Convert.ToString(verify.ExecuteScalar()) == "level_sessions", "Run foreign key was not repaired.");
 
       verify.CommandText = "SELECT count(*) FROM levels WHERE id='logical';";
@@ -949,11 +1183,36 @@ PRAGMA user_version=13;";
     }
   }
 
-  private static byte[] ComputeVersion2Hash(float bpm, string songFilename)
+  private static byte[] ComputeVersion2Hash(
+    float bpm,
+    string songFilename,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume
+  )
   {
     using var writer = new GameplayChartHashCanonicalWriter();
     writer.WriteFormatVersion(2);
-    writer.WriteGameplaySettings(15, songFilename, bpm, 100, 0, 100, 0, 100, false, 4, 0f, false);
+    writer.WriteGameplaySettingsV2(15, songFilename, bpm, 100, 0, pitch, hitsound, hitsoundVolume, false, 4, 0f, false);
+    writer.WriteChartKind(false);
+    writer.WriteAngles(new[] { 0f, 90f, 180f });
+    return writer.ComputeSha256Hash();
+  }
+
+  private static byte[] ComputeVersion3Hash(
+    float bpm,
+    string songFilename,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume
+  )
+  {
+    _ = pitch;
+    _ = hitsound;
+    _ = hitsoundVolume;
+    using var writer = new GameplayChartHashCanonicalWriter();
+    writer.WriteFormatVersion(3);
+    writer.WriteGameplaySettingsV3(15, songFilename, bpm, 100, 0, false, 4, 0f, false);
     writer.WriteChartKind(false);
     writer.WriteAngles(new[] { 0f, 90f, 180f });
     return writer.ComputeSha256Hash();
@@ -1035,6 +1294,9 @@ INSERT INTO runs(
     Assert(reader.Read(), "Legacy level session was not migrated from v" + version + ".");
     Assert(reader.GetString(1) == "legacy.adofai" && reader.GetInt32(2) == 1, "Legacy level data changed.");
     reader.Close();
+    verify.CommandText =
+      "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='gameplay_hash_migration_attempts'";
+    Assert(Convert.ToInt32(verify.ExecuteScalar()) == 1, "Gameplay hash migration state table is missing.");
     connection.Close();
 
     SetDatabasePath(path);
@@ -1128,12 +1390,7 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
       seed.ExecuteNonQuery();
     }
 
-    List<RunRecord> firstDay = RunRepository.ListByLogicalLevel(
-      "shared-logical",
-      new List<string> { "day-a" },
-      0,
-      200
-    );
+    List<RunRecord> firstDay = RunRepository.ListByLogicalLevel("shared-logical", new List<string> { "day-a" }, 0, 200);
     Assert(firstDay.Count == 1 && firstDay[0].Id == "run-a", "Logical run query crossed day sessions.");
   }
 
@@ -1158,12 +1415,7 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
     Assert(gameplayA.LevelId != gameplayB.LevelId, "Different local paths were incorrectly merged.");
 
     LevelSession tufA = LogicalVisit("tuf-a", "/tmp/tuf-a.adofai", 77, new byte[32]);
-    LevelSession tufB = LogicalVisit(
-      "tuf-b",
-      "/tmp/tuf-b.adofai",
-      77,
-      Enumerable.Repeat((byte)9, 32).ToArray()
-    );
+    LevelSession tufB = LogicalVisit("tuf-b", "/tmp/tuf-b.adofai", 77, Enumerable.Repeat((byte)9, 32).ToArray());
     LevelSessionRepository.Save(tufA);
     LevelSessionRepository.Save(tufB);
     Assert(tufA.LevelId != tufB.LevelId, "Different TUF gameplay revisions were incorrectly merged.");
@@ -1183,12 +1435,7 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
     Assert(fileA.LevelId != fileChanged.LevelId, "Changed local gameplay revisions were incorrectly merged.");
   }
 
-  private static LevelSession LogicalVisit(
-    string id,
-    string path,
-    int? tufLevelId,
-    byte[] gameplayHash
-  )
+  private static LevelSession LogicalVisit(string id, string path, int? tufLevelId, byte[] gameplayHash)
   {
     string timestamp = "2026-01-01T00:00:00Z";
     string levelId = LevelRepository.ResolveOrCreate(
