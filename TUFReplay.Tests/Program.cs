@@ -27,6 +27,7 @@ internal static class Program
     try
     {
       NativeSqliteLoader.Initialize();
+      TestMicrophoneCaptureChunking();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
       TestPlaybackLimiter(root);
@@ -369,6 +370,38 @@ internal static class Program
     if (down)
       flags |= RecordInputFlags.Down;
     return new RecordedInput(timeUs, key, flags);
+  }
+
+  private static void TestMicrophoneCaptureChunking()
+  {
+    int chunkFrames = UnityMicrophoneCaptureBackend.CaptureChunkFrames;
+    int clipFrames = 48000 * 10;
+
+    Assert(chunkFrames == 12000, "Microphone capture chunk duration changed unexpectedly.");
+    Assert(
+      UnityMicrophoneCaptureBackend.WriterQueueCapacity > clipFrames / chunkFrames,
+      "Microphone writer queue cannot absorb a full loop-buffer backlog."
+    );
+    Assert(
+      MicrophoneCaptureChunking.AvailableFrames(clipFrames - 1000, 1000, clipFrames) == 2000,
+      "Microphone capture wraparound distance is incorrect."
+    );
+    Assert(
+      MicrophoneCaptureChunking.NextChunkFrames(chunkFrames * 8, chunkFrames, false) == chunkFrames,
+      "A capture hitch expanded the reusable read chunk."
+    );
+    Assert(
+      MicrophoneCaptureChunking.NextChunkFrames(800, chunkFrames, false) == 0,
+      "A partial live chunk was read before it was full."
+    );
+    Assert(
+      MicrophoneCaptureChunking.NextChunkFrames(800, chunkFrames, true) == 800,
+      "The final microphone tail was not drained."
+    );
+    Assert(
+      MicrophoneCaptureChunking.AdvanceCursor(clipFrames - 1000, 2000, clipFrames) == 1000,
+      "Microphone capture cursor did not wrap correctly."
+    );
   }
 
   private static void TestWavWriter(string root)
