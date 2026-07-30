@@ -96,6 +96,7 @@ export function createMockActivityGateway(): ActivityGateway {
       ProtocolVersion: 4,
       ServerVersion: 1,
     }),
+    listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
     listAllAppSessions: async (onPage) => {
       onPage?.(appSessions);
       return appSessions;
