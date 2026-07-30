@@ -47,6 +47,7 @@ internal static class Program
       TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
+      TestReplayCsvParserCompatibility();
       TestReplayNoFailPolicy();
       TestNativeInputUmmWindowInterlock();
       TestWindowsSkyHookRawKeyPreservation();
@@ -78,11 +79,37 @@ internal static class Program
   private static void TestReplayInputStableOrder()
   {
     byte[] csv = System.Text.Encoding.UTF8.GetBytes("100,9,3\n100,8,3\n100,9,2\n99,7,3\n");
-    List<RecordedInput> inputs = ReplayInputParser.Parse(csv);
+    List<RecordedInput> inputs = ReplayInputParser.Parse(csv, out long maxTimeUs);
 
     Assert(inputs.Count == 4, "Replay input parser dropped valid events.");
+    Assert(maxTimeUs == 100, "Replay input parser did not report the maximum timestamp.");
     Assert(inputs[0].Key == 7, "Replay input parser did not sort timestamps.");
     Assert(inputs[1].Key == 9 && inputs[2].Key == 8 && inputs[3].Key == 9, "Same-time input order changed.");
+  }
+
+  private static void TestReplayCsvParserCompatibility()
+  {
+    byte[] inputCsv = System.Text.Encoding.UTF8.GetBytes(
+      "\r\n 200 , 11 , 3 \r\ninvalid\n100,7,2\r\n200,12,1\n"
+    );
+    List<RecordedInput> inputs = ReplayInputParser.Parse(inputCsv);
+
+    Assert(inputs.Count == 3, "Replay input parser did not ignore malformed or empty lines.");
+    Assert(inputs[0].TimeUs == 100 && inputs[0].Key == 7, "Replay input parser changed legacy sorting.");
+    Assert(inputs[1].Key == 11 && inputs[2].Key == 12, "Replay input parser changed stable tie ordering.");
+
+    byte[] hitCsv = System.Text.Encoding.UTF8.GetBytes(
+      "\n1,90.5,1.25,1,False,TRUE,-2.5,3E2,0,true,-4\r\nmalformed\r\n"
+    );
+    List<ReplayHitContext> contexts = ReplayHitContextParser.Parse(hitCsv);
+
+    Assert(contexts.Count == 1, "Replay hit context parser did not ignore malformed or empty lines.");
+    ReplayHitContext context = contexts[0];
+    Assert(context.CurrentFloorID == 1 && context.CurrAngle == 90.5, "Replay hit context numbers changed.");
+    Assert(context.OverloadCounter == 1.25f && context.TargetExitAngle == 300, "Replay float parsing changed.");
+    Assert(context.NoFailHit && !context.IsAuto && context.NextFloorAuto, "Replay boolean parsing changed.");
+    Assert(!context.MidspinInfiniteMargin && context.RDCAuto, "Replay boolean flag parsing changed.");
+    Assert(context.CurFreeRoamSection == -4, "Replay signed integer parsing changed.");
   }
 
   private static void TestReplayNoFailPolicy()

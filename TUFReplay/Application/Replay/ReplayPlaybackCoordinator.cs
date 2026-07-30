@@ -125,11 +125,10 @@ public static class ReplayPlaybackCoordinator
         ReplayMetadata meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
         if (meta?.gameplayStartSongPosition == null)
           throw new InvalidDataException("The calibration replay timing metadata is missing.");
-        List<RecordedInput> inputs = ReplayInputParser.Parse(run.InputCsv);
+        List<RecordedInput> inputs = ReplayInputParser.Parse(run.InputCsv, out long fallbackTerminal);
         List<ReplayHitContext> hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
         if (hitContexts.Count == 0)
           throw new InvalidDataException("The calibration replay has no hit contexts.");
-        long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
         long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
         var pending = new PendingReplay(operationId, run, levelPath, meta, inputs, hitContexts, terminalTimeUs)
         {
