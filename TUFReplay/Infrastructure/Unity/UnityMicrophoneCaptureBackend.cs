@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using TUFReplay.Application.Microphone;
 using TUFReplay.Domain.Microphone;
 using UnityEngine;
@@ -161,48 +162,57 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     }
   }
 
-  public CapturedMicrophoneRecording EndRun()
+  public Task<CapturedMicrophoneRecording> EndRunAsync()
   {
     if (_writer == null)
-      return null;
+      return Task.FromResult<CapturedMicrophoneRecording>(null);
 
     DrainAvailable(includePartialChunk: true);
     Pcm16WavWriter writer = _writer;
+    string runId = _runId;
+    string tempPath = _tempPath;
+    string deviceId = _deviceId;
+    bool failed = _failed;
     _writer = null;
-    try
+    _runId = null;
+    _tempPath = null;
+    _failed = false;
+
+    return Task.Run(() =>
     {
-      long frames = writer.Complete();
-      writer.Dispose();
-      if (_failed || frames == 0)
+      try
       {
-        DeleteTemp();
+        long frames = writer.Complete();
+        writer.Dispose();
+        if (failed || frames == 0)
+        {
+          DeleteTemp(tempPath);
+          return null;
+        }
+
+        return new CapturedMicrophoneRecording
+        {
+          RunId = runId,
+          TempPath = tempPath,
+          DeviceId = deviceId,
+          SampleRate = SampleRate,
+          Channels = 1,
+          FrameCount = frames,
+          CaptureStartOffsetUs = 0,
+        };
+      }
+      catch (Exception exception)
+      {
+        Main.Instance?.Log("[Microphone] Failed to finalize WAV. error=" + exception.Message);
+        try
+        {
+          writer.Dispose();
+        }
+        catch { }
+        DeleteTemp(tempPath);
         return null;
       }
-
-      return new CapturedMicrophoneRecording
-      {
-        RunId = _runId,
-        TempPath = _tempPath,
-        DeviceId = _deviceId,
-        SampleRate = SampleRate,
-        Channels = 1,
-        FrameCount = frames,
-        CaptureStartOffsetUs = 0,
-      };
-    }
-    catch (Exception exception)
-    {
-      Main.Instance?.Log("[Microphone] Failed to finalize WAV. error=" + exception.Message);
-      writer.Dispose();
-      DeleteTemp();
-      return null;
-    }
-    finally
-    {
-      _runId = null;
-      _tempPath = null;
-      _failed = false;
-    }
+    });
   }
 
   public void Disarm()
@@ -231,28 +241,33 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   {
     if (_writer == null)
       return;
-    try
-    {
-      _writer.Dispose();
-    }
-    catch (Exception exception)
-    {
-      Main.Instance?.Log("[Microphone] Writer cleanup failed. error=" + exception.Message);
-    }
+    Pcm16WavWriter writer = _writer;
+    string tempPath = _tempPath;
     _writer = null;
-    DeleteTemp();
     _runId = null;
     _tempPath = null;
+    Task.Run(() =>
+    {
+      try
+      {
+        writer.Dispose();
+      }
+      catch (Exception exception)
+      {
+        Main.Instance?.Log("[Microphone] Writer cleanup failed. error=" + exception.Message);
+      }
+      DeleteTemp(tempPath);
+    });
   }
 
-  private void DeleteTemp()
+  private static void DeleteTemp(string path)
   {
-    if (string.IsNullOrEmpty(_tempPath))
+    if (string.IsNullOrEmpty(path))
       return;
     try
     {
-      if (File.Exists(_tempPath))
-        File.Delete(_tempPath);
+      if (File.Exists(path))
+        File.Delete(path);
     }
     catch { }
   }
