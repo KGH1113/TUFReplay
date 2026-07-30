@@ -5,6 +5,7 @@ using TUFReplay;
 using TUFReplay.Application.Activity;
 using TUFReplay.Application.Calibration;
 using TUFReplay.Application.Microphone;
+using TUFReplay.Application.Recording;
 using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
@@ -29,6 +30,7 @@ internal static class Program
       NativeSqliteLoader.Initialize();
       TestMicrophoneCaptureChunking();
       TestPendingMicrophoneDisposition();
+      TestHitMarginSnapshotReuse();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
       TestPlaybackLimiter(root);
@@ -464,6 +466,40 @@ internal static class Program
     Assert(completed == 0, "Finalized microphone capture ignored the editor-return gate.");
     captureFirst.CompleteDisposition(persist: false);
     Assert(completed == 1 && !persisted, "Deferred microphone discard decision was lost.");
+  }
+
+  private static void TestHitMarginSnapshotReuse()
+  {
+    var snapshot = new HitMarginSnapshot();
+    int[] firstMargins = { 1, 2, 3 };
+
+    Assert(!snapshot.Matches(firstMargins), "An empty hit margin snapshot matched values.");
+    snapshot.Capture(firstMargins);
+    int[] initialBuffer = snapshot.BufferForTesting;
+
+    Assert(snapshot.Matches(new[] { 1, 2, 3 }), "Captured hit margins did not match.");
+    Assert(!snapshot.Matches(new[] { 1, 2, 4 }), "Different hit margins matched the snapshot.");
+
+    snapshot.Capture(new[] { 4, 5, 6 });
+    Assert(
+      ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
+      "Capturing same-length hit margins allocated a new buffer."
+    );
+    Assert(snapshot.Matches(new[] { 4, 5, 6 }), "Reused hit margin buffer was not updated.");
+
+    snapshot.Reset();
+    Assert(!snapshot.Matches(new[] { 4, 5, 6 }), "Reset hit margin snapshot remained valid.");
+    snapshot.Capture(new[] { 7, 8, 9 });
+    Assert(
+      ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
+      "Reset discarded the reusable hit margin buffer."
+    );
+
+    snapshot.Capture(new[] { 1, 2 });
+    Assert(
+      !ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
+      "A changed hit margin count did not resize the snapshot buffer."
+    );
   }
 
   private static void TestWavWriter(string root)
