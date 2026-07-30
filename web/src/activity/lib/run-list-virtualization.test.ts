@@ -9,6 +9,13 @@ describe("run list virtualization", () => {
     });
   });
 
+  test("excludes overscan rows from the visible animation range", () => {
+    expect(calculateVirtualRunRange(10_000, 18_000, 720, 180, 0)).toEqual({
+      start: 100,
+      end: 105,
+    });
+  });
+
   test("clamps the range at both ends", () => {
     expect(calculateVirtualRunRange(5, 0, 360, 180, 4)).toEqual({ start: 0, end: 5 });
     expect(calculateVirtualRunRange(100, 100_000, 360, 180, 4)).toEqual({
