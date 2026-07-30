@@ -49,7 +49,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
-- Streams microphone WAV files into a separate SQLite BLOB table without loading the full recording into memory or ordinary run-list queries; temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
+- Streams microphone WAV files into a separate `tufreplay.microphones.sqlite` database without loading the full recording into memory; this isolates large BLOB writes from activity-run writes. Temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
