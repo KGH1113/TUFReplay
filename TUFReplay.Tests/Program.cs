@@ -31,6 +31,7 @@ internal static class Program
       TestMicrophoneCaptureChunking();
       TestPendingMicrophoneDisposition();
       TestHitMarginSnapshotReuse();
+      TestTufLevelIdResolverCache();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
       TestPcm16PrefetchBuffer();
@@ -528,6 +529,58 @@ internal static class Program
       !ReferenceEquals(initialBuffer, snapshot.BufferForTesting),
       "A changed hit margin count did not resize the snapshot buffer."
     );
+  }
+
+  private static void TestTufLevelIdResolverCache()
+  {
+    int now = 1000;
+    int factoryCalls = 0;
+    int resolverCalls = 0;
+    var cache = new TufLevelIdResolverCache(
+      () =>
+      {
+        factoryCalls++;
+        return path =>
+        {
+          resolverCalls++;
+          return path == "/levels/known.adofai" ? 42 : null;
+        };
+      },
+      null,
+      50,
+      () => now
+    );
+
+    Assert(cache.Resolve("/levels/known.adofai") == 42, "TUF level resolver did not return a positive result.");
+    Assert(cache.Resolve("/levels/known.adofai") == 42, "Cached TUF level result changed.");
+    Assert(factoryCalls == 1 && resolverCalls == 1, "Positive TUF level resolution was not cached.");
+
+    Assert(cache.Resolve("/levels/missing.adofai") == null, "Missing TUF level unexpectedly resolved.");
+    Assert(cache.Resolve("/levels/missing.adofai") == null, "Negative TUF level cache changed its result.");
+    Assert(resolverCalls == 2, "Negative TUF level resolution was repeated before its TTL.");
+    now += 50;
+    Assert(cache.Resolve("/levels/missing.adofai") == null, "Expired negative TUF cache changed its result.");
+    Assert(resolverCalls == 3, "Negative TUF level resolution did not retry after its TTL.");
+
+    bool resolverAvailable = false;
+    factoryCalls = 0;
+    var lateResolver = new TufLevelIdResolverCache(
+      () =>
+      {
+        factoryCalls++;
+        return resolverAvailable ? _ => 99 : null;
+      },
+      null,
+      50,
+      () => now
+    );
+    Assert(lateResolver.Resolve("/levels/late.adofai") == null, "Unavailable TUF resolver returned a value.");
+    resolverAvailable = true;
+    Assert(lateResolver.Resolve("/levels/other.adofai") == null, "Resolver lookup ignored its negative TTL.");
+    Assert(factoryCalls == 1, "Unavailable TUF resolver reflection was repeated before its TTL.");
+    now += 50;
+    Assert(lateResolver.Resolve("/levels/late.adofai") == 99, "Late TUF resolver was not discovered after TTL.");
+    Assert(factoryCalls == 2, "Late TUF resolver discovery did not retry exactly once.");
   }
 
   private static void TestWavWriter(string root)
