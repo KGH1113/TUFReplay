@@ -2,10 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import type { ActivityAppSession } from "../activity.model";
 import { ActivityProtocolMismatchError } from "../data/activity.gateway";
-import {
-  connectionStatusForError,
-  mergeRecentAppSessions,
-} from "./use-activity-data.hook";
+import { connectionStatusForError, mergeRecentAppSessions } from "./use-activity-data.hook";
 
 function appSession(id: string, startedAtUtc: string, endedAtUtc: string | null = null) {
   return {
@@ -38,11 +35,7 @@ describe("recent activity polling", () => {
       appSession("session-3", "2026-07-30T03:00:00Z"),
       appSession("session-2", "2026-07-30T02:00:00Z"),
     ];
-    const updated = appSession(
-      "session-4",
-      "2026-07-30T04:00:00Z",
-      "2026-07-30T04:30:00Z",
-    );
+    const updated = appSession("session-4", "2026-07-30T04:00:00Z", "2026-07-30T04:30:00Z");
     const recent = [appSession("session-6", "2026-07-30T06:00:00Z"), updated];
 
     const merged = mergeRecentAppSessions(current, recent, 2);
