@@ -33,6 +33,7 @@ internal static class Program
       TestHitMarginSnapshotReuse();
       TestWavWriter(root);
       TestPlaybackWaveReader(root);
+      TestPcm16PrefetchBuffer();
       TestPlaybackLimiter(root);
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
@@ -596,6 +597,51 @@ internal static class Program
       () => Pcm16WaveFile.ReadAndValidate(PlaybackRecording(floatPath, 4)),
       "Non-PCM16 playback WAV was accepted."
     );
+  }
+
+  private static void TestPcm16PrefetchBuffer()
+  {
+    byte[] source = new byte[24];
+    for (int i = 0; i < source.Length; i++)
+      source[i] = (byte)i;
+
+    int callbackThreadId = System.Threading.Thread.CurrentThread.ManagedThreadId;
+    using var stream = new ThreadTrackingMemoryStream(source);
+    using var prefetch = new Pcm16PrefetchBuffer(stream, 4, 16, 8);
+
+    byte[] first = new byte[6];
+    Assert(ReadPrefetched(prefetch, first, 6) == 6, "PCM prefetch did not fill the initial read.");
+    Assert(
+      first[0] == 4 && first[5] == 9,
+      "PCM prefetch did not honor the WAV data offset or preserve byte order."
+    );
+
+    prefetch.Seek(8);
+    byte[] sought = new byte[6];
+    Assert(ReadPrefetched(prefetch, sought, 6) == 6, "PCM prefetch did not refill after seek.");
+    Assert(sought[0] == 12 && sought[5] == 17, "PCM prefetch seek returned stale buffered data.");
+
+    prefetch.Seek(14);
+    byte[] tail = new byte[4];
+    Assert(ReadPrefetched(prefetch, tail, 2, 4) == 2, "PCM prefetch did not stop at the data boundary.");
+    Assert(tail[0] == 18 && tail[1] == 19, "PCM prefetch returned the wrong tail bytes.");
+    Assert(stream.ReadThreadId != callbackThreadId, "PCM bytes were read on the consumer thread.");
+    Assert(prefetch.Failure == null, "PCM prefetch worker failed during normal reads.");
+  }
+
+  private static int ReadPrefetched(Pcm16PrefetchBuffer prefetch, byte[] destination, int expected, int count = -1)
+  {
+    int requested = count < 0 ? destination.Length : count;
+    int total = 0;
+    for (int attempt = 0; attempt < 100 && total < expected; attempt++)
+    {
+      int read = prefetch.Read(destination, total, requested - total, 2);
+      total += read;
+      if (read == 0)
+        System.Threading.Thread.Sleep(1);
+    }
+
+    return total;
   }
 
   private static void TestPlaybackLimiter(string root)
@@ -1697,6 +1743,22 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,
         Path.GetFileNameWithoutExtension(path) + ".microphones.sqlite"
       )
     );
+  }
+
+  private sealed class ThreadTrackingMemoryStream : MemoryStream
+  {
+    private int _readThreadId;
+
+    public ThreadTrackingMemoryStream(byte[] buffer)
+      : base(buffer) { }
+
+    public int ReadThreadId => System.Threading.Volatile.Read(ref _readThreadId);
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+      System.Threading.Volatile.Write(ref _readThreadId, System.Threading.Thread.CurrentThread.ManagedThreadId);
+      return base.Read(buffer, offset, count);
+    }
   }
 
   private static void Assert(bool condition, string message)
