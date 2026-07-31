@@ -133,40 +133,28 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     }
 
     var run = new PendingRun(runId, tempPath);
-    lock (_stateGate)
-      _run = run;
-    if (
-      !QueueCommand(() =>
-      {
-        try
-        {
-          Send(
-            new JObject
-            {
-              ["command"] = "begin",
-              ["runId"] = run.RunId,
-              ["path"] = run.TempPath,
-            }
-          );
-          run.BeginSucceeded = true;
-        }
-        catch (Exception exception)
-        {
-          Main.Instance?.Log("[Microphone] macOS helper failed to begin capture. error=" + exception.Message);
-        }
-      })
-    )
+    try
     {
+      Send(
+        new JObject
+        {
+          ["command"] = "begin",
+          ["runId"] = run.RunId,
+          ["path"] = run.TempPath,
+        }
+      );
+      run.BeginSucceeded = true;
       lock (_stateGate)
-      {
-        if (ReferenceEquals(_run, run))
-          _run = null;
-      }
-      error = "macOS microphone helper is shutting down.";
+        _run = run;
+      error = null;
+      return true;
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] macOS helper failed to begin capture. error=" + exception.Message);
+      error = exception.Message;
       return false;
     }
-    error = null;
-    return true;
   }
 
   public Task<CapturedMicrophoneRecording> EndRunAsync()
