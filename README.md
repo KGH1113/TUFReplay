@@ -35,7 +35,7 @@ The project is built around preserving low-level play data instead of trusting f
 
 ## Features
 
-- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
+- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, creating activity sessions only when a non-replay run actually starts.
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
