@@ -20,6 +20,9 @@ import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 const NAMESPACE = "tuf-replay";
 const PAGE_SIZE = 200;
 const FILE_PICKER_POLL_INTERVAL_MS = 100;
+const IPC_PROBE_TIMEOUT_MS = 500;
+const IPC_REQUEST_TIMEOUT_MS = 30_000;
+const NAMESPACE_READY_TIMEOUT_MS = 30_000;
 export const SUPPORTED_PROTOCOL_VERSION = 4;
 
 export interface ActivityHealth {
@@ -104,11 +107,23 @@ export interface ActivityGateway {
   closeMicrophoneCalibration(operationId: string): Promise<MicrophoneCalibrationStatus>;
 }
 
-export async function connectActivityGateway(): Promise<ActivityGateway> {
+export async function connectActivityGateway(
+  fetchImpl: typeof fetch = adofaiIpcFetch,
+): Promise<ActivityGateway> {
   const client = await tryConnect({
-    fetch: adofaiIpcFetch,
+    fetch: fetchImpl,
+    probeTimeoutMs: IPC_PROBE_TIMEOUT_MS,
+    requestTimeoutMs: IPC_REQUEST_TIMEOUT_MS,
   });
-  const pickerClient = new AdofaiIpcClient({ baseUrl: client.baseUrl, fetch: adofaiIpcFetch });
+  await client.waitForNamespace(NAMESPACE, {
+    status: "ready",
+    timeoutMs: NAMESPACE_READY_TIMEOUT_MS,
+  });
+  const pickerClient = new AdofaiIpcClient({
+    baseUrl: client.baseUrl,
+    fetch: fetchImpl,
+    requestTimeoutMs: IPC_REQUEST_TIMEOUT_MS,
+  });
   return createActivityGateway(client.namespace(NAMESPACE), pickerClient.namespace(NAMESPACE));
 }
 

@@ -64,7 +64,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc, installed automatically when missing
+- AdofaiIpc 0.2.0 or newer, installed or updated automatically when needed
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -217,7 +217,9 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 
 ## AdofaiIpc API
 
-The local API is intended for the companion web UI and development tools. Clients should find AdofaiIpc by probing `/ipc/health`, then call TUFReplay through:
+The local API is intended for the companion web UI and development tools. TUFReplay requires
+AdofaiIpc protocol version 2. Clients should probe `/ipc/health`, wait for the `tuf-replay`
+namespace to reach `ready`, and then call TUFReplay through:
 
 ```http
 POST /ipc
@@ -258,6 +260,10 @@ Registered methods:
 - `microphone.calibration.offset.set`
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
+
+TUFReplay registers its namespace as `initializing` while handlers are being attached and marks it
+`ready` only after feature initialization completes. AdofaiIpc rejects premature calls with
+`namespace_initializing`; an initialization failure is exposed as `namespace_error`.
 
 `health.get` returns the TUFReplay namespace protocol and installed mod version:
 
