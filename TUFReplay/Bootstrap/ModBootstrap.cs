@@ -29,7 +29,7 @@ public static class ModBootstrap
       GameplayHashV3MigrationResult migration = GameplayHashV3Migration.Run();
       if (migration.Scanned > 0)
         Main.Instance.Log(
-          "[Database] Gameplay hash v3 migration scanned="
+          "[Database] Gameplay hash migration scanned="
             + migration.Scanned
             + ", migrated="
             + migration.Migrated

@@ -81,6 +81,10 @@ public static class ReplayLevelHashValidator
     }
 
     return GameplayChartHash.Equals(run.GameplayHash, actualHash)
+      || (
+        run.GameplayHashVersion == 3
+        && GameplayChartHash.MatchesVersion3IgnoringLevelVersion(run.GameplayHash, levelData)
+      )
       || MatchesVerifiedOriginalSemantics(run, run.GameplayHash, levelData)
       || Error("level_gameplay_modified", LevelFileAccessValidator.ModifiedMessage, out errorCode, out errorMessage);
   }
