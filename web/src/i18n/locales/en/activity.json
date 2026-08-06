@@ -34,7 +34,13 @@
   "errors": {
     "load": "Could not load TUFReplay activity",
     "connect": "Could not connect to TUFReplay",
-    "loadSession": "Could not load level session"
+    "loadSession": "Could not load level session",
+    "ipcUnavailable": "ADOFAI or AdofaiIPC is not running.",
+    "ipcTimeout": "TUFReplay took too long to respond.",
+    "ipcUpdateRequired": "The installed AdofaiIPC is too old for this TUFReplay version.",
+    "namespaceNotFound": "TUFReplay IPC is not registered yet.",
+    "namespaceInitializing": "TUFReplay is still starting. Try again shortly.",
+    "namespaceError": "TUFReplay could not finish starting. Check the in-game mod log."
   },
   "time": {
     "open": "Open",

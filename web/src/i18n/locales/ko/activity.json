@@ -34,7 +34,13 @@
   "errors": {
     "load": "TUFReplay 활동을 불러오지 못했습니다",
     "connect": "TUFReplay에 연결하지 못했습니다",
-    "loadSession": "레벨 세션을 불러오지 못했습니다"
+    "loadSession": "레벨 세션을 불러오지 못했습니다",
+    "ipcUnavailable": "얼불춤 또는 AdofaiIPC가 실행 중이 아닙니다.",
+    "ipcTimeout": "TUFReplay 응답 시간이 너무 오래 걸렸습니다.",
+    "ipcUpdateRequired": "설치된 AdofaiIPC가 현재 TUFReplay 버전과 호환되지 않습니다.",
+    "namespaceNotFound": "TUFReplay IPC가 아직 등록되지 않았습니다.",
+    "namespaceInitializing": "TUFReplay가 초기화 중입니다. 잠시 후 다시 시도하세요.",
+    "namespaceError": "TUFReplay 초기화에 실패했습니다. 게임 내 모드 로그를 확인하세요."
   },
   "time": {
     "open": "진행 중",

@@ -10,12 +10,60 @@ import type {
 import {
   ActivityDomainError,
   ActivityProtocolMismatchError,
+  connectActivityGateway,
   createActivityGateway,
   loadAllPages,
   SUPPORTED_PROTOCOL_VERSION,
 } from "./activity.gateway";
 
 describe("activity IPC contract", () => {
+  test("waits for the TUFReplay namespace to become ready before calling it", async () => {
+    const paths: string[] = [];
+    let namespaceChecks = 0;
+    const health = {
+      Ok: true,
+      Mod: "TUFReplay",
+      ModVersion: "0.2.0",
+      ProtocolVersion: SUPPORTED_PROTOCOL_VERSION,
+      ServerVersion: 2,
+    };
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      paths.push(url.pathname);
+      if (url.pathname === "/ipc/health") {
+        return Response.json({
+          ok: true,
+          server: "AdofaiIpc",
+          protocolVersion: 2,
+          port: Number(url.port),
+        });
+      }
+      if (url.pathname === "/ipc/namespaces/tuf-replay") {
+        namespaceChecks++;
+        return Response.json({
+          namespace: "tuf-replay",
+          displayName: "TUFReplay",
+          version: "0.2.0",
+          status: namespaceChecks === 1 ? "initializing" : "ready",
+          error: null,
+          methods: ["health.get"],
+        });
+      }
+      if (url.pathname === "/ipc") return Response.json({ ok: true, result: health });
+      throw new Error(`Unexpected IPC path: ${url.pathname}`);
+    }) as typeof fetch;
+
+    const gateway = await connectActivityGateway(fetchImpl);
+
+    expect(await gateway.health()).toEqual(health);
+    expect(paths).toEqual([
+      "/ipc/health",
+      "/ipc/namespaces/tuf-replay",
+      "/ipc/namespaces/tuf-replay",
+      "/ipc",
+    ]);
+  });
+
   test("accepts the supported TUFReplay protocol version", async () => {
     const health = {
       Ok: true,
