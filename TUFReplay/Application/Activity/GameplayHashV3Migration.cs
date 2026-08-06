@@ -122,6 +122,9 @@ public static class GameplayHashV3Migration
       return GameplayChartHash.TryCompute(levelData, 1, out byte[] v1Hash, out _)
         && GameplayChartHash.Equals(legacy.Level.GameplayHash, v1Hash);
 
+    if (legacy.Level.GameplayHashVersion == 3)
+      return GameplayChartHash.MatchesVersion3IgnoringLevelVersion(legacy.Level.GameplayHash, levelData);
+
     if (legacy.Level.GameplayHashVersion != 2)
       return false;
 
@@ -193,7 +196,7 @@ LEFT JOIN (
   WHERE r.level_pitch_percent IS NOT NULL
 ) p ON p.level_id=l.id
 LEFT JOIN gameplay_hash_migration_attempts a ON a.level_id=l.id
-WHERE l.gameplay_hash_version IN (1,2) AND l.gameplay_hash IS NOT NULL
+WHERE l.gameplay_hash_version IN (1,2,3) AND l.gameplay_hash IS NOT NULL
 ORDER BY l.id,p.level_pitch_percent";
     using SqliteDataReader reader = command.ExecuteReader();
     LegacyGameplayLevel current = null;

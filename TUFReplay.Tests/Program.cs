@@ -1159,8 +1159,9 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
 
     byte[] v2Before = ComputeVersion2Hash(100f, "song.ogg", 100, 0, 100);
     byte[] v3Before = ComputeVersion3Hash(100f, "song.ogg", 100, 0, 100);
+    byte[] v4Before = ComputeVersion4Hash(100f, "song.ogg", 100, 0, 100, 13);
     Assert(
-      v1Before.Length == 16 && v2Before.Length == 32 && v3Before.Length == 32,
+      v1Before.Length == 16 && v2Before.Length == 32 && v3Before.Length == 32 && v4Before.Length == 32,
       "Gameplay hash sizes are incorrect."
     );
 
@@ -1187,9 +1188,22 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
       GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(100f, "song.ogg", 70, 1, 40)),
       "Pitch or hit-sound presentation changed the v3 chart identity."
     );
+    Assert(
+      !GameplayChartHash.Equals(v3Before, ComputeVersion3Hash(100f, "song.ogg", 100, 0, 100, 19)),
+      "Legacy v3 unexpectedly stopped preserving the level format version."
+    );
+    Assert(
+      GameplayChartHash.Equals(v4Before, ComputeVersion4Hash(100f, "song.ogg", 70, 1, 40, 19)),
+      "Level format version, pitch, or hit-sound presentation changed the v4 chart identity."
+    );
+    Assert(
+      !GameplayChartHash.Equals(v4Before, ComputeVersion4Hash(101f, "song.ogg", 100, 0, 100, 13)),
+      "Gameplay BPM did not change the v4 hash."
+    );
     Assert(GameplayChartHash.IsSupported(1, v1Before), "Legacy v1 hash is not supported.");
     Assert(GameplayChartHash.IsSupported(2, v2Before), "Legacy v2 hash is not supported.");
-    Assert(GameplayChartHash.IsSupported(3, v3Before), "Current v3 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(3, v3Before), "Legacy v3 hash is not supported.");
+    Assert(GameplayChartHash.IsSupported(4, v4Before), "Current v4 hash is not supported.");
   }
 
   private static void TestAppSessionTransientLockRecovery(string root)
@@ -1259,15 +1273,15 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
       }
     );
 
-    byte[] currentHash = new byte[GameplayChartHash.Version3Size];
-    currentHash[0] = 3;
+    byte[] currentHash = new byte[GameplayChartHash.Version4Size];
+    currentHash[0] = 4;
     var currentLevel = new LevelRecord
     {
       Id = "current-hash-level",
       SourceKind = LevelSourceKind.Local,
       LevelPath = legacyLevel.LevelPath,
       GameplayHash = currentHash,
-      GameplayHashVersion = 3,
+      GameplayHashVersion = GameplayChartHash.Version,
       FirstSeenAtUtc = "2026-01-01T00:01:00Z",
       LastSeenAtUtc = "2026-01-01T00:01:00Z",
     };
@@ -1310,7 +1324,8 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
   {
     string chartPath = Path.Combine(root, "gameplay-hash-v3-migration.adofai");
     File.WriteAllText(chartPath, "{}");
-    byte[] currentHash = ComputeVersion3Hash(130f, "song.ogg", 100, 0, 100);
+    byte[] currentHash = ComputeVersion4Hash(130f, "song.ogg", 100, 0, 100, 19);
+    byte[] version3Hash = ComputeVersion3Hash(130f, "song.ogg", 100, 0, 100, 15);
     byte[] version2Pitch100 = ComputeVersion2Hash(130f, "song.ogg", 100, 0, 100);
     byte[] version2Pitch150 = ComputeVersion2Hash(130f, "song.ogg", 150, 0, 100);
     byte[] version2Pitch70Quiet = ComputeVersion2Hash(130f, "song.ogg", 70, 0, 40);
@@ -1337,6 +1352,7 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
     string v2Pitch100Session = SaveLegacyGameplayLevel(chartPath, version2Pitch100, 2, 100, "beta7-100");
     string v2Pitch150Session = SaveLegacyGameplayLevel(chartPath, version2Pitch150, 2, 150, "beta7-150");
     string v2QuietSession = SaveLegacyGameplayLevel(chartPath, version2Pitch70Quiet, 2, 70, "beta7-quiet");
+    string v3Session = SaveLegacyGameplayLevel(chartPath, version3Hash, 3, 100, "beta8-v3");
 
     byte[] unmatchedHash = new byte[GameplayChartHash.Version2Size];
     unmatchedHash[0] = 0x7f;
@@ -1346,8 +1362,8 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
     GameplayHashV3MigrationResult migrated = GameplayHashV3Migration.Run(
       (_, legacyHash, _, _) => GameplayChartHash.Equals(legacyHash, unmatchedHash) ? null : currentHash
     );
-    Assert(migrated.Scanned == 5, "Gameplay hash migration did not scan every beta6/beta7 level.");
-    Assert(migrated.Migrated == 4, "Gameplay hash migration did not merge every verified legacy level.");
+    Assert(migrated.Scanned == 6, "Gameplay hash migration did not scan every v1-v3 level.");
+    Assert(migrated.Migrated == 5, "Gameplay hash migration did not merge every verified legacy level.");
     Assert(migrated.Deferred == 1, "Gameplay hash migration did not defer the unverifiable level.");
 
     string migratedLevelId = LevelSessionRepository.Get(v1Session)?.LevelId;
@@ -1355,8 +1371,9 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
     Assert(
       LevelSessionRepository.Get(v2Pitch100Session)?.LevelId == migratedLevelId
         && LevelSessionRepository.Get(v2Pitch150Session)?.LevelId == migratedLevelId
-        && LevelSessionRepository.Get(v2QuietSession)?.LevelId == migratedLevelId,
-      "Verified beta6/beta7 pitch and hit-sound variants were not merged."
+        && LevelSessionRepository.Get(v2QuietSession)?.LevelId == migratedLevelId
+        && LevelSessionRepository.Get(v3Session)?.LevelId == migratedLevelId,
+      "Verified v1-v3 gameplay identities were not merged."
     );
     using (SqliteConnection connection = Database.OpenConnection())
     using (SqliteCommand command = connection.CreateCommand())
@@ -1365,11 +1382,11 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
       command.Parameters.AddWithValue("@id", migratedLevelId);
       using (SqliteDataReader reader = command.ExecuteReader())
       {
-        Assert(reader.Read(), "Merged v3 level disappeared.");
+        Assert(reader.Read(), "Merged v4 level disappeared.");
         Assert(
           GameplayChartHash.Equals((byte[])reader.GetValue(0), currentHash)
             && reader.GetInt32(1) == GameplayChartHash.Version,
-          "Merged legacy levels did not receive the v3 gameplay hash."
+          "Merged legacy levels did not receive the v4 gameplay hash."
         );
       }
 
@@ -1516,7 +1533,8 @@ PRAGMA user_version=13;";
     string songFilename,
     int pitch,
     byte hitsound,
-    int hitsoundVolume
+    int hitsoundVolume,
+    int levelVersion = 15
   )
   {
     _ = pitch;
@@ -1524,7 +1542,28 @@ PRAGMA user_version=13;";
     _ = hitsoundVolume;
     using var writer = new GameplayChartHashCanonicalWriter();
     writer.WriteFormatVersion(3);
-    writer.WriteGameplaySettingsV3(15, songFilename, bpm, 100, 0, false, 4, 0f, false);
+    writer.WriteGameplaySettingsV3(levelVersion, songFilename, bpm, 100, 0, false, 4, 0f, false);
+    writer.WriteChartKind(false);
+    writer.WriteAngles(new[] { 0f, 90f, 180f });
+    return writer.ComputeSha256Hash();
+  }
+
+  private static byte[] ComputeVersion4Hash(
+    float bpm,
+    string songFilename,
+    int pitch,
+    byte hitsound,
+    int hitsoundVolume,
+    int levelVersion
+  )
+  {
+    _ = pitch;
+    _ = hitsound;
+    _ = hitsoundVolume;
+    _ = levelVersion;
+    using var writer = new GameplayChartHashCanonicalWriter();
+    writer.WriteFormatVersion(4);
+    writer.WriteGameplaySettingsV4(songFilename, bpm, 100, 0, false, 4, 0f, false);
     writer.WriteChartKind(false);
     writer.WriteAngles(new[] { 0f, 90f, 180f });
     return writer.ComputeSha256Hash();
