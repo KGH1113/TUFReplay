@@ -1,10 +1,13 @@
 using System.IO.Compression;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using TUFReplay.Bootstrap;
 using TUFReplay.UpdateEngine;
+using TUFReplay.Update;
 
 internal static class UpdaterTests
 {
@@ -19,6 +22,9 @@ internal static class UpdaterTests
     Run("package size mismatch rejection", TestPackageSizeMismatch);
     Run("unsafe archive rejection", TestUnsafeArchive);
     Run("beta latest release selection", TestBetaReleaseSelection);
+    Run("one-restart AdofaiIpc bridge staging", TestBridgeTransition);
+    if (string.Equals(Environment.GetEnvironmentVariable("TUFREPLAY_RELEASE_E2E"), "1", StringComparison.Ordinal))
+      Run("published release one-restart bridge", TestPublishedReleaseBridge);
     Console.WriteLine($"Passed {_passed} updater tests.");
   }
 
@@ -132,6 +138,143 @@ internal static class UpdaterTests
     UpdateManager manager = new(temporary.Path, server.BaseUrl, server.BaseUrl + "releases");
     UpdateResult result = manager.Resolve("0.1.0-beta.3");
     Assert(result.Version == "0.3.0-beta.2", "The highest non-draft beta release was not selected.");
+  }
+
+  private static void TestBridgeTransition()
+  {
+    using TemporaryDirectory temporary = new();
+    string adofaiIpc = Path.Combine(temporary.Path, "AdofaiIpc");
+    string tufReplay = Path.Combine(temporary.Path, "TUFReplay");
+    string assets = Path.Combine(temporary.Path, "TransitionAssets");
+    Directory.CreateDirectory(adofaiIpc);
+    Directory.CreateDirectory(tufReplay);
+    Directory.CreateDirectory(assets);
+    File.WriteAllText(Path.Combine(adofaiIpc, "Info.json"),
+      "{\"Id\":\"AdofaiIpc\",\"Version\":\"0.2.0\",\"AssemblyName\":\"AdofaiIpc.dll\"}");
+    File.WriteAllText(Path.Combine(adofaiIpc, "AdofaiIpc.dll"), "legacy-ipc");
+    File.WriteAllText(Path.Combine(tufReplay, "Info.json"),
+      "{\"Id\":\"TUFReplay\",\"Version\":\"0.1.0-beta.8\",\"AssemblyName\":\"AdofaiIpc.Bootstrap.dll\"}");
+    File.WriteAllText(Path.Combine(tufReplay, "AdofaiIpc.Bootstrap.dll"), "legacy-bootstrap");
+    File.WriteAllText(Path.Combine(tufReplay, "AdofaiIpcBootstrap.json"),
+      "{\"MinimumAdofaiIpcVersion\":\"0.2.0\",\"DownloadUrl\":\"legacy\"}");
+    File.WriteAllText(Path.Combine(assets, "AdofaiIpc.Bootstrap.dll"), "bootstrap-v2");
+    File.WriteAllText(Path.Combine(assets, "TUFReplay.DependencyShim.dll"), "dependency-shim");
+    File.WriteAllText(Path.Combine(assets, "AdofaiIpcBootstrap.json"),
+      "{\"MinimumAdofaiIpcVersion\":\"0.3.0\"}");
+
+    byte[] package = CreateAdofaiIpcPackage("0.3.0");
+    string packagePath = Path.Combine(temporary.Path, "AdofaiIpc.zip");
+    File.WriteAllBytes(packagePath, package);
+    string manifest = JsonConvert.SerializeObject(new
+    {
+      SchemaVersion = 1,
+      Version = "0.3.0",
+      PackageUrl = "https://github.com/KGH1113/adofai-ipc/releases/download/v0.3.0/AdofaiIpc.zip",
+      PackageSize = package.Length,
+      Sha256 = Sha256(package),
+    });
+
+    AdofaiIpcTransitionBridge.InstallAdofaiIpcPackageForTests(adofaiIpc, packagePath, manifest);
+    Assert(File.Exists(Path.Combine(adofaiIpc, "Runtime", "versions", "0.2.0", "AdofaiIpc.dll")),
+      "The legacy AdofaiIpc runtime was not preserved.");
+    Assert(File.Exists(Path.Combine(adofaiIpc, "Runtime", "versions", "0.3.0", "AdofaiIpc.dll")),
+      "The new AdofaiIpc runtime was not staged.");
+    Assert(File.ReadAllText(Path.Combine(adofaiIpc, "Update", "state.json")).Contains("\"Trial\": \"0.3.0\""),
+      "AdofaiIpc was not marked for the next launch.");
+    Assert(File.ReadAllText(Path.Combine(tufReplay, "Info.json")).Contains("AdofaiIpc.Bootstrap.dll"),
+      "TUFReplay was committed before AdofaiIpc.");
+
+    AdofaiIpcTransitionBridge.StageDependencyLauncherForTests(tufReplay, "0.1.0-beta.9", assets);
+    Assert(File.Exists(Path.Combine(tufReplay, "Launcher", "versions", "legacy", "AdofaiIpc.Bootstrap.dll")),
+      "The legacy dependency bootstrap was not preserved.");
+    Assert(File.Exists(Path.Combine(tufReplay, "Launcher", "versions", "legacy", "AdofaiIpcBootstrap.json")),
+      "The legacy dependency manifest was not preserved.");
+    Assert(File.Exists(Path.Combine(tufReplay, "Launcher", "versions", "2", "AdofaiIpc.Bootstrap.dll")),
+      "Dependency bootstrap v2 was not staged.");
+    Assert(File.ReadAllText(Path.Combine(tufReplay, "Info.json")).Contains("TUFReplay.DependencyShim.dll"),
+      "TUFReplay did not switch to the fixed dependency shim.");
+  }
+
+  private static void TestPublishedReleaseBridge()
+  {
+    const string adofaiIpcManifestUrl =
+      "https://github.com/KGH1113/adofai-ipc/releases/download/v0.3.0/AdofaiIpc.update.json";
+    const string tufReplayManifestUrl =
+      "https://github.com/KGH1113/TUFReplay/releases/download/v0.1.0-beta.9/TUFReplay.update.json";
+
+    using HttpClient client = new() { Timeout = TimeSpan.FromMinutes(2) };
+    JObject adofaiIpcManifest = JObject.Parse(client.GetStringAsync(adofaiIpcManifestUrl).GetAwaiter().GetResult());
+    byte[] adofaiIpcPackage = client.GetByteArrayAsync((string)adofaiIpcManifest["PackageUrl"]!).GetAwaiter().GetResult();
+    Assert((string)adofaiIpcManifest["Version"] == "0.3.0", "The published AdofaiIpc version is not 0.3.0.");
+    Assert((long)adofaiIpcManifest["PackageSize"] == adofaiIpcPackage.LongLength,
+      "The published AdofaiIpc package size does not match its manifest.");
+    Assert(string.Equals((string)adofaiIpcManifest["Sha256"], Sha256(adofaiIpcPackage), StringComparison.OrdinalIgnoreCase),
+      "The published AdofaiIpc package hash does not match its manifest.");
+
+    JObject tufReplayManifest = JObject.Parse(client.GetStringAsync(tufReplayManifestUrl).GetAwaiter().GetResult());
+    Uri tufReplayPackageUrl = new(new Uri(tufReplayManifestUrl), (string)tufReplayManifest["packageAsset"]!);
+    byte[] tufReplayPackage = client.GetByteArrayAsync(tufReplayPackageUrl).GetAwaiter().GetResult();
+    Assert((string)tufReplayManifest["version"] == "0.1.0-beta.9", "The published TUFReplay version is not beta.9.");
+    Assert((long)tufReplayManifest["packageBytes"] == tufReplayPackage.LongLength,
+      "The published TUFReplay package size does not match its manifest.");
+    Assert(string.Equals((string)tufReplayManifest["packageSha256"], Sha256(tufReplayPackage), StringComparison.OrdinalIgnoreCase),
+      "The published TUFReplay package hash does not match its manifest.");
+
+    using TemporaryDirectory temporary = new();
+    string extracted = Path.Combine(temporary.Path, "release");
+    string adofaiIpc = Path.Combine(temporary.Path, "Mods", "AdofaiIpc");
+    string tufReplay = Path.Combine(temporary.Path, "Mods", "TUFReplay");
+    Directory.CreateDirectory(extracted);
+    Directory.CreateDirectory(adofaiIpc);
+    Directory.CreateDirectory(tufReplay);
+    using (MemoryStream archiveBytes = new(tufReplayPackage))
+    using (ZipArchive archive = new(archiveBytes, ZipArchiveMode.Read))
+      archive.ExtractToDirectory(extracted);
+
+    File.WriteAllText(Path.Combine(adofaiIpc, "Info.json"),
+      "{\"Id\":\"AdofaiIpc\",\"Version\":\"0.2.0\",\"AssemblyName\":\"AdofaiIpc.dll\"}");
+    File.WriteAllText(Path.Combine(adofaiIpc, "AdofaiIpc.dll"), "legacy-ipc");
+    File.WriteAllText(Path.Combine(tufReplay, "Info.json"),
+      "{\"Id\":\"TUFReplay\",\"Version\":\"0.1.0-beta.8\",\"AssemblyName\":\"AdofaiIpc.Bootstrap.dll\"}");
+    File.WriteAllText(Path.Combine(tufReplay, "AdofaiIpc.Bootstrap.dll"), "legacy-bootstrap");
+    File.WriteAllText(Path.Combine(tufReplay, "AdofaiIpcBootstrap.json"),
+      "{\"MinimumAdofaiIpcVersion\":\"0.2.0\",\"DownloadUrl\":\"legacy\"}");
+
+    string adofaiIpcPackagePath = Path.Combine(temporary.Path, "AdofaiIpc.zip");
+    File.WriteAllBytes(adofaiIpcPackagePath, adofaiIpcPackage);
+    AdofaiIpcTransitionBridge.InstallAdofaiIpcPackageForTests(
+      adofaiIpc, adofaiIpcPackagePath, adofaiIpcManifest.ToString(Formatting.None));
+
+    string transitionAssets = Path.Combine(extracted, "TUFReplay", "Runtime", "versions", "0.1.0-beta.9", "Transition");
+    AdofaiIpcTransitionBridge.StageDependencyLauncherForTests(tufReplay, "0.1.0-beta.9", transitionAssets);
+
+    string adofaiIpcState = File.ReadAllText(Path.Combine(adofaiIpc, "Update", "state.json"));
+    string dependencyState = File.ReadAllText(Path.Combine(tufReplay, "Launcher", "state.json"));
+    Assert(adofaiIpcState.Contains("\"Current\": \"0.2.0\"") && adofaiIpcState.Contains("\"Trial\": \"0.3.0\""),
+      "The published bridge did not retain 0.2.0 for this run and stage 0.3.0 for the next run.");
+    Assert(dependencyState.Contains("\"Current\": \"legacy\"") && dependencyState.Contains("\"Trial\": \"2\""),
+      "The published bridge did not retain the legacy bootstrap and stage bootstrap v2.");
+    Assert(AssemblyName.GetAssemblyName(Path.Combine(adofaiIpc, "AdofaiIpc.Shim.dll")).Name == "AdofaiIpc.Shim",
+      "The published fixed AdofaiIpc shim is not a loadable assembly.");
+    Assert(AssemblyName.GetAssemblyName(Path.Combine(adofaiIpc, "Launcher", "versions", "0.3.0", "AdofaiIpc.Launcher.dll")).Name == "AdofaiIpc.Launcher",
+      "The published versioned AdofaiIpc launcher is not a loadable assembly.");
+    Assert(AssemblyName.GetAssemblyName(Path.Combine(tufReplay, "TUFReplay.DependencyShim.dll")).Name == "TUFReplay.DependencyShim",
+      "The published fixed TUFReplay dependency shim is not a loadable assembly.");
+  }
+
+  private static byte[] CreateAdofaiIpcPackage(string version)
+  {
+    using MemoryStream buffer = new();
+    using (ZipArchive archive = new(buffer, ZipArchiveMode.Create, true))
+    {
+      AddEntry(archive, "AdofaiIpc/Info.json",
+        "{\"Id\":\"AdofaiIpc\",\"Version\":\"" + version + "\",\"AssemblyName\":\"AdofaiIpc.Shim.dll\"}");
+      AddEntry(archive, "AdofaiIpc/AdofaiIpc.Shim.dll", "shim");
+      AddEntry(archive, "AdofaiIpc/AdofaiIpc.Bootstrap.dll", "bootstrap");
+      AddEntry(archive, "AdofaiIpc/Launcher/versions/" + version + "/AdofaiIpc.Launcher.dll", "launcher");
+      AddEntry(archive, "AdofaiIpc/Runtime/versions/" + version + "/AdofaiIpc.dll", "runtime");
+    }
+    return buffer.ToArray();
   }
 
   private static object Release(string tag, string baseUrl, bool draft)

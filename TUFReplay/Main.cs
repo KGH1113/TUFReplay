@@ -3,6 +3,7 @@ using TUFReplay.Bootstrap;
 using TUFReplay.Infrastructure.NativeInput;
 using TUFReplay.Infrastructure.Settings;
 using TUFReplay.Infrastructure.Unity;
+using TUFReplay.Update;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -33,6 +34,7 @@ public sealed class Main
   {
     try
     {
+      AdofaiIpcTransitionBridge.TryStage(modEntry);
       Instance = new Main(modEntry);
       TUFReplaySettingStore.Initialize(System.IO.Path.Combine(Instance.InstallPath, "Settings.json"));
       UpdaterSettings = UpdateSettings.Load(Instance._updateSettingsPath);
@@ -50,6 +52,28 @@ public sealed class Main
     catch (Exception exception)
     {
       modEntry.Logger.Error(exception.ToString());
+      Rollback(modEntry);
+      return false;
+    }
+  }
+
+  public static bool Rollback(UnityModManager.ModEntry modEntry)
+  {
+    try
+    {
+      Instance?.Disable();
+      UnityMainThread.Shutdown();
+      modEntry.OnToggle = null;
+      modEntry.OnUnload = null;
+      modEntry.OnUpdate = null;
+      modEntry.OnGUI = null;
+      modEntry.OnSaveGUI = null;
+      Instance = null;
+      return true;
+    }
+    catch (Exception exception)
+    {
+      modEntry.Logger.Error("[Rollback] " + exception);
       return false;
     }
   }
@@ -119,20 +143,7 @@ public sealed class Main
 
   private static bool OnUnload(UnityModManager.ModEntry modEntry)
   {
-    try
-    {
-      Instance?.Disable();
-      return true;
-    }
-    catch (Exception exception)
-    {
-      modEntry.Logger.Error(exception.ToString());
-      return false;
-    }
-    finally
-    {
-      UnityMainThread.Shutdown();
-    }
+    return Rollback(modEntry);
   }
 
   private void Enable()
