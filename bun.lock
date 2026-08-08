@@ -9,7 +9,7 @@
       "name": "@tuf-replay/web",
       "version": "0.0.0",
       "dependencies": {
-        "@adofai-ipc/client": "0.1.0",
+        "@adofai-ipc/client": "0.2.0",
         "@fontsource-variable/figtree": "^5.2.10",
         "@hugeicons/core-free-icons": "4.1.4",
         "@hugeicons/react": "^1.1.6",
@@ -38,7 +38,7 @@
     },
   },
   "packages": {
-    "@adofai-ipc/client": ["@adofai-ipc/client@0.1.0", "", {}, "sha512-RyRmAUUPFN2KlWZ10/vIC6MKq3qjhFbHIkzNpj20sn/zsQG895hieI6PwMsBiz+15yd/V9qWFQGyFm+MUp8BoQ=="],
+    "@adofai-ipc/client": ["@adofai-ipc/client@0.2.0", "", {}, "sha512-iT4kSMlAP89yXuqjMpcaTdmK7epIq3rtagioYfkvKdbfKXWU6RV1dmm/rU2rLzColbqa5DOsVSJ8KEmHv4STHw=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],
 
