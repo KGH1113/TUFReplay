@@ -34,9 +34,38 @@ public static class Bootstrap
       if (!resolution.HasCandidate)
         return TryLoadCurrent(modEntry, current);
 
-      RuntimeCandidate trial = store.ValidateCandidate(resolution.Version, resolution.RuntimePath);
-      state.Trial = trial.Version;
-      store.Save(state);
+      string bootstrapTrial;
+      try
+      {
+        if (string.IsNullOrWhiteSpace(resolution.DependencyBootstrapPath))
+          throw new InvalidDataException("The update candidate has no dependency bootstrap.");
+        bootstrapTrial = DependencyBootstrapShim.Stage(modEntry.Path,
+          resolution.DependencyBootstrapPath);
+      }
+      catch (Exception exception)
+      {
+        Warn(modEntry, "The dependency bootstrap candidate could not be staged. Loading the current runtime.", exception);
+        modEntry.Info.DisplayName = displayName;
+        return TryLoadCurrent(modEntry, current);
+      }
+
+      RuntimeCandidate trial;
+      try { trial = store.ValidateCandidate(resolution.Version, resolution.RuntimePath); }
+      catch
+      {
+        DependencyBootstrapShim.Discard(modEntry.Path, bootstrapTrial);
+        throw;
+      }
+      try
+      {
+        state.Trial = trial.Version;
+        store.Save(state);
+      }
+      catch
+      {
+        DependencyBootstrapShim.Discard(modEntry.Path, bootstrapTrial);
+        throw;
+      }
       modEntry.Info.Version = trial.Version;
       if (TryLoad(modEntry, trial, out Exception loadException))
       {
@@ -54,6 +83,8 @@ public static class Bootstrap
       state.Trial = null;
       store.Save(state);
       store.DeleteUnreferencedRuntime(trial.Version, state);
+      try { DependencyBootstrapShim.Discard(modEntry.Path, bootstrapTrial); }
+      catch (Exception exception) { Warn(modEntry, "The dependency bootstrap trial could not be discarded.", exception); }
       modEntry.Info.Version = current.Version;
       modEntry.Info.DisplayName = displayName + " <color=red>[Failed to update!]</color>";
       Warn(modEntry, "The updated runtime failed to initialize. It will be retried next launch.", loadException);
