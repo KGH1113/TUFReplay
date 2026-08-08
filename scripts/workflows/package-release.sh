@@ -20,7 +20,6 @@ fi
 run_task "Validate macOS helper artifact" "$TASKS_DIR/validate/macos-helper-artifact.sh"
 run_task "Verify AdofaiIpc dependency" "$TASKS_DIR/verify/adofai-ipc.sh"
 run_task "Build bootstrap (Release)" "$TASKS_DIR/build/bootstrap.sh" Release
-run_task "Build dependency shim (Release)" "$TASKS_DIR/build/dependency-shim.sh" Release
 run_task "Build update engine (Release)" "$TASKS_DIR/build/update-engine.sh" Release
 run_task "Build mod (Release)" "$TASKS_DIR/build/mod.sh" Release
 run_task "Stage package" "$TASKS_DIR/package/stage.sh"

@@ -21,7 +21,6 @@ require_file "$ADOFAI_IPC_DLL"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_INFO_JSON"
 require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
-require_dir "$TUFREPLAY_PROJECT_ROOT/TUFReplay.DependencyShim"
 
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/level.adofai"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.ogg"

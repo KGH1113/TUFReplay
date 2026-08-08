@@ -43,16 +43,7 @@ internal static class PayloadLoader
     {
       object result = method.Invoke(null, new object[] { modEntry });
       if (method.ReturnType == typeof(bool) && result is bool loaded && !loaded)
-      {
-        MethodInfo rollback = type.GetMethod(
-          "Rollback",
-          BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic,
-          null,
-          new[] { typeof(UnityModManager.ModEntry) },
-          null);
-        rollback?.Invoke(null, new object[] { modEntry });
         throw new InvalidOperationException(entryMethod + " returned false.");
-      }
     }
     catch (TargetInvocationException exception) when (exception.InnerException != null)
     {

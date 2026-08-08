@@ -18,7 +18,6 @@ else
 fi
 
 run_task "Build bootstrap (Debug)" "$TASKS_DIR/build/bootstrap.sh" Debug
-run_task "Build dependency shim (Debug)" "$TASKS_DIR/build/dependency-shim.sh" Debug
 run_task "Build update engine (Debug)" "$TASKS_DIR/build/update-engine.sh" Debug
 run_task "Build mod (Debug)" "$TASKS_DIR/build/mod.sh" Debug
 
@@ -28,8 +27,4 @@ else
   log_skip "Run C# tests (macOS native SQLite test setup only)"
 fi
 
-if [ "${TUFREPLAY_SKIP_INSTALL:-0}" = "1" ]; then
-  log_skip "Install mod (TUFREPLAY_SKIP_INSTALL=1)"
-else
-  run_task "Install mod" "$TASKS_DIR/install/mod.sh"
-fi
+run_task "Install mod" "$TASKS_DIR/install/mod.sh"

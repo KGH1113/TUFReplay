@@ -56,13 +56,7 @@ public static class Bootstrap
       store.DeleteUnreferencedRuntime(trial.Version, state);
       modEntry.Info.Version = current.Version;
       modEntry.Info.DisplayName = displayName + " <color=red>[Failed to update!]</color>";
-      Warn(modEntry, "The updated runtime failed to initialize. Rolling back to the previous runtime.", loadException);
-      if (TryLoad(modEntry, current, out Exception fallbackException))
-      {
-        modEntry.Info.DisplayName = displayName + " <color=yellow>[Update rolled back]</color>";
-        return true;
-      }
-      Warn(modEntry, "The previous runtime could not be restored in this process. It will be selected next launch.", fallbackException);
+      Warn(modEntry, "The updated runtime failed to initialize. It will be retried next launch.", loadException);
       return false;
     }
     catch (Exception exception)
