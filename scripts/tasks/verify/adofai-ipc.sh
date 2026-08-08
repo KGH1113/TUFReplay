@@ -11,6 +11,7 @@ require_command shasum
 require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 require_file "$ADOFAI_IPC_INFO_JSON"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
+require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"
 
 # shellcheck disable=SC1090
 source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
@@ -25,4 +26,11 @@ if [ "$bootstrap_sha256" != "$ADOFAIIPC_BOOTSTRAP_SHA256" ]; then
   printf 'Expected: %s\n' "$ADOFAIIPC_BOOTSTRAP_SHA256" >&2
   printf 'Actual:   %s\n' "$bootstrap_sha256" >&2
   fail "AdofaiIpc Bootstrap checksum mismatch."
+fi
+
+shim_sha256="$(shasum -a 256 "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL" | awk '{print $1}')"
+if [ "$shim_sha256" != "$ADOFAIIPC_DEPENDENCY_SHIM_SHA256" ]; then
+  printf 'Expected: %s\n' "$ADOFAIIPC_DEPENDENCY_SHIM_SHA256" >&2
+  printf 'Actual:   %s\n' "$shim_sha256" >&2
+  fail "AdofaiIpc dependency shim checksum mismatch."
 fi

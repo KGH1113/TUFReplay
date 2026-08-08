@@ -104,6 +104,7 @@ internal sealed class UpdateManager
         Outcome = UpdateOutcomes.Candidate,
         Version = manifest.Version,
         RuntimePath = existing,
+        DependencyBootstrapPath = Path.Combine(existing, "AdofaiIpc.Bootstrap.dll"),
       };
     }
 
@@ -120,6 +121,7 @@ internal sealed class UpdateManager
         Outcome = UpdateOutcomes.Candidate,
         Version = manifest.Version,
         RuntimePath = runtimePath,
+        DependencyBootstrapPath = Path.Combine(runtimePath, "AdofaiIpc.Bootstrap.dll"),
       };
     }
     finally
@@ -253,7 +255,9 @@ internal sealed class UpdateManager
     string assemblyPath = Path.Combine(directory, "TUFReplay.dll");
     string enginePath = Path.Combine(directory, "TUFReplay.UpdateEngine.dll");
     string infoPath = Path.Combine(directory, "Info.json");
-    if (!File.Exists(assemblyPath) || !File.Exists(enginePath) || !File.Exists(infoPath))
+    string dependencyBootstrapPath = Path.Combine(directory, "AdofaiIpc.Bootstrap.dll");
+    if (!File.Exists(assemblyPath) || !File.Exists(enginePath) || !File.Exists(infoPath) ||
+        !File.Exists(dependencyBootstrapPath))
       throw new InvalidDataException("The update package does not contain a complete runtime.");
     Match match = VersionPattern.Match(File.ReadAllText(infoPath));
     if (!match.Success || SemanticVersion.Parse(match.Groups[1].Value).CompareTo(SemanticVersion.Parse(expectedVersion)) != 0)

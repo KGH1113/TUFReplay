@@ -64,7 +64,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc 0.2.0 or newer, installed or updated automatically when needed
+- AdofaiIpc 0.2.0 or newer; a missing installation is attempted automatically
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -106,7 +106,9 @@ The build script:
 - Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
-The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the fixed TUFReplay launcher runs the current version's update engine before loading the payload. The engine verifies `TUFReplay.update.json`, downloads the complete ZIP, and activates its DLLs, native libraries, helpers, and assets together. Timeout or package errors load the current runtime. An initialization failure leaves the current pointer unchanged, displays `Failed to update!`, and retries the latest release on the next launch. Only the current and previous successful runtimes are retained.
+The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFReplay starts. A missing AdofaiIpc installation is downloaded and verified once per process. Disabled, outdated, install-failure, and load-failure states stop the TUFReplay core and are shown in the shared AdofaiIpc dependency dialog without changing the user's UMM setting. The TUFReplay update engine verifies the complete ZIP and stages its bundled bootstrap as `Trial`; that bootstrap is used on the next game launch. If the matching TUFReplay runtime fails to initialize, its bootstrap trial is discarded while the current runtime remains active.
+
+The first TUFReplay release using `AdofaiIpc.DependencyShim.dll` must be installed manually once. Later releases update the versioned bootstrap without overwriting a loaded DLL.
 
 The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
@@ -118,6 +120,7 @@ Important environment variables:
 - `DOTNET_EXE`: .NET SDK executable.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
+- `ADOFAI_IPC_DEPENDENCY_SHIM_DLL`: fixed AdofaiIpc dependency shim assembly path.
 - `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
@@ -138,7 +141,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline and must be installed manually once; later releases can update it in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. The first release containing the fixed AdofaiIpc dependency shim is another one-time manual reinstall boundary; later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
 
 ## Web Development
 
