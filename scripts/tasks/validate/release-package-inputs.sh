@@ -20,6 +20,7 @@ require_file "$HARMONY_DLL"
 require_file "$ADOFAI_IPC_DLL"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"
+require_file "$ADOFAI_IPC_MIGRATION_DLL"
 require_file "$ADOFAI_IPC_INFO_JSON"
 require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 
