@@ -17,6 +17,23 @@
     "updateDescription": "얼불춤을 완전히 종료한 다음 다시 실행하여 TUFReplay를 업데이트하세요.",
     "retryAfterRestarting": "재시작 후 다시 연결",
     "retry": "다시 연결",
+    "reload": "페이지 새로고침",
+    "downloadIpc": "AdofaiIPC 다운로드",
+    "ipcUpdateTitle": "AdofaiIPC 업데이트 필요",
+    "ipcUpdateDescription": "게임의 AdofaiIPC가 이 웹사이트보다 오래됐거나 버전 정보를 제공하지 않습니다.",
+    "ipcUpdateGuide": "AdofaiIPC 업데이트 방법",
+    "ipcUpdateSteps": [
+      "최신 안정 버전 AdofaiIPC를 다운로드하세요.",
+      "얼불춤을 종료한 상태에서 설치된 AdofaiIPC 파일을 교체하세요.",
+      "얼불춤을 다시 실행한 뒤 연결을 재시도하세요."
+    ],
+    "clientUpdateTitle": "웹사이트 업데이트 필요",
+    "clientUpdateDescription": "AdofaiIPC보다 브라우저에 캐시된 웹 클라이언트가 오래됐습니다.",
+    "clientUpdateGuide": "새로고침 방법",
+    "clientUpdateSteps": [
+      "페이지를 새로고침해 최신 웹 번들을 불러오세요.",
+      "계속 표시되면 이 사이트의 캐시를 지운 뒤 다시 여세요."
+    ],
     "connectGuide": "연결 방법",
     "updateGuide": "업데이트 방법",
     "connectSteps": [
@@ -37,6 +54,7 @@
     "loadSession": "레벨 세션을 불러오지 못했습니다",
     "ipcUnavailable": "얼불춤 또는 AdofaiIPC가 실행 중이 아닙니다.",
     "ipcTimeout": "TUFReplay 응답 시간이 너무 오래 걸렸습니다.",
+    "ipcVersionMismatch": "AdofaiIPC 모드와 웹 클라이언트 버전이 일치하지 않습니다.",
     "ipcUpdateRequired": "설치된 AdofaiIPC가 현재 TUFReplay 버전과 호환되지 않습니다.",
     "namespaceNotFound": "TUFReplay IPC가 아직 등록되지 않았습니다.",
     "namespaceInitializing": "TUFReplay가 초기화 중입니다. 잠시 후 다시 시도하세요.",

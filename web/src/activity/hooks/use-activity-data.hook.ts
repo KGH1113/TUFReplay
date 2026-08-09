@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { IpcVersionMismatchError, type IpcVersionMismatchDirection } from "@adofai-ipc/client";
 
 import i18n from "../../i18n/i18n";
 import type { ActivityAppSession, ConnectionStatus } from "../activity.model";
@@ -39,7 +40,9 @@ export function mergeRecentAppSessions(
 }
 
 export function connectionStatusForError(cause: unknown): ConnectionStatus {
-  return cause instanceof ActivityProtocolMismatchError ? "incompatible" : "error";
+  return cause instanceof ActivityProtocolMismatchError || cause instanceof IpcVersionMismatchError
+    ? "incompatible"
+    : "error";
 }
 
 export function useActivityData() {
@@ -48,19 +51,25 @@ export function useActivityData() {
   if (gatewayRef.current === null && mockActivityEnabled)
     gatewayRef.current = createMockActivityGateway();
   const loadingRef = useRef(false);
+  const terminalMismatchRef = useRef<IpcVersionMismatchError | null>(null);
   const [sessions, setSessions] = useState<ActivityAppSession[]>([]);
   const [status, setStatus] = useState<ConnectionStatus>("connecting");
   const [error, setError] = useState("");
+  const [versionMismatch, setVersionMismatch] = useState<IpcVersionMismatchDirection | null>(null);
 
   const refresh = useCallback(async () => {
-    if (loadingRef.current) return;
+    if (loadingRef.current || terminalMismatchRef.current) return;
     loadingRef.current = true;
     try {
-      const gateway = gatewayRef.current ?? (await connectActivityGateway());
+      const gateway = gatewayRef.current ?? (await connectActivityGateway(undefined, (mismatch) => {
+        terminalMismatchRef.current = mismatch;
+        setVersionMismatch(mismatch.direction);
+      }));
       await gateway.health();
       gatewayRef.current = gateway;
       setStatus("online");
       setError("");
+      setVersionMismatch(null);
 
       try {
         if (hasCompleteHistoryRef.current) {
@@ -78,6 +87,10 @@ export function useActivityData() {
       gatewayRef.current = null;
       hasCompleteHistoryRef.current = false;
       setStatus(connectionStatusForError(cause));
+      if (cause instanceof IpcVersionMismatchError) {
+        terminalMismatchRef.current = cause;
+        setVersionMismatch(cause.direction);
+      }
       setError(localizedErrorMessage(cause, i18n.t("errors.connect", { ns: "activity" })));
     } finally {
       loadingRef.current = false;
@@ -86,9 +99,11 @@ export function useActivityData() {
 
   const retry = useCallback(() => {
     hasCompleteHistoryRef.current = false;
+    terminalMismatchRef.current = null;
+    setVersionMismatch(null);
     return refresh();
   }, [refresh]);
 
   useVisiblePolling(() => void refresh());
-  return { sessions, status, error, retry, gatewayRef, mockEnabled: mockActivityEnabled };
+  return { sessions, status, error, versionMismatch, retry, gatewayRef, mockEnabled: mockActivityEnabled };
 }

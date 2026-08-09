@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CLIENT_VERSION, IpcVersionMismatchError } from "@adofai-ipc/client";
 
 import type {
   MicrophoneCalibrationResult,
@@ -34,6 +35,7 @@ describe("activity IPC contract", () => {
         return Response.json({
           ok: true,
           server: "AdofaiIpc",
+          serverVersion: CLIENT_VERSION,
           protocolVersion: 2,
           port: Number(url.port),
         });
@@ -62,6 +64,32 @@ describe("activity IPC contract", () => {
       "/ipc/namespaces/tuf-replay",
       "/ipc",
     ]);
+  });
+
+  test("stops before namespace polling on an AdofaiIpc version mismatch", async () => {
+    const paths: string[] = [];
+    const mismatches: IpcVersionMismatchError[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      paths.push(url.pathname);
+      return Response.json({
+        ok: true,
+        server: "AdofaiIpc",
+        serverVersion: "0.2.0",
+        protocolVersion: 2,
+        port: Number(url.port),
+      });
+    }) as typeof fetch;
+
+    try {
+      await connectActivityGateway(fetchImpl, (error) => mismatches.push(error));
+      throw new Error("Expected a version mismatch.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(IpcVersionMismatchError);
+    }
+    expect(paths).toEqual(["/ipc/health"]);
+    expect(mismatches).toHaveLength(1);
+    expect(mismatches[0]?.direction).toBe("server_outdated");
   });
 
   test("accepts the supported TUFReplay protocol version", async () => {
