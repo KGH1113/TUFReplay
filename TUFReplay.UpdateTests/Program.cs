@@ -159,6 +159,8 @@ internal static class UpdaterTests
       AddEntry(archive, root + "AdofaiIpc.Bootstrap.dll", "dependency-bootstrap");
       AddEntry(archive, root + "AdofaiIpc.DependencyShim.dll", "dependency-shim");
       AddEntry(archive, root + "AdofaiIpc.Migration.dll", "migration");
+      AddEntry(archive, root + "AdofaiIpcBootstrap.json",
+        "{\"MinimumAdofaiIpcVersion\":\"0.3.0\",\"AssemblyName\":\"TUFReplay.Bootstrap.dll\",\"EntryMethod\":\"TUFReplay.Bootstrap.Bootstrap.Load\"}");
       AddEntry(archive, root + "Info.json", $"{{\"Version\":\"{version}\"}}");
       if (includeResources)
       {
