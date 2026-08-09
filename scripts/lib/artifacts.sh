@@ -24,6 +24,7 @@ copy_launcher_payload() {
   require_file "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.Bootstrap.dll"
   require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
   require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"
+  require_file "$ADOFAI_IPC_MIGRATION_DLL"
 
   # shellcheck disable=SC1090
   source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
@@ -55,6 +56,8 @@ copy_runtime_core() {
   cp "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" "$destination/"
   cp "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll" "$destination/"
   cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$destination/"
+  cp "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL" "$destination/"
+  cp "$ADOFAI_IPC_MIGRATION_DLL" "$destination/"
 }
 
 copy_runtime_dependencies() {

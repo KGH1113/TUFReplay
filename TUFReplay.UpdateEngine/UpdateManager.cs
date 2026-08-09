@@ -256,8 +256,10 @@ internal sealed class UpdateManager
     string enginePath = Path.Combine(directory, "TUFReplay.UpdateEngine.dll");
     string infoPath = Path.Combine(directory, "Info.json");
     string dependencyBootstrapPath = Path.Combine(directory, "AdofaiIpc.Bootstrap.dll");
+    string dependencyShimPath = Path.Combine(directory, "AdofaiIpc.DependencyShim.dll");
+    string migrationPath = Path.Combine(directory, "AdofaiIpc.Migration.dll");
     if (!File.Exists(assemblyPath) || !File.Exists(enginePath) || !File.Exists(infoPath) ||
-        !File.Exists(dependencyBootstrapPath))
+        !File.Exists(dependencyBootstrapPath) || !File.Exists(dependencyShimPath) || !File.Exists(migrationPath))
       throw new InvalidDataException("The update package does not contain a complete runtime.");
     Match match = VersionPattern.Match(File.ReadAllText(infoPath));
     if (!match.Success || SemanticVersion.Parse(match.Groups[1].Value).CompareTo(SemanticVersion.Parse(expectedVersion)) != 0)
