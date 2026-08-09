@@ -18,6 +18,8 @@ function translatedIpcError(cause: unknown) {
       : null;
   if (code === "UNAVAILABLE") return i18n.t("errors.ipcUnavailable", { ns: "activity" });
   if (code === "TIMEOUT") return i18n.t("errors.ipcTimeout", { ns: "activity" });
+  if (code === "VERSION_MISMATCH")
+    return i18n.t("errors.ipcVersionMismatch", { ns: "activity" });
   if (code === "namespace_not_found") return i18n.t("errors.namespaceNotFound", { ns: "activity" });
   if (code === "namespace_initializing")
     return i18n.t("errors.namespaceInitializing", { ns: "activity" });

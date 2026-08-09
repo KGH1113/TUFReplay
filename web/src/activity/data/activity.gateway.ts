@@ -1,4 +1,9 @@
-import { AdofaiIpcClient, type AdofaiIpcNamespaceClient, tryConnect } from "@adofai-ipc/client";
+import {
+  AdofaiIpcClient,
+  type AdofaiIpcNamespaceClient,
+  type IpcVersionMismatchError,
+  tryConnect,
+} from "@adofai-ipc/client";
 
 import type {
   ActivityAppSession,
@@ -109,11 +114,13 @@ export interface ActivityGateway {
 
 export async function connectActivityGateway(
   fetchImpl: typeof fetch = adofaiIpcFetch,
+  onVersionMismatch?: (error: IpcVersionMismatchError) => void,
 ): Promise<ActivityGateway> {
   const client = await tryConnect({
     fetch: fetchImpl,
     probeTimeoutMs: IPC_PROBE_TIMEOUT_MS,
     requestTimeoutMs: IPC_REQUEST_TIMEOUT_MS,
+    onVersionMismatch,
   });
   await client.waitForNamespace(NAMESPACE, {
     status: "ready",
