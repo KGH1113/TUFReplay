@@ -38,11 +38,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
   public MacOsMicrophoneCaptureBackend()
   {
-    _commandWorker = new Thread(ProcessCommands)
-    {
-      IsBackground = true,
-      Name = "TUFReplay macOS microphone helper",
-    };
+    _commandWorker = new Thread(ProcessCommands) { IsBackground = true, Name = "TUFReplay macOS microphone helper" };
     _commandWorker.Start();
     _deviceRefreshQueued = true;
     QueueCommand(RefreshDevices);
@@ -553,6 +549,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     public readonly string RunId;
     public readonly string TempPath;
     public bool BeginSucceeded;
+
     public PendingRun(string runId, string tempPath)
     {
       RunId = runId;

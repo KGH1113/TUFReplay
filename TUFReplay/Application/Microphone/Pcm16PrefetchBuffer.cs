@@ -41,11 +41,7 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
     _dataLength = dataLength;
     _ring = new byte[capacity];
     _workerBuffer = new byte[Math.Min(capacity, 64 * 1024)];
-    _worker = new Thread(PrefetchLoop)
-    {
-      IsBackground = true,
-      Name = "TUFReplay PCM Prefetch",
-    };
+    _worker = new Thread(PrefetchLoop) { IsBackground = true, Name = "TUFReplay PCM Prefetch" };
     _worker.Start();
   }
 

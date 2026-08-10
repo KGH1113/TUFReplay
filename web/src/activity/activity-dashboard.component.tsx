@@ -7,10 +7,12 @@ import { ConnectionStatePanel } from "./components/connection-state-panel.compon
 import { DashboardHeader } from "./components/dashboard-header.component";
 import { DayRail } from "./components/day-rail.component";
 import { LevelStrip } from "./components/level-strip.component";
+import { RenderRunDialog } from "./components/render-run-dialog.component";
 import { ReplayLevelChoiceDialog } from "./components/replay-level-choice-dialog.component";
 import { useActivityData } from "./hooks/use-activity-data.hook";
 import { useLevelMetadata } from "./hooks/use-level-metadata.hook";
 import { useLevelSessionData } from "./hooks/use-level-session-data.hook";
+import { useRenderControl } from "./hooks/use-render-control.hook";
 import { useReplayControl } from "./hooks/use-replay-control.hook";
 import { aggregateRunMarkers, groupSessionsByDay } from "./lib/activity-data.utils";
 
@@ -19,6 +21,7 @@ export function ActivityDashboard() {
   const { t: commonT } = useTranslation("common");
   const activity = useActivityData();
   const replay = useReplayControl(activity.gatewayRef, activity.status);
+  const render = useRenderControl(activity.gatewayRef, activity.status);
   const clearLevelFilePicker = replay.clearLevelFilePicker;
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
@@ -28,6 +31,7 @@ export function ActivityDashboard() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [firstMarkerLevelSessionId, setFirstMarkerLevelSessionId] = useState<string | null>(null);
   const [replayChoiceRun, setReplayChoiceRun] = useState<ActivityRun | null>(null);
+  const [renderRun, setRenderRun] = useState<ActivityRun | null>(null);
   const days = useMemo(
     () => groupSessionsByDay(activity.sessions, timeZone),
     [activity.sessions, timeZone],
@@ -161,6 +165,7 @@ export function ActivityDashboard() {
       clearLevelFilePicker();
       setReplayChoiceRun(null);
     }
+    setRenderRun((current) => (current?.Id === run.Id ? null : current));
     await activity.retry();
   };
   return (
@@ -224,6 +229,8 @@ export function ActivityDashboard() {
                 onDeleteRun={handleDeleteRun}
                 onDeleteMicrophoneRecording={handleDeleteMicrophoneRecording}
                 onKeepMicrophoneRecording={handleKeepMicrophoneRecording}
+                renderAvailable={render.rendererDetected}
+                onRenderRun={setRenderRun}
               />
             )}
           </section>
@@ -240,6 +247,28 @@ export function ActivityDashboard() {
         onPlay={replay.play}
         onChooseAnother={replay.pickLevelFile}
         onResetPicker={replay.clearLevelFilePicker}
+      />
+      <RenderRunDialog
+        run={render.rendererDetected ? renderRun : null}
+        capabilities={render.capabilities}
+        status={render.status}
+        pendingRunId={render.pendingRunId}
+        error={render.error}
+        errorRunId={render.errorRunId}
+        pickerResult={replay.pickerResult}
+        pickingRunId={replay.pickingRunId}
+        onClose={() => setRenderRun(null)}
+        onStart={render.start}
+        onCancel={render.cancel}
+        onPickLevelFile={replay.pickLevelFile}
+        onResetPicker={replay.clearLevelFilePicker}
+        previewState={render.previewState}
+        onRenderPreview={render.renderPreview}
+        onPlayPreview={render.playPreview}
+        onStopPreviewPlayback={render.stopPreviewPlayback}
+        onPreviewLevels={render.setPreviewLevels}
+        onPreviewMicTiming={render.setPreviewMicTiming}
+        onCancelPreviewRender={render.cancelPreviewRender}
       />
     </>
   );

@@ -225,10 +225,7 @@ public sealed class MicrophoneCalibrationFeature
   {
     try
     {
-      float[] inputWaveform = CalibrationWaveformBuilder.FromInputEvents(
-        ReplayInputParser.Parse(inputCsv),
-        durationMs
-      );
+      float[] inputWaveform = CalibrationWaveformBuilder.FromInputEvents(ReplayInputParser.Parse(inputCsv), durationMs);
       if (!CalibrationWaveformBuilder.HasSignal(inputWaveform))
         throw new InvalidOperationException("No microphone calibration key presses were recorded.");
       float[] microphoneWaveform = CalibrationWaveformBuilder.FromPcm16(recording, durationMs);

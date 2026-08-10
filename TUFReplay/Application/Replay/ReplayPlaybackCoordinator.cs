@@ -33,6 +33,7 @@ public static class ReplayPlaybackCoordinator
   private static string _returnTerminalState;
   private static int _returnNotBeforeFrame;
   private static bool _forcedFail;
+  private static PendingReplay _deferredRenderPlay;
 
   public static bool IsBusy
   {
@@ -63,7 +64,15 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
-  public static ReplayPlaybackStatus Play(string runId, string levelPath = null)
+  public static ReplayPlaybackStatus Play(string runId, string levelPath = null) => Play(runId, levelPath, false);
+
+  /// <summary>
+  /// Starts a replay. When <paramref name="renderCapture"/> is set the run plays for the offline
+  /// renderer instead of for the player: it starts without waiting for window focus, emits no
+  /// OS-level input, and hands its microphone recording to the renderer rather than to a live
+  /// AudioSource.
+  /// </summary>
+  public static ReplayPlaybackStatus Play(string runId, string levelPath, bool renderCapture)
   {
     lock (CommandGate)
     {
@@ -78,6 +87,12 @@ public static class ReplayPlaybackCoordinator
         }
       );
 
+      if (renderCapture && RenderCaptureBridge.Current == null)
+      {
+        SetError(operationId, runId, "renderer_not_installed", "The TUFReplay-Renderer mod is not installed.");
+        return GetStatus();
+      }
+
       if (ReplayLevelFilePickerCoordinator.IsPicking)
       {
         SetError(operationId, runId, "file_picker_busy", "A level file picker is still open.");
@@ -90,6 +105,7 @@ public static class ReplayPlaybackCoordinator
         return GetStatus();
       }
 
+      pending.RenderCapture = renderCapture;
       CancelPendingPreparation();
       _preparingOperation = pending;
       UnityMainThread.Post(() => CancelCurrentReplayForReplacement(operationId));
@@ -163,6 +179,13 @@ public static class ReplayPlaybackCoordinator
       ReplayLevelOpenService.ReleaseHeldBlack();
       CancelPendingPreparation();
       PendingReplay operation = _operation;
+      if (operation != null && operation.RenderCapture)
+        RenderCaptureBridge.Current?.OnReplayTerminal(
+          operation.OperationId,
+          ReplayPlaybackStates.Cancelled,
+          allowTrailingCapture: false,
+          reason
+        );
       ReplaySessionService.ClearActiveContext();
       operation?.CleanupPreparedMicrophone();
       if (scnEditor.instance != null && scnEditor.instance.playMode)
@@ -175,11 +198,14 @@ public static class ReplayPlaybackCoordinator
       _waitingForEditor = false;
       _returnRequested = false;
       _forcedFail = false;
+      _deferredRenderPlay = null;
     }
   }
 
   public static void Tick()
   {
+    TickDeferredRenderPlay();
+
     PendingReplay operation = _operation;
     if (operation == null || !IsCurrent(operation.OperationId))
       return;
@@ -316,6 +342,14 @@ public static class ReplayPlaybackCoordinator
     string state = GetStatus().State;
     if (state == ReplayPlaybackStates.Starting || state == ReplayPlaybackStates.Playing)
     {
+      if (operation.RenderCapture)
+        RenderCaptureBridge.Current?.OnReplayTerminal(
+          operation.OperationId,
+          ReplayPlaybackStates.Cancelled,
+          allowTrailingCapture: false,
+          "Replay cancelled with Escape."
+        );
+
       ReplaySessionService.ClearActiveContext();
       SetTerminal(operation, ReplayPlaybackStates.Cancelled, "Replay cancelled with Escape.");
       operation.CleanupPreparedMicrophone();
@@ -328,6 +362,15 @@ public static class ReplayPlaybackCoordinator
     PendingReplay operation = _operation;
     if (operation == null || !IsCurrent(operation.OperationId))
       return;
+
+    if (operation.RenderCapture)
+      RenderCaptureBridge.Current?.OnReplayTerminal(
+        operation.OperationId,
+        ReplayPlaybackStates.Error,
+        allowTrailingCapture: false,
+        message,
+        errorCode
+      );
 
     ReplaySessionService.ClearActiveContext();
     operation.CleanupPreparedMicrophone();
@@ -347,6 +390,7 @@ public static class ReplayPlaybackCoordinator
     _waitingForEditor = false;
     _returnRequested = false;
     _forcedFail = false;
+    _deferredRenderPlay = null;
     SetStatus(ReplayPlaybackStatus.Idle());
   }
 
@@ -415,6 +459,7 @@ public static class ReplayPlaybackCoordinator
     _waitingForEditor = false;
     _returnRequested = false;
     _forcedFail = false;
+    _deferredRenderPlay = null;
   }
 
   private static bool TryPrepare(
@@ -562,6 +607,17 @@ public static class ReplayPlaybackCoordinator
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
+    if (operation.RenderCapture)
+    {
+      // Start immediately, but keep reporting "not focused" so the native input pump parks itself
+      // and the per-frame path advances the input scheduler from the virtual replay clock via
+      // SkipTo instead of from Stopwatch. That is what keeps input state deterministic while the
+      // game runs on a capture timestep.
+      operation.NativeInputFocusGuard = RenderCaptureFocusGuard.Instance;
+      StartReplay(operation);
+      return;
+    }
+
     if (operation.AllowBackground)
     {
       operation.NativeInputFocusGuard = AlwaysReadyFocusGuard.Instance;
@@ -614,25 +670,40 @@ public static class ReplayPlaybackCoordinator
       && operation.MicrophoneLimiterEnvelope != null
     )
     {
-      try
+      if (operation.RenderCapture)
       {
-        TUFReplaySetting settings = Infrastructure.Settings.TUFReplaySettingStore.Current;
-        microphonePlayer = new ReplayMicrophonePlayer(
+        // The renderer mixes the recording offline from the WAV, so it takes ownership of the
+        // temporary file instead of a live AudioSource streaming it.
+        RenderCaptureBridge.Current?.AttachMicrophone(
+          operation.OperationId,
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
-          operation.MicrophoneLimiterEnvelope,
-          settings?.MicrophoneOffsetMs ?? 0,
-          settings?.MicrophoneVolumeDb ?? 0
+          operation.MicrophoneLimiterEnvelope
         );
         operation.TransferMicrophoneOwnership();
       }
-      catch (Exception exception)
+      else
       {
-        operation.CleanupPreparedMicrophone();
-        Main.Instance?.Log(
-          "[Replay/Microphone] Playback initialization failed; replay will continue without it. error="
-            + exception.Message
-        );
+        try
+        {
+          TUFReplaySetting settings = Infrastructure.Settings.TUFReplaySettingStore.Current;
+          microphonePlayer = new ReplayMicrophonePlayer(
+            operation.MicrophoneRecording,
+            operation.MicrophoneWave,
+            operation.MicrophoneLimiterEnvelope,
+            settings?.MicrophoneOffsetMs ?? 0,
+            settings?.MicrophoneVolumeDb ?? 0
+          );
+          operation.TransferMicrophoneOwnership();
+        }
+        catch (Exception exception)
+        {
+          operation.CleanupPreparedMicrophone();
+          Main.Instance?.Log(
+            "[Replay/Microphone] Playback initialization failed; replay will continue without it. error="
+              + exception.Message
+          );
+        }
       }
     }
 
@@ -654,7 +725,9 @@ public static class ReplayPlaybackCoordinator
       NativeInputScheduler = scheduler,
       NativeInputPlayer = new ReplayNativeInputPlayer(
         scheduler,
-        operation.AllowBackground ? NullNativeInputEmitter.Instance : NativeInputEmitterFactory.Create(focusGuard),
+        operation.AllowBackground || operation.RenderCapture
+          ? NullNativeInputEmitter.Instance
+          : NativeInputEmitterFactory.Create(focusGuard),
         focusGuard
       ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
@@ -667,6 +740,47 @@ public static class ReplayPlaybackCoordinator
     ReplaySessionService.ApplyReplayPitchNow();
     ReplaySessionService.ApplyReplayJudgmentDifficultyNow();
     editor.SelectFloor(editor.floors[operation.Run.StartTile]);
+    SetOperationState(operation, ReplayPlaybackStates.Starting, "Starting replay.");
+
+    // Install the capture environment before entering play mode: the capture clock has to be on a
+    // virtual timestep before the countdown starts. When the renderer still has preparation in
+    // flight (decoded song reload, resolution change), entering play mode is deferred until it is
+    // ready — that keeps "Get Ready" and the countdown inside the capture, at render pacing, and
+    // guarantees the conductor schedules music and hitsounds while the offline mixer is listening.
+    if (operation.RenderCapture)
+    {
+      RenderCaptureBridge.Current?.OnReplayStarting(operation.OperationId);
+      if (!(RenderCaptureBridge.Current?.ReadyForPlayMode ?? true))
+      {
+        _deferredRenderPlay = operation;
+        SetOperationState(operation, ReplayPlaybackStates.Starting, "Preparing the render.");
+        return;
+      }
+    }
+
+    editor.Play();
+  }
+
+  /// <summary>Enters play mode once the render session finishes preparing. Runs from Tick().</summary>
+  private static void TickDeferredRenderPlay()
+  {
+    PendingReplay operation = _deferredRenderPlay;
+    if (operation == null)
+      return;
+
+    if (!IsCurrent(operation.OperationId))
+    {
+      _deferredRenderPlay = null;
+      return;
+    }
+
+    if (!(RenderCaptureBridge.Current?.ReadyForPlayMode ?? true))
+      return;
+
+    _deferredRenderPlay = null;
+    scnEditor editor = scnEditor.instance;
+    if (editor == null || editor.playMode)
+      return;
     SetOperationState(operation, ReplayPlaybackStates.Starting, "Starting replay.");
     editor.Play();
   }
@@ -742,6 +856,17 @@ public static class ReplayPlaybackCoordinator
     _returnRequested = true;
     _returnTerminalState = terminalState;
     _returnNotBeforeFrame = Time.frameCount + 1;
+
+    // The editor scene replaces the play-mode view on the next frame, so there is nothing worth
+    // capturing after this point.
+    if (operation.RenderCapture)
+      RenderCaptureBridge.Current?.OnReplayTerminal(
+        operation.OperationId,
+        terminalState,
+        allowTrailingCapture: false,
+        message
+      );
+
     ReplaySessionService.ClearActiveContext();
     SetOperationState(operation, ReplayPlaybackStates.ReturningToEditor, message);
   }
@@ -751,7 +876,18 @@ public static class ReplayPlaybackCoordinator
     if (!IsCurrent(operation.OperationId))
       return;
 
-    bool shouldRearmRecording = !operation.AllowBackground;
+    bool shouldRearmRecording = !operation.AllowBackground && !operation.RenderCapture;
+
+    // The game stays in play mode on the clear or fail screen, so the renderer keeps capturing for
+    // its configured trailing seconds before finalizing the file.
+    if (operation.RenderCapture)
+      RenderCaptureBridge.Current?.OnReplayTerminal(
+        operation.OperationId,
+        ReplayPlaybackStates.Completed,
+        allowTrailingCapture: true,
+        message
+      );
+
     ReplaySessionService.ClearActiveContext();
     operation.CleanupPreparedMicrophone();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
@@ -977,6 +1113,9 @@ public static class ReplayPlaybackCoordinator
     public Pcm16LimiterEnvelope MicrophoneLimiterEnvelope;
     public bool AllowBackground;
 
+    /// <summary>Set when this run is playing to be captured into a video file.</summary>
+    public bool RenderCapture;
+
     public PendingReplay(
       string operationId,
       StoredReplayRun run,
@@ -1026,6 +1165,26 @@ public static class ReplayPlaybackCoordinator
     public bool IsForegroundTarget(out string reason) => IsStable(out reason);
 
     public string Describe() => "calibration-background";
+  }
+
+  /// <summary>
+  /// Focus guard used while rendering. It always reports "not ready", which parks the native input
+  /// pump's Stopwatch-driven thread and routes every frame through the SkipTo path so the input
+  /// scheduler advances on the virtual replay clock instead of on wall time.
+  /// </summary>
+  private sealed class RenderCaptureFocusGuard : INativeInputFocusGuard
+  {
+    public static readonly RenderCaptureFocusGuard Instance = new RenderCaptureFocusGuard();
+
+    public bool IsStable(out string reason)
+    {
+      reason = "render_capture";
+      return false;
+    }
+
+    public bool IsForegroundTarget(out string reason) => IsStable(out reason);
+
+    public string Describe() => "render-capture";
   }
 
   private sealed class NullNativeInputEmitter : INativeInputEmitter

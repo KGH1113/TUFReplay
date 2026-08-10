@@ -112,13 +112,7 @@ internal static class SkyHookInputKeyMigration
       if (!ushort.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
         return false;
 
-      builder
-        .Append(timeUs)
-        .Append(',')
-        .Append(nativeKeyCode)
-        .Append(',')
-        .Append(rawFlags)
-        .Append('\n');
+      builder.Append(timeUs).Append(',').Append(nativeKeyCode).Append(',').Append(rawFlags).Append('\n');
       convertedInputCount++;
     }
 

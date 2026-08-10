@@ -58,6 +58,12 @@ public sealed class ReplayNativeInputPlayer : IDisposable
     return _pump.SuspendAt(nowUs);
   }
 
+  /// <summary>Copies the events a following <see cref="SkipTo"/> would consume; see scheduler.</summary>
+  public void PeekPending(long nowUs, System.Collections.Generic.List<Domain.ReplayData.RecordedInput> into)
+  {
+    _scheduler.PeekUntil(nowUs, into);
+  }
+
   public string DescribeFocus()
   {
     return _focusGuard.Describe();

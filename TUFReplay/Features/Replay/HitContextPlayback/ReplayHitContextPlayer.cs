@@ -235,12 +235,7 @@ public sealed class ReplayHitContextPlayer
         {
           if ((player.auto || nextFloorAuto) && !RDC.useOldAuto)
           {
-            ADOBase.controller.errorMeter.AddHit(
-              0f,
-              1f,
-              player.planetarySystem.chosenPlanet,
-              hitFloor
-            );
+            ADOBase.controller.errorMeter.AddHit(0f, 1f, player.planetarySystem.chosenPlanet, hitFloor);
           }
           else
           {

@@ -141,11 +141,7 @@ internal static class NativeInputKeyCodeMapper
     {
       if (
         meta.formatVersion == 3
-        && string.Equals(
-          meta.inputCapture,
-          CorruptedNativeStateMigrationCapture,
-          StringComparison.OrdinalIgnoreCase
-        )
+        && string.Equals(meta.inputCapture, CorruptedNativeStateMigrationCapture, StringComparison.OrdinalIgnoreCase)
       )
         return RepairCorruptedNativeStateMigration(inputs, out dropped);
       if (ShouldRemoveLegacyWindowsInitialState(inputs, meta))
@@ -154,20 +150,42 @@ internal static class NativeInputKeyCodeMapper
     }
 
     List<RecordedInput> converted = new List<RecordedInput>(inputs.Count);
+    Dictionary<long, KeyLabel> playbackLabels = new Dictionary<long, KeyLabel>();
+    List<KeyLabel> droppedLabels = null;
     foreach (RecordedInput input in inputs)
     {
       KeyLabel label = (KeyLabel)input.Key;
       if (!TryConvertKeyLabel(label, out int nativeKeyCode))
       {
         dropped++;
+        droppedLabels ??= new List<KeyLabel>();
+        if (droppedLabels.Count < 8 && !droppedLabels.Contains(label))
+          droppedLabels.Add(label);
         continue;
       }
 
       RecordInputFlags flags = input.Flags;
-      if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label))
+      bool extendedKey =
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label);
+      if (extendedKey)
         flags |= RecordInputFlags.ExtendedKey;
+
+      // Remember which label produced this exact (native, extended) signature in THIS run: the
+      // authoritative reverse mapping for reporting replayed edges, immune to the enum-order and
+      // side-collapse guesswork a generic reverse table needs.
+      playbackLabels[LabelSignature(nativeKeyCode, extendedKey)] = label;
+
       converted.Add(new RecordedInput(input.TimeUs, nativeKeyCode, flags));
     }
+
+    _playbackLabels = playbackLabels;
+    if (droppedLabels != null)
+      Main.Instance?.Log(
+        "[Replay/Input] "
+          + dropped
+          + " recorded input(s) had no native mapping and were dropped. labels="
+          + string.Join(", ", droppedLabels)
+      );
 
     return converted;
   }
@@ -204,10 +222,7 @@ internal static class NativeInputKeyCodeMapper
     return inputs.GetRange(dropped, inputs.Count - dropped);
   }
 
-  private static List<RecordedInput> RepairCorruptedNativeStateMigration(
-    List<RecordedInput> inputs,
-    out int dropped
-  )
+  private static List<RecordedInput> RepairCorruptedNativeStateMigration(List<RecordedInput> inputs, out int dropped)
   {
     dropped = 0;
     EnsureRepairMap();
@@ -226,8 +241,7 @@ internal static class NativeInputKeyCodeMapper
 
       RecordInputFlags flags = input.Flags & ~RecordInputFlags.ExtendedKey;
       if (
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-        && WindowsNativeInputKey.IsExtended(originalNativeKeyCode)
+        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtended(originalNativeKeyCode)
       )
         flags |= RecordInputFlags.ExtendedKey;
       repaired.Add(new RecordedInput(input.TimeUs, originalNativeKeyCode, flags));
@@ -264,6 +278,88 @@ internal static class NativeInputKeyCodeMapper
       _ambiguousMigratedNativeCodes = ambiguous;
       _reversibleMigratedNativeCodes = reversible;
     }
+  }
+
+  private static volatile Dictionary<long, KeyLabel> _playbackLabels;
+
+  private static long LabelSignature(int nativeKeyCode, bool extendedKey) =>
+    (uint)nativeKeyCode | (extendedKey ? 1L << 32 : 0L);
+
+  private static readonly object ReverseLabelLock = new object();
+  private static Dictionary<int, KeyLabel> _nativeToLabel;
+  private static Dictionary<int, KeyLabel> _nativeToLabelExtended;
+
+  /// <summary>
+  /// Maps a playback-ready native key code back to its SkyHook label on the current platform.
+  /// Used to describe replayed inputs to the render-capture bridge, where the consumer works in
+  /// UnityEngine key codes rather than OS virtual keys. First mapping wins when two labels share a
+  /// native code (e.g. numpad twins); an approximate label beats losing the key entirely for a
+  /// key-visualizer consumer.
+  /// </summary>
+  public static bool TryGetKeyLabelForNativeKeyCode(int nativeKeyCode, out KeyLabel label) =>
+    TryGetKeyLabelForNativeKeyCode(nativeKeyCode, false, out label);
+
+  /// <summary>
+  /// The extended flag is the left/right disambiguator on Windows: SkyHook's label-to-code lookup
+  /// collapses side pairs (RAlt and LAlt share a virtual key), and the recorded input carries
+  /// which side it was as <see cref="RecordInputFlags.ExtendedKey"/>. Ignoring it here silently
+  /// turned every replayed right-side modifier into its left twin.
+  /// </summary>
+  public static bool TryGetKeyLabelForNativeKeyCode(int nativeKeyCode, bool extendedKey, out KeyLabel label)
+  {
+    // Exact per-run mapping recorded during playback preparation wins over any table-derived
+    // guess.
+    Dictionary<long, KeyLabel> playbackLabels = _playbackLabels;
+    if (playbackLabels != null && playbackLabels.TryGetValue(LabelSignature(nativeKeyCode, extendedKey), out label))
+      return true;
+
+    if (_nativeToLabel == null)
+    {
+      lock (ReverseLabelLock)
+      {
+        if (_nativeToLabel == null)
+          BuildNativeToLabelMaps();
+      }
+    }
+
+    if (extendedKey && _nativeToLabelExtended.TryGetValue(nativeKeyCode, out label))
+      return true;
+    if (_nativeToLabel.TryGetValue(nativeKeyCode, out label))
+      return true;
+    return !extendedKey && _nativeToLabelExtended.TryGetValue(nativeKeyCode, out label);
+  }
+
+  private static void BuildNativeToLabelMaps()
+  {
+    Dictionary<int, KeyLabel> reverse = new Dictionary<int, KeyLabel>();
+    Dictionary<int, KeyLabel> reverseExtended = new Dictionary<int, KeyLabel>();
+    bool windows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
+    foreach (KeyLabel label in (KeyLabel[])Enum.GetValues(typeof(KeyLabel)))
+    {
+      if (label == KeyLabel.Unknown)
+        continue;
+      int native;
+      try
+      {
+        if (!TryConvertKeyLabel(label, out native))
+          continue;
+      }
+      catch
+      {
+        continue;
+      }
+
+      // Only Windows uses the extended bit; partitioning on other platforms would strand keys in
+      // a map lookups never consult.
+      Dictionary<int, KeyLabel> target =
+        windows && WindowsNativeInputKey.IsExtendedLabel(label) ? reverseExtended : reverse;
+      if (!target.ContainsKey(native))
+        target[native] = label;
+    }
+
+    _nativeToLabelExtended = reverseExtended;
+    _nativeToLabel = reverse;
   }
 
   public static bool TryConvertKeyLabel(KeyLabel label, out int nativeKeyCode)

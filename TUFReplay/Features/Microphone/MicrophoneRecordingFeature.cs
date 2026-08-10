@@ -236,7 +236,9 @@ public sealed class MicrophoneRecordingFeature
       if (task.Status == TaskStatus.RanToCompletion)
         recording = task.Result;
       else if (task.Exception != null)
-        Main.Instance?.Log("[Microphone] Capture finalization failed. error=" + task.Exception.GetBaseException().Message);
+        Main.Instance?.Log(
+          "[Microphone] Capture finalization failed. error=" + task.Exception.GetBaseException().Message
+        );
       completed?.Invoke(recording);
     }
     catch (Exception exception)

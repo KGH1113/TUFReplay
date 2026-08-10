@@ -5,22 +5,22 @@ using TUFReplay.Domain.Microphone;
 
 namespace TUFReplay.Application.Microphone;
 
-internal sealed class Pcm16LimiterEnvelope
+public sealed class Pcm16LimiterEnvelope
 {
-  internal const float Ceiling = 0.8912509f;
+  public const float Ceiling = 0.8912509f;
 
   private readonly float[] _controlPeaks;
   private readonly int _sampleRate;
 
-  internal Pcm16LimiterEnvelope(float[] controlPeaks, int sampleRate)
+  public Pcm16LimiterEnvelope(float[] controlPeaks, int sampleRate)
   {
     _controlPeaks = controlPeaks ?? throw new ArgumentNullException(nameof(controlPeaks));
     _sampleRate = sampleRate > 0 ? sampleRate : throw new ArgumentOutOfRangeException(nameof(sampleRate));
   }
 
-  internal int BinCount => _controlPeaks.Length;
+  public int BinCount => _controlPeaks.Length;
 
-  internal float ControlPeakAt(long frame)
+  public float ControlPeakAt(long frame)
   {
     if (_controlPeaks.Length == 0)
       return 0f;
@@ -41,7 +41,7 @@ internal sealed class Pcm16LimiterEnvelope
     return current + (_controlPeaks[bin + 1] - current) * progress;
   }
 
-  internal float RequiredLimiterGain(long frame, float requestedGain)
+  public float RequiredLimiterGain(long frame, float requestedGain)
   {
     float amplifiedPeak = ControlPeakAt(frame) * Math.Max(0f, requestedGain);
     return amplifiedPeak <= Ceiling ? 1f : Ceiling / amplifiedPeak;
@@ -50,7 +50,7 @@ internal sealed class Pcm16LimiterEnvelope
   private static long BinStartFrame(int bin, int sampleRate) => ((long)bin * sampleRate + 999L) / 1000L;
 }
 
-internal sealed class Pcm16Limiter
+public sealed class Pcm16Limiter
 {
   private const float ReleaseSeconds = 0.1f;
 
@@ -58,7 +58,7 @@ internal sealed class Pcm16Limiter
   private readonly float _releaseStep;
   private float _limiterGain = 1f;
 
-  internal Pcm16Limiter(Pcm16LimiterEnvelope envelope, int sampleRate)
+  public Pcm16Limiter(Pcm16LimiterEnvelope envelope, int sampleRate)
   {
     _envelope = envelope ?? throw new ArgumentNullException(nameof(envelope));
     if (sampleRate <= 0)
@@ -66,7 +66,7 @@ internal sealed class Pcm16Limiter
     _releaseStep = 1f - (float)Math.Exp(-1d / (sampleRate * ReleaseSeconds));
   }
 
-  internal float NextEffectiveGain(long frame, float requestedGain)
+  public float NextEffectiveGain(long frame, float requestedGain)
   {
     float safeRequestedGain = Math.Max(0f, requestedGain);
     float requiredLimiterGain = _envelope.RequiredLimiterGain(frame, safeRequestedGain);
@@ -77,7 +77,7 @@ internal sealed class Pcm16Limiter
     return safeRequestedGain * _limiterGain;
   }
 
-  internal void Reset() => _limiterGain = 1f;
+  public void Reset() => _limiterGain = 1f;
 }
 
 internal static class Pcm16WaveAnalyzer

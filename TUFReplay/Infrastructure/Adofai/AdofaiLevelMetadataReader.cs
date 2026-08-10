@@ -42,11 +42,7 @@ public static class AdofaiLevelMetadataReader
       }
     }
     catch (Exception ex)
-      when (ex is IOException
-        || ex is UnauthorizedAccessException
-        || ex is JsonException
-        || ex is ArgumentException
-      )
+      when (ex is IOException || ex is UnauthorizedAccessException || ex is JsonException || ex is ArgumentException)
     {
       return false;
     }

@@ -124,7 +124,10 @@ public static class MicrophoneDeviceService
       return false;
 
     States state = ADOBase.controller.state;
-    return state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl || state == States.Won;
+    return state == States.Countdown
+      || state == States.Checkpoint
+      || state == States.PlayerControl
+      || state == States.Won;
   }
 
   private static bool Fail(string code, string message, out string errorCode, out string errorMessage)

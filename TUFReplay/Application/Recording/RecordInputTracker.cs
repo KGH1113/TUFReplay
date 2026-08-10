@@ -43,9 +43,7 @@ public static class RecordInputTracker
     get
     {
       lock (StateLock)
-        return _usingEvents
-          ? NativeInputKeyCodeMapper.PhysicalStateCapture
-          : "native-state-polling-low-resolution";
+        return _usingEvents ? NativeInputKeyCodeMapper.PhysicalStateCapture : "native-state-polling-low-resolution";
     }
   }
 
@@ -281,10 +279,7 @@ public static class RecordInputTracker
     {
       int key = keyCodes[i];
       bool extendedKey = IsWindows && WindowsNativeInputKey.IsExtended(key);
-      if (
-        !TryGetStateIndex(key, extendedKey, out int stateIndex)
-        || !StateReader.TryGetIsDown(key, out bool isDown)
-      )
+      if (!TryGetStateIndex(key, extendedKey, out int stateIndex) || !StateReader.TryGetIsDown(key, out bool isDown))
       {
         Interlocked.Increment(ref _readFailures);
         continue;
@@ -324,10 +319,7 @@ public static class RecordInputTracker
     {
       int key = keyCodes[i];
       bool extendedKey = IsWindows && WindowsNativeInputKey.IsExtended(key);
-      if (
-        !TryGetStateIndex(key, extendedKey, out int stateIndex)
-        || !StateReader.TryGetIsDown(key, out bool isDown)
-      )
+      if (!TryGetStateIndex(key, extendedKey, out int stateIndex) || !StateReader.TryGetIsDown(key, out bool isDown))
       {
         Interlocked.Increment(ref _readFailures);
         continue;

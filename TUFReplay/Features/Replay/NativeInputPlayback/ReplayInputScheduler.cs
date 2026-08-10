@@ -34,6 +34,23 @@ public class ReplayInputScheduler
     }
   }
 
+  /// <summary>
+  /// Copies the not-yet-consumed events with a timestamp at or before <paramref name="nowUs"/>
+  /// into <paramref name="into"/> without advancing. Lets the render-capture path report the
+  /// events it is about to skip (they are never OS-emitted while capturing) to the renderer, so
+  /// external key visualizers can still see them.
+  /// </summary>
+  public void PeekUntil(long nowUs, List<RecordedInput> into)
+  {
+    if (into == null)
+      return;
+    lock (_gate)
+    {
+      for (int i = _nextIndex; i < _events.Count && _events[i].TimeUs <= nowUs; i++)
+        into.Add(_events[i]);
+    }
+  }
+
   public void Reset()
   {
     lock (_gate)

@@ -382,6 +382,25 @@ public static class ReplaySessionService
     return TryComputeReplayTimeUs(out replayTimeUs, out _);
   }
 
+  /// <summary>
+  /// Reads everything the offline renderer needs to place microphone samples for one video frame.
+  /// Called on the main thread while capturing; the result travels to the encoder thread with the
+  /// frame so that thread never touches a Unity object.
+  /// </summary>
+  public static bool TryGetRenderTiming(out long replayTimeUs, out double gameplayRate, out long? wonTimeUs)
+  {
+    replayTimeUs = 0L;
+    gameplayRate = CurrentGameplayRate();
+    wonTimeUs = CurrentWonTimeUs();
+
+    if (_activeContext == null)
+      return false;
+    if (!TryGetControllerState(out States state) || !IsReplayTimelinePlaybackState(state))
+      return false;
+
+    return TryComputeReplayTimeUs(out replayTimeUs, out _);
+  }
+
   public static void UpdateActiveMicrophoneLatency(int latencyMs)
   {
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
@@ -486,6 +505,7 @@ public static class ReplaySessionService
 
     if (!focusReady)
     {
+      ForwardSkippedInputsToRenderBridge(player, nowUs);
       player.SkipTo(nowUs);
       ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
       return false;
@@ -493,6 +513,72 @@ public static class ReplaySessionService
 
     return true;
   }
+
+  private static bool _loggedFirstForwardedInput;
+
+  private static readonly System.Collections.Generic.List<Domain.ReplayData.RecordedInput> SkippedInputScratch =
+    new System.Collections.Generic.List<Domain.ReplayData.RecordedInput>();
+
+  /// <summary>
+  /// Describes the input edges a SkipTo is about to consume to the render bridge. During a render
+  /// capture no OS input is emitted, so this is the only way external key visualizers see the
+  /// replayed keys. The renderer ignores these while no capture session is active, which also
+  /// covers the ordinary unfocused-replay skip path.
+  /// </summary>
+  private static void ForwardSkippedInputsToRenderBridge(ReplayNativeInputPlayer player, long nowUs)
+  {
+    IRenderCaptureBridge bridge = RenderCaptureBridge.Current;
+    if (bridge == null)
+      return;
+
+    SkippedInputScratch.Clear();
+    player.PeekPending(nowUs, SkippedInputScratch);
+    if (SkippedInputScratch.Count > 0 && !_loggedFirstForwardedInput)
+    {
+      _loggedFirstForwardedInput = true;
+      Main.Instance?.Log(
+        "[Replay/RenderBridge] Forwarding replay input edges to the render bridge (first batch: "
+          + SkippedInputScratch.Count
+          + ")."
+      );
+    }
+    for (int i = 0; i < SkippedInputScratch.Count; i++)
+    {
+      Domain.ReplayData.RecordedInput input = SkippedInputScratch[i];
+      if (
+        Infrastructure.NativeInput.NativeInputKeyCodeMapper.TryGetKeyLabelForNativeKeyCode(
+          input.Key,
+          input.ExtendedKey,
+          out SkyHook.KeyLabel label
+        )
+      )
+      {
+        if (input.Down && IsModifierLabel(label) && _loggedModifierLabels.Add(label))
+          Main.Instance?.Log(
+            "[Replay/RenderBridge] modifier edge: native=0x"
+              + input.Key.ToString("X2")
+              + " extended="
+              + input.ExtendedKey
+              + " label="
+              + label
+          );
+        bridge.OnReplayInput(label, input.Down, input.TimeUs);
+      }
+    }
+    SkippedInputScratch.Clear();
+  }
+
+  private static readonly System.Collections.Generic.HashSet<SkyHook.KeyLabel> _loggedModifierLabels =
+    new System.Collections.Generic.HashSet<SkyHook.KeyLabel>();
+
+  private static bool IsModifierLabel(SkyHook.KeyLabel label) =>
+    label
+      is SkyHook.KeyLabel.LAlt
+        or SkyHook.KeyLabel.RAlt
+        or SkyHook.KeyLabel.LControl
+        or SkyHook.KeyLabel.RControl
+        or SkyHook.KeyLabel.LShift
+        or SkyHook.KeyLabel.RShift;
 
   private static bool IsReplayTimelinePlaybackState(States state)
   {

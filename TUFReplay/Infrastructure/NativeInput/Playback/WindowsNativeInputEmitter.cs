@@ -84,10 +84,7 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
       _inputBuffer[i] = new Input
       {
         Type = InputKeyboard,
-        Union = new InputUnion
-        {
-          Keyboard = CreateKeyboardInput(emission),
-        },
+        Union = new InputUnion { Keyboard = CreateKeyboardInput(emission) },
       };
     }
 

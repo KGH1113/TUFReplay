@@ -51,9 +51,7 @@ internal sealed class TufLevelIdResolverCache
       try
       {
         int? levelId = resolver(levelPath);
-        _paths[levelPath] = levelId.HasValue
-          ? CacheEntry.Positive(levelId.Value)
-          : CacheEntry.Negative(Deadline(now));
+        _paths[levelPath] = levelId.HasValue ? CacheEntry.Positive(levelId.Value) : CacheEntry.Negative(Deadline(now));
         return levelId;
       }
       catch (Exception exception)

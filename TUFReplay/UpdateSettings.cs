@@ -14,8 +14,7 @@ public sealed class UpdateSettings
       if (!File.Exists(path))
         return new UpdateSettings();
 
-      return JsonConvert.DeserializeObject<UpdateSettings>(File.ReadAllText(path)) ??
-             new UpdateSettings();
+      return JsonConvert.DeserializeObject<UpdateSettings>(File.ReadAllText(path)) ?? new UpdateSettings();
     }
     catch
     {

@@ -96,7 +96,13 @@ public static class ActivityQueryService
           out string errorMessage
         )
       )
-        return new ChartData { id = id, floorCount = floorCount, errorCode = errorCode, errorMessage = errorMessage };
+        return new ChartData
+        {
+          id = id,
+          floorCount = floorCount,
+          errorCode = errorCode,
+          errorMessage = errorMessage,
+        };
       return new ChartData
       {
         id = id,
@@ -121,7 +127,13 @@ public static class ActivityQueryService
         out string errorMessage
       )
     )
-      return new ChartData { id = id, floorCount = s.LevelTileCount, errorCode = errorCode, errorMessage = errorMessage };
+      return new ChartData
+      {
+        id = id,
+        floorCount = s.LevelTileCount,
+        errorCode = errorCode,
+        errorMessage = errorMessage,
+      };
     return new ChartData
     {
       id = id,

@@ -6,6 +6,7 @@ import {
   Mic01Icon,
   MoreVerticalIcon,
   Upload04Icon,
+  VideoReplayIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
@@ -36,6 +37,8 @@ export function RunActionsMenu({
   onKeepMicrophoneRecording,
   onDeleteMicrophoneRecording,
   onDeleteRun,
+  renderAvailable,
+  onRenderRun,
 }: {
   run: ActivityRun;
   disabled: boolean;
@@ -43,6 +46,8 @@ export function RunActionsMenu({
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
+  renderAvailable: boolean;
+  onRenderRun: (run: ActivityRun) => void;
 }) {
   const { t } = useTranslation("replay");
   const { t: activityT } = useTranslation("activity");
@@ -180,6 +185,22 @@ export function RunActionsMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
+          {renderAvailable && (
+            <>
+              <DropdownMenuItem
+                disabled={disabled || busy}
+                onSelect={() => {
+                  setMenuOpen(false);
+                  onRenderRun(run);
+                }}
+              >
+                <span aria-hidden="true" className="size-4" />
+                <HugeiconsIcon aria-hidden="true" icon={VideoReplayIcon} className="size-4" />
+                {t("render.menu")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuItem disabled>
             <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Upload04Icon} className="size-4" />

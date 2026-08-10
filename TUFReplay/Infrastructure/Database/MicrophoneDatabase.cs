@@ -23,9 +23,7 @@ public static class MicrophoneDatabase
   {
     if (string.IsNullOrWhiteSpace(DbPath))
       throw new InvalidOperationException("The microphone database is not initialized.");
-    var connection = new SqliteConnection(
-      "Data Source=" + DbPath + ";Default Timeout=" + BusyTimeoutSeconds
-    );
+    var connection = new SqliteConnection("Data Source=" + DbPath + ";Default Timeout=" + BusyTimeoutSeconds);
     connection.Open();
     using SqliteCommand command = connection.CreateCommand();
     command.CommandText = "PRAGMA busy_timeout=" + (BusyTimeoutSeconds * 1000) + ";";

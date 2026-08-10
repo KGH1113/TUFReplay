@@ -77,6 +77,30 @@ public static class IpcParams
     return int.TryParse(token.ToString(), out int value) ? value : null;
   }
 
+  public static double? OptionalDouble(IpcRequest request, string name)
+  {
+    JToken token = GetToken(request, name);
+    if (token == null || token.Type == JTokenType.Null)
+      return null;
+
+    if (token.Type == JTokenType.Float || token.Type == JTokenType.Integer)
+      return token.Value<double>();
+
+    return double.TryParse(token.ToString(), out double value) ? value : null;
+  }
+
+  public static bool? OptionalBool(IpcRequest request, string name)
+  {
+    JToken token = GetToken(request, name);
+    if (token == null || token.Type == JTokenType.Null)
+      return null;
+
+    if (token.Type == JTokenType.Boolean)
+      return token.Value<bool>();
+
+    return bool.TryParse(token.ToString(), out bool value) ? value : null;
+  }
+
   public static bool TryBool(IpcRequest request, string name, out bool value)
   {
     value = false;

@@ -8,6 +8,13 @@
         "csharpier"
       ],
       "rollForward": false
+    },
+    "ilspycmd": {
+      "version": "9.0.0.7889",
+      "commands": [
+        "ilspycmd"
+      ],
+      "rollForward": false
     }
   }
 }

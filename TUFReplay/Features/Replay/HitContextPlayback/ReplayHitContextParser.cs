@@ -71,5 +71,4 @@ public static class ReplayHitContextParser
     );
     return true;
   }
-
 }

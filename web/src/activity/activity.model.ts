@@ -138,6 +138,83 @@ export interface ReplayStatus {
   Message: string | null;
 }
 
+export type RenderState =
+  | "idle"
+  | "preparing"
+  | "opening_level"
+  | "capturing"
+  | "finalizing"
+  | "completed"
+  | "cancelled"
+  | "error";
+
+export interface RenderStatus {
+  OperationId: string | null;
+  RunId: string | null;
+  State: RenderState;
+  ErrorCode: string | null;
+  Message: string | null;
+  FramesEncoded: number;
+  FramesCaptured: number;
+  EncodedSeconds: number;
+  OutputPath: string | null;
+  Width: number;
+  Height: number;
+  VideoFps: number;
+  EncoderName: string | null;
+  MicrophoneIncluded: boolean;
+}
+
+export interface RenderSettings {
+  RenderFps: number;
+  VideoFps: number;
+  Width: number;
+  Height: number;
+  Codec: string;
+  RateControlMode: string;
+  QualityValue: number;
+  TargetBitrateKbps: number;
+  MaxBitrateKbps: number;
+  KeyframeIntervalSeconds: number;
+  ForceSoftwareEncoder: boolean;
+  RenderAudio: boolean;
+  AudioSampleRate: number;
+  AudioChannels: number;
+  AudioBitrate: number;
+  IncludeMicrophone: boolean;
+  TrailingSeconds: number;
+  MusicVolumePercent: number;
+  HitsoundVolumePercent: number;
+  MicrophoneVolumePercent: number;
+}
+
+export interface RenderCapabilities {
+  Available: boolean;
+  UnavailableReason: string | null;
+  FFmpegVersion: string | null;
+  FFmpegDirectory: string | null;
+  OutputDirectory: string | null;
+  Codecs: string[];
+  RateControlModes: string[];
+  Defaults: RenderSettings;
+}
+
+/** Overrides accepted by the renderer's `render.start`; anything omitted falls back to the mod defaults. */
+export interface RenderRequestOptions {
+  levelPath?: string;
+  width?: number;
+  height?: number;
+  renderFps?: number;
+  videoFps?: number;
+  codec?: string;
+  includeMicrophone?: boolean;
+  renderAudio?: boolean;
+  musicVolumePercent?: number;
+  hitsoundVolumePercent?: number;
+  microphoneVolumePercent?: number;
+  microphoneTimingMs?: number;
+}
+
 export type ReplayLevelFilePickerOutcome =
   | "picking"
   | "selected"

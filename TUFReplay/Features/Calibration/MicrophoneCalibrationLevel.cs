@@ -18,9 +18,7 @@ internal sealed class MicrophoneCalibrationLevel
   {
     string levelPath = System.IO.Path.Combine(payloadPath, "Assets", "calibration", "level.adofai");
     string assetDirectory = System.IO.Path.GetDirectoryName(levelPath) ?? string.Empty;
-    if (
-      !File.Exists(levelPath) || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration_old.ogg"))
-    )
+    if (!File.Exists(levelPath) || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration_old.ogg")))
       return false;
     Path = LevelPathIdentity.Canonicalize(levelPath);
     return true;

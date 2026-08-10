@@ -17,12 +17,16 @@ import type {
   MicrophoneDevicesState,
   MicrophoneRecordingDeleteResult,
   MicrophoneRecordingKeepResult,
+  RenderCapabilities,
+  RenderRequestOptions,
+  RenderStatus,
   ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
 import { adofaiIpcFetch } from "./adofai-ipc.fetch";
 
 const NAMESPACE = "tuf-replay";
+const RENDERER_NAMESPACE = "tuf-replay-renderer";
 const PAGE_SIZE = 200;
 const FILE_PICKER_POLL_INTERVAL_MS = 100;
 const IPC_PROBE_TIMEOUT_MS = 500;
@@ -90,6 +94,19 @@ export interface ActivityGateway {
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getReplayStatus(): Promise<ReplayStatus>;
   pickReplayLevelFile(runId: string): Promise<ReplayLevelFilePickerResult>;
+  getRenderCapabilities(): Promise<RenderCapabilities>;
+  startRender(runId: string, options?: RenderRequestOptions): Promise<RenderStatus>;
+  getRenderStatus(): Promise<RenderStatus>;
+  cancelRender(): Promise<RenderStatus>;
+  startRenderPreview(runId: string, options?: RenderRequestOptions): Promise<RenderStatus>;
+  stopRenderPreview(): Promise<RenderStatus>;
+  getRenderPreviewResult(): Promise<{
+    MusicWavBase64: string;
+    HitsoundsWavBase64: string;
+    MicrophoneWavBase64: string | null;
+    SampleRate: number;
+    Channels: number;
+  }>;
   getMicrophoneDevices(): Promise<MicrophoneDevicesState>;
   setMicrophoneEnabled(enabled: boolean): Promise<MicrophoneDevicesState>;
   selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
@@ -131,12 +148,19 @@ export async function connectActivityGateway(
     fetch: fetchImpl,
     requestTimeoutMs: IPC_REQUEST_TIMEOUT_MS,
   });
-  return createActivityGateway(client.namespace(NAMESPACE), pickerClient.namespace(NAMESPACE));
+  return createActivityGateway(
+    client.namespace(NAMESPACE),
+    pickerClient.namespace(NAMESPACE),
+    client.namespace(RENDERER_NAMESPACE),
+  );
 }
 
 export function createActivityGateway(
   namespace: Pick<AdofaiIpcNamespaceClient, "call">,
   pickerNamespace: Pick<AdofaiIpcNamespaceClient, "call"> = namespace,
+  // The renderer mod's own namespace. Calls fail while TUFReplay-Renderer is not installed, which
+  // is how the UI detects it.
+  rendererNamespace: Pick<AdofaiIpcNamespaceClient, "call"> = namespace,
 ): ActivityGateway {
   const listAppSessions = (offset: number, limit: number) =>
     callDomain<ActivityAppSession[]>(namespace, "activity.app-sessions.list", { offset, limit });
@@ -194,6 +218,15 @@ export function createActivityGateway(
       }
       return result;
     },
+    getRenderCapabilities: () => callDomain(rendererNamespace, "render.capabilities.get", {}),
+    startRender: (runId, options) =>
+      callDomain(rendererNamespace, "render.start", { runId, ...(options ?? {}) }),
+    getRenderStatus: () => callDomain(rendererNamespace, "render.status.get", {}),
+    cancelRender: () => callDomain(rendererNamespace, "render.cancel", {}),
+    startRenderPreview: (runId, options) =>
+      callDomain(rendererNamespace, "render.preview.start", { runId, ...(options ?? {}) }),
+    stopRenderPreview: () => callDomain(rendererNamespace, "render.preview.stop", {}),
+    getRenderPreviewResult: () => callDomain(rendererNamespace, "render.preview.result.get", {}),
     getMicrophoneDevices: () => callDomain(namespace, "microphone.devices.get", {}),
     setMicrophoneEnabled: (enabled) => callDomain(namespace, "microphone.enabled.set", { enabled }),
     selectMicrophoneDevice: (deviceId) =>

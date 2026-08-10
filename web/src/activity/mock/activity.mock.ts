@@ -5,6 +5,7 @@ import type {
   ActivityRun,
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
+  RenderStatus,
   ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
@@ -76,6 +77,22 @@ export function createMockActivityGateway(): ActivityGateway {
     State: "idle",
     ErrorCode: null,
     Message: null,
+  };
+  let renderStatus: RenderStatus = {
+    OperationId: null,
+    RunId: null,
+    State: "idle",
+    ErrorCode: null,
+    Message: null,
+    FramesEncoded: 0,
+    FramesCaptured: 0,
+    EncodedSeconds: 0,
+    OutputPath: null,
+    Width: 0,
+    Height: 0,
+    VideoFps: 0,
+    EncoderName: null,
+    MicrophoneIncluded: false,
   };
   let calibrationStatus: MicrophoneCalibrationStatus = {
     OperationId: null,
@@ -211,6 +228,91 @@ export function createMockActivityGateway(): ActivityGateway {
         ErrorCode: null,
         Message: "Matching level file selected.",
       };
+    },
+    getRenderCapabilities: async () => ({
+      Available: true,
+      UnavailableReason: null,
+      FFmpegVersion: "62.11.100",
+      FFmpegDirectory: "/mock/UserLibs",
+      OutputDirectory: "/mock/TUFReplay Renders",
+      Codecs: ["H264", "H265", "VP9", "AV1", "VVC", "ProRes"],
+      RateControlModes: ["CBR", "VBR", "CQP"],
+      Defaults: {
+        RenderFps: 60,
+        VideoFps: 60,
+        Width: 1920,
+        Height: 1080,
+        Codec: "H264",
+        RateControlMode: "CQP",
+        QualityValue: 18,
+        TargetBitrateKbps: 12000,
+        MaxBitrateKbps: 20000,
+        KeyframeIntervalSeconds: 2,
+        ForceSoftwareEncoder: false,
+        RenderAudio: true,
+        AudioSampleRate: 48000,
+        AudioChannels: 2,
+        AudioBitrate: 256000,
+        IncludeMicrophone: true,
+        TrailingSeconds: 3,
+        MusicVolumePercent: 100,
+        HitsoundVolumePercent: 100,
+        MicrophoneVolumePercent: 100,
+      },
+    }),
+    startRender: async (runId, options) => {
+      renderStatus = {
+        OperationId: `mock-render-${runId}`,
+        RunId: runId,
+        State: "capturing",
+        ErrorCode: null,
+        Message: null,
+        FramesEncoded: 0,
+        FramesCaptured: 0,
+        EncodedSeconds: 0,
+        OutputPath: null,
+        Width: options?.width ?? 1920,
+        Height: options?.height ?? 1080,
+        VideoFps: options?.videoFps ?? 60,
+        EncoderName: "h264_videotoolbox",
+        MicrophoneIncluded: options?.includeMicrophone ?? false,
+      };
+      return renderStatus;
+    },
+    getRenderStatus: async () => {
+      if (renderStatus.State === "capturing") {
+        const framesEncoded = renderStatus.FramesEncoded + 120;
+        renderStatus =
+          framesEncoded >= 600
+            ? {
+                ...renderStatus,
+                State: "completed",
+                FramesEncoded: 600,
+                FramesCaptured: 600,
+                EncodedSeconds: 10,
+                OutputPath: `/mock/TUFReplay Renders/${renderStatus.RunId}.mp4`,
+              }
+            : {
+                ...renderStatus,
+                FramesEncoded: framesEncoded,
+                FramesCaptured: framesEncoded,
+                EncodedSeconds: framesEncoded / 60,
+              };
+      }
+      return renderStatus;
+    },
+    startRenderPreview: async () => renderStatus,
+    stopRenderPreview: async () => renderStatus,
+    getRenderPreviewResult: async () => ({
+      MusicWavBase64: "",
+      HitsoundsWavBase64: "",
+      MicrophoneWavBase64: null,
+      SampleRate: 48000,
+      Channels: 2,
+    }),
+    cancelRender: async () => {
+      renderStatus = { ...renderStatus, State: "cancelled", Message: "Render cancelled." };
+      return renderStatus;
     },
     getMicrophoneDevices: async () => ({
       Enabled: microphoneEnabled,

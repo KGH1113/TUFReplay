@@ -10,10 +10,7 @@ internal static class NativeInputUmmWindowInterlock
 {
   private const double ResumeDelaySeconds = 0.2d;
   private const double FallbackPollIntervalSeconds = 1d;
-  private static readonly long ResumeDelayTicks = Math.Max(
-    1L,
-    (long)(Stopwatch.Frequency * ResumeDelaySeconds)
-  );
+  private static readonly long ResumeDelayTicks = Math.Max(1L, (long)(Stopwatch.Frequency * ResumeDelaySeconds));
   internal static readonly long FallbackPollIntervalTicks = Math.Max(
     1L,
     (long)(Stopwatch.Frequency * FallbackPollIntervalSeconds)
@@ -62,11 +59,7 @@ internal static class NativeInputUmmWindowInterlock
       long next = Interlocked.Read(ref _nextFallbackPollAt);
       if (next != 0L && timestamp < next)
         return false;
-      if (Interlocked.CompareExchange(
-          ref _nextFallbackPollAt,
-          timestamp + FallbackPollIntervalTicks,
-          next
-        ) == next)
+      if (Interlocked.CompareExchange(ref _nextFallbackPollAt, timestamp + FallbackPollIntervalTicks, next) == next)
         return true;
     }
   }

@@ -5,8 +5,8 @@ using System.Threading;
 using Microsoft.Data.Sqlite;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
-using DatabaseStore = TUFReplay.Infrastructure.Database.Database;
 using AudioDatabase = TUFReplay.Infrastructure.Database.MicrophoneDatabase;
+using DatabaseStore = TUFReplay.Infrastructure.Database.Database;
 
 namespace TUFReplay.Infrastructure.Database.Repositories;
 
@@ -105,12 +105,7 @@ SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
       PopulateMetadataBatch(connection, runs, offset, Math.Min(MetadataBatchSize, runs.Count - offset));
   }
 
-  private static void PopulateMetadataBatch(
-    SqliteConnection connection,
-    IList<RunRecord> runs,
-    int offset,
-    int count
-  )
+  private static void PopulateMetadataBatch(SqliteConnection connection, IList<RunRecord> runs, int offset, int count)
   {
     using SqliteCommand command = connection.CreateCommand();
     var parameters = new List<string>(count);
@@ -180,13 +175,15 @@ SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
 
       long copied;
       using (var source = new SqliteBlob(sourceConnection, "microphone_recordings", "audio_wav", legacy.RowId, true))
-      using (var destination = new SqliteBlob(
-        destinationConnection,
-        "microphone_recordings",
-        "audio_wav",
-        destinationRowId,
-        false
-      ))
+      using (
+        var destination = new SqliteBlob(
+          destinationConnection,
+          "microphone_recordings",
+          "audio_wav",
+          destinationRowId,
+          false
+        )
+      )
         copied = CopyBlob(source, destination);
       if (copied != legacy.ByteLength)
         throw new InvalidDataException("The migrated microphone BLOB length is invalid.");
@@ -312,11 +309,7 @@ LIMIT 1";
     }
   }
 
-  public static StoredMicrophoneRecording WriteTo(
-    string runId,
-    Stream destination,
-    CancellationToken cancellationToken
-  )
+  public static StoredMicrophoneRecording WriteTo(string runId, Stream destination, CancellationToken cancellationToken)
   {
     if (string.IsNullOrWhiteSpace(runId))
       throw new ArgumentException("A run ID is required.", nameof(runId));

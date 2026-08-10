@@ -113,11 +113,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       int position = UnityEngine.Microphone.GetPosition(_deviceId);
       if (position < 0)
         throw new IOException("Microphone device became unavailable.");
-      int availableFrames = MicrophoneCaptureChunking.AvailableFrames(
-        _cursor,
-        position,
-        _clip.samples
-      );
+      int availableFrames = MicrophoneCaptureChunking.AvailableFrames(_cursor, position, _clip.samples);
       if (availableFrames == 0)
         return;
 

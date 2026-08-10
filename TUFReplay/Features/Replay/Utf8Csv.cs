@@ -29,11 +29,7 @@ internal static class Utf8Csv
     return hasContent ? count + 1 : count;
   }
 
-  public static bool TryReadNonEmptyLine(
-    ReadOnlySpan<byte> payload,
-    ref int offset,
-    out ReadOnlySpan<byte> line
-  )
+  public static bool TryReadNonEmptyLine(ReadOnlySpan<byte> payload, ref int offset, out ReadOnlySpan<byte> line)
   {
     while (offset < payload.Length && IsLineBreak(payload[offset]))
       offset++;

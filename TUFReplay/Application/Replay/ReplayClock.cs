@@ -2,6 +2,19 @@ namespace TUFReplay.Application.Replay;
 
 public static class ReplayClock
 {
+  /// <summary>
+  /// Wall-clock source for the post-clear phase.
+  ///
+  /// Once the run is won the conductor's song position stops being a usable timeline, so the clock
+  /// free-runs from a real-time anchor. That anchor has to follow the virtual clock while a render
+  /// is capturing, otherwise the clear screen advances at wall-clock speed inside a simulation
+  /// running at a completely different rate and the tail of the video desyncs.
+  /// </summary>
+  private static double Now =>
+    RenderCaptureBridge.IsCapturingActive
+      ? UnityEngine.Time.timeAsDouble
+      : UnityEngine.Time.realtimeSinceStartupAsDouble;
+
   public static void EnterWon(ActiveReplayContext context)
   {
     if (context == null || context.WonClockStarted)
@@ -16,7 +29,7 @@ public static class ReplayClock
     }
 
     context.WonClockStartTimeUs = context.Meta?.wonTimeUs ?? fallback;
-    context.WonClockStartedAt = UnityEngine.Time.realtimeSinceStartupAsDouble;
+    context.WonClockStartedAt = Now;
     context.WonClockStarted = true;
   }
 
@@ -33,7 +46,7 @@ public static class ReplayClock
 
     if (context.WonClockStarted)
     {
-      double elapsed = UnityEngine.Time.realtimeSinceStartupAsDouble - context.WonClockStartedAt;
+      double elapsed = Now - context.WonClockStartedAt;
       nowUs = context.WonClockStartTimeUs + (long)(System.Math.Max(0d, elapsed) * 1_000_000d);
       return true;
     }

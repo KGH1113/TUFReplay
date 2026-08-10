@@ -121,11 +121,7 @@ internal sealed class MicrophoneCalibrationPreview
         ByteLength = new FileInfo(copyPath).Length,
       };
       Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(stored);
-      Pcm16LimiterEnvelope limiterEnvelope = Pcm16WaveAnalyzer.Analyze(
-        stored,
-        wave,
-        CancellationToken.None
-      );
+      Pcm16LimiterEnvelope limiterEnvelope = Pcm16WaveAnalyzer.Analyze(stored, wave, CancellationToken.None);
       UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored, wave, limiterEnvelope));
     }
     catch (Exception exception)

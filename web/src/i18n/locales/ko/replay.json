@@ -39,5 +39,45 @@
     "level_gameplay_modified": "선택한 레벨의 플레이 구성이 기록된 플레이와 일치하지 않습니다.",
     "level_file_invalid": "선택한 레벨 파일이 올바르지 않습니다.",
     "calibration_operation_stale": "마이크 보정 작업이 더 이상 활성 상태가 아닙니다."
+  },
+  "render": {
+    "menu": "영상으로 렌더링",
+    "title": "영상으로 렌더링",
+    "description": "ADOFAI에서 런 #{{runIndex}}을(를) 재생하며 프레임 단위로 캡처합니다. 판정과 클리어 화면이 모두 포함됩니다. 렌더링이 끝날 때까지 ADOFAI를 사용할 수 없습니다.",
+    "resolution": "해상도",
+    "frameRate": "프레임 레이트",
+    "fpsValue": "{{value}} fps",
+    "includeMicrophone": "마이크 오디오 포함",
+    "start": "렌더링 시작",
+    "again": "다시 렌더링",
+    "cancel": "렌더링 취소",
+    "completed": "렌더링이 완료되었습니다.",
+    "failed": "렌더링에 실패했습니다.",
+    "unavailable": "이 컴퓨터에서는 렌더링을 사용할 수 없습니다.",
+    "progress": "{{frames}}프레임 · {{seconds}}초 인코딩됨",
+    "status": {
+      "preparing": "렌더링을 준비하는 중…",
+      "openingLevel": "기록된 레벨을 여는 중…",
+      "capturing": "리플레이를 캡처하는 중…",
+      "finalizing": "영상 파일을 마무리하는 중…"
+    },
+    "levelDescription": "캡처할 레벨 파일을 선택하세요. 기록된 런과 게임플레이가 같아야 합니다.",
+    "usingLevel": "사용 중: {{file}}",
+    "back": "뒤로",
+    "audioLevels": "오디오 레벨",
+    "musicVolume": "음악",
+    "hitsoundVolume": "히트음",
+    "microphoneVolume": "마이크",
+    "preview": {
+      "hint": "레벨 중간 10초 분량 오디오를 렌더링",
+      "play": "미리 듣기",
+      "stop": "정지",
+      "failed": "오디오를 미리 들을 수 없습니다.",
+      "rendering": "오디오 미리 듣기를 렌더링하는 중…",
+      "readyHint": "재생 중에 슬라이더를 조절하면 즉시 반영됩니다",
+      "playCached": "재생",
+      "newWindow": "다른 구간"
+    },
+    "microphoneTiming": "마이크 타이밍"
   }
 }

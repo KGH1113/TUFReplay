@@ -39,5 +39,45 @@
     "level_gameplay_modified": "The selected level's gameplay does not match the recorded run.",
     "level_file_invalid": "The selected level file is invalid.",
     "calibration_operation_stale": "The calibration operation is no longer active."
+  },
+  "render": {
+    "menu": "Render to video",
+    "title": "Render to video",
+    "description": "Plays run #{{runIndex}} in ADOFAI and captures it frame by frame. Judgments and the clear screen are included. ADOFAI is unusable until the render finishes.",
+    "resolution": "Resolution",
+    "frameRate": "Frame rate",
+    "fpsValue": "{{value}} fps",
+    "includeMicrophone": "Include microphone audio",
+    "start": "Start render",
+    "again": "Render again",
+    "cancel": "Cancel render",
+    "completed": "Render complete.",
+    "failed": "Render failed.",
+    "unavailable": "Rendering is unavailable on this machine.",
+    "progress": "{{frames}} frames · {{seconds}}s encoded",
+    "status": {
+      "preparing": "Preparing render…",
+      "openingLevel": "Opening the recorded level…",
+      "capturing": "Capturing replay…",
+      "finalizing": "Finishing the video file…"
+    },
+    "levelDescription": "Choose which level file to capture. It must match the recorded run's gameplay.",
+    "usingLevel": "Using: {{file}}",
+    "back": "Back",
+    "audioLevels": "Audio levels",
+    "musicVolume": "Music",
+    "hitsoundVolume": "Hit sounds",
+    "microphoneVolume": "Microphone",
+    "preview": {
+      "hint": "Renders 10s of audio from mid-level",
+      "play": "Preview",
+      "stop": "Stop",
+      "failed": "Could not preview the audio.",
+      "rendering": "Rendering the audio preview…",
+      "readyHint": "Adjust sliders while it plays — changes are live",
+      "playCached": "Play",
+      "newWindow": "New spot"
+    },
+    "microphoneTiming": "Mic timing"
   }
 }

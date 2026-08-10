@@ -53,6 +53,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
+- Supports the optional TUFReplay-Renderer companion mod, which renders a saved run to a video file. TUFReplay itself contains no rendering code: the renderer registers itself at load, and the web UI only shows render controls when it is installed.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
 
@@ -74,6 +75,15 @@ TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded lev
 Other mods can detect a TUFReplay-owned replay operation without taking a compile-time dependency on TUFReplay. Resolve the public type `TUFReplay.ReplayRuntime` from the loaded TUFReplay assembly and read its static `IsPlaybackActive` property. The property is true throughout replay preparation, level loading, playback, and the return to the editor. `ReplayRuntime.ApiVersion` is `1` for this contract.
 
 Reflection consumers should cache the resolved type and property getter, query the value only at relevant lifecycle boundaries, and treat a missing type, property, or assembly as an inactive replay.
+
+## Replay Rendering
+
+Rendering lives in the separate TUFReplay-Renderer mod (its own repository). It plays a saved run
+through the normal replay pipeline with an offline capture attached, mixes audio sample-accurately
+offline, and encodes through FFmpeg. TUFReplay only exposes the small render-capture bridge the
+renderer plugs into; when the renderer mod is absent, replays behave exactly as before and the web
+UI hides every render control. See the TUFReplay-Renderer repository for details, requirements,
+and its `tuf-replay-renderer` IPC namespace.
 
 ## Repository Layout
 

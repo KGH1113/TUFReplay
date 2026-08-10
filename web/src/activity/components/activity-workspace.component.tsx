@@ -64,6 +64,8 @@ export function ActivityWorkspace({
   onDeleteRun,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
+  renderAvailable,
+  onRenderRun,
 }: {
   chartAvailable: boolean;
   chart: ActivityChart | null;
@@ -85,6 +87,8 @@ export function ActivityWorkspace({
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  renderAvailable: boolean;
+  onRenderRun: (run: ActivityRun) => void;
 }) {
   const { t } = useTranslation("activity");
   const chartRef = useRef<EmbeddedChartHandle>(null);
@@ -101,6 +105,7 @@ export function ActivityWorkspace({
   const deleteRun = useStableCallback(onDeleteRun);
   const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
   const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
+  const renderRun = useStableCallback(onRenderRun);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
     const scroller = runScrollRef.current;
@@ -358,6 +363,8 @@ export function ActivityWorkspace({
                             onDeleteRun={deleteRun}
                             onKeepMicrophoneRecording={keepMicrophoneRecording}
                             onDeleteMicrophoneRecording={deleteMicrophoneRecording}
+                            renderAvailable={renderAvailable}
+                            onRenderRun={renderRun}
                           />
                         </div>
                       );
@@ -386,6 +393,8 @@ const RunCard = memo(function RunCard({
   onDeleteRun,
   onKeepMicrophoneRecording,
   onDeleteMicrophoneRecording,
+  renderAvailable,
+  onRenderRun,
 }: {
   run: ActivityRun;
   active: boolean;
@@ -400,6 +409,8 @@ const RunCard = memo(function RunCard({
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  renderAvailable: boolean;
+  onRenderRun: (run: ActivityRun) => void;
 }) {
   const { t } = useTranslation("activity");
   const statusMatches = replayStatus.RunId === run.Id;
@@ -442,6 +453,8 @@ const RunCard = memo(function RunCard({
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
           onDeleteRun={onDeleteRun}
+          renderAvailable={renderAvailable}
+          onRenderRun={onRenderRun}
         />
       </div>
 
