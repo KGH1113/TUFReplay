@@ -1,3 +1,4 @@
+import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/ui/button.component";
 import type { ConnectionStatus } from "../activity.model";
@@ -7,15 +8,18 @@ export function ConnectionStatePanel({
   status,
   error,
   onRetry,
+  versionMismatch = null,
 }: {
   status: ConnectionStatus;
   error: string;
   onRetry: () => void;
+  versionMismatch?: IpcVersionMismatchDirection | null;
 }) {
   const { t: activityT } = useTranslation("activity");
   const { t: commonT } = useTranslation("common");
   const connecting = status === "connecting";
-  const copy = getConnectionStatePanelCopy(status, activityT);
+  const copy = getConnectionStatePanelCopy(status, activityT, versionMismatch);
+  const action = copy.action === "reload" ? () => window.location.reload() : onRetry;
   return (
     <div className="grid flex-1 place-items-center px-6 py-10">
       <section className="w-full max-w-md" aria-live="polite">
@@ -30,9 +34,21 @@ export function ConnectionStatePanel({
             <h2 className="font-heading text-lg font-semibold tracking-tight">{copy.title}</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{copy.description}</p>
             {!connecting ? (
-              <Button className="mt-5" onClick={onRetry}>
-                {copy.retryLabel}
-              </Button>
+              copy.action === "download" ? (
+                <Button className="mt-5" asChild>
+                  <a
+                    href="https://github.com/KGH1113/adofai-ipc/releases/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {copy.retryLabel}
+                  </a>
+                </Button>
+              ) : (
+                <Button className="mt-5" onClick={action}>
+                  {copy.retryLabel}
+                </Button>
+              )
             ) : null}
           </div>
         </div>

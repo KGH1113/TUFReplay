@@ -23,28 +23,43 @@ copy_launcher_payload() {
   require_file "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md"
   require_file "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.Bootstrap.dll"
   require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
+  require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"
+  require_file "$ADOFAI_IPC_MIGRATION_DLL"
+
+  # shellcheck disable=SC1090
+  source "$ADOFAI_IPC_BOOTSTRAP_LOCK"
 
   mkdir -p "$destination"
   cp "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" "$destination/"
   cp "$TUFREPLAY_PROJECT_ROOT/TUFReplay/AdofaiIpcBootstrap.json" "$destination/"
   cp "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md" "$destination/"
   cp "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.Bootstrap.dll" "$destination/"
-  cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$destination/"
+  cp "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL" "$destination/"
+  mkdir -p "$destination/DependencyBootstrap/versions/$ADOFAIIPC_BOOTSTRAP_VERSION"
+  cp "$ADOFAI_IPC_BOOTSTRAP_DLL" \
+    "$destination/DependencyBootstrap/versions/$ADOFAIIPC_BOOTSTRAP_VERSION/"
+  printf '{\n  "SchemaVersion": 1,\n  "Current": "%s",\n  "Previous": null,\n  "Trial": null\n}\n' \
+    "$ADOFAIIPC_BOOTSTRAP_VERSION" > "$destination/DependencyBootstrap/state.json"
 }
 
 copy_runtime_core() {
   local destination="$1"
 
   require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json"
+  require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/AdofaiIpcBootstrap.json"
   require_file "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md"
   require_file "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll"
   require_file "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll"
 
   mkdir -p "$destination"
   cp "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" "$destination/"
+  cp "$TUFREPLAY_PROJECT_ROOT/TUFReplay/AdofaiIpcBootstrap.json" "$destination/"
   cp "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md" "$destination/"
   cp "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" "$destination/"
   cp "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll" "$destination/"
+  cp "$ADOFAI_IPC_BOOTSTRAP_DLL" "$destination/"
+  cp "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL" "$destination/"
+  cp "$ADOFAI_IPC_MIGRATION_DLL" "$destination/"
 }
 
 copy_runtime_dependencies() {

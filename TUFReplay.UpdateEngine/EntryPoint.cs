@@ -45,5 +45,6 @@ internal sealed class UpdateResult
   public string Outcome { get; set; }
   public string Version { get; set; }
   public string RuntimePath { get; set; }
+  public string DependencyBootstrapPath { get; set; }
   public string Message { get; set; }
 }

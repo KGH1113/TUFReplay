@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { CLIENT_VERSION, IpcVersionMismatchError } from "@adofai-ipc/client";
 
 import type {
   MicrophoneCalibrationResult,
@@ -10,12 +11,87 @@ import type {
 import {
   ActivityDomainError,
   ActivityProtocolMismatchError,
+  connectActivityGateway,
   createActivityGateway,
   loadAllPages,
   SUPPORTED_PROTOCOL_VERSION,
 } from "./activity.gateway";
 
 describe("activity IPC contract", () => {
+  test("waits for the TUFReplay namespace to become ready before calling it", async () => {
+    const paths: string[] = [];
+    let namespaceChecks = 0;
+    const health = {
+      Ok: true,
+      Mod: "TUFReplay",
+      ModVersion: "0.2.0",
+      ProtocolVersion: SUPPORTED_PROTOCOL_VERSION,
+      ServerVersion: 2,
+    };
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      paths.push(url.pathname);
+      if (url.pathname === "/ipc/health") {
+        return Response.json({
+          ok: true,
+          server: "AdofaiIpc",
+          serverVersion: CLIENT_VERSION,
+          protocolVersion: 2,
+          port: Number(url.port),
+        });
+      }
+      if (url.pathname === "/ipc/namespaces/tuf-replay") {
+        namespaceChecks++;
+        return Response.json({
+          namespace: "tuf-replay",
+          displayName: "TUFReplay",
+          version: "0.2.0",
+          status: namespaceChecks === 1 ? "initializing" : "ready",
+          error: null,
+          methods: ["health.get"],
+        });
+      }
+      if (url.pathname === "/ipc") return Response.json({ ok: true, result: health });
+      throw new Error(`Unexpected IPC path: ${url.pathname}`);
+    }) as typeof fetch;
+
+    const gateway = await connectActivityGateway(fetchImpl);
+
+    expect(await gateway.health()).toEqual(health);
+    expect(paths).toEqual([
+      "/ipc/health",
+      "/ipc/namespaces/tuf-replay",
+      "/ipc/namespaces/tuf-replay",
+      "/ipc",
+    ]);
+  });
+
+  test("stops before namespace polling on an AdofaiIpc version mismatch", async () => {
+    const paths: string[] = [];
+    const mismatches: IpcVersionMismatchError[] = [];
+    const fetchImpl = (async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      paths.push(url.pathname);
+      return Response.json({
+        ok: true,
+        server: "AdofaiIpc",
+        serverVersion: "0.2.0",
+        protocolVersion: 2,
+        port: Number(url.port),
+      });
+    }) as typeof fetch;
+
+    try {
+      await connectActivityGateway(fetchImpl, (error) => mismatches.push(error));
+      throw new Error("Expected a version mismatch.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(IpcVersionMismatchError);
+    }
+    expect(paths).toEqual(["/ipc/health"]);
+    expect(mismatches).toHaveLength(1);
+    expect(mismatches[0]?.direction).toBe("server_outdated");
+  });
+
   test("accepts the supported TUFReplay protocol version", async () => {
     const health = {
       Ok: true,

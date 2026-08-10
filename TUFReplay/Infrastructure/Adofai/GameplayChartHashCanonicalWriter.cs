@@ -66,6 +66,27 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
     _payload.WriteByte(legacySpriteTiles ? (byte)1 : (byte)0);
   }
 
+  public void WriteGameplaySettingsV4(
+    string songFilename,
+    float bpm,
+    int volume,
+    int offset,
+    bool separateCountdownTime,
+    int countdownTicks,
+    float speedTrialAim,
+    bool legacySpriteTiles
+  )
+  {
+    WriteString(songFilename);
+    WriteFloat(bpm);
+    WriteInt(volume);
+    WriteInt(offset);
+    _payload.WriteByte(separateCountdownTime ? (byte)1 : (byte)0);
+    WriteInt(countdownTicks);
+    WriteFloat(speedTrialAim);
+    _payload.WriteByte(legacySpriteTiles ? (byte)1 : (byte)0);
+  }
+
   public void WriteLegacyPath(string pathData)
   {
     WriteString(pathData);

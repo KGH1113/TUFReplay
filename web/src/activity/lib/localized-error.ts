@@ -6,7 +6,26 @@ export function localizedErrorMessage(cause: unknown, fallback: string) {
     const translated = translatedDomainError(cause.code);
     if (translated) return translated;
   }
+  const ipcMessage = translatedIpcError(cause);
+  if (ipcMessage) return ipcMessage;
   return cause instanceof Error && cause.message ? cause.message : fallback;
+}
+
+function translatedIpcError(cause: unknown) {
+  const code =
+    cause && typeof cause === "object" && "code" in cause
+      ? (cause as { code?: unknown }).code
+      : null;
+  if (code === "UNAVAILABLE") return i18n.t("errors.ipcUnavailable", { ns: "activity" });
+  if (code === "TIMEOUT") return i18n.t("errors.ipcTimeout", { ns: "activity" });
+  if (code === "VERSION_MISMATCH") return i18n.t("errors.ipcVersionMismatch", { ns: "activity" });
+  if (code === "namespace_not_found") return i18n.t("errors.namespaceNotFound", { ns: "activity" });
+  if (code === "namespace_initializing")
+    return i18n.t("errors.namespaceInitializing", { ns: "activity" });
+  if (code === "namespace_error") return i18n.t("errors.namespaceError", { ns: "activity" });
+  if (code === "namespace_status_unavailable")
+    return i18n.t("errors.ipcUpdateRequired", { ns: "activity" });
+  return null;
 }
 
 export function translatedDomainError(code: string) {

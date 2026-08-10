@@ -186,6 +186,7 @@ export function ActivityDashboard() {
               <ConnectionStatePanel
                 status={activity.status}
                 error={activity.error}
+                versionMismatch={activity.versionMismatch}
                 onRetry={() => void activity.retry()}
               />
             ) : !selectedLevel ? (
@@ -193,6 +194,7 @@ export function ActivityDashboard() {
                 <ConnectionStatePanel
                   status={activity.status}
                   error={activity.error}
+                  versionMismatch={activity.versionMismatch}
                   onRetry={() => void activity.retry()}
                 />
               ) : (
