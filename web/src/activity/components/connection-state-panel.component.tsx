@@ -1,7 +1,7 @@
+import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 import { useTranslation } from "react-i18next";
 import { Button } from "@/ui/button.component";
 import type { ConnectionStatus } from "../activity.model";
-import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 import { getConnectionStatePanelCopy } from "./connection-state-panel.copy";
 
 export function ConnectionStatePanel({
@@ -36,12 +36,18 @@ export function ConnectionStatePanel({
             {!connecting ? (
               copy.action === "download" ? (
                 <Button className="mt-5" asChild>
-                  <a href="https://github.com/KGH1113/adofai-ipc/releases/latest" target="_blank" rel="noreferrer">
+                  <a
+                    href="https://github.com/KGH1113/adofai-ipc/releases/latest"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     {copy.retryLabel}
                   </a>
                 </Button>
               ) : (
-                <Button className="mt-5" onClick={action}>{copy.retryLabel}</Button>
+                <Button className="mt-5" onClick={action}>
+                  {copy.retryLabel}
+                </Button>
               )
             ) : null}
           </div>

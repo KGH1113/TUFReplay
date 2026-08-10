@@ -1,6 +1,6 @@
+import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 import type { TFunction } from "i18next";
 import type { ConnectionStatus } from "../activity.model";
-import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 
 interface ConnectionStatePanelCopy {
   title: string;

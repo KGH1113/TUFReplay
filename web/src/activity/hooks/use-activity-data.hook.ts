@@ -1,5 +1,5 @@
+import { type IpcVersionMismatchDirection, IpcVersionMismatchError } from "@adofai-ipc/client";
 import { useCallback, useRef, useState } from "react";
-import { IpcVersionMismatchError, type IpcVersionMismatchDirection } from "@adofai-ipc/client";
 
 import i18n from "../../i18n/i18n";
 import type { ActivityAppSession, ConnectionStatus } from "../activity.model";
@@ -61,10 +61,12 @@ export function useActivityData() {
     if (loadingRef.current || terminalMismatchRef.current) return;
     loadingRef.current = true;
     try {
-      const gateway = gatewayRef.current ?? (await connectActivityGateway(undefined, (mismatch) => {
-        terminalMismatchRef.current = mismatch;
-        setVersionMismatch(mismatch.direction);
-      }));
+      const gateway =
+        gatewayRef.current ??
+        (await connectActivityGateway(undefined, (mismatch) => {
+          terminalMismatchRef.current = mismatch;
+          setVersionMismatch(mismatch.direction);
+        }));
       await gateway.health();
       gatewayRef.current = gateway;
       setStatus("online");
@@ -105,5 +107,13 @@ export function useActivityData() {
   }, [refresh]);
 
   useVisiblePolling(() => void refresh());
-  return { sessions, status, error, versionMismatch, retry, gatewayRef, mockEnabled: mockActivityEnabled };
+  return {
+    sessions,
+    status,
+    error,
+    versionMismatch,
+    retry,
+    gatewayRef,
+    mockEnabled: mockActivityEnabled,
+  };
 }
