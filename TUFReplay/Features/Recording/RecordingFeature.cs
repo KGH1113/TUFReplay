@@ -154,8 +154,6 @@ public class RecordingFeature
     Active = true;
 
     RecordInputTracker.Reset();
-    if (!_activity.StartAppSession())
-      Main.Instance.Log("[Recording] Activity database is busy; recording will retry when a level opens.");
   }
 
   public void Disable()
@@ -240,23 +238,7 @@ public class RecordingFeature
 
     ResetRunState();
 
-    int levelTileCount = RecordingSession.GetLevelTileCount();
     CaptureGameplayHash();
-    if (
-      !_activity.OpenLevel(
-        levelPath,
-        tufLevelId,
-        levelTileCount,
-        _gameplayHash,
-        _gameplayHashVersion,
-        _legacyGameplayHash,
-        _legacyGameplayHashVersion
-      )
-    )
-    {
-      Main.Instance.Log("[Recording] Activity database is busy; recording will retry on the next play.");
-      return;
-    }
     RecordingPatches.ResetHitContextState();
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
     if (Session.IsRecording)
@@ -342,7 +324,8 @@ public class RecordingFeature
       return;
 
     Session.MarkGameplayStarted();
-    PrepareActivityRun(RecordingSession.GetLevelTileCount());
+    if (!PrepareActivityRun(RecordingSession.GetLevelTileCount()))
+      return;
     StartMicrophoneRun();
     if (_calibrationRun)
       FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
@@ -354,21 +337,49 @@ public class RecordingFeature
     if (_calibrationRun || !Session.IsRecording)
       return;
 
-    PrepareActivityRun(RecordingSession.GetLevelTileCount());
+    if (!PrepareActivityRun(RecordingSession.GetLevelTileCount()))
+      return;
     StartMicrophoneRun();
   }
 
-  private void PrepareActivityRun(int levelTileCount)
+  private bool PrepareActivityRun(int levelTileCount)
   {
     if (!Session.IsRecording)
-      return;
+      return false;
     if (_currentRun != null)
-      return;
+      return true;
+
+    if (!_calibrationRun && !OpenActivityLevel(levelTileCount))
+      return false;
 
     int startTile = RecordingSession.GetCurrentTile();
     _currentRun = _calibrationRun
       ? CreateCalibrationRunDraft(Session.Data, startTile, levelTileCount)
       : _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
+    return _currentRun != null;
+  }
+
+  private bool OpenActivityLevel(int levelTileCount)
+  {
+    string levelPath = CanonicalLevelPath();
+    if (levelPath == null)
+      return false;
+
+    if (
+      _activity.OpenLevel(
+        levelPath,
+        Session.TufLevelId,
+        levelTileCount,
+        _gameplayHash,
+        _gameplayHashVersion,
+        _legacyGameplayHash,
+        _legacyGameplayHashVersion
+      )
+    )
+      return true;
+
+    Main.Instance.Log("[Recording] Activity database is busy; recording will retry when gameplay starts.");
+    return false;
   }
 
   private static RunRecord CreateCalibrationRunDraft(RecordedRunPayload data, int startTile, int levelTileCount)

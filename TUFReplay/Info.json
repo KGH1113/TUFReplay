@@ -2,8 +2,8 @@
   "Id": "TUFReplay",
   "DisplayName": "TUFReplay",
   "Author": "impl",
-  "Version": "0.1.0-beta.8",
-  "AssemblyName": "AdofaiIpc.Bootstrap.dll",
-  "EntryMethod": "AdofaiIpc.Bootstrap.Bootstrap.Load",
+  "Version": "0.1.0-beta.9",
+  "AssemblyName": "AdofaiIpc.DependencyShim.dll",
+  "EntryMethod": "AdofaiIpc.DependencyShim.DependencyShim.Load",
   "LoadAfter": ["AdofaiIpc"]
 }

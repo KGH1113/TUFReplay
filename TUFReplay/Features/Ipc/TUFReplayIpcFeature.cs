@@ -56,8 +56,9 @@ public sealed class TUFReplayIpcFeature
     ipc.RegisterMainThread("microphone.calibration.offset.set", MicrophoneCalibrationIpcHandlers.SetOffset);
     ipc.RegisterMainThread("microphone.calibration.volume.set", MicrophoneCalibrationIpcHandlers.SetVolume);
     ipc.RegisterMainThread("microphone.calibration.close", MicrophoneCalibrationIpcHandlers.Close);
+    ipc.MarkReady();
 
-    Main.Instance.Log("[IPC] Registered namespace: " + Namespace);
+    Main.Instance.Log("[IPC] Namespace ready: " + Namespace);
   }
 
   public void Disable()

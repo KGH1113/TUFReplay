@@ -35,7 +35,7 @@ The project is built around preserving low-level play data instead of trusting f
 
 ## Features
 
-- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run.
+- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, creating activity sessions only when a non-replay run actually starts.
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
@@ -45,7 +45,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash.
 - Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels continue directly into replay from the run's recorded start tile.
-- Stores a versioned gameplay hash so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. New records use SHA-256 hash v3, which treats run pitch and hit-sound selection and volume as playback presentation rather than chart identity. On startup, verified beta6 v1 and beta7 v2 rows are migrated and merged into v3; missing, changed, or unverifiable level files leave the original rows intact.
+- Stores a versioned gameplay hash so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. New records use SHA-256 hash v4, which treats the `.adofai` format version, run pitch, and hit-sound selection and volume as playback or serialization details rather than chart identity. On startup, verified v1-v3 rows are migrated and merged into v4; missing, changed, or unverifiable level files leave the original rows intact.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
@@ -64,10 +64,16 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc, installed automatically when missing
+- AdofaiIpc 0.3.0 or newer; a missing installation is attempted automatically
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
+
+### Optional mod integration
+
+Other mods can detect a TUFReplay-owned replay operation without taking a compile-time dependency on TUFReplay. Resolve the public type `TUFReplay.ReplayRuntime` from the loaded TUFReplay assembly and read its static `IsPlaybackActive` property. The property is true throughout replay preparation, level loading, playback, and the return to the editor. `ReplayRuntime.ApiVersion` is `1` for this contract.
+
+Reflection consumers should cache the resolved type and property getter, query the value only at relevant lifecycle boundaries, and treat a missing type, property, or assembly as an inactive replay.
 
 ## Repository Layout
 
@@ -100,7 +106,9 @@ The build script:
 - Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
-The packaged AdofaiIpc bootstrap downloads and verifies the latest AdofaiIpc release when ADOFAI starts without AdofaiIpc installed. After that dependency is ready, the fixed TUFReplay launcher runs the current version's update engine before loading the payload. The engine verifies `TUFReplay.update.json`, downloads the complete ZIP, and activates its DLLs, native libraries, helpers, and assets together. Timeout or package errors load the current runtime. An initialization failure leaves the current pointer unchanged, displays `Failed to update!`, and retries the latest release on the next launch. Only the current and previous successful runtimes are retained.
+The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFReplay starts. A missing AdofaiIpc installation is downloaded and verified once per process. Disabled, outdated, install-failure, and load-failure states stop the TUFReplay core and are shown in the shared AdofaiIpc dependency dialog without changing the user's UMM setting. The TUFReplay update engine verifies the complete ZIP and stages its bundled bootstrap as `Trial`; that bootstrap is used on the next game launch. If the matching TUFReplay runtime fails to initialize, its bootstrap trial is discarded while the current runtime remains active.
+
+The first TUFReplay release using `AdofaiIpc.DependencyShim.dll` must be installed manually once. Later releases update the versioned bootstrap without overwriting a loaded DLL.
 
 The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
@@ -112,6 +120,7 @@ Important environment variables:
 - `DOTNET_EXE`: .NET SDK executable.
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
+- `ADOFAI_IPC_DEPENDENCY_SHIM_DLL`: fixed AdofaiIpc dependency shim assembly path.
 - `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
@@ -132,7 +141,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline and must be installed manually once; later releases can update it in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes to v3.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. Beta.9 automatically installs the fixed dependency entrypoint for existing users, pauses TUFReplay for that session, and asks the user to reinstall only AdofaiIPC 0.3.0 before restarting the game. Later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
 
 ## Web Development
 
@@ -211,7 +220,9 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 
 ## AdofaiIpc API
 
-The local API is intended for the companion web UI and development tools. Clients should find AdofaiIpc by probing `/ipc/health`, then call TUFReplay through:
+The local API is intended for the companion web UI and development tools. TUFReplay requires
+AdofaiIpc protocol version 2. Clients should probe `/ipc/health`, wait for the `tuf-replay`
+namespace to reach `ready`, and then call TUFReplay through:
 
 ```http
 POST /ipc
@@ -253,13 +264,17 @@ Registered methods:
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
 
+TUFReplay registers its namespace as `initializing` while handlers are being attached and marks it
+`ready` only after feature initialization completes. AdofaiIpc rejects premature calls with
+`namespace_initializing`; an initialization failure is exposed as `namespace_error`.
+
 `health.get` returns the TUFReplay namespace protocol and installed mod version:
 
 ```json
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.1.0-beta.8",
+  "ModVersion": "0.1.0-beta.9",
   "ProtocolVersion": 4,
   "ServerVersion": 1
 }

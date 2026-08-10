@@ -263,6 +263,10 @@ public static class ReplayLevelFilePickerCoordinator
 
     if (
       !GameplayChartHash.Equals(referenceHash, selectedHash)
+      && !(
+        run.GameplayHashVersion == 3
+        && GameplayChartHash.MatchesVersion3IgnoringLevelVersion(referenceHash, selectedLevelData)
+      )
       && !ReplayLevelHashValidator.MatchesVerifiedOriginalSemantics(run, referenceHash, selectedLevelData)
     )
     {

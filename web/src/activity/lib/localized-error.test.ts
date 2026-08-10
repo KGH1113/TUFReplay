@@ -22,4 +22,14 @@ describe("localized errors", () => {
       "bridge failed at frame 7",
     );
   });
+
+  test("translates typed IPC readiness and timeout errors", async () => {
+    await i18n.changeLanguage("ko");
+    expect(localizedErrorMessage({ code: "namespace_initializing" }, "fallback")).toBe(
+      "TUFReplay가 초기화 중입니다. 잠시 후 다시 시도하세요.",
+    );
+    expect(localizedErrorMessage({ code: "TIMEOUT" }, "fallback")).toBe(
+      "TUFReplay 응답 시간이 너무 오래 걸렸습니다.",
+    );
+  });
 });

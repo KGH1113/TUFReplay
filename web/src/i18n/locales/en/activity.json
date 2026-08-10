@@ -17,6 +17,23 @@
     "updateDescription": "Fully quit ADOFAI, then start it again to update TUFReplay.",
     "retryAfterRestarting": "Retry after restarting",
     "retry": "Retry connection",
+    "reload": "Refresh this page",
+    "downloadIpc": "Download AdofaiIPC",
+    "ipcUpdateTitle": "AdofaiIPC update required",
+    "ipcUpdateDescription": "The game is running an older or legacy AdofaiIPC than this website requires.",
+    "ipcUpdateGuide": "How to update AdofaiIPC",
+    "ipcUpdateSteps": [
+      "Download the latest stable AdofaiIPC release.",
+      "Replace the installed AdofaiIPC files while ADOFAI is closed.",
+      "Restart ADOFAI, then retry the connection."
+    ],
+    "clientUpdateTitle": "Website update required",
+    "clientUpdateDescription": "AdofaiIPC is newer than the cached website client.",
+    "clientUpdateGuide": "How to refresh",
+    "clientUpdateSteps": [
+      "Refresh this page to load the latest website bundle.",
+      "If the message remains, clear this site's cache and reload."
+    ],
     "connectGuide": "How to connect",
     "updateGuide": "How to update",
     "connectSteps": [
@@ -34,7 +51,14 @@
   "errors": {
     "load": "Could not load TUFReplay activity",
     "connect": "Could not connect to TUFReplay",
-    "loadSession": "Could not load level session"
+    "loadSession": "Could not load level session",
+    "ipcUnavailable": "ADOFAI or AdofaiIPC is not running.",
+    "ipcTimeout": "TUFReplay took too long to respond.",
+    "ipcVersionMismatch": "The AdofaiIPC mod and website client versions do not match.",
+    "ipcUpdateRequired": "The installed AdofaiIPC is too old for this TUFReplay version.",
+    "namespaceNotFound": "TUFReplay IPC is not registered yet.",
+    "namespaceInitializing": "TUFReplay is still starting. Try again shortly.",
+    "namespaceError": "TUFReplay could not finish starting. Check the in-game mod log."
   },
   "time": {
     "open": "Open",

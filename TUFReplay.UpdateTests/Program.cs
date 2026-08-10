@@ -156,6 +156,11 @@ internal static class UpdaterTests
       string root = $"TUFReplay/Runtime/versions/{version}/";
       AddEntry(archive, root + "TUFReplay.dll", "payload");
       AddEntry(archive, root + "TUFReplay.UpdateEngine.dll", "engine");
+      AddEntry(archive, root + "AdofaiIpc.Bootstrap.dll", "dependency-bootstrap");
+      AddEntry(archive, root + "AdofaiIpc.DependencyShim.dll", "dependency-shim");
+      AddEntry(archive, root + "AdofaiIpc.Migration.dll", "migration");
+      AddEntry(archive, root + "AdofaiIpcBootstrap.json",
+        "{\"MinimumAdofaiIpcVersion\":\"0.3.0\",\"AssemblyName\":\"TUFReplay.Bootstrap.dll\",\"EntryMethod\":\"TUFReplay.Bootstrap.Bootstrap.Load\"}");
       AddEntry(archive, root + "Info.json", $"{{\"Version\":\"{version}\"}}");
       if (includeResources)
       {
