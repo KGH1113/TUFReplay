@@ -53,9 +53,27 @@ public interface IRenderCaptureBridge
   );
 }
 
-/// <summary>Registration point for the renderer mod's <see cref="IRenderCaptureBridge"/>.</summary>
+/// <summary>
+/// Registration point for the renderer mod's <see cref="IRenderCaptureBridge"/>.
+///
+/// Contract rules — this crosses two independently auto-updated assemblies, so:
+/// <list type="bullet">
+/// <item><see cref="IRenderCaptureBridge"/> is FROZEN. Never change or remove a member; either
+/// side binding a changed signature fails at JIT time with MissingMethodException on whichever
+/// mod is older. New capabilities go on a new optional interface (IRenderCaptureBridge2 :
+/// IRenderCaptureBridge) that callers feature-detect with an `is` check, so an older renderer
+/// keeps working against a newer TUFReplay minus the new feature.</item>
+/// <item><see cref="ApiVersion"/> is a runtime-readable property (deliberately not a const —
+/// consts inline into the consumer at compile time and defeat the check). It bumps ONLY when the
+/// base contract changes incompatibly, which the rule above exists to prevent; the renderer reads
+/// it by reflection before registering and declines a mismatch cleanly instead of crashing.</item>
+/// </list>
+/// </summary>
 public static class RenderCaptureBridge
 {
+  /// <summary>Version of the base bridge contract. History: 1 = initial frozen contract.</summary>
+  public static int ApiVersion => 1;
+
   public static IRenderCaptureBridge Current { get; private set; }
 
   public static bool IsCapturingActive => Current?.IsCapturingActive ?? false;

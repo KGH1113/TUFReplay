@@ -191,6 +191,12 @@ export interface RenderSettings {
 export interface RenderCapabilities {
   Available: boolean;
   UnavailableReason: string | null;
+  RendererVersion?: string | null;
+  TufReplayVersion?: string | null;
+  /** Bridge contract compatibility: "ok" | "tufreplay_outdated" | "renderer_outdated". */
+  BridgeStatus?: string;
+  BridgeApiVersionDetected?: number;
+  BridgeApiVersionRequired?: number;
   FFmpegVersion: string | null;
   FFmpegDirectory: string | null;
   OutputDirectory: string | null;

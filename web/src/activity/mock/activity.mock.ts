@@ -232,6 +232,11 @@ export function createMockActivityGateway(): ActivityGateway {
     getRenderCapabilities: async () => ({
       Available: true,
       UnavailableReason: null,
+      RendererVersion: "mock",
+      TufReplayVersion: "mock",
+      BridgeStatus: "ok",
+      BridgeApiVersionDetected: 1,
+      BridgeApiVersionRequired: 1,
       FFmpegVersion: "62.11.100",
       FFmpegDirectory: "/mock/UserLibs",
       OutputDirectory: "/mock/TUFReplay Renders",
