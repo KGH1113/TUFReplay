@@ -27,6 +27,20 @@ public static class GameplayPatches
     }
   }
 
+  [HarmonyPatch(typeof(scrPlayer), "Hit", new[] { typeof(bool) })]
+  [HarmonyPostfix]
+  private static void OnScrPlayerHitPostfix(scrPlayer __instance)
+  {
+    try
+    {
+      RecordingPatches.OnScrPlayerHitPostfix(__instance);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnScrPlayerHitPostfix), exception);
+    }
+  }
+
   [HarmonyPatch(typeof(StateBehaviour), "ChangeState", new[] { typeof(Enum) })]
   [HarmonyPostfix]
   private static void OnChangeStatePostfix(Enum newState)

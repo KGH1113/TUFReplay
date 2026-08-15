@@ -23,6 +23,30 @@ internal sealed class HitMarginSnapshot
     return true;
   }
 
+  public bool TryGetSingleIncrement(int[] values, out int hitMargin)
+  {
+    hitMargin = default;
+    if (!_hasValue || values == null || _values.Length != values.Length)
+      return false;
+
+    int incrementedIndex = -1;
+    for (int i = 0; i < _values.Length; i++)
+    {
+      int delta = values[i] - _values[i];
+      if (delta == 0)
+        continue;
+      if (delta != 1 || incrementedIndex >= 0)
+        return false;
+      incrementedIndex = i;
+    }
+
+    if (incrementedIndex < 0)
+      return false;
+
+    hitMargin = incrementedIndex;
+    return true;
+  }
+
   public void Capture(int[] values)
   {
     if (values == null)

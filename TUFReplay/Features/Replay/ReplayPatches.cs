@@ -106,6 +106,17 @@ public static class ReplayInputPatches
     }
   }
 
+  [HarmonyPatch(typeof(scrPlanet), "AsyncRefreshAngles")]
+  [HarmonyPrefix]
+  private static bool OnAsyncRefreshAnglesPrefix()
+  {
+    // Replay native input is intentionally injected through SkyHook, but its async timestamp belongs
+    // to the live OS clock. After a timeline scrub that clock can overwrite the conductor-derived
+    // planet angle with a value from the abandoned timeline. Hit-context playback already restores
+    // the authoritative replay orbit, so keep the synchronous angle path while a replay is active.
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
+  }
+
   [HarmonyPatch(typeof(scrPlayer), "ValidInputWasTriggered")]
   [HarmonyPrefix]
   private static bool OnValidInputWasTriggeredPrefix(ref bool __result)

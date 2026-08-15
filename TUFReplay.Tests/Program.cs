@@ -50,6 +50,9 @@ internal static class Program
       TestLogicalLevelIdentity(root);
       TestReplayInputStableOrder();
       TestReplayCsvParserCompatibility();
+      TestReplayTimelineTimeMath();
+      TestLegacyJudgmentOverloadMath();
+      TestHitContextPlaybackPositionComparison();
       TestReplayNoFailPolicy();
       TestNativeInputUmmWindowInterlock();
       TestWindowsSkyHookRawKeyPreservation();
@@ -60,6 +63,7 @@ internal static class Program
       TestReplaySchedulerChord();
       TestReplayPumpTimingAndBatching();
       TestReplayPumpFocusAndReleaseAll();
+      TestReplayPumpPauseSuspendsAndResumes();
       TestReplayPumpClockJumpSeeksState();
       TestPreparedReplayDoesNotEmit();
       TestMiddleStartReplayInitializesFromPlayerControl();
@@ -91,9 +95,7 @@ internal static class Program
 
   private static void TestReplayCsvParserCompatibility()
   {
-    byte[] inputCsv = System.Text.Encoding.UTF8.GetBytes(
-      "\r\n 200 , 11 , 3 \r\ninvalid\n100,7,2\r\n200,12,1\n"
-    );
+    byte[] inputCsv = System.Text.Encoding.UTF8.GetBytes("\r\n 200 , 11 , 3 \r\ninvalid\n100,7,2\r\n200,12,1\n");
     List<RecordedInput> inputs = ReplayInputParser.Parse(inputCsv);
 
     Assert(inputs.Count == 3, "Replay input parser did not ignore malformed or empty lines.");
@@ -112,6 +114,97 @@ internal static class Program
     Assert(context.NoFailHit && !context.IsAuto && context.NextFloorAuto, "Replay boolean parsing changed.");
     Assert(!context.MidspinInfiniteMargin && context.RDCAuto, "Replay boolean flag parsing changed.");
     Assert(context.CurFreeRoamSection == -4, "Replay signed integer parsing changed.");
+    Assert(!context.ResolvedHitMargin.HasValue, "Legacy replay unexpectedly gained a resolved hit margin.");
+
+    byte[] resolvedHitCsv = System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4\n");
+    ReplayHitContext resolvedContext = ReplayHitContextParser.Parse(resolvedHitCsv)[0];
+    Assert(resolvedContext.ResolvedHitMargin == 4, "Resolved hit margin was not preserved by the replay parser.");
+  }
+
+  private static void TestLegacyJudgmentOverloadMath()
+  {
+    Assert(
+      !ReplayLegacyJudgmentMath.BecomesFailOverload(0.5f, drumController: false, purePerfectOnly: false, noFail: false),
+      "An overload counter of exactly one was treated as FailOverload."
+    );
+    Assert(
+      ReplayLegacyJudgmentMath.BecomesFailOverload(
+        0.5001f,
+        drumController: false,
+        purePerfectOnly: false,
+        noFail: false
+      ),
+      "A Too Early hit crossing the overload threshold was not promoted to FailOverload."
+    );
+    Assert(
+      !ReplayLegacyJudgmentMath.BecomesFailOverload(0.7f, drumController: true, purePerfectOnly: false, noFail: false),
+      "Drum-controller overload damage did not use ADOFAI's reduced amount."
+    );
+    Assert(
+      !ReplayLegacyJudgmentMath.BecomesFailOverload(0.9f, drumController: false, purePerfectOnly: true, noFail: false),
+      "Pure Perfect mode incorrectly replaced Too Early with FailOverload."
+    );
+    Assert(
+      ReplayLegacyJudgmentMath.BecomesFailOverload(0.9f, drumController: false, purePerfectOnly: true, noFail: true),
+      "No-fail Pure Perfect mode did not preserve ADOFAI's FailOverload promotion."
+    );
+  }
+
+  private static void TestReplayTimelineTimeMath()
+  {
+    var cleared = new ActiveReplayContext
+    {
+      Result = "cleared",
+      TerminalTimeUs = 12_000_000L,
+      Meta = new ReplayMetadata { wonTimeUs = 8_000_000L },
+    };
+    var failed = new ActiveReplayContext
+    {
+      Result = "failed",
+      TerminalTimeUs = 12_000_000L,
+      Meta = new ReplayMetadata { wonTimeUs = 8_000_000L },
+    };
+
+    Assert(
+      ReplaySessionService.TimelineDurationTimeUs(cleared) == 8_000_000L,
+      "Cleared timeline did not stop at wonTimeUs."
+    );
+    Assert(
+      ReplaySessionService.TimelineDurationTimeUs(failed) == 12_000_000L,
+      "Failed timeline did not use terminalTimeUs."
+    );
+    Assert(
+      ReplaySessionService.ClampTimelineSeekTime(-1L, 8_000_000L) == 0L,
+      "Timeline seek did not clamp to the beginning."
+    );
+    Assert(
+      ReplaySessionService.ClampTimelineSeekTime(8_000_000L, 8_000_000L) == 7_999_999L,
+      "Timeline seek did not stay before the terminal boundary."
+    );
+    Assert(
+      Math.Abs(ReplaySessionService.ToNormalizedTimelineTime(4_000_000L, 8_000_000L) - 0.5f) < 0.0001f,
+      "Timeline normalized time calculation changed."
+    );
+  }
+
+  private static void TestHitContextPlaybackPositionComparison()
+  {
+    Assert(
+      ReplayHitContextPlayer.ComparePlaybackPosition(2627, 0, 2628, 0) < 0,
+      "A future hit-context floor was not treated as pending."
+    );
+    Assert(
+      ReplayHitContextPlayer.ComparePlaybackPosition(2628, 0, 2628, 0) == 0,
+      "The current hit-context position did not compare equal."
+    );
+    Assert(
+      ReplayHitContextPlayer.ComparePlaybackPosition(2629, 0, 2628, 0) > 0,
+      "A skipped hit-context floor was not treated as an error."
+    );
+    Assert(
+      ReplayHitContextPlayer.ComparePlaybackPosition(2628, 1, 2628, 0) > 0,
+      "A skipped free-roam section was not treated as an error."
+    );
   }
 
   private static void TestReplayNoFailPolicy()
@@ -141,10 +234,7 @@ internal static class Program
     );
 
     NativeInputUmmWindowInterlock.Reset();
-    Assert(
-      NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L),
-      "UMM fallback did not poll immediately."
-    );
+    Assert(NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L), "UMM fallback did not poll immediately.");
     Assert(
       !NativeInputUmmWindowInterlock.ShouldPollManagerWindowAt(10_000L),
       "UMM fallback polled twice in the same interval."
@@ -362,6 +452,29 @@ internal static class Program
     Assert(batches[3].Length == 1 && !batches[3][0].Down, "Release-all emitted an invalid transition.");
   }
 
+  private static void TestReplayPumpPauseSuspendsAndResumes()
+  {
+    var emitter = new CapturingEmitter();
+    var scheduler = new ReplayInputScheduler(
+      new List<RecordedInput> { Input(0, 25, true), Input(1_000_000, 25, false) }
+    );
+    using var pump = new ReplayNativeInputPump(scheduler, emitter);
+
+    pump.ResetTo(100_000, 1d, true);
+    Assert(emitter.WaitForBatchCount(1), "Pause setup did not restore the held key.");
+    pump.SuspendAt(100_000);
+    Assert(emitter.WaitForBatchCount(2), "Pause did not release the held key.");
+    Thread.Sleep(30);
+    Assert(emitter.Snapshot().Count == 2, "Native input advanced while replay playback was paused.");
+
+    pump.Synchronize(100_000, 1d, true);
+    Assert(emitter.WaitForBatchCount(3), "Resume did not restore the held state at the paused timestamp.");
+    List<NativeInputEmission[]> batches = emitter.Snapshot();
+    Assert(batches[0].Length == 1 && batches[0][0].Down, "Pause setup did not emit key-down.");
+    Assert(batches[1].Length == 1 && !batches[1][0].Down, "Pause did not emit key-up.");
+    Assert(batches[2].Length == 1 && batches[2][0].Down, "Resume did not restore key-down.");
+  }
+
   private static void TestReplayPumpClockJumpSeeksState()
   {
     var emitter = new CapturingEmitter();
@@ -469,12 +582,14 @@ internal static class Program
     int completed = 0;
     CapturedMicrophoneRecording observed = null;
     bool persisted = false;
-    var disposition = new PendingMicrophoneDisposition((value, shouldPersist) =>
-    {
-      completed++;
-      observed = value;
-      persisted = shouldPersist;
-    });
+    var disposition = new PendingMicrophoneDisposition(
+      (value, shouldPersist) =>
+      {
+        completed++;
+        observed = value;
+        persisted = shouldPersist;
+      }
+    );
 
     disposition.CompleteDisposition(persist: true);
     Assert(completed == 0, "Microphone disposition ran before capture finalization.");
@@ -486,11 +601,13 @@ internal static class Program
     Assert(completed == 1, "Microphone disposition completed more than once.");
 
     completed = 0;
-    var captureFirst = new PendingMicrophoneDisposition((_, shouldPersist) =>
-    {
-      completed++;
-      persisted = shouldPersist;
-    });
+    var captureFirst = new PendingMicrophoneDisposition(
+      (_, shouldPersist) =>
+      {
+        completed++;
+        persisted = shouldPersist;
+      }
+    );
     captureFirst.CompleteCapture(recording);
     Assert(completed == 0, "Finalized microphone capture ignored the editor-return gate.");
     captureFirst.CompleteDisposition(persist: false);
@@ -515,6 +632,14 @@ internal static class Program
       "Capturing same-length hit margins allocated a new buffer."
     );
     Assert(snapshot.Matches(new[] { 4, 5, 6 }), "Reused hit margin buffer was not updated.");
+    Assert(
+      snapshot.TryGetSingleIncrement(new[] { 4, 6, 6 }, out int incrementedMargin) && incrementedMargin == 1,
+      "A single resolved hit margin increment was not detected."
+    );
+    Assert(
+      !snapshot.TryGetSingleIncrement(new[] { 5, 6, 6 }, out _),
+      "Multiple hit margin increments were accepted as one judgment."
+    );
 
     snapshot.Reset();
     Assert(!snapshot.Matches(new[] { 4, 5, 6 }), "Reset hit margin snapshot remained valid.");
@@ -664,10 +789,7 @@ internal static class Program
 
     byte[] first = new byte[6];
     Assert(ReadPrefetched(prefetch, first, 6) == 6, "PCM prefetch did not fill the initial read.");
-    Assert(
-      first[0] == 4 && first[5] == 9,
-      "PCM prefetch did not honor the WAV data offset or preserve byte order."
-    );
+    Assert(first[0] == 4 && first[5] == 9, "PCM prefetch did not honor the WAV data offset or preserve byte order.");
 
     prefetch.Seek(8);
     byte[] sought = new byte[6];
@@ -1830,10 +1952,7 @@ INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,
     PropertyInfo property = typeof(Database).GetProperty("DbPath", BindingFlags.Public | BindingFlags.Static);
     property.SetValue(null, path);
     MicrophoneDatabase.Initialize(
-      Path.Combine(
-        Path.GetDirectoryName(path) ?? "",
-        Path.GetFileNameWithoutExtension(path) + ".microphones.sqlite"
-      )
+      Path.Combine(Path.GetDirectoryName(path) ?? "", Path.GetFileNameWithoutExtension(path) + ".microphones.sqlite")
     );
   }
 
