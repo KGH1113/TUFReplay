@@ -420,6 +420,12 @@ public class RecordingFeature
     RunRecord run = Session.CompleteRunRecord(_currentRun, lastTile, result);
     _runSaved = true;
 
+    if (run.InputCount <= 0)
+    {
+      Main.Instance.Log("[Recording] Skipped activity run without native input. result=" + result);
+      return false;
+    }
+
     if (!run.LastTile.HasValue || run.LastTile.Value <= run.StartTile)
     {
       Main.Instance.Log(
