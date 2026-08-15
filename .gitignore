@@ -19,6 +19,11 @@ web/.env
 .DS_Store
 
 # Unity generated files
+TUFReplay.Unity/Library/
+TUFReplay.Unity/Logs/
+TUFReplay.Unity/Temp/
+TUFReplay.Unity/obj/
+TUFReplay.Unity/UserSettings/
 
 # Xcode local state and build products
 TUFReplay.MicrophoneCapture.Mac/**/xcuserdata/

@@ -110,8 +110,14 @@ public class RecordedRunPayload
         .Append(',')
         .Append(hit.RDCAuto ? '1' : '0')
         .Append(',')
-        .Append(hit.CurFreeRoamSection)
-        .Append('\n');
+        .Append(hit.CurFreeRoamSection);
+
+      if (hit.ResolvedHitMargin.HasValue)
+      {
+        builder.Append(',').Append(hit.ResolvedHitMargin.Value);
+      }
+
+      builder.Append('\n');
     }
 
     return Encoding.UTF8.GetBytes(builder.ToString());

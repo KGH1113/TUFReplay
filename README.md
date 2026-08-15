@@ -31,7 +31,7 @@
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
-The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
+The project preserves low-level play data and, for new recordings, the resolved margin of each accepted hit. The resolved margin lets timeline scrubbing rebuild ADOFAI's canonical judgment tracker exactly, while older recordings remain playable by deriving margins from their existing hit contexts. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
 ## Features
 
@@ -52,6 +52,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Streams microphone WAV files into a separate `tufreplay.microphones.sqlite` database without loading the full recording into memory; this isolates large BLOB writes from activity-run writes. Temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
+- Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
@@ -78,6 +79,7 @@ Reflection consumers should cache the resolved type and property getter, query t
 ## Repository Layout
 
 - `TUFReplay/`: UnityModManager mod source.
+- `TUFReplay.Unity/`: Unity 6.3 project for the replay timeline prefab, Canvas graphics, shader, and platform AssetBundle builder.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
 - `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
@@ -121,6 +123,7 @@ Important environment variables:
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
 - `ADOFAI_IPC_DEPENDENCY_SHIM_DLL`: fixed AdofaiIpc dependency shim assembly path.
+- `ADOFAI_IPC_MIGRATION_DLL`: AdofaiIpc migration assembly path.
 - `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
@@ -135,9 +138,12 @@ The package script creates an optimized Release build in `build/TUFReplay.zip` w
 Build only the macOS helper or validate the shell layer with:
 
 ```bash
+./scripts/run.sh unity-ui
 ./scripts/run.sh mac-helper
 ./scripts/run.sh check
 ```
+
+`unity-ui` rebuilds `ReplayTimelineRuntime.prefab` with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 

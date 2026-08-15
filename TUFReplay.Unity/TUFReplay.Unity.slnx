@@ -1,0 +1,4 @@
+﻿<Solution>
+  <Project Path="TUFReplay.csproj" />
+  <Project Path="Assembly-CSharp-Editor.csproj" />
+</Solution>

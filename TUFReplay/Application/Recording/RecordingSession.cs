@@ -258,6 +258,20 @@ public class RecordingSession
     }
   }
 
+  public void SetLastHitContextMargin(int hitMargin)
+  {
+    lock (_lock)
+    {
+      if (!IsRecording || Data.HitContexts.Count == 0)
+        return;
+
+      int index = Data.HitContexts.Count - 1;
+      RecordedHitContext context = Data.HitContexts[index];
+      context.ResolvedHitMargin = hitMargin;
+      Data.HitContexts[index] = context;
+    }
+  }
+
   public RunRecord CompleteRunRecord(RunRecord run, int? lastTile, string result)
   {
     lock (_lock)

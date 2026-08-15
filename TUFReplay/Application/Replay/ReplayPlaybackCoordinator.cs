@@ -50,6 +50,15 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
+  internal static bool IsTimelinePlaying
+  {
+    get
+    {
+      lock (Gate)
+        return _status.State == ReplayPlaybackStates.Playing;
+    }
+  }
+
   public static bool ShouldCancelForEditorQuitToMenu
   {
     get
