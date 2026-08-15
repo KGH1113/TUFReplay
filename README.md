@@ -44,7 +44,7 @@ The project preserves low-level play data and, for new recordings, the resolved 
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash.
-- Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels continue directly into replay from the run's recorded start tile.
+- Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels open with path editing locked and continue directly into replay from the run's recorded start tile.
 - Stores a versioned gameplay hash so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. New records use SHA-256 hash v4, which treats the `.adofai` format version, run pitch, and hit-sound selection and volume as playback or serialization details rather than chart identity. On startup, verified v1-v3 rows are migrated and merged into v4; missing, changed, or unverifiable level files leave the original rows intact.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
