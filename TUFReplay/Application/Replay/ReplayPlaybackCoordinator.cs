@@ -571,6 +571,12 @@ public static class ReplayPlaybackCoordinator
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
+    if (!operation.PathEditingLockApplied)
+    {
+      scnEditor.instance.LockPathEditing(true);
+      operation.PathEditingLockApplied = true;
+    }
+
     if (operation.AllowBackground)
     {
       operation.NativeInputFocusGuard = AlwaysReadyFocusGuard.Instance;
@@ -980,6 +986,7 @@ public static class ReplayPlaybackCoordinator
     public string LoadedLevelValidationMessage;
     public byte[] ValidatedLoadedGameplayHash;
     public int ValidatedLoadedGameplayHashVersion;
+    public bool PathEditingLockApplied;
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
