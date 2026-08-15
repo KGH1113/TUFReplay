@@ -10,6 +10,76 @@ namespace TUFReplay.Features.Replay;
 public static class ReplayInputPatches
 {
   private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;
+  private static bool ShouldHideTimelineRestartVisuals =>
+    IsActive && ReplaySessionService.IsTimelineRestartPending;
+
+  [HarmonyPatch(typeof(scrController), nameof(scrController.Scrub), new[] { typeof(int), typeof(bool) })]
+  [HarmonyPrefix]
+  private static void OnScrubPrefix(ref bool forceDontStartMusicFourTilesBefore)
+  {
+    if (ShouldHideTimelineRestartVisuals)
+      forceDontStartMusicFourTilesBefore = true;
+  }
+
+  [HarmonyPatch(typeof(scrConductor), nameof(scrConductor.PlayHitTimes))]
+  [HarmonyPrefix]
+  private static void OnPlayHitTimesPrefix(scrConductor __instance, out bool __state)
+  {
+    __state = __instance.fastTakeoff;
+    if (ShouldHideTimelineRestartVisuals)
+      __instance.fastTakeoff = true;
+  }
+
+  [HarmonyPatch(typeof(scrConductor), nameof(scrConductor.PlayHitTimes))]
+  [HarmonyPostfix]
+  private static void OnPlayHitTimesPostfix(scrConductor __instance, bool __state)
+  {
+    __instance.fastTakeoff = __state;
+  }
+
+  [HarmonyPatch(typeof(scrUIController), nameof(scrUIController.SetToBlack))]
+  [HarmonyPrefix]
+  private static bool OnSetToBlackPrefix(scrUIController __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.SetToTransparent();
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrUIController), nameof(scrUIController.FadeFromBlack))]
+  [HarmonyPrefix]
+  private static bool OnFadeFromBlackPrefix(scrUIController __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.SetToTransparent();
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrCountdown), "Update")]
+  [HarmonyPrefix]
+  private static bool OnCountdownUpdatePrefix(scrCountdown __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.CancelGo();
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrCountdown), nameof(scrCountdown.ShowGetReady))]
+  [HarmonyPrefix]
+  private static bool OnShowGetReadyPrefix(scrCountdown __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.CancelGo();
+    return false;
+  }
 
   [HarmonyPatch(typeof(scnGame), "LoadLevel")]
   [HarmonyPostfix]

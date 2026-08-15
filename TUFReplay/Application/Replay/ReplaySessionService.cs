@@ -1,6 +1,4 @@
 using System;
-using System.Reflection;
-using ADOFAI;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.NativeInput;
@@ -11,19 +9,6 @@ namespace TUFReplay.Application.Replay;
 
 public static class ReplaySessionService
 {
-  private static readonly FieldInfo PlanetCosmeticAngleTweenField = typeof(scrPlanet).GetField(
-    "_cosmeticAngleTween",
-    BindingFlags.Instance | BindingFlags.NonPublic
-  );
-  private static readonly MethodInfo PlanetCosmeticAngleTweenKillMethod = PlanetCosmeticAngleTweenField
-    ?.FieldType.Assembly.GetType("DG.Tweening.TweenExtensions")
-    ?.GetMethod(
-      "Kill",
-      BindingFlags.Public | BindingFlags.Static,
-      binder: null,
-      types: new[] { PlanetCosmeticAngleTweenField.FieldType, typeof(bool) },
-      modifiers: null
-    );
   private static ActiveReplayContext _activeContext;
   private static int _pendingReplayPitchApplyFrame = -1;
   private static bool _suppressReplayMarkFail;
@@ -31,6 +16,8 @@ public static class ReplaySessionService
   private static bool _timelineScrubActive;
   private static bool _timelineScrubWasPaused;
   private static long _timelineScrubOriginTimeUs;
+  private static bool _timelineRestartPending;
+  private static bool _timelineRestartPauseAtPlayerControl;
   private static bool _timelinePauseOwnsEditorState;
   private static bool _timelineEditorPausedBeforePause;
 
@@ -42,6 +29,7 @@ public static class ReplaySessionService
     _activeContext?.HitContextPlayer == null || _activeContext.HitContextPlayer.Finished;
   public static string ActiveResult => _activeContext?.Result;
   public static long ActiveTerminalTimeUs => _activeContext?.TerminalTimeUs ?? 0L;
+  internal static bool IsTimelineRestartPending => _timelineRestartPending;
 
   public static bool IsActiveReplayLevel()
   {
@@ -171,6 +159,8 @@ public static class ReplaySessionService
       case States.Checkpoint:
         if (ReplayRunController.ShouldInitializeFromPreRoll(_activeContext))
           ResetReplayRun("state_preroll_" + newState, ReplayPlaybackPhase.Armed);
+        if (_timelineRestartPending)
+          _activeContext.HitContextPlayer?.ResetToAndRebuildJudgments(ADOBase.controller, skipPassedAngles: false);
         break;
 
       case States.PlayerControl:
@@ -178,6 +168,7 @@ public static class ReplaySessionService
           EnsurePlayerControlRunStarted();
         else if (_activeContext.Phase == ReplayPlaybackPhase.Armed)
           TransitionTo(ReplayPlaybackPhase.Running, "state_player_control");
+        CompleteTimelineRestart();
         break;
 
       case States.Won:
@@ -426,7 +417,7 @@ public static class ReplaySessionService
     long durationTimeUs = TimelineDurationTimeUs(context);
     elapsedTimeUs = Math.Max(0L, Math.Min(elapsedTimeUs, durationTimeUs));
     bool canTogglePause = state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl;
-    bool canSeek = state == States.PlayerControl && durationTimeUs > 0L;
+    bool canSeek = state == States.PlayerControl && durationTimeUs > 0L && !_timelineRestartPending;
     snapshot = new ReplayTimelinePlaybackSnapshot(
       context.RunId,
       elapsedTimeUs,
@@ -442,7 +433,7 @@ public static class ReplaySessionService
   {
     if (!TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot) || !snapshot.CanTogglePause)
       return;
-    if (_timelineScrubActive)
+    if (_timelineScrubActive || _timelineRestartPending)
       return;
 
     if (!TryComputeReplayTimeUs(out long replayTimeUs, out _))
@@ -453,7 +444,7 @@ public static class ReplaySessionService
 
   internal static void TrySeekTimelineRelative(int deltaSeconds)
   {
-    if (_timelineScrubActive || deltaSeconds == 0)
+    if (_timelineScrubActive || _timelineRestartPending || deltaSeconds == 0)
       return;
     if (!TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot) || !snapshot.CanSeek)
       return;
@@ -470,6 +461,8 @@ public static class ReplaySessionService
   {
     if (_timelineScrubActive)
       return true;
+    if (_timelineRestartPending)
+      return false;
     if (!TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot) || !snapshot.CanSeek)
       return false;
 
@@ -509,17 +502,15 @@ public static class ReplaySessionService
 
     bool wasPaused = _timelineScrubWasPaused;
     long originTimeUs = _timelineScrubOriginTimeUs;
-
-    if (!TrySeekActiveReplayTo(targetTimeUs))
+    if (!TryRestartActiveReplayAt(targetTimeUs, wasPaused))
     {
-      Main.Instance?.Log("[ReplayTimeline] Seek failed; restoring the previous playback position.");
-      TrySeekActiveReplayTo(originTimeUs);
-      targetTimeUs = originTimeUs;
+      Main.Instance?.Log("[ReplayTimeline] Native checkpoint restart failed; keeping the current playback position.");
+      ResetTimelineScrubState();
+      TrySetTimelinePaused(wasPaused, originTimeUs);
+      return;
     }
 
     ResetTimelineScrubState();
-    if (!wasPaused)
-      TrySetTimelinePaused(false, targetTimeUs);
   }
 
   internal static void CancelTimelineScrub()
@@ -767,17 +758,18 @@ public static class ReplaySessionService
     return (long)replayTimeUs;
   }
 
-  private static bool TrySeekActiveReplayTo(long targetTimeUs)
+  private static bool TryRestartActiveReplayAt(long targetTimeUs, bool pauseAtPlayerControl)
   {
     ActiveReplayContext context = _activeContext;
+    scnGame customLevel = ADOBase.customLevel;
     scrController controller = ADOBase.controller;
-    scrConductor conductor = ADOBase.conductor;
+    var floors = ADOBase.lm?.listFloors;
     if (
       context?.Meta?.gameplayStartSongPosition == null
+      || customLevel == null
       || controller == null
-      || conductor == null
-      || ADOBase.lm?.listFloors == null
-      || ADOBase.lm.listFloors.Count < 2
+      || floors == null
+      || floors.Count < 2
     )
       return false;
     if (!TryGetControllerState(out States state) || state != States.PlayerControl)
@@ -788,124 +780,66 @@ public static class ReplaySessionService
     double targetSongTime = context.Meta.gameplayStartSongPosition.Value + targetTimeUs / 1_000_000d;
     int floorIndex = FindTimelineSeekFloor(targetSongTime);
     if (floorIndex < 1)
-      return false;
-    if (ADOBase.lm.listFloors[floorIndex].entryTime > targetSongTime && floorIndex > 1)
+      floorIndex = 1;
+    if (floorIndex >= floors.Count)
+      floorIndex = floors.Count - 1;
+    if (floors[floorIndex].entryTime > targetSongTime && floorIndex > 1)
       floorIndex--;
-    int litThroughFloorIndex =
-      ADOBase.lm.listFloors[floorIndex].entryTime <= targetSongTime ? floorIndex : floorIndex - 1;
 
-    double pitch = conductor.song != null && conductor.song.pitch > 0f ? conductor.song.pitch : 1d;
+    context.NativeInputPlayer?.SkipTo(targetTimeUs);
+    context.MicrophonePlayer?.Stop();
+    ResetReplayHeldInputState();
+    PrepareReplayRunRestart("timeline_native_checkpoint_restart");
 
-    bool audioListenerPaused = AudioListener.pause;
+    _timelineRestartPending = true;
+    _timelineRestartPauseAtPlayerControl = pauseAtPlayerControl;
     try
     {
-      context.NativeInputPlayer?.SkipTo(targetTimeUs);
-      ResetReplayHeldInputState();
-      AudioListener.pause = true;
+      // Timeline preview pauses through TogglePauseGame, which also sets Time.timeScale to zero.
+      // scnGame.Play only clears controller.paused, so resume through the native path before reset or
+      // the checkpoint lead-in never advances.
+      RestoreTimelineEditorPauseState();
+      if (controller.paused && controller.TogglePauseGame())
+        throw new InvalidOperationException("ADOFAI refused to resume before the checkpoint restart.");
 
-      RestoreTimelineTwirlState();
-      controller.Scrub(floorIndex, forceDontStartMusicFourTilesBefore: true);
-      // scrController.Scrub resumes the listener internally after rebuilding its floor-level state.
-      // Keep the rest of this transaction silent until every timeline consumer has the same clock.
-      AudioListener.pause = true;
-
-      // Scrub internally advances multi-planet midspins and rewinds free-roam floors. Use the floor it
-      // actually selected instead of placing the planets again from the unnormalized request.
-      int restoredFloorIndex = controller.currFloor != null ? controller.currFloor.seqID : floorIndex;
-      if (restoredFloorIndex >= 1 && restoredFloorIndex < ADOBase.lm.listFloors.Count)
-        floorIndex = restoredFloorIndex;
-
-      scrFloor targetFloor = ADOBase.lm.listFloors[floorIndex];
-      float remainingPauseSeconds = 0f;
-      if (targetSongTime >= targetFloor.entryTime && targetSongTime < targetFloor.entryTimeAfterExtraBeats)
-      {
-        remainingPauseSeconds =
-          (float)Math.Max(0d, (targetFloor.entryTimeAfterExtraBeats - targetSongTime) / pitch) + 0.2f;
-      }
-
-      RebuildTimelineVfx((float)targetSongTime);
-      RestoreTimelineFloorHitVisuals(litThroughFloorIndex);
-      ScrubTimelineAudio(conductor, targetSongTime, pitch);
-      double snappedLastAngle = 0d;
-      double targetExitAngle = 0d;
-      bool hasLandingOrbitAngles =
-        targetFloor.extraBeats <= 0f
-        && !targetFloor.freeroam
-        && TryGetTimelineLandingOrbitAngles(context, floorIndex, out snappedLastAngle, out targetExitAngle);
-
-      foreach (scrPlayer player in ADOBase.playerManager)
-      {
-        if (player == null)
-          continue;
-
-        // Between hits the chosen planet is anchored to the last floor it landed on. The game's scrub
-        // path reconstructs its orbit from floor.entryangle, while a real landing carries the previous
-        // targetExitAngle forward. Those formulas diverge after direction changes such as Twirl, so
-        // restore the real landing recurrence before evaluating the exact target instant.
-        PlanetarySystem planetarySystem = player.planetarySystem;
-        if (planetarySystem == null)
-          continue;
-
-        ResetTimelinePlanetCosmeticAngles(planetarySystem);
-        player.lastHit = targetFloor.entryTime;
-        planetarySystem.ScrubToFloorNumber(
-          floorIndex,
-          windbackTime: null,
-          movePos: ADOBase.customLevel != null || RDC.debug
-        );
-
-        // The game's scrub path only assigns cosmeticRadius when the landed floor's scale is not 1,
-        // so a previous scaled floor can leak its radius into a later normal floor. It also assigns
-        // the landed radius after Update_RefreshAngles has already interpolated toward the next floor.
-        // Restore the baseline unconditionally, then evaluate the target instant once more.
-        planetarySystem.isCW = !targetFloor.isCCW;
-        planetarySystem.speed = targetFloor.speed;
-        scrPlanet chosenPlanet = planetarySystem.chosenPlanet;
-        if (hasLandingOrbitAngles && chosenPlanet != null)
-        {
-          chosenPlanet.SetSnappedLastAngle(snappedLastAngle);
-          chosenPlanet.SetTargetExitAngle(targetExitAngle);
-        }
-        if (planetarySystem.planetList != null)
-        {
-          float radius = controller.tileSize * targetFloor.radiusScale;
-          foreach (scrPlanet planet in planetarySystem.planetList)
-          {
-            if (planet != null)
-              planet.cosmeticRadius = radius;
-          }
-        }
-        chosenPlanet?.Update_RefreshAngles();
-      }
-
-      foreach (scrPlayer player in ADOBase.playerManager)
-      {
-        if (player == null)
-          continue;
-        player.UnlockInput();
-        if (remainingPauseSeconds > 0f)
-          player.LockInput(remainingPauseSeconds);
-      }
-      RestoreTimelineCamera(controller);
-
-      context.WonClockStarted = false;
-      context.NativeInputPlayer?.SkipTo(targetTimeUs);
-      context.MicrophonePlayer?.ResetTo(targetTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
-      context.HitContextPlayer?.ResetToAndRebuildJudgments(controller, skipPassedAngles: true);
-      ResetReplayHeldInputState();
-      ReplayPlaybackCoordinator.OnReplayTimeAdvanced(targetTimeUs);
-      _playbackPauseSuspended = true;
-      return true;
+      GCS.checkpointNum = floorIndex;
+      customLevel.ResetScene(isResetCustomLevel: false);
+      if (customLevel.Play(floorIndex, remakeFloors: false))
+        return true;
     }
     catch (Exception exception)
     {
-      Main.Instance?.LogException("ReplaySessionService.TrySeekActiveReplayTo", exception);
-      return false;
+      Main.Instance?.LogException("ReplaySessionService.TryRestartActiveReplayAt", exception);
     }
-    finally
-    {
-      AudioListener.pause = audioListenerPaused;
-    }
+
+    _timelineRestartPending = false;
+    _timelineRestartPauseAtPlayerControl = false;
+    return false;
+  }
+
+  private static void CompleteTimelineRestart()
+  {
+    if (!_timelineRestartPending || _activeContext == null)
+      return;
+
+    bool pauseAtPlayerControl = _timelineRestartPauseAtPlayerControl;
+    scrUIController.instance?.SetToTransparent();
+    scrUIController.instance?.txtCountdown?.GetComponent<scrCountdown>()?.CancelGo();
+    if (ADOBase.controller != null)
+      ADOBase.controller.goShown = true;
+    _timelineRestartPending = false;
+    _timelineRestartPauseAtPlayerControl = false;
+    if (!TryComputeReplayTimeUs(out long replayTimeUs, out _))
+      return;
+
+    _activeContext.NativeInputPlayer?.ResetTo(replayTimeUs, CurrentTimelineRate());
+    _activeContext.MicrophonePlayer?.ResetTo(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
+    _activeContext.HitContextPlayer?.ResetToAndRebuildJudgments(ADOBase.controller, skipPassedAngles: true);
+    ResetReplayHeldInputState();
+    _playbackPauseSuspended = false;
+    ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
+    if (pauseAtPlayerControl)
+      TrySetTimelinePaused(true, replayTimeUs);
   }
 
   private static int FindTimelineSeekFloor(double targetSongTime)
@@ -921,350 +855,6 @@ public static class ReplaySessionService
         high = middle;
     }
     return low;
-  }
-
-  private static bool TryGetTimelineLandingOrbitAngles(
-    ActiveReplayContext context,
-    int targetFloorIndex,
-    out double snappedLastAngle,
-    out double targetExitAngle
-  )
-  {
-    snappedLastAngle = 0d;
-    targetExitAngle = 0d;
-
-    var floors = ADOBase.lm?.listFloors;
-    if (context?.HitContexts == null || floors == null || targetFloorIndex < 1 || targetFloorIndex >= floors.Count)
-      return false;
-
-    int previousFloorIndex = targetFloorIndex - 1;
-    double previousTargetExitAngle = 0d;
-    bool foundPreviousTarget = false;
-    for (int contextIndex = context.HitContexts.Count - 1; contextIndex >= 0; contextIndex--)
-    {
-      ReplayHitContext hitContext = context.HitContexts[contextIndex];
-      if (hitContext.CurrentFloorID != previousFloorIndex)
-        continue;
-
-      previousTargetExitAngle = hitContext.TargetExitAngle;
-      foundPreviousTarget = true;
-      break;
-    }
-    if (!foundPreviousTarget)
-      return false;
-
-    scrFloor floor = floors[targetFloorIndex];
-    if (floor == null)
-      return false;
-
-    // ReplayHitContextPlayer applies this exact recorded target immediately before SwitchChosen().
-    // MoveToNextFloor() then uses it to seed the newly chosen planet. Reusing the recorded value here
-    // avoids a synthetic angle chain that only converges back to the recording after later hits.
-    double direction = floor.isCCW ? -1d : 1d;
-    double planetOffset = scrMisc.GetInverseAnglePerBeatMultiplanet(floor.numPlanets) * direction;
-    scrFloor previousFloor = floor.prevfloor;
-    if (previousFloor != null && previousFloor.midSpin && floor.numPlanets > 2)
-    {
-      double previousDirection = previousFloor.isCCW ? -1d : 1d;
-      planetOffset -= 2d * scrMisc.GetInverseAnglePerBeatMultiplanet(previousFloor.numPlanets) * previousDirection;
-    }
-
-    const double fullTurn = Math.PI * 2d;
-    double landedAngle = previousTargetExitAngle + Math.PI;
-    landedAngle -= Math.Floor(landedAngle / fullTurn) * fullTurn;
-    snappedLastAngle = landedAngle + planetOffset;
-    targetExitAngle = snappedLastAngle + floor.angleLength * direction;
-    return true;
-  }
-
-  private static void ResetTimelinePlanetCosmeticAngles(PlanetarySystem planetarySystem)
-  {
-    if (planetarySystem?.planetList == null)
-      return;
-
-    for (int planetIndex = 0; planetIndex < planetarySystem.planetList.Count; planetIndex++)
-    {
-      scrPlanet planet = planetarySystem.planetList[planetIndex];
-      if (planet == null)
-        continue;
-
-      // MoveToNextFloor normally kills this tween before establishing the next orbit, but the game's
-      // ScrubToFloorNumber path does not. A tween retained from the abandoned timeline keeps adding a
-      // visual-only angular offset until a later real landing suddenly kills it and appears to fix the
-      // orbit. Kill it before scrub; HandlePause may then create a fresh target-position tween.
-      object tween = PlanetCosmeticAngleTweenField?.GetValue(planet);
-      if (tween != null)
-        PlanetCosmeticAngleTweenKillMethod?.Invoke(null, new[] { tween, (object)false });
-
-      PlanetCosmeticAngleTweenField?.SetValue(planet, null);
-      planet.cosmeticAngle = 0f;
-    }
-  }
-
-  private static void RestoreTimelineTwirlState()
-  {
-    scnGame customLevel = ADOBase.customLevel;
-    var floors = ADOBase.lm?.listFloors;
-    var events = customLevel?.events;
-    if (floors == null || events == null || floors.Count == 0)
-      return;
-
-    // Standard Twirl direction is accumulated once while the chart is prepared. Free-roam swirl
-    // mutates floor.isCCW in place during play, however, so seeking backward can otherwise reuse a
-    // direction belonging to the abandoned future state. Rebuild the authored main-path parity from
-    // LevelEvent data before the game's own scrub reads it.
-    var twirls = new bool[floors.Count];
-    for (int eventIndex = 0; eventIndex < events.Count; eventIndex++)
-    {
-      LevelEvent levelEvent = events[eventIndex];
-      if (
-        levelEvent != null
-        && levelEvent.eventType == LevelEventType.Twirl
-        && levelEvent.floor >= 0
-        && levelEvent.floor < twirls.Length
-      )
-      {
-        twirls[levelEvent.floor] = !twirls[levelEvent.floor];
-      }
-    }
-
-    bool isCcw = false;
-    for (int floorIndex = 0; floorIndex < floors.Count; floorIndex++)
-    {
-      if (twirls[floorIndex])
-        isCcw = !isCcw;
-
-      scrFloor floor = floors[floorIndex];
-      if (floor == null)
-        continue;
-
-      floor.isCCW = isCcw;
-      if (!floor.freeroam || floor.freeroamGenerated || floor.freeroamFloors == null)
-        continue;
-
-      // Exact free-roam visitation is not recorded. Its generated floors therefore return to the
-      // authored region baseline and resume mutating naturally from the committed seek position.
-      for (int generatedIndex = 0; generatedIndex < floor.freeroamFloors.Count; generatedIndex++)
-      {
-        scrFloor generatedFloor = floor.freeroamFloors[generatedIndex];
-        if (generatedFloor != null)
-          generatedFloor.isCCW = isCcw;
-      }
-    }
-  }
-
-  private static void ScrubTimelineAudio(scrConductor conductor, double targetSongTime, double pitch)
-  {
-    double inputCalibration = scrConductor.calibration_i;
-    double playbackSongTime = targetSongTime + inputCalibration * pitch;
-    double immediateDspTimeSong = conductor.dspTime - playbackSongTime / pitch - conductor.addoffset / pitch;
-
-    conductor.ScrubMusicToTime(playbackSongTime);
-    if (conductor.song != null && conductor.song.clip != null)
-      conductor.song.SetScheduledStartTime(conductor.dspTime);
-
-    // ScrubMusicToTime intentionally schedules 100 ms ahead. Timeline scrub has already paused every
-    // consumer, so remove that lead and make the requested replay time the shared resume boundary.
-    conductor.dspTimeSong = immediateDspTimeSong;
-    conductor.songposition_minusi = targetSongTime;
-    foreach (scrPlayer player in ADOBase.playerManager)
-    {
-      if (player != null)
-        player.lastHit = targetSongTime;
-    }
-    conductor.PlayHitTimes();
-  }
-
-  private static void RestoreTimelineCamera(scrController controller)
-  {
-    scrCamera camera = controller?.camy;
-    if (camera == null)
-      return;
-
-    camera.UpdateFollowCam(force: true);
-    if (camera.followMode && camera.furthestPlanet != null)
-      camera.ViewObjectInstant(camera.furthestPlanet.transform, includeOffset: true);
-  }
-
-  private static void RebuildTimelineVfx(float targetSongTime)
-  {
-    scnGame customLevel = ADOBase.customLevel;
-    scrVfxPlus vfx = scrVfxPlus.instance;
-    var floors = ADOBase.lm?.listFloors;
-    if (customLevel == null || vfx == null || floors == null)
-      return;
-
-    var originalStartPositions = new Vector3[floors.Count];
-    var hasStartPosition = new bool[floors.Count];
-    UnityEngine.Random.State randomState = UnityEngine.Random.state;
-    Exception cleanupException = null;
-    try
-    {
-      for (int floorIndex = 0; floorIndex < floors.Count; floorIndex++)
-      {
-        scrFloor floor = floors[floorIndex];
-        if (floor == null)
-          continue;
-
-        originalStartPositions[floorIndex] = floor.startPos;
-        hasStartPosition[floorIndex] = true;
-        if (floor.plusEffects == null)
-          continue;
-
-        for (int effectIndex = 0; effectIndex < floor.plusEffects.Count; effectIndex++)
-        {
-          ffxPlusBase effect = floor.plusEffects[effectIndex];
-          if (effect == null)
-            continue;
-
-          try
-          {
-            effect.Kill();
-          }
-          catch (Exception exception)
-          {
-            cleanupException ??= exception;
-          }
-
-          effect.triggered = false;
-        }
-      }
-
-      // scrVfxPlus.Reset only resets its dictionaries. The filter components themselves keep the
-      // enabled state produced by later events unless the level's canonical reset path disables them.
-      customLevel.DisableFilters();
-
-      for (int floorIndex = 0; floorIndex < floors.Count; floorIndex++)
-      {
-        scrFloor floor = floors[floorIndex];
-        if (floor == null)
-          continue;
-
-        RestoreTimelineFloorVisualBaseline(floor);
-        if (!floor.freeroam || floor.freeroamGenerated || floor.freeroamFloors == null)
-          continue;
-
-        for (int generatedIndex = 0; generatedIndex < floor.freeroamFloors.Count; generatedIndex++)
-        {
-          scrFloor generatedFloor = floor.freeroamFloors[generatedIndex];
-          if (generatedFloor != null)
-            RestoreTimelineFloorVisualBaseline(generatedFloor);
-        }
-      }
-
-      for (int floorIndex = 0; floorIndex < floors.Count; floorIndex++)
-      {
-        scrFloor floor = floors[floorIndex];
-        if (floor?.plusEffects == null)
-          continue;
-
-        for (int effectIndex = 0; effectIndex < floor.plusEffects.Count; effectIndex++)
-        {
-          if (floor.plusEffects[effectIndex] is not ffxFloorAppearPlus floorAppear)
-            continue;
-
-          try
-          {
-            floorAppear.FloorSetup();
-          }
-          catch (Exception exception)
-          {
-            cleanupException ??= exception;
-          }
-        }
-      }
-
-      // PrepVfx always snapshots the current transforms into startPos. FloorSetup deliberately put
-      // TrackAppear floors into their pre-appearance transforms, so keep the chart's original anchors.
-      customLevel.PrepVfx(0, remakeFloors: false);
-      RestoreTimelineFloorStartPositions(floors, originalStartPositions, hasStartPosition);
-      vfx.ScrubToTime(targetSongTime);
-
-      if (cleanupException != null)
-        Main.Instance?.LogException("ReplaySessionService.RebuildTimelineVfx cleanup", cleanupException);
-    }
-    finally
-    {
-      RestoreTimelineFloorStartPositions(floors, originalStartPositions, hasStartPosition);
-      UnityEngine.Random.state = randomState;
-    }
-  }
-
-  private static void RestoreTimelineFloorVisualBaseline(scrFloor floor)
-  {
-    Transform floorTransform = floor.transform;
-    Vector3 rotation = floor.startRot;
-    rotation.z += floor.rotationOffset;
-    floorTransform.position = floor.startPos;
-    floorTransform.eulerAngles = rotation;
-    floor.tweenRot = rotation;
-    floor.opacity = floor.opacityVal;
-    floor.extendAnim = -1f;
-    if (!floor.freeroamGenerated)
-      floorTransform.localScale = floor.startScale;
-    floor.SetTrackStyle(floor.initialTrackStyle);
-  }
-
-  private static void RestoreTimelineFloorHitVisuals(int litThroughFloorIndex)
-  {
-    var floors = ADOBase.lm?.listFloors;
-    if (floors == null)
-      return;
-
-    TileFlashStyle flashStyle = scrVfx.instance != null ? scrVfx.instance.tileFlashStyle : TileFlashStyle.Rando;
-    for (int floorIndex = 0; floorIndex < floors.Count; floorIndex++)
-    {
-      scrFloor floor = floors[floorIndex];
-      if (floor == null)
-        continue;
-
-      RestoreTimelineFloorHitVisual(floor, floorIndex <= litThroughFloorIndex, flashStyle);
-      if (!floor.freeroam || floor.freeroamGenerated || floor.freeroamFloors == null)
-        continue;
-
-      for (int generatedIndex = 0; generatedIndex < floor.freeroamFloors.Count; generatedIndex++)
-      {
-        scrFloor generatedFloor = floor.freeroamFloors[generatedIndex];
-        if (generatedFloor != null)
-          RestoreTimelineFloorHitVisual(generatedFloor, lit: false, flashStyle);
-      }
-    }
-  }
-
-  private static void RestoreTimelineFloorHitVisual(scrFloor floor, bool lit, TileFlashStyle flashStyle)
-  {
-    floor.hasLit = lit;
-    bool glowVisible =
-      flashStyle == TileFlashStyle.AlwaysOn
-      || (
-        lit
-        && flashStyle != TileFlashStyle.AlwaysBlack
-        && flashStyle != TileFlashStyle.MoveToTopLayer
-        && !floor.disableGlow
-      );
-
-    if (floor.topGlow != null)
-      floor.topGlow.gameObject.SetActive(glowVisible);
-    if (floor.bottomGlow != null)
-      floor.bottomGlow.gameObject.SetActive(glowVisible);
-    if (floor.floorRenderer?.renderer != null)
-      floor.floorRenderer.renderer.sortingLayerName =
-        flashStyle == TileFlashStyle.MoveToTopLayer && lit ? "FloorTop" : "Floor";
-  }
-
-  private static void RestoreTimelineFloorStartPositions(
-    System.Collections.Generic.IReadOnlyList<scrFloor> floors,
-    Vector3[] originalStartPositions,
-    bool[] hasStartPosition
-  )
-  {
-    int count = Math.Min(floors.Count, originalStartPositions.Length);
-    for (int floorIndex = 0; floorIndex < count; floorIndex++)
-    {
-      scrFloor floor = floors[floorIndex];
-      if (floor != null && hasStartPosition[floorIndex])
-        floor.startPos = originalStartPositions[floorIndex];
-    }
   }
 
   private static void SuspendReplayAt(long replayTimeUs)
@@ -1325,6 +915,8 @@ public static class ReplaySessionService
   private static void ResetTimelineTransportState()
   {
     ResetTimelineScrubState();
+    _timelineRestartPending = false;
+    _timelineRestartPauseAtPlayerControl = false;
     _timelinePauseOwnsEditorState = false;
     _timelineEditorPausedBeforePause = false;
   }
