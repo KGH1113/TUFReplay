@@ -171,7 +171,6 @@ public static class ReplaySessionService
         CompleteTimelineRestart();
         break;
 
-      case States.Won:
       case States.Fail:
       case States.Fail2:
         _activeContext.MicrophonePlayer?.Stop();
