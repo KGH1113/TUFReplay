@@ -1,5 +1,5 @@
 export const MIN_MICROPHONE_VOLUME_DB = -20;
-export const MAX_MICROPHONE_VOLUME_DB = 20;
+export const MAX_MICROPHONE_VOLUME_DB = 30;
 export const DEFAULT_MICROPHONE_VOLUME_DB = 0;
 
 export function clampMicrophoneVolumeDb(volumeDb: number) {

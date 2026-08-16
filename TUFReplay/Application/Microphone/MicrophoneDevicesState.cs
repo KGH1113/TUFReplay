@@ -9,4 +9,6 @@ public sealed class MicrophoneDevicesState
   public bool ToggleLocked;
   public List<MicrophoneDeviceInfo> Devices;
   public string SelectedDeviceId;
+  public int MicrophoneOffsetMs;
+  public int MicrophoneVolumeDb;
 }

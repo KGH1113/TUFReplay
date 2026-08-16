@@ -3,6 +3,7 @@ import { clampMicrophoneVolumeDb, DEFAULT_MICROPHONE_VOLUME_DB } from "./microph
 
 export type MicrophoneOffsetCalibrationPhase =
   | "closed"
+  | "settings"
   | "launching"
   | "waiting_for_clear"
   | "editing"
@@ -15,6 +16,7 @@ export interface MicrophoneOffsetCalibrationState {
 }
 
 export type MicrophoneOffsetCalibrationAction =
+  | { type: "open_settings"; offsetMs: number; microphoneVolumeDb: number }
   | { type: "start" }
   | { type: "level_opened" }
   | { type: "run_cleared" }
@@ -43,6 +45,12 @@ export function microphoneOffsetCalibrationReducer(
   state: MicrophoneOffsetCalibrationState,
   action: MicrophoneOffsetCalibrationAction,
 ): MicrophoneOffsetCalibrationState {
+  if (action.type === "open_settings")
+    return {
+      phase: "settings",
+      offsetMs: clampMicrophoneOffset(action.offsetMs),
+      microphoneVolumeDb: clampMicrophoneVolumeDb(action.microphoneVolumeDb),
+    };
   if (action.type === "start") return { ...state, phase: "launching" };
   if (action.type === "level_opened" && state.phase === "launching")
     return { ...state, phase: "waiting_for_clear" };
