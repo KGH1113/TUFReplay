@@ -35,5 +35,6 @@ export function translatedDomainError(code: string) {
   if (code === "level_file_invalid") return i18n.t("errors.level_file_invalid", { ns: "replay" });
   if (code === "calibration_operation_stale")
     return i18n.t("errors.calibration_operation_stale", { ns: "replay" });
+  if (code === "microphone_timing_locked") return i18n.t("timingLocked", { ns: "microphone" });
   return null;
 }

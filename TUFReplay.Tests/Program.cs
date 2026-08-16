@@ -10,6 +10,7 @@ using TUFReplay.Application.Replay;
 using TUFReplay.Domain.Activity;
 using TUFReplay.Domain.Microphone;
 using TUFReplay.Domain.ReplayData;
+using TUFReplay.Features.Calibration;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.Adofai;
 using TUFReplay.Infrastructure.Database;
@@ -17,6 +18,7 @@ using TUFReplay.Infrastructure.Database.Repositories;
 using TUFReplay.Infrastructure.Database.Schema;
 using TUFReplay.Infrastructure.NativeInput;
 using TUFReplay.Infrastructure.NativeInput.Capture;
+using TUFReplay.Infrastructure.Settings;
 using TUFReplay.Infrastructure.Unity;
 
 internal static class Program
@@ -38,6 +40,7 @@ internal static class Program
       TestPlaybackLimiter(root);
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
+      TestMicrophoneCalibrationState();
       TestCalibrationWaveforms(root);
       TestGameplayChartHashVersioning();
       TestGameplayHashIdentityUpgrade(root);
@@ -993,6 +996,9 @@ internal static class Program
     Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(recording, wave, System.Threading.CancellationToken.None);
     Assert(envelope.BinCount == 500, "Limiter envelope did not use one-millisecond bins.");
     Assert(Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f, "Limiter attenuated a quiet section.");
+    float gainAtThirtyDb = MicrophoneGain.FromDecibels(30);
+    float boostedQuietGain = envelope.RequiredLimiterGain(0, gainAtThirtyDb) * gainAtThirtyDb;
+    Assert(boostedQuietGain > 10f, "+30 dB did not amplify quiet audio beyond the old +20 dB maximum.");
     Assert(
       envelope.RequiredLimiterGain(transientFrame - sampleRate * 4 / 1000, 10f) < 1f,
       "Limiter look-ahead did not anticipate a loud transient."
@@ -1004,15 +1010,21 @@ internal static class Program
 
     float limitedGain = envelope.RequiredLimiterGain(transientFrame, 10f) * 10f;
     Assert(limitedGain <= Pcm16LimiterEnvelope.Ceiling + 0.0001f, "Limiter exceeded its true-peak ceiling.");
+    float limitedGainAtThirtyDb = envelope.RequiredLimiterGain(transientFrame, gainAtThirtyDb) * gainAtThirtyDb;
+    Assert(
+      limitedGainAtThirtyDb <= Pcm16LimiterEnvelope.Ceiling + 0.0001f,
+      "Limiter exceeded its true-peak ceiling at +30 dB."
+    );
+    Assert(Pcm16LimiterEnvelope.Ceiling > 0.96f, "Limiter ceiling was not relaxed to -0.3 dBFS.");
 
     var limiter = new Pcm16Limiter(envelope, sampleRate);
     float peakGain = 10f;
     for (int frame = transientFrame - sampleRate * 7 / 1000; frame <= transientFrame; frame++)
       peakGain = limiter.NextEffectiveGain(frame, 10f);
     float releaseGain = peakGain;
-    for (int frame = transientFrame + 1; frame <= transientFrame + sampleRate / 10; frame++)
+    for (int frame = transientFrame + 1; frame <= transientFrame + sampleRate * 30 / 1000; frame++)
       releaseGain = limiter.NextEffectiveGain(frame, 10f);
-    Assert(releaseGain > peakGain && releaseGain < 10f, "Limiter release did not recover smoothly.");
+    Assert(releaseGain > 5f && releaseGain < 10f, "Limiter did not recover quickly with the relaxed release.");
 
     limiter.Reset();
     float resetPeakGain = limiter.NextEffectiveGain(transientFrame, 10f);
@@ -1126,6 +1138,38 @@ internal static class Program
     Assert(Math.Abs(MicrophoneGain.FromDecibels(-20) - 0.1f) < 0.0001f, "-20 dB gain is incorrect.");
     Assert(Math.Abs(MicrophoneGain.FromDecibels(0) - 1f) < 0.0001f, "0 dB gain is incorrect.");
     Assert(Math.Abs(MicrophoneGain.FromDecibels(20) - 10f) < 0.0001f, "+20 dB gain is incorrect.");
+    Assert(
+      Math.Abs(MicrophoneGain.FromDecibels(30) - 31.622776f) < 0.0001f,
+      "+30 dB gain is incorrect."
+    );
+
+    string timingPath = Path.Combine(root, "timing-settings.json");
+    TUFReplaySettingStore.Initialize(timingPath);
+    MicrophoneTimingSettingsState timing = MicrophoneTimingSettingsService.SetOffset(999);
+    timing = MicrophoneTimingSettingsService.SetVolume(-50);
+    Assert(timing.MicrophoneOffsetMs == TUFReplaySetting.MaxMicrophoneOffsetMs, "Timing offset was not clamped.");
+    Assert(timing.MicrophoneVolumeDb == TUFReplaySetting.MinMicrophoneVolumeDb, "Timing gain was not clamped.");
+    timing = MicrophoneTimingSettingsService.SetVolume(100);
+    Assert(timing.MicrophoneVolumeDb == 30, "Timing gain was not clamped to +30 dB.");
+    TUFReplaySetting persistedTiming = TUFReplaySetting.Load(timingPath);
+    Assert(persistedTiming.MicrophoneOffsetMs == timing.MicrophoneOffsetMs, "Timing offset was not persisted.");
+    Assert(persistedTiming.MicrophoneVolumeDb == timing.MicrophoneVolumeDb, "Timing gain was not persisted.");
+  }
+
+  private static void TestMicrophoneCalibrationState()
+  {
+    var state = new MicrophoneCalibrationState();
+    state.BeginMeasurement("first", 3);
+    Assert(state.GetStatus().MicrophoneOffsetMs == 0, "The first calibration did not start from raw timing.");
+    state.SetOffset(96);
+    state.SetVolume(30);
+    Assert(state.GetStatus().MicrophoneVolumeDb == 30, "Calibration did not accept +30 dB preview gain.");
+
+    state.BeginMeasurement("second", 3);
+    MicrophoneCalibrationStatus second = state.GetStatus();
+    Assert(second.OperationId == "second", "The second calibration operation was not started.");
+    Assert(second.MicrophoneOffsetMs == 0, "The second calibration reused the previous correction.");
+    Assert(second.MicrophoneVolumeDb == 3, "The calibration microphone volume was not preserved.");
   }
 
   private static void TestCalibrationWaveforms(string root)

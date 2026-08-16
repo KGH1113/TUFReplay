@@ -6,6 +6,18 @@ import {
 } from "./microphone-offset-calibration.reducer";
 
 describe("microphone offset calibration reducer", () => {
+  test("opens timing settings without starting calibration", () => {
+    let state = createMicrophoneOffsetCalibrationState(0);
+    state = microphoneOffsetCalibrationReducer(state, {
+      type: "open_settings",
+      offsetMs: 84,
+      microphoneVolumeDb: 4,
+    });
+    expect(state).toEqual({ phase: "settings", offsetMs: 84, microphoneVolumeDb: 4 });
+    state = microphoneOffsetCalibrationReducer(state, { type: "start" });
+    expect(state.phase).toBe("launching");
+  });
+
   test("moves through the mock run and preserves committed offset after closing", () => {
     let state = createMicrophoneOffsetCalibrationState(0);
     state = microphoneOffsetCalibrationReducer(state, { type: "start" });
@@ -28,8 +40,8 @@ describe("microphone offset calibration reducer", () => {
   });
 
   test("clamps microphone volume to the preview range", () => {
-    let state = createMicrophoneOffsetCalibrationState(0, 30);
-    expect(state.microphoneVolumeDb).toBe(20);
+    let state = createMicrophoneOffsetCalibrationState(0, 40);
+    expect(state.microphoneVolumeDb).toBe(30);
     state = microphoneOffsetCalibrationReducer(state, {
       type: "commit_microphone_volume",
       volumeDb: -30,

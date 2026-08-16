@@ -112,7 +112,9 @@ public static class ReplayPlaybackCoordinator
     string levelPath,
     StoredMicrophoneRecording microphoneRecording,
     Pcm16WaveInfo microphoneWave,
-    Pcm16LimiterEnvelope microphoneLimiterEnvelope
+    Pcm16LimiterEnvelope microphoneLimiterEnvelope,
+    int microphoneOffsetMs,
+    int microphoneVolumeDb
   )
   {
     lock (CommandGate)
@@ -145,6 +147,8 @@ public static class ReplayPlaybackCoordinator
           MicrophoneRecording = microphoneRecording,
           MicrophoneWave = microphoneWave,
           MicrophoneLimiterEnvelope = microphoneLimiterEnvelope,
+          MicrophoneOffsetMs = microphoneOffsetMs,
+          MicrophoneVolumeDb = microphoneVolumeDb,
         };
         CancelPendingPreparation();
         CancelCurrentReplayForReplacement(operationId);
@@ -636,8 +640,8 @@ public static class ReplayPlaybackCoordinator
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
           operation.MicrophoneLimiterEnvelope,
-          settings?.MicrophoneOffsetMs ?? 0,
-          settings?.MicrophoneVolumeDb ?? 0
+          operation.MicrophoneOffsetMs ?? settings?.MicrophoneOffsetMs ?? 0,
+          operation.MicrophoneVolumeDb ?? settings?.MicrophoneVolumeDb ?? 0
         );
         operation.TransferMicrophoneOwnership();
       }
@@ -991,6 +995,8 @@ public static class ReplayPlaybackCoordinator
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
     public Pcm16LimiterEnvelope MicrophoneLimiterEnvelope;
+    public int? MicrophoneOffsetMs;
+    public int? MicrophoneVolumeDb;
     public bool AllowBackground;
 
     public PendingReplay(

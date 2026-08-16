@@ -261,6 +261,8 @@ Registered methods:
 - `microphone.devices.get`
 - `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
 - `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
+- `microphone.offset.set` (`offsetMs` updates the global replay microphone timing outside gameplay and calibration)
+- `microphone.volume.set` (`volumeDb` updates the global replay microphone gain outside gameplay and calibration)
 - `microphone.calibration.start`
 - `microphone.calibration.status.get`
 - `microphone.calibration.result.get`
@@ -281,7 +283,7 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
   "Ok": true,
   "Mod": "TUFReplay",
   "ModVersion": "0.1.0-beta.9",
-  "ProtocolVersion": 4,
+  "ProtocolVersion": 5,
   "ServerVersion": 1
 }
 ```
@@ -292,7 +294,7 @@ The companion web UI asks the user to fully quit and restart ADOFAI so the start
 a compatible TUFReplay release. `ServerVersion` remains as a legacy compatibility field and is not the
 TUFReplay namespace protocol version.
 
-Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin song and microphone waveforms to the web editor. The precomputed song reference is aligned from ADOFAI's actual playback sample position on the recorded run timeline. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
+The timing dialog first offers compact global offset and microphone-gain controls without opening a level. Starting precise calibration transitions the same dialog into the existing calibration progress UI and opens the packaged level. Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin native-input and microphone waveforms to the web editor. Every calibration starts from the raw, uncorrected microphone timing so repeated calibrations measure the absolute microphone delay instead of the residual after the previous correction. Preview playback runs in ADOFAI while the browser polls the game clock; the calibration's current offset and `-20 dB` to `+30 dB` microphone gain (`0 dB` by default, up to about `31.6x` before limiting) are applied to its preview, while the saved global values are applied to stored microphone replays. The true-peak limiter uses a `-0.3 dBFS` ceiling with a `30 ms` release so amplified playback remains protected while recovering quickly after transients.
 
 ## Tech Stack
 

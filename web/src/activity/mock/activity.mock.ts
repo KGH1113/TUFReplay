@@ -56,6 +56,8 @@ const appSessions: ActivityAppSession[] = [
 export function createMockActivityGateway(): ActivityGateway {
   let selectedMicrophoneDeviceId: string | null = null;
   let microphoneEnabled = true;
+  let microphoneOffsetMs = mockMicrophoneOffsetCalibration.initialOffsetMs;
+  let microphoneVolumeDb = 0;
   const microphoneDevices = [
     {
       Id: "MacBook Pro Microphone",
@@ -93,7 +95,7 @@ export function createMockActivityGateway(): ActivityGateway {
       Ok: true,
       Mod: "TUFReplay",
       ModVersion: "mock",
-      ProtocolVersion: 4,
+      ProtocolVersion: 5,
       ServerVersion: 1,
     }),
     listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
@@ -217,6 +219,8 @@ export function createMockActivityGateway(): ActivityGateway {
       ToggleLocked: false,
       Devices: microphoneEnabled ? microphoneDevices : [],
       SelectedDeviceId: selectedMicrophoneDeviceId,
+      MicrophoneOffsetMs: microphoneOffsetMs,
+      MicrophoneVolumeDb: microphoneVolumeDb,
     }),
     setMicrophoneEnabled: async (enabled) => {
       microphoneEnabled = enabled;
@@ -225,6 +229,8 @@ export function createMockActivityGateway(): ActivityGateway {
         ToggleLocked: false,
         Devices: microphoneEnabled ? microphoneDevices : [],
         SelectedDeviceId: selectedMicrophoneDeviceId,
+        MicrophoneOffsetMs: microphoneOffsetMs,
+        MicrophoneVolumeDb: microphoneVolumeDb,
       };
     },
     selectMicrophoneDevice: async (deviceId) => {
@@ -234,6 +240,22 @@ export function createMockActivityGateway(): ActivityGateway {
         ToggleLocked: false,
         Devices: microphoneDevices,
         SelectedDeviceId: selectedMicrophoneDeviceId,
+        MicrophoneOffsetMs: microphoneOffsetMs,
+        MicrophoneVolumeDb: microphoneVolumeDb,
+      };
+    },
+    setMicrophoneOffset: async (offsetMs) => {
+      microphoneOffsetMs = offsetMs;
+      return {
+        MicrophoneOffsetMs: microphoneOffsetMs,
+        MicrophoneVolumeDb: microphoneVolumeDb,
+      };
+    },
+    setMicrophoneVolume: async (volumeDb) => {
+      microphoneVolumeDb = volumeDb;
+      return {
+        MicrophoneOffsetMs: microphoneOffsetMs,
+        MicrophoneVolumeDb: microphoneVolumeDb,
       };
     },
     startMicrophoneCalibration: async () => {

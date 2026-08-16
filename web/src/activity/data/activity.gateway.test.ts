@@ -348,6 +348,8 @@ describe("activity IPC contract", () => {
         },
       ],
       SelectedDeviceId: null,
+      MicrophoneOffsetMs: 24,
+      MicrophoneVolumeDb: 3,
     } satisfies MicrophoneDevicesState;
     const namespace = {
       call: async (method: string, params: unknown) => {
@@ -361,11 +363,15 @@ describe("activity IPC contract", () => {
     expect(await gateway.setMicrophoneEnabled(false)).toBe(microphones);
     expect(await gateway.selectMicrophoneDevice("USB Audio Device")).toBe(microphones);
     expect(await gateway.selectMicrophoneDevice(null)).toBe(microphones);
+    expect(await gateway.setMicrophoneOffset(48)).toBe(microphones);
+    expect(await gateway.setMicrophoneVolume(6)).toBe(microphones);
     expect(calls).toEqual([
       { method: "microphone.devices.get", params: {} },
       { method: "microphone.enabled.set", params: { enabled: false } },
       { method: "microphone.device.select", params: { deviceId: "USB Audio Device" } },
       { method: "microphone.device.select", params: { deviceId: null } },
+      { method: "microphone.offset.set", params: { offsetMs: 48 } },
+      { method: "microphone.volume.set", params: { volumeDb: 6 } },
     ]);
   });
 

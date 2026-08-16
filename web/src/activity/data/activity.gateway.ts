@@ -17,6 +17,7 @@ import type {
   MicrophoneDevicesState,
   MicrophoneRecordingDeleteResult,
   MicrophoneRecordingKeepResult,
+  MicrophoneTimingSettings,
   ReplayLevelFilePickerResult,
   ReplayStatus,
 } from "../activity.model";
@@ -28,7 +29,7 @@ const FILE_PICKER_POLL_INTERVAL_MS = 100;
 const IPC_PROBE_TIMEOUT_MS = 500;
 const IPC_REQUEST_TIMEOUT_MS = 30_000;
 const NAMESPACE_READY_TIMEOUT_MS = 30_000;
-export const SUPPORTED_PROTOCOL_VERSION = 4;
+export const SUPPORTED_PROTOCOL_VERSION = 5;
 
 export interface ActivityHealth {
   Ok: boolean;
@@ -93,6 +94,8 @@ export interface ActivityGateway {
   getMicrophoneDevices(): Promise<MicrophoneDevicesState>;
   setMicrophoneEnabled(enabled: boolean): Promise<MicrophoneDevicesState>;
   selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
+  setMicrophoneOffset(offsetMs: number): Promise<MicrophoneTimingSettings>;
+  setMicrophoneVolume(volumeDb: number): Promise<MicrophoneTimingSettings>;
   startMicrophoneCalibration(): Promise<MicrophoneCalibrationStatus>;
   getMicrophoneCalibrationStatus(operationId: string): Promise<MicrophoneCalibrationStatus>;
   getMicrophoneCalibrationResult(
@@ -198,6 +201,8 @@ export function createActivityGateway(
     setMicrophoneEnabled: (enabled) => callDomain(namespace, "microphone.enabled.set", { enabled }),
     selectMicrophoneDevice: (deviceId) =>
       callDomain(namespace, "microphone.device.select", { deviceId }),
+    setMicrophoneOffset: (offsetMs) => callDomain(namespace, "microphone.offset.set", { offsetMs }),
+    setMicrophoneVolume: (volumeDb) => callDomain(namespace, "microphone.volume.set", { volumeDb }),
     startMicrophoneCalibration: () => callDomain(namespace, "microphone.calibration.start", {}),
     getMicrophoneCalibrationStatus: (operationId) =>
       callDomain(namespace, "microphone.calibration.status.get", { operationId }),
