@@ -243,6 +243,7 @@ public class RecordingSession
     {
       if (!IsRecording)
         return;
+      hitContext.TimeUs = Math.Max(0L, CurrentTimelineTimeUsLocked());
       RefreshNoFailModeLocked();
       Data.HitContexts.Add(hitContext);
     }

@@ -53,6 +53,7 @@
     <Compile Include="Assets/Scripts/ReplayTimeline/UIOrbitTrackGraphic.cs" />
     <Compile Include="Assets/Scripts/ReplayTimeline/UIJudgmentMarkerGraphic.cs" />
     <Compile Include="Assets/Scripts/ReplayTimeline/UITimelineSeekInput.cs" />
+    <Compile Include="Assets/Scripts/ReplayTimeline/UIDockTabProximityTrigger.cs" />
     <Compile Include="Assets/Scripts/ReplayTimeline/UILinearTimelineGraphic.cs" />
     <Compile Include="Assets/Scripts/ReplayTimeline/UIEllipseGraphic.cs" />
     <Compile Include="Assets/Scripts/ReplayTimeline/UIFilledCircleGraphic.cs" />

@@ -129,7 +129,20 @@ namespace TUFReplay.Unity.Editor
       if (dockButton?.GetComponentInChildren<UICloseGraphic>(true) == null)
         throw new InvalidOperationException("Runtime timeline dock button does not contain the rounded close graphic.");
       ValidateRect(FindRect(prefab.transform, "JudgmentDropdown"), "judgment dropdown", new Vector2(272f, 196f), null);
-      ValidateRect(FindRect(prefab.transform, "DockTab"), "dock tab", new Vector2(36f, 42f), null);
+      RectTransform dockTab = FindRect(prefab.transform, "DockTab");
+      ValidateRect(dockTab, "dock tab", new Vector2(36f, 42f), null);
+      RectTransform dockTabIcon = dockTab?.Find("Icon") as RectTransform;
+      ValidateRect(dockTabIcon, "dock tab icon", new Vector2(18f, 18f), Vector2.zero);
+      if (dockTabIcon?.GetComponent<UILucideChevronGraphic>() == null)
+        throw new InvalidOperationException("Runtime timeline dock tab does not contain the Lucide chevron graphic.");
+      if (Quaternion.Angle(dockTabIcon.localRotation, Quaternion.Euler(0f, 0f, -90f)) > 0.01f)
+        throw new InvalidOperationException("Runtime timeline dock tab chevron does not point left.");
+      if (dockTab?.GetComponent<UIDockTabProximityTrigger>() == null)
+        throw new InvalidOperationException("Runtime timeline dock tab does not contain its hover trigger.");
+      RectTransform dockTabProximityArea = FindRect(prefab.transform, "DockTabProximityArea");
+      ValidateRect(dockTabProximityArea, "dock tab proximity area", new Vector2(28f, 96f), null);
+      if (dockTabProximityArea?.GetComponent<UIDockTabProximityTrigger>() == null)
+        throw new InvalidOperationException("Runtime timeline does not contain the dock tab proximity trigger.");
       ValidateTextFont(FindRect(panel, "ElapsedTime")?.GetComponent<TMP_Text>(), "elapsed time");
       ValidateTextFont(FindRect(panel, "DurationTime")?.GetComponent<TMP_Text>(), "duration time");
       ValidateTextFont(FindRect(panel, "SeekBackward")?.Find("Label")?.GetComponent<TMP_Text>(), "backward seek label");

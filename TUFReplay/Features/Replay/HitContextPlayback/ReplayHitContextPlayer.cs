@@ -74,7 +74,7 @@ public sealed class ReplayHitContextPlayer
     }
   }
 
-  private static HitMargin ResolveHitMargin(scrController controller, ReplayHitContext context)
+  internal static HitMargin ResolveHitMargin(scrController controller, ReplayHitContext context)
   {
     if (context.ResolvedHitMargin.HasValue)
       return (HitMargin)context.ResolvedHitMargin.Value;

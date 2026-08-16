@@ -22,12 +22,33 @@ namespace TUFReplay.Unity.ReplayTimeline
     [SerializeField, Range(2, 16)]
     private int cornerSegments = 8;
 
+    [SerializeField]
+    private bool roundTopLeft = true;
+
+    [SerializeField]
+    private bool roundTopRight = true;
+
+    [SerializeField]
+    private bool roundBottomRight = true;
+
+    [SerializeField]
+    private bool roundBottomLeft = true;
+
     public void Configure(Color fill, Color border, float width, float radius)
     {
       fillColor = fill;
       borderColor = border;
       borderWidth = Mathf.Max(0f, width);
       cornerRadius = Mathf.Max(0f, radius);
+      SetVerticesDirty();
+    }
+
+    public void ConfigureCorners(bool topLeft, bool topRight, bool bottomRight, bool bottomLeft)
+    {
+      roundTopLeft = topLeft;
+      roundTopRight = topRight;
+      roundBottomRight = bottomRight;
+      roundBottomLeft = bottomLeft;
       SetVerticesDirty();
     }
 
@@ -69,17 +90,19 @@ namespace TUFReplay.Unity.ReplayTimeline
 
       for (int corner = 0; corner < 4; corner++)
       {
+        float outerCornerRadius = IsCornerRounded(corner) ? radius : 0f;
+        float innerCornerRadius = IsCornerRounded(corner) ? innerRadius : 0f;
         for (int segment = 0; segment <= segmentCount; segment++)
         {
           float angle = (-90f + corner * 90f + 90f * segment / segmentCount) * Mathf.Deg2Rad;
           Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
           vertexHelper.AddVert(
-            CornerCenter(rect, radius, corner) + direction * radius,
+            CornerCenter(rect, outerCornerRadius, corner) + direction * outerCornerRadius,
             resolvedBorderColor,
             Vector2.zero
           );
           vertexHelper.AddVert(
-            CornerCenter(innerRect, innerRadius, corner) + direction * innerRadius,
+            CornerCenter(innerRect, innerCornerRadius, corner) + direction * innerCornerRadius,
             resolvedBorderColor,
             Vector2.zero
           );
@@ -98,23 +121,33 @@ namespace TUFReplay.Unity.ReplayTimeline
       }
     }
 
-    private static void AddPerimeter(
-      VertexHelper vertexHelper,
-      Rect rect,
-      float radius,
-      int segmentCount,
-      Color32 color
-    )
+    private void AddPerimeter(VertexHelper vertexHelper, Rect rect, float radius, int segmentCount, Color32 color)
     {
       for (int corner = 0; corner < 4; corner++)
       {
-        Vector2 center = CornerCenter(rect, radius, corner);
+        float cornerRadius = IsCornerRounded(corner) ? radius : 0f;
+        Vector2 center = CornerCenter(rect, cornerRadius, corner);
         for (int segment = 0; segment <= segmentCount; segment++)
         {
           float angle = (-90f + corner * 90f + 90f * segment / segmentCount) * Mathf.Deg2Rad;
           Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-          vertexHelper.AddVert(center + direction * radius, color, Vector2.zero);
+          vertexHelper.AddVert(center + direction * cornerRadius, color, Vector2.zero);
         }
+      }
+    }
+
+    private bool IsCornerRounded(int corner)
+    {
+      switch (corner)
+      {
+        case 0:
+          return roundBottomRight;
+        case 1:
+          return roundTopRight;
+        case 2:
+          return roundTopLeft;
+        default:
+          return roundBottomLeft;
       }
     }
 

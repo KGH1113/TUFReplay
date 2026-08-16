@@ -14,4 +14,5 @@ public struct RecordedHitContext
   public bool RDCAuto;
   public int CurFreeRoamSection;
   public int? ResolvedHitMargin;
+  public long? TimeUs;
 }
