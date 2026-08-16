@@ -37,7 +37,16 @@ namespace TUFReplay.Unity.ReplayTimeline
     private TMP_Text durationTimeText;
 
     [SerializeField]
+    private UIFilledCircleGraphic playbackStatusDot;
+
+    [SerializeField]
+    private TMP_Text playbackStatusText;
+
+    [SerializeField]
     private UIFloatingPanelDockController dockController;
+
+    [SerializeField]
+    private UIJudgmentFilterDropdown judgmentFilter;
 
     [SerializeField, Range(0f, 1f)]
     private float progress = 84f / 228f;
@@ -61,7 +70,8 @@ namespace TUFReplay.Unity.ReplayTimeline
       Button forwardButton,
       TMP_Text elapsedLabel,
       TMP_Text durationLabel,
-      UIFloatingPanelDockController floatingDockController
+      UIFloatingPanelDockController floatingDockController,
+      UIJudgmentFilterDropdown timelineJudgmentFilter
     )
     {
       track = timelineTrack;
@@ -74,6 +84,9 @@ namespace TUFReplay.Unity.ReplayTimeline
       elapsedTimeText = elapsedLabel;
       durationTimeText = durationLabel;
       dockController = floatingDockController;
+      judgmentFilter = timelineJudgmentFilter;
+      ResolveStatusReferences();
+      BindJudgmentInteractions();
       ApplyAll();
     }
 
@@ -98,6 +111,13 @@ namespace TUFReplay.Unity.ReplayTimeline
       playing = isPlaying;
       if (playPauseGraphic != null)
         playPauseGraphic.SetPlaying(playing);
+      if (playbackStatusDot != null)
+        playbackStatusDot.color = playing ? new Color32(124, 207, 0, 255) : new Color32(161, 161, 161, 255);
+      if (playbackStatusText != null)
+      {
+        playbackStatusText.text = playing ? "PLAYING" : "PAUSED";
+        playbackStatusText.color = playing ? new Color32(229, 229, 229, 255) : new Color32(161, 161, 161, 255);
+      }
     }
 
     public void SetPlaybackControlInteractable(bool interactable)
@@ -156,6 +176,21 @@ namespace TUFReplay.Unity.ReplayTimeline
       dockController?.BindExpandRequest(callback);
     }
 
+    public void SetJudgmentMarkers(ReplayJudgmentMarker[] markers)
+    {
+      judgmentFilter?.SetMarkers(markers);
+    }
+
+    public void ResetJudgmentFilter()
+    {
+      judgmentFilter?.ResetSelection();
+    }
+
+    public void CloseJudgmentDropdown()
+    {
+      judgmentFilter?.CloseDropdown();
+    }
+
     public void ResetPlacement(Rect nativeControlsScreenRect, bool hasNativeControlsScreenRect)
     {
       dockController?.ResetExpanded(nativeControlsScreenRect, hasNativeControlsScreenRect);
@@ -173,6 +208,8 @@ namespace TUFReplay.Unity.ReplayTimeline
 
     private void Awake()
     {
+      ResolveStatusReferences();
+      BindJudgmentInteractions();
       ApplyAll();
     }
 
@@ -193,6 +230,22 @@ namespace TUFReplay.Unity.ReplayTimeline
       SetProgress(progress);
       SetTime(elapsedSeconds, durationSeconds);
       SetPlaying(playing);
+    }
+
+    private void BindJudgmentInteractions()
+    {
+      dockController?.BindDockRequest(judgmentFilter != null ? judgmentFilter.ResetSelection : null);
+    }
+
+    private void ResolveStatusReferences()
+    {
+      Transform status = transform.Find("FloatingPanel/MainPanel/PlaybackStatus");
+      if (status == null)
+        return;
+      if (playbackStatusDot == null)
+        playbackStatusDot = status.Find("StatusDot")?.GetComponent<UIFilledCircleGraphic>();
+      if (playbackStatusText == null)
+        playbackStatusText = status.Find("StatusLabel")?.GetComponent<TMP_Text>();
     }
 
     private void ApplyProgress()

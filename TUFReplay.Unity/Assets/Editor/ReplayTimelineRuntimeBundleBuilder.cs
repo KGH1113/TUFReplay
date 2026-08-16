@@ -94,18 +94,54 @@ namespace TUFReplay.Unity.Editor
         throw new InvalidOperationException("Runtime timeline does not contain timeline seek input.");
       if (prefab.GetComponent<UIFloatingPanelDockController>() == null)
         throw new InvalidOperationException("Runtime timeline does not contain the floating panel dock controller.");
+      if (prefab.GetComponentInChildren<UIJudgmentMarkerGraphic>(true) == null)
+        throw new InvalidOperationException("Runtime timeline does not contain the judgment marker graphic.");
+      if (prefab.GetComponentInChildren<UIJudgmentFilterDropdown>(true) == null)
+        throw new InvalidOperationException("Runtime timeline does not contain the judgment filter dropdown.");
 
       RectTransform panel = FindRect(prefab.transform, "FloatingPanel");
-      ValidateRect(panel, "floating panel", new Vector2(520f, 112f), null);
-      ValidateRect(FindRect(panel, "PanelShadow"), "panel shadow", new Vector2(520f, 112f), null);
-      ValidateRect(FindRect(panel, "LinearTimeline"), "timeline track", new Vector2(344f, 14f), null);
-      ValidateRect(FindRect(panel, "PlayButton"), "play button", new Vector2(52f, 52f), new Vector2(0f, -18f));
-      ValidateRect(FindRect(panel, "DockButton"), "dock button", new Vector2(44f, 40f), new Vector2(226f, -18f));
-      ValidateRect(FindRect(prefab.transform, "DockTab"), "dock tab", new Vector2(44f, 48f), null);
+      ValidateRect(panel, "floating panel", new Vector2(432f, 132f), null);
+      ValidateRect(FindRect(panel, "MainPanel"), "main panel", new Vector2(432f, 132f), Vector2.zero);
+      ValidateRect(FindRect(panel, "AmbientShadow"), "ambient shadow", new Vector2(438f, 138f), new Vector2(0f, -7f));
+      ValidateRect(FindRect(panel, "PanelShadow"), "panel shadow", new Vector2(432f, 132f), null);
+      ValidateRect(FindRect(panel, "ElapsedTime"), "elapsed time", new Vector2(54f, 20f), new Vector2(-166f, 43f));
+      ValidateRect(FindRect(panel, "PlaybackStatus"), "playback status", new Vector2(86f, 20f), new Vector2(0f, 43f));
+      ValidateRect(FindRect(panel, "DurationTime"), "duration time", new Vector2(54f, 20f), new Vector2(166f, 43f));
+      ValidateRect(
+        FindRect(panel, "TimelineHitArea"),
+        "timeline hit area",
+        new Vector2(388f, 28f),
+        new Vector2(0f, 13f)
+      );
+      ValidateRect(FindRect(panel, "LinearTimeline"), "timeline track", new Vector2(388f, 10f), null);
+      ValidateRect(FindRect(panel, "JudgmentMarkers"), "judgment markers", new Vector2(388f, 26f), null);
+      ValidateRect(FindRect(panel, "SeekBackward"), "backward seek", new Vector2(40f, 30f), new Vector2(-170f, -32f));
+      ValidateRect(FindRect(panel, "PlayButton"), "play button", new Vector2(36f, 36f), new Vector2(-122f, -32f));
+      ValidateRect(FindRect(panel, "SeekForward"), "forward seek", new Vector2(40f, 30f), new Vector2(-74f, -32f));
+      ValidateRect(
+        FindRect(panel, "JudgmentFilterButton"),
+        "judgment filter button",
+        new Vector2(140f, 30f),
+        new Vector2(74f, -32f)
+      );
+      RectTransform dockButton = FindRect(panel, "DockButton");
+      ValidateRect(dockButton, "dock button", new Vector2(30f, 30f), new Vector2(190f, -32f));
+      if (dockButton?.GetComponentInChildren<UICloseGraphic>(true) == null)
+        throw new InvalidOperationException("Runtime timeline dock button does not contain the rounded close graphic.");
+      ValidateRect(FindRect(prefab.transform, "JudgmentDropdown"), "judgment dropdown", new Vector2(272f, 196f), null);
+      ValidateRect(FindRect(prefab.transform, "DockTab"), "dock tab", new Vector2(36f, 42f), null);
       ValidateTextFont(FindRect(panel, "ElapsedTime")?.GetComponent<TMP_Text>(), "elapsed time");
       ValidateTextFont(FindRect(panel, "DurationTime")?.GetComponent<TMP_Text>(), "duration time");
       ValidateTextFont(FindRect(panel, "SeekBackward")?.Find("Label")?.GetComponent<TMP_Text>(), "backward seek label");
       ValidateTextFont(FindRect(panel, "SeekForward")?.Find("Label")?.GetComponent<TMP_Text>(), "forward seek label");
+      ValidateTextFont(
+        FindRect(panel, "JudgmentFilterButton")?.Find("Label")?.GetComponent<TMP_Text>(),
+        "judgment filter label"
+      );
+      ValidateTextFont(
+        FindRect(panel, "JudgmentFilterButton")?.Find("CountBadge/Count")?.GetComponent<TMP_Text>(),
+        "judgment filter count"
+      );
       ValidateRuntimeInstantiation(prefab);
     }
 

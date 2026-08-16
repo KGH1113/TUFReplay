@@ -11,10 +11,10 @@ namespace TUFReplay.Unity.ReplayTimeline
     private bool playing;
 
     [SerializeField]
-    private Color discColor = new Color32(70, 184, 255, 255);
+    private Color discColor = new Color32(124, 207, 0, 255);
 
     [SerializeField]
-    private Color iconColor = new Color32(16, 17, 22, 255);
+    private Color iconColor = new Color32(53, 83, 14, 255);
 
     public void Configure(Color disc, Color icon)
     {
@@ -38,25 +38,43 @@ namespace TUFReplay.Unity.ReplayTimeline
       Rect rect = GetPixelAdjustedRect();
       Vector2 center = rect.center;
       float discDiameter = Mathf.Min(rect.width, rect.height);
+      float iconScale = discDiameter / 42f;
       AddCircle(vertexHelper, center, discDiameter * 0.5f, discColor, 64);
 
       if (playing)
       {
-        AddRoundedBar(vertexHelper, center + new Vector2(-5.5f, 0f), 6f, 24f, iconColor);
-        AddRoundedBar(vertexHelper, center + new Vector2(5.5f, 0f), 6f, 24f, iconColor);
+        AddRoundedBar(
+          vertexHelper,
+          center + new Vector2(-5f * iconScale, 0f),
+          5f * iconScale,
+          21f * iconScale,
+          iconColor
+        );
+        AddRoundedBar(
+          vertexHelper,
+          center + new Vector2(5f * iconScale, 0f),
+          5f * iconScale,
+          21f * iconScale,
+          iconColor
+        );
       }
       else
       {
-        AddRoundedTriangle(vertexHelper, center + new Vector2(2f, 0f), iconColor);
+        AddRoundedTriangle(vertexHelper, center + new Vector2(2f * iconScale, 0f), iconColor, iconScale);
       }
     }
 
-    private static void AddRoundedTriangle(VertexHelper vertexHelper, Vector2 center, Color32 triangleColor)
+    private static void AddRoundedTriangle(
+      VertexHelper vertexHelper,
+      Vector2 center,
+      Color32 triangleColor,
+      float scale
+    )
     {
-      Vector2 bottomLeft = center + new Vector2(-8f, -12f);
-      Vector2 right = center + new Vector2(12f, 0f);
-      Vector2 topLeft = center + new Vector2(-8f, 12f);
-      const float roundingDistance = 4f;
+      Vector2 bottomLeft = center + new Vector2(-8f, -12f) * scale;
+      Vector2 right = center + new Vector2(12f, 0f) * scale;
+      Vector2 topLeft = center + new Vector2(-8f, 12f) * scale;
+      float roundingDistance = 4f * scale;
       const int cornerSegments = 5;
       const int perimeterCount = cornerSegments * 3;
 

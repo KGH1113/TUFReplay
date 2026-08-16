@@ -20,6 +20,27 @@ namespace TUFReplay.Unity.ReplayTimeline
 
     private double elapsedSeconds;
 
+    private static readonly ReplayJudgmentMarker[] SampleMarkers =
+    {
+      new ReplayJudgmentMarker(0.06f, ReplayJudgmentKind.Overload),
+      new ReplayJudgmentMarker(0.12f, ReplayJudgmentKind.TooEarly),
+      new ReplayJudgmentMarker(0.18f, ReplayJudgmentKind.Early),
+      new ReplayJudgmentMarker(0.24f, ReplayJudgmentKind.EarlyPerfect),
+      new ReplayJudgmentMarker(0.29f, ReplayJudgmentKind.Perfect),
+      new ReplayJudgmentMarker(0.34f, ReplayJudgmentKind.Perfect),
+      new ReplayJudgmentMarker(0.39f, ReplayJudgmentKind.Perfect),
+      new ReplayJudgmentMarker(0.45f, ReplayJudgmentKind.LatePerfect),
+      new ReplayJudgmentMarker(0.51f, ReplayJudgmentKind.Late),
+      new ReplayJudgmentMarker(0.58f, ReplayJudgmentKind.TooLate),
+      new ReplayJudgmentMarker(0.64f, ReplayJudgmentKind.Miss),
+      new ReplayJudgmentMarker(0.70f, ReplayJudgmentKind.EarlyPerfect),
+      new ReplayJudgmentMarker(0.75f, ReplayJudgmentKind.Perfect),
+      new ReplayJudgmentMarker(0.80f, ReplayJudgmentKind.LatePerfect),
+      new ReplayJudgmentMarker(0.85f, ReplayJudgmentKind.Early),
+      new ReplayJudgmentMarker(0.90f, ReplayJudgmentKind.Late),
+      new ReplayJudgmentMarker(0.95f, ReplayJudgmentKind.Miss),
+    };
+
     public void Configure(ReplayTimelineView timelineView)
     {
       view = timelineView;
@@ -52,6 +73,8 @@ namespace TUFReplay.Unity.ReplayTimeline
       view.SetProgress(durationSeconds > 0d ? (float)(elapsedSeconds / durationSeconds) : 0f);
       view.SetTime(elapsedSeconds, durationSeconds);
       view.SetPlaying(true);
+      view.SetJudgmentMarkers(SampleMarkers);
+      view.ResetJudgmentFilter();
     }
   }
 }
