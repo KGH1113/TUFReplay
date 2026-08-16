@@ -15,6 +15,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
 
   private AssetBundle _bundle;
   private ReplayTimelineView _view;
+  private UIFloatingPanelDragHandle _panelDragHandle;
   private string _activeRunId;
   private long _lastElapsedSecond = -1L;
   private long _lastDurationSecond = -1L;
@@ -26,6 +27,14 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private readonly Vector3[] _nativeControlCorners = new Vector3[4];
   private int _lastScreenWidth = -1;
   private int _lastScreenHeight = -1;
+
+  internal static bool IsConsumingDragInput =>
+    _instance != null
+    && _instance._view != null
+    && _instance._view.gameObject.activeInHierarchy
+    && (
+      _instance._panelDragHandle?.IsDragging == true || _instance._isScrubbing || _instance.IsPointerPressOverPanel()
+    );
 
   internal static void Initialize()
   {
@@ -88,6 +97,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
         throw new InvalidOperationException("ReplayTimelineRuntime.prefab has no ReplayTimelineView.");
 
       hud._view = view;
+      hud._panelDragHandle = timeline.GetComponentInChildren<UIFloatingPanelDragHandle>(true);
       hud._view.BindTogglePlayback(ReplaySessionService.TryTogglePauseFromTimeline);
       hud._view.BindSeekRelative(ReplaySessionService.TrySeekTimelineRelative);
       hud._view.BindScrub(hud.BeginScrub, hud.PreviewScrub, hud.CommitScrub, hud.CancelScrub);
@@ -295,6 +305,12 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     _scrubDurationTimeUs = 0L;
     _lastElapsedSecond = -1L;
     _lastDurationSecond = -1L;
+  }
+
+  private bool IsPointerPressOverPanel()
+  {
+    return (Input.GetMouseButton(0) || Input.GetMouseButton(2))
+      && _panelDragHandle?.ContainsScreenPoint(Input.mousePosition) == true;
   }
 
   private void ResetPlacement()

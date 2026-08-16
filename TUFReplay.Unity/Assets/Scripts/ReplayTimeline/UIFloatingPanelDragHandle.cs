@@ -21,6 +21,15 @@ namespace TUFReplay.Unity.ReplayTimeline
     private bool isDragging;
     private bool interactionEnabled = true;
 
+    public bool IsDragging => isDragging;
+
+    public bool ContainsScreenPoint(Vector2 screenPoint)
+    {
+      return movementTarget != null
+        && movementTarget.gameObject.activeInHierarchy
+        && RectTransformUtility.RectangleContainsScreenPoint(movementTarget, screenPoint);
+    }
+
     public void Configure(RectTransform target, RectTransform[] exclusions, float margin)
     {
       movementTarget = target;
@@ -133,6 +142,8 @@ namespace TUFReplay.Unity.ReplayTimeline
         return;
 
       lastParentSize = parentSize;
+      if (!interactionEnabled)
+        return;
       ClampToScreen();
     }
 
