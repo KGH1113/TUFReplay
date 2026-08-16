@@ -49,15 +49,6 @@ namespace TUFReplay.Unity.ReplayTimeline
     [SerializeField, Min(0.01f)]
     private float tabRevealDuration = 0.12f;
 
-    [SerializeField, Min(0f)]
-    private float tabHideDelay = 0.35f;
-
-    [SerializeField, Min(1f)]
-    private float tabProximityDepth = 28f;
-
-    [SerializeField, Min(1f)]
-    private float tabProximityHeight = 96f;
-
     private DockState state;
     private Rect nativeControlsScreenRect;
     private bool hasNativeControlsScreenRect;
@@ -70,8 +61,8 @@ namespace TUFReplay.Unity.ReplayTimeline
     private Vector2 lastCanvasSize = new Vector2(float.NaN, float.NaN);
     private float animationElapsed;
     private float tabReveal;
-    private float lastTabProximityTime = float.NegativeInfinity;
     private UnityAction expandRequested;
+    private UnityAction dockRequested;
 
     public void Configure(
       RectTransform root,
@@ -100,6 +91,11 @@ namespace TUFReplay.Unity.ReplayTimeline
       expandRequested = callback;
     }
 
+    public void BindDockRequest(UnityAction callback)
+    {
+      dockRequested = callback;
+    }
+
     public void ResetExpanded(Rect controlsScreenRect, bool hasControlsScreenRect)
     {
       if (!SetPlacementReference(controlsScreenRect, hasControlsScreenRect))
@@ -107,7 +103,6 @@ namespace TUFReplay.Unity.ReplayTimeline
       state = DockState.Expanded;
       animationElapsed = 0f;
       tabReveal = 0f;
-      lastTabProximityTime = float.NegativeInfinity;
       if (movementTarget != null)
         movementTarget.anchoredPosition = defaultExpandedPosition;
       SetExpandedInteraction(true);
@@ -140,6 +135,7 @@ namespace TUFReplay.Unity.ReplayTimeline
 
       if (!TryRecalculatePositions())
         return;
+      dockRequested?.Invoke();
       state = DockState.Docking;
       animationStart = movementTarget.anchoredPosition;
       animationTarget = fixedDockedPosition;
@@ -311,12 +307,7 @@ namespace TUFReplay.Unity.ReplayTimeline
 
     private void UpdateTabReveal()
     {
-      bool canReveal = state == DockState.Docked && IsPointerNearFixedTab();
-      if (canReveal)
-        lastTabProximityTime = Time.unscaledTime;
-
-      bool shouldShow =
-        state == DockState.Docked && (canReveal || Time.unscaledTime - lastTabProximityTime <= tabHideDelay);
+      bool shouldShow = state == DockState.Docked;
       float target = shouldShow ? 1f : 0f;
       float step = Time.unscaledDeltaTime / tabRevealDuration;
       float nextReveal = Mathf.MoveTowards(tabReveal, target, step);
@@ -325,31 +316,6 @@ namespace TUFReplay.Unity.ReplayTimeline
 
       tabReveal = nextReveal;
       ApplyTabVisual();
-    }
-
-    private bool IsPointerNearFixedTab()
-    {
-      if (canvasRoot == null)
-        return false;
-      if (
-        !RectTransformUtility.ScreenPointToLocalPointInRectangle(
-          canvasRoot,
-          Input.mousePosition,
-          null,
-          out Vector2 pointer
-        )
-      )
-        return false;
-
-      Rect canvasBounds = canvasRoot.rect;
-      bool inEdgeProximity =
-        pointer.x >= canvasBounds.xMax - tabProximityDepth
-        && Mathf.Abs(pointer.y - tabShownPosition.y) <= tabProximityHeight * 0.5f;
-      bool overVisibleTab =
-        dockTab != null
-        && tabReveal > 0f
-        && RectTransformUtility.RectangleContainsScreenPoint(dockTab, Input.mousePosition, null);
-      return inEdgeProximity || overVisibleTab;
     }
 
     private void ApplyTabVisual()
@@ -379,9 +345,6 @@ namespace TUFReplay.Unity.ReplayTimeline
       nativeControlsGap = Mathf.Max(0f, nativeControlsGap);
       panelAnimationDuration = Mathf.Max(0.01f, panelAnimationDuration);
       tabRevealDuration = Mathf.Max(0.01f, tabRevealDuration);
-      tabHideDelay = Mathf.Max(0f, tabHideDelay);
-      tabProximityDepth = Mathf.Max(1f, tabProximityDepth);
-      tabProximityHeight = Mathf.Max(1f, tabProximityHeight);
     }
 #endif
   }

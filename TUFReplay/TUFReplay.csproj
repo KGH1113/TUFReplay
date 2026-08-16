@@ -29,6 +29,10 @@
       Link="Unity/ReplayTimeline/UIEdgeArrowGraphic.cs"
     />
     <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UILucideChevronGraphic.cs"
+      Link="Unity/ReplayTimeline/UILucideChevronGraphic.cs"
+    />
+    <Compile
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UICloseGraphic.cs"
       Link="Unity/ReplayTimeline/UICloseGraphic.cs"
     />
@@ -39,6 +43,14 @@
     <Compile
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UILinearTimelineGraphic.cs"
       Link="Unity/ReplayTimeline/UILinearTimelineGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIJudgmentMarkerGraphic.cs"
+      Link="Unity/ReplayTimeline/UIJudgmentMarkerGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIJudgmentFilterDropdown.cs"
+      Link="Unity/ReplayTimeline/UIJudgmentFilterDropdown.cs"
     />
     <Compile
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UITimelineSeekInput.cs"

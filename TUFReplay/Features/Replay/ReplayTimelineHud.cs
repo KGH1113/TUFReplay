@@ -189,12 +189,14 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     _scrubDurationTimeUs = 0L;
     _lastScreenWidth = Screen.width;
     _lastScreenHeight = Screen.height;
+    _view.ResetJudgmentFilter();
     ResetPlacement();
   }
 
   private void Hide()
   {
     CancelScrub();
+    _view.CloseJudgmentDropdown();
     if (_view.gameObject.activeSelf)
       _view.gameObject.SetActive(false);
     _activeRunId = null;

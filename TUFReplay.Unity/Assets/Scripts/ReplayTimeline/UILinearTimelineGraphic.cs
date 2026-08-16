@@ -14,13 +14,13 @@ namespace TUFReplay.Unity.ReplayTimeline
     private Color trackColor = new Color32(43, 45, 52, 210);
 
     [SerializeField]
-    private Color progressStartColor = new Color32(66, 224, 205, 255);
+    private Color progressStartColor = new Color32(187, 244, 81, 255);
 
     [SerializeField]
-    private Color progressMiddleColor = new Color32(70, 184, 255, 255);
+    private Color progressMiddleColor = new Color32(124, 207, 0, 255);
 
     [SerializeField]
-    private Color progressEndColor = new Color32(102, 119, 255, 255);
+    private Color progressEndColor = new Color32(94, 165, 0, 255);
 
     [SerializeField, Range(4, 32)]
     private int gradientSegments = 16;
@@ -77,9 +77,9 @@ namespace TUFReplay.Unity.ReplayTimeline
 
       float leftX = rect.xMin + radius;
       float rightX = rect.xMax - radius;
-      AddCircle(vertexHelper, new Vector2(leftX, rect.center.y), radius, pillColor, 16);
-      AddCircle(vertexHelper, new Vector2(rightX, rect.center.y), radius, pillColor, 16);
       AddGradientQuad(vertexHelper, leftX, rightX, rect.yMin, rect.yMax, pillColor, pillColor);
+      AddSemicircle(vertexHelper, new Vector2(leftX, rect.center.y), radius, pillColor, left: true, 8);
+      AddSemicircle(vertexHelper, new Vector2(rightX, rect.center.y), radius, pillColor, left: false, 8);
     }
 
     private void AddProgressPill(VertexHelper vertexHelper, Rect fullRect, float fillWidth)
@@ -97,19 +97,21 @@ namespace TUFReplay.Unity.ReplayTimeline
 
       float leftX = fillRect.xMin + radius;
       float rightX = fillRect.xMax - radius;
-      AddCircle(
+      AddSemicircle(
         vertexHelper,
         new Vector2(leftX, fillRect.center.y),
         radius,
         EvaluateGradient((leftX - fullRect.xMin) / fullRect.width),
-        16
+        left: true,
+        8
       );
-      AddCircle(
+      AddSemicircle(
         vertexHelper,
         new Vector2(rightX, fillRect.center.y),
         radius,
         EvaluateGradient((rightX - fullRect.xMin) / fullRect.width),
-        16
+        left: false,
+        8
       );
 
       int segmentCount = Mathf.Max(1, gradientSegments);
@@ -167,6 +169,28 @@ namespace TUFReplay.Unity.ReplayTimeline
         float angle = Mathf.PI * 2f * index / segments;
         Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
         vertexHelper.AddVert(center + direction * radius, circleColor, direction * 0.5f + Vector2.one * 0.5f);
+        if (index > 0)
+          vertexHelper.AddTriangle(centerIndex, centerIndex + index, centerIndex + index + 1);
+      }
+    }
+
+    private static void AddSemicircle(
+      VertexHelper vertexHelper,
+      Vector2 center,
+      float radius,
+      Color32 semicircleColor,
+      bool left,
+      int segments
+    )
+    {
+      int centerIndex = vertexHelper.currentVertCount;
+      vertexHelper.AddVert(center, semicircleColor, new Vector2(0.5f, 0.5f));
+      float startAngle = left ? Mathf.PI * 0.5f : -Mathf.PI * 0.5f;
+      for (int index = 0; index <= segments; index++)
+      {
+        float angle = startAngle + Mathf.PI * index / segments;
+        Vector2 direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+        vertexHelper.AddVert(center + direction * radius, semicircleColor, direction * 0.5f + Vector2.one * 0.5f);
         if (index > 0)
           vertexHelper.AddTriangle(centerIndex, centerIndex + index, centerIndex + index + 1);
       }
