@@ -10,8 +10,7 @@ namespace TUFReplay.Features.Replay;
 public static class ReplayInputPatches
 {
   private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;
-  private static bool ShouldHideTimelineRestartVisuals =>
-    IsActive && ReplaySessionService.IsTimelineRestartPending;
+  private static bool ShouldHideTimelineRestartVisuals => IsActive && ReplaySessionService.IsTimelineRestartPending;
 
   [HarmonyPatch(typeof(scrController), nameof(scrController.Scrub), new[] { typeof(int), typeof(bool) })]
   [HarmonyPrefix]
@@ -156,6 +155,21 @@ public static class ReplayInputPatches
     catch (Exception exception)
     {
       Main.Instance?.LogException(nameof(OnAsyncInputManagerUpdatePostfix), exception);
+    }
+  }
+
+  [HarmonyPatch(typeof(scnEditor), "DragCamera", new[] { typeof(UnityEngine.Vector3) })]
+  [HarmonyPrefix]
+  private static bool OnEditorDragCameraPrefix()
+  {
+    try
+    {
+      return !IsActive || !ReplayTimelineHud.IsConsumingDragInput;
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnEditorDragCameraPrefix), exception);
+      return true;
     }
   }
 
