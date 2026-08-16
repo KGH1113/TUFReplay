@@ -51,6 +51,9 @@ internal static class Program
       TestReplayInputStableOrder();
       TestReplayCsvParserCompatibility();
       TestReplayTimelineTimeMath();
+      TestReplayTimelineTopGlowPolicy();
+      TestReplayTimelineJudgmentMapping();
+      TestReplayTimelineLegacyJudgmentTimeMath();
       TestLegacyJudgmentOverloadMath();
       TestHitContextPlaybackPositionComparison();
       TestReplayNoFailPolicy();
@@ -119,6 +122,28 @@ internal static class Program
     byte[] resolvedHitCsv = System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4\n");
     ReplayHitContext resolvedContext = ReplayHitContextParser.Parse(resolvedHitCsv)[0];
     Assert(resolvedContext.ResolvedHitMargin == 4, "Resolved hit margin was not preserved by the replay parser.");
+    Assert(!resolvedContext.TimeUs.HasValue, "A 12-column replay unexpectedly gained a judgment timestamp.");
+
+    var payload = new RecordedRunPayload();
+    payload.HitContexts.Add(
+      new RecordedHitContext
+      {
+        CurrentFloorID = 3,
+        CurrAngle = -0.25d,
+        OverloadCounter = 0.75f,
+        CachedAngle = 1.5d,
+        TargetExitAngle = 2.5d,
+        CurFreeRoamSection = 2,
+        ResolvedHitMargin = 4,
+        TimeUs = 1_234_567L,
+      }
+    );
+    ReplayHitContext timedContext = ReplayHitContextParser.Parse(payload.ToHitContextCsvBytes())[0];
+    Assert(timedContext.ResolvedHitMargin == 4, "13-column hit margin round-trip failed.");
+    Assert(timedContext.TimeUs == 1_234_567L, "13-column judgment timestamp round-trip failed.");
+
+    byte[] malformedTimedCsv = System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4,not-a-time\n");
+    Assert(ReplayHitContextParser.Parse(malformedTimedCsv).Count == 0, "Malformed 13-column timestamp was accepted.");
   }
 
   private static void TestLegacyJudgmentOverloadMath()
@@ -184,6 +209,134 @@ internal static class Program
     Assert(
       Math.Abs(ReplaySessionService.ToNormalizedTimelineTime(4_000_000L, 8_000_000L) - 0.5f) < 0.0001f,
       "Timeline normalized time calculation changed."
+    );
+  }
+
+  private static void TestReplayTimelineTopGlowPolicy()
+  {
+    Assert(
+      ReplaySessionService.ShouldTimelineTopGlowBeActive(hasLit: true, tileFlashStyle: 0),
+      "A passed floor lost its normal timeline top glow."
+    );
+    Assert(
+      !ReplaySessionService.ShouldTimelineTopGlowBeActive(hasLit: false, tileFlashStyle: 0),
+      "A future floor retained its normal timeline top glow."
+    );
+    Assert(
+      ReplaySessionService.ShouldTimelineTopGlowBeActive(hasLit: false, tileFlashStyle: 4),
+      "AlwaysOn did not preserve the future floor top glow."
+    );
+    Assert(
+      !ReplaySessionService.ShouldTimelineTopGlowBeActive(hasLit: true, tileFlashStyle: 5),
+      "AlwaysBlack enabled a passed floor top glow."
+    );
+  }
+
+  private static void TestReplayTimelineJudgmentMapping()
+  {
+    var expected = new (int Margin, ReplayTimelineJudgmentKind Kind)[]
+    {
+      (9, ReplayTimelineJudgmentKind.Overload),
+      (0, ReplayTimelineJudgmentKind.TooEarly),
+      (1, ReplayTimelineJudgmentKind.Early),
+      (2, ReplayTimelineJudgmentKind.EarlyPerfect),
+      (3, ReplayTimelineJudgmentKind.Perfect),
+      (10, ReplayTimelineJudgmentKind.Perfect),
+      (4, ReplayTimelineJudgmentKind.LatePerfect),
+      (5, ReplayTimelineJudgmentKind.Late),
+      (6, ReplayTimelineJudgmentKind.TooLate),
+      (8, ReplayTimelineJudgmentKind.Miss),
+    };
+
+    foreach ((int margin, ReplayTimelineJudgmentKind expectedKind) in expected)
+    {
+      Assert(
+        ReplayTimelineJudgmentMath.TryMapHitMarginValue(margin, out ReplayTimelineJudgmentKind actualKind)
+          && actualKind == expectedKind,
+        "Replay timeline judgment mapping changed for " + margin + "."
+      );
+    }
+
+    Assert(
+      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(7, out _),
+      "Multipress was included in timeline judgments."
+    );
+    Assert(
+      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(11, out _),
+      "OverPress was included in timeline judgments."
+    );
+  }
+
+  private static void TestReplayTimelineLegacyJudgmentTimeMath()
+  {
+    Assert(
+      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
+        10d,
+        0d,
+        Math.PI,
+        60d,
+        1d,
+        1d,
+        20_000_000L,
+        out long lateTimeUs
+      ) && lateTimeUs == 11_000_000L,
+      "Positive legacy judgment angle did not produce the expected late offset."
+    );
+    Assert(
+      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
+        10d,
+        0d,
+        -Math.PI,
+        60d,
+        1d,
+        1d,
+        20_000_000L,
+        out long earlyTimeUs
+      ) && earlyTimeUs == 9_000_000L,
+      "Negative legacy judgment angle did not produce the expected early offset."
+    );
+    Assert(
+      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
+        10d,
+        0d,
+        Math.PI,
+        120d,
+        2d,
+        2d,
+        20_000_000L,
+        out long scaledTimeUs
+      ) && scaledTimeUs == 10_125_000L,
+      "Legacy judgment timing did not apply BPM, floor speed, and pitch."
+    );
+    Assert(
+      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
+        30d,
+        0d,
+        0d,
+        60d,
+        1d,
+        1d,
+        20_000_000L,
+        out long clampedTimeUs
+      ) && clampedTimeUs == 20_000_000L,
+      "Legacy judgment timestamp did not clamp to replay duration."
+    );
+    Assert(
+      !ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
+        double.NaN,
+        0d,
+        0d,
+        60d,
+        1d,
+        1d,
+        20_000_000L,
+        out _
+      ),
+      "Invalid legacy judgment metadata was accepted."
+    );
+    Assert(
+      !ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(10d, 0d, 0d, 60d, 1d, 0d, 20_000_000L, out _),
+      "Invalid legacy judgment pitch was accepted."
     );
   }
 

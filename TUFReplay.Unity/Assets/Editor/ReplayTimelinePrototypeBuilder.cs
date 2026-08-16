@@ -248,6 +248,15 @@ namespace TUFReplay.Unity.Editor
         16f
       );
 
+      GameObject dockTabProximityObject = CreateUIObject("DockTabProximityArea", root.transform);
+      RectTransform dockTabProximityRect = dockTabProximityObject.GetComponent<RectTransform>();
+      SetCenteredRect(dockTabProximityRect, new Vector2(982f, -382f), new Vector2(28f, 96f));
+      UIRoundedPanelGraphic dockTabProximityGraphic = dockTabProximityObject.AddComponent<UIRoundedPanelGraphic>();
+      dockTabProximityGraphic.Configure(Color.clear, Color.clear, 0f, 0f);
+      dockTabProximityGraphic.raycastTarget = true;
+      UIDockTabProximityTrigger dockTabProximityTrigger =
+        dockTabProximityObject.AddComponent<UIDockTabProximityTrigger>();
+
       GameObject dockTabObject = BuildDockTab("DockTab", root.transform);
       RectTransform dockTabRect = dockTabObject.GetComponent<RectTransform>();
       SetCenteredRect(dockTabRect, new Vector2(982f, -382f), new Vector2(36f, 42f));
@@ -264,7 +273,10 @@ namespace TUFReplay.Unity.Editor
         dockButtonObject.GetComponent<Button>(),
         dockTabRect,
         dockTabCanvasGroup,
-        dockTabObject.GetComponent<Button>()
+        dockTabObject.GetComponent<Button>(),
+        dockTabProximityRect,
+        dockTabProximityTrigger,
+        dockTabObject.GetComponent<UIDockTabProximityTrigger>()
       );
 
       UIJudgmentFilterDropdown judgmentFilter = BuildJudgmentDropdown(
@@ -619,6 +631,7 @@ namespace TUFReplay.Unity.Editor
       GameObject buttonObject = CreateUIObject(name, parent);
       UIRoundedPanelGraphic background = buttonObject.AddComponent<UIRoundedPanelGraphic>();
       background.Configure(PanelFill, Html("#FFFFFF20"), 1f, 14f);
+      background.ConfigureCorners(topLeft: true, topRight: false, bottomRight: false, bottomLeft: true);
       background.raycastTarget = true;
 
       Button button = buttonObject.AddComponent<Button>();
@@ -636,9 +649,11 @@ namespace TUFReplay.Unity.Editor
 
       GameObject iconObject = CreateUIObject("Icon", buttonObject.transform);
       RectTransform iconRect = iconObject.GetComponent<RectTransform>();
-      SetCenteredRect(iconRect, Vector2.zero, new Vector2(14f, 12f));
-      UIEdgeArrowGraphic icon = iconObject.AddComponent<UIEdgeArrowGraphic>();
-      icon.Configure(new Color32(231, 233, 238, 255), left: true);
+      SetCenteredRect(iconRect, Vector2.zero, new Vector2(18f, 18f));
+      iconRect.localRotation = Quaternion.Euler(0f, 0f, -90f);
+      UILucideChevronGraphic icon = iconObject.AddComponent<UILucideChevronGraphic>();
+      icon.Configure(MutedText, 2.1f);
+      buttonObject.AddComponent<UIDockTabProximityTrigger>();
       return buttonObject;
     }
 

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using TUFReplay.Domain.ReplayData;
 using TUFReplay.Features.Replay;
 using TUFReplay.Infrastructure.NativeInput;
@@ -428,6 +429,65 @@ public static class ReplaySessionService
     return true;
   }
 
+  internal static bool TryGetTimelineJudgments(out ReplayTimelineJudgmentSnapshot[] judgments)
+  {
+    judgments = Array.Empty<ReplayTimelineJudgmentSnapshot>();
+    ActiveReplayContext context = _activeContext;
+    List<ReplayHitContext> hitContexts = context?.HitContexts;
+    if (context == null || hitContexts == null)
+      return false;
+    if (hitContexts.Count == 0)
+      return true;
+
+    long durationTimeUs = TimelineDurationTimeUs(context);
+    List<ReplayTimelineJudgmentSnapshot> resolved = new List<ReplayTimelineJudgmentSnapshot>(hitContexts.Count);
+    List<scrFloor> floors = ADOBase.lm?.listFloors;
+    scrConductor conductor = ADOBase.conductor;
+    double? gameplayStartSongPosition = context.Meta?.gameplayStartSongPosition;
+
+    for (int i = 0; i < hitContexts.Count; i++)
+    {
+      ReplayHitContext hitContext = hitContexts[i];
+      HitMargin hitMargin = ReplayHitContextPlayer.ResolveHitMargin(ADOBase.controller, hitContext);
+      if (!ReplayTimelineJudgmentMath.TryMapHitMargin(hitMargin, out ReplayTimelineJudgmentKind kind))
+        continue;
+
+      long timeUs;
+      if (hitContext.TimeUs.HasValue)
+      {
+        timeUs = Math.Max(0L, Math.Min(hitContext.TimeUs.Value, durationTimeUs));
+      }
+      else
+      {
+        if (
+          floors == null
+          || hitContext.CurrentFloorID < 0
+          || hitContext.CurrentFloorID >= floors.Count
+          || floors[hitContext.CurrentFloorID]?.nextfloor == null
+          || conductor == null
+          || conductor.song == null
+          || !gameplayStartSongPosition.HasValue
+          || !ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
+            floors[hitContext.CurrentFloorID].nextfloor.entryTime,
+            gameplayStartSongPosition.Value,
+            hitContext.CurrAngle,
+            conductor.bpm,
+            floors[hitContext.CurrentFloorID].speed,
+            conductor.song.pitch,
+            durationTimeUs,
+            out timeUs
+          )
+        )
+          continue;
+      }
+
+      resolved.Add(new ReplayTimelineJudgmentSnapshot(timeUs, kind));
+    }
+
+    judgments = resolved.ToArray();
+    return true;
+  }
+
   internal static void TryTogglePauseFromTimeline()
   {
     if (!TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot) || !snapshot.CanTogglePause)
@@ -803,6 +863,7 @@ public static class ReplaySessionService
 
       GCS.checkpointNum = floorIndex;
       customLevel.ResetScene(isResetCustomLevel: false);
+      NormalizeTimelineFloorLighting(ADOBase.lm?.listFloors, floorIndex);
       if (customLevel.Play(floorIndex, remakeFloors: false))
         return true;
     }
@@ -814,6 +875,36 @@ public static class ReplaySessionService
     _timelineRestartPending = false;
     _timelineRestartPauseAtPlayerControl = false;
     return false;
+  }
+
+  private static void NormalizeTimelineFloorLighting(List<scrFloor> floors, int targetFloorIndex)
+  {
+    if (floors == null)
+      return;
+
+    int tileFlashStyle = scrVfx.instance != null ? (int)scrVfx.instance.tileFlashStyle : -1;
+    for (int i = 0; i < floors.Count; i++)
+    {
+      scrFloor floor = floors[i];
+      if (floor == null)
+        continue;
+
+      bool hasLit = floor.seqID <= targetFloorIndex;
+      floor.hasLit = hasLit;
+      if (floor.topGlow != null)
+      {
+        floor.topGlow.gameObject.SetActive(ShouldTimelineTopGlowBeActive(hasLit, tileFlashStyle));
+      }
+    }
+  }
+
+  internal static bool ShouldTimelineTopGlowBeActive(bool hasLit, int tileFlashStyle)
+  {
+    if (tileFlashStyle == (int)TileFlashStyle.AlwaysOn)
+      return true;
+    if (tileFlashStyle == (int)TileFlashStyle.AlwaysBlack)
+      return false;
+    return hasLit;
   }
 
   private static void CompleteTimelineRestart()

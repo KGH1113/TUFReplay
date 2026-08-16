@@ -126,12 +126,15 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
 
     if (!ReplaySessionService.TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot))
     {
+      if (ReplaySessionService.IsTimelineRestartPending)
+        return;
+
       Hide();
       return;
     }
 
     if (!string.Equals(_activeRunId, snapshot.RunId, StringComparison.Ordinal))
-      BeginReplay(snapshot.RunId);
+      BeginReplay(snapshot);
 
     if (!_view.gameObject.activeSelf)
       _view.gameObject.SetActive(true);
@@ -177,9 +180,9 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     }
   }
 
-  private void BeginReplay(string runId)
+  private void BeginReplay(ReplayTimelinePlaybackSnapshot snapshot)
   {
-    _activeRunId = runId;
+    _activeRunId = snapshot.RunId;
     _lastElapsedSecond = -1L;
     _lastDurationSecond = -1L;
     _lastPlaying = null;
@@ -190,13 +193,54 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     _lastScreenWidth = Screen.width;
     _lastScreenHeight = Screen.height;
     _view.ResetJudgmentFilter();
+    _view.SetJudgmentMarkers(Array.Empty<ReplayJudgmentMarker>());
+    if (ReplaySessionService.TryGetTimelineJudgments(out ReplayTimelineJudgmentSnapshot[] judgments))
+    {
+      ReplayJudgmentMarker[] markers = new ReplayJudgmentMarker[judgments.Length];
+      for (int i = 0; i < judgments.Length; i++)
+      {
+        markers[i] = new ReplayJudgmentMarker(
+          ReplaySessionService.ToNormalizedTimelineTime(judgments[i].TimeUs, snapshot.DurationTimeUs),
+          ToViewJudgmentKind(judgments[i].Kind)
+        );
+      }
+      _view.SetJudgmentMarkers(markers);
+    }
     ResetPlacement();
+  }
+
+  private static ReplayJudgmentKind ToViewJudgmentKind(ReplayTimelineJudgmentKind kind)
+  {
+    switch (kind)
+    {
+      case ReplayTimelineJudgmentKind.Overload:
+        return ReplayJudgmentKind.Overload;
+      case ReplayTimelineJudgmentKind.TooEarly:
+        return ReplayJudgmentKind.TooEarly;
+      case ReplayTimelineJudgmentKind.Early:
+        return ReplayJudgmentKind.Early;
+      case ReplayTimelineJudgmentKind.EarlyPerfect:
+        return ReplayJudgmentKind.EarlyPerfect;
+      case ReplayTimelineJudgmentKind.Perfect:
+        return ReplayJudgmentKind.Perfect;
+      case ReplayTimelineJudgmentKind.LatePerfect:
+        return ReplayJudgmentKind.LatePerfect;
+      case ReplayTimelineJudgmentKind.Late:
+        return ReplayJudgmentKind.Late;
+      case ReplayTimelineJudgmentKind.TooLate:
+        return ReplayJudgmentKind.TooLate;
+      case ReplayTimelineJudgmentKind.Miss:
+        return ReplayJudgmentKind.Miss;
+      default:
+        throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+    }
   }
 
   private void Hide()
   {
     CancelScrub();
     _view.CloseJudgmentDropdown();
+    _view.SetJudgmentMarkers(Array.Empty<ReplayJudgmentMarker>());
     if (_view.gameObject.activeSelf)
       _view.gameObject.SetActive(false);
     _activeRunId = null;
@@ -256,7 +300,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private void ResetPlacement()
   {
     bool hasNativeControls = TryGetNativeControlsScreenRect(out Rect nativeControls);
-    _view.ResetPlacement(nativeControls, hasNativeControls);
+    _view.ResetPlacementDocked(nativeControls, hasNativeControls);
   }
 
   private void UpdatePlacementReference()

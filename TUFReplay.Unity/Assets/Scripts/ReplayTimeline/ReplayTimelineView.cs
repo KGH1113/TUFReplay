@@ -196,6 +196,11 @@ namespace TUFReplay.Unity.ReplayTimeline
       dockController?.ResetExpanded(nativeControlsScreenRect, hasNativeControlsScreenRect);
     }
 
+    public void ResetPlacementDocked(Rect nativeControlsScreenRect, bool hasNativeControlsScreenRect)
+    {
+      dockController?.ResetDocked(nativeControlsScreenRect, hasNativeControlsScreenRect);
+    }
+
     public void UpdatePlacementReference(Rect nativeControlsScreenRect, bool hasNativeControlsScreenRect)
     {
       dockController?.UpdatePlacementReference(nativeControlsScreenRect, hasNativeControlsScreenRect);

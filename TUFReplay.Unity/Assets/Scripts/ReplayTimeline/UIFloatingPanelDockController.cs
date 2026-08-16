@@ -37,6 +37,15 @@ namespace TUFReplay.Unity.ReplayTimeline
     [SerializeField]
     private Button dockTabButton;
 
+    [SerializeField]
+    private RectTransform dockTabProximityArea;
+
+    [SerializeField]
+    private UIDockTabProximityTrigger dockTabProximityTrigger;
+
+    [SerializeField]
+    private UIDockTabProximityTrigger dockTabHoverTrigger;
+
     [SerializeField, Min(0f)]
     private float screenMargin = 16f;
 
@@ -48,6 +57,12 @@ namespace TUFReplay.Unity.ReplayTimeline
 
     [SerializeField, Min(0.01f)]
     private float tabRevealDuration = 0.12f;
+
+    [SerializeField, Min(0f)]
+    private float tabInitialDisplayDuration = 0.7f;
+
+    [SerializeField, Min(0f)]
+    private float tabHideDelay = 0.35f;
 
     private DockState state;
     private Rect nativeControlsScreenRect;
@@ -61,6 +76,10 @@ namespace TUFReplay.Unity.ReplayTimeline
     private Vector2 lastCanvasSize = new Vector2(float.NaN, float.NaN);
     private float animationElapsed;
     private float tabReveal;
+    private float tabVisibleUntil = float.NegativeInfinity;
+    private float lastTabProximityTime = float.NegativeInfinity;
+    private bool pointerNearEdge;
+    private bool pointerOverTab;
     private UnityAction expandRequested;
     private UnityAction dockRequested;
 
@@ -71,7 +90,10 @@ namespace TUFReplay.Unity.ReplayTimeline
       Button collapseButton,
       RectTransform edgeTab,
       CanvasGroup edgeTabCanvasGroup,
-      Button edgeTabButton
+      Button edgeTabButton,
+      RectTransform edgeProximityArea,
+      UIDockTabProximityTrigger edgeProximityTrigger,
+      UIDockTabProximityTrigger edgeHoverTrigger
     )
     {
       canvasRoot = root;
@@ -81,7 +103,11 @@ namespace TUFReplay.Unity.ReplayTimeline
       dockTab = edgeTab;
       dockTabCanvasGroup = edgeTabCanvasGroup;
       dockTabButton = edgeTabButton;
+      dockTabProximityArea = edgeProximityArea;
+      dockTabProximityTrigger = edgeProximityTrigger;
+      dockTabHoverTrigger = edgeHoverTrigger;
       BindButtons();
+      BindProximityTriggers();
       TryRecalculatePositions();
       ApplyTabVisual();
     }
@@ -103,9 +129,25 @@ namespace TUFReplay.Unity.ReplayTimeline
       state = DockState.Expanded;
       animationElapsed = 0f;
       tabReveal = 0f;
+      ResetTabVisibilityTimer();
       if (movementTarget != null)
         movementTarget.anchoredPosition = defaultExpandedPosition;
       SetExpandedInteraction(true);
+      ApplyTabVisual();
+    }
+
+    public void ResetDocked(Rect controlsScreenRect, bool hasControlsScreenRect)
+    {
+      if (!SetPlacementReference(controlsScreenRect, hasControlsScreenRect))
+        return;
+      state = DockState.Docked;
+      animationElapsed = 0f;
+      tabReveal = 0f;
+      ResetTabVisibilityTimer();
+      tabVisibleUntil = Time.unscaledTime + tabInitialDisplayDuration;
+      if (movementTarget != null)
+        movementTarget.anchoredPosition = fixedDockedPosition;
+      SetExpandedInteraction(false);
       ApplyTabVisual();
     }
 
@@ -141,6 +183,7 @@ namespace TUFReplay.Unity.ReplayTimeline
       animationTarget = fixedDockedPosition;
       animationElapsed = 0f;
       tabReveal = 0f;
+      ResetTabVisibilityTimer();
       SetExpandedInteraction(false);
       ApplyTabVisual();
     }
@@ -157,6 +200,7 @@ namespace TUFReplay.Unity.ReplayTimeline
       animationTarget = defaultExpandedPosition;
       animationElapsed = 0f;
       tabReveal = 0f;
+      ResetTabVisibilityTimer();
       SetExpandedInteraction(false);
       ApplyTabVisual();
     }
@@ -164,6 +208,7 @@ namespace TUFReplay.Unity.ReplayTimeline
     private void Awake()
     {
       BindButtons();
+      BindProximityTriggers();
       ApplyTabVisual();
     }
 
@@ -178,6 +223,7 @@ namespace TUFReplay.Unity.ReplayTimeline
     {
       FinishAnimation();
       tabReveal = 0f;
+      ResetTabVisibilityTimer();
       ApplyTabVisual();
     }
 
@@ -220,6 +266,22 @@ namespace TUFReplay.Unity.ReplayTimeline
         dockTabButton.onClick.RemoveListener(RequestExpand);
         dockTabButton.onClick.AddListener(RequestExpand);
       }
+    }
+
+    private void BindProximityTriggers()
+    {
+      dockTabProximityTrigger?.Configure(HandleEdgeProximityChanged);
+      dockTabHoverTrigger?.Configure(HandleTabProximityChanged);
+    }
+
+    private void HandleEdgeProximityChanged(bool isNear)
+    {
+      pointerNearEdge = isNear;
+    }
+
+    private void HandleTabProximityChanged(bool isNear)
+    {
+      pointerOverTab = isNear;
     }
 
     private void RequestExpand()
@@ -270,6 +332,14 @@ namespace TUFReplay.Unity.ReplayTimeline
       Rect tabBounds = dockTab.rect;
       tabShownPosition = new Vector2(canvasBounds.xMax - tabBounds.xMax, defaultExpandedPosition.y);
       tabHiddenPosition = new Vector2(canvasBounds.xMax - tabBounds.xMin + 1f, defaultExpandedPosition.y);
+      if (dockTabProximityArea != null)
+      {
+        Rect proximityBounds = dockTabProximityArea.rect;
+        dockTabProximityArea.anchoredPosition = new Vector2(
+          canvasBounds.xMax - proximityBounds.xMax,
+          defaultExpandedPosition.y
+        );
+      }
       return true;
     }
 
@@ -291,6 +361,8 @@ namespace TUFReplay.Unity.ReplayTimeline
       if (state == DockState.Docking)
       {
         state = DockState.Docked;
+        tabVisibleUntil = Time.unscaledTime + tabInitialDisplayDuration;
+        lastTabProximityTime = float.NegativeInfinity;
         if (movementTarget != null)
           movementTarget.anchoredPosition = fixedDockedPosition;
         SetExpandedInteraction(false);
@@ -307,7 +379,17 @@ namespace TUFReplay.Unity.ReplayTimeline
 
     private void UpdateTabReveal()
     {
-      bool shouldShow = state == DockState.Docked;
+      bool pointerNearTab = state == DockState.Docked && (pointerNearEdge || pointerOverTab);
+      if (pointerNearTab)
+        lastTabProximityTime = Time.unscaledTime;
+
+      bool shouldShow =
+        state == DockState.Docked
+        && (
+          Time.unscaledTime <= tabVisibleUntil
+          || pointerNearTab
+          || Time.unscaledTime - lastTabProximityTime <= tabHideDelay
+        );
       float target = shouldShow ? 1f : 0f;
       float step = Time.unscaledDeltaTime / tabRevealDuration;
       float nextReveal = Mathf.MoveTowards(tabReveal, target, step);
@@ -318,10 +400,20 @@ namespace TUFReplay.Unity.ReplayTimeline
       ApplyTabVisual();
     }
 
+    private void ResetTabVisibilityTimer()
+    {
+      tabVisibleUntil = float.NegativeInfinity;
+      lastTabProximityTime = float.NegativeInfinity;
+      pointerNearEdge = false;
+      pointerOverTab = false;
+    }
+
     private void ApplyTabVisual()
     {
       if (dockTab != null)
         dockTab.anchoredPosition = Vector2.LerpUnclamped(tabHiddenPosition, tabShownPosition, tabReveal);
+      if (dockTabProximityArea != null && dockTabProximityArea.gameObject.activeSelf != (state == DockState.Docked))
+        dockTabProximityArea.gameObject.SetActive(state == DockState.Docked);
       if (dockTabCanvasGroup == null)
         return;
 
@@ -345,6 +437,8 @@ namespace TUFReplay.Unity.ReplayTimeline
       nativeControlsGap = Mathf.Max(0f, nativeControlsGap);
       panelAnimationDuration = Mathf.Max(0.01f, panelAnimationDuration);
       tabRevealDuration = Mathf.Max(0.01f, tabRevealDuration);
+      tabInitialDisplayDuration = Mathf.Max(0f, tabInitialDisplayDuration);
+      tabHideDelay = Mathf.Max(0f, tabHideDelay);
     }
 #endif
   }

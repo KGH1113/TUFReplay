@@ -25,6 +25,10 @@
       Link="Unity/ReplayTimeline/UIFloatingPanelDockController.cs"
     />
     <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIDockTabProximityTrigger.cs"
+      Link="Unity/ReplayTimeline/UIDockTabProximityTrigger.cs"
+    />
+    <Compile
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIEdgeArrowGraphic.cs"
       Link="Unity/ReplayTimeline/UIEdgeArrowGraphic.cs"
     />
