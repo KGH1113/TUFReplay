@@ -155,12 +155,15 @@ internal sealed class MicrophoneCalibrationPreview
     _originalRunInBackground = UnityEngine.Application.runInBackground;
     _changedRunInBackground = true;
     UnityEngine.Application.runInBackground = true;
+    MicrophoneCalibrationStatus calibrationStatus = _state.GetStatus();
     ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.PlayEphemeral(
       _run,
       levelPath,
       recording,
       wave,
-      limiterEnvelope
+      limiterEnvelope,
+      calibrationStatus.MicrophoneOffsetMs,
+      calibrationStatus.MicrophoneVolumeDb
     );
     if (replayStatus.State == ReplayPlaybackStates.Error)
     {

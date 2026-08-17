@@ -16,6 +16,7 @@
   "errors": {
     "readDevices": "Could not read microphone devices",
     "saveOffset": "Could not save the offset.",
+    "saveTiming": "Could not save the microphone timing settings.",
     "calibrationFailed": "Calibration failed.",
     "loadWaveforms": "Could not load the calibration waveforms.",
     "startCalibration": "Could not start microphone calibration.",
@@ -26,6 +27,15 @@
   },
   "adjustOffset": "Adjust timing offset",
   "alignAudio": "Align microphone and game audio",
+  "timingLocked": "Finish the current play session first",
+  "timingSettings": {
+    "title": "Microphone timing",
+    "description": "Fine-tune replay timing and microphone gain without opening a level.",
+    "offsetDescription": "Move recorded microphone audio earlier or later during replay.",
+    "gainDescription": "Adjust the microphone level used in previews and replays (-20 to +30 dB).",
+    "resetBoth": "Reset timing and gain",
+    "calibrateWithLevel": "Calibrate with level"
+  },
   "calibration": {
     "launchTitle": "Calibrate microphone timing",
     "failedToStart": "Calibration could not be started.",

@@ -23,6 +23,16 @@ describe("localized errors", () => {
     );
   });
 
+  test("translates locked microphone timing adjustments", async () => {
+    await i18n.changeLanguage("ko");
+    expect(
+      localizedErrorMessage(
+        new ActivityDomainError("microphone_timing_locked", "Timing is locked"),
+        "fallback",
+      ),
+    ).toBe("현재 플레이를 먼저 종료하세요");
+  });
+
   test("translates typed IPC readiness and timeout errors", async () => {
     await i18n.changeLanguage("ko");
     expect(localizedErrorMessage({ code: "namespace_initializing" }, "fallback")).toBe(

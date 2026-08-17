@@ -27,6 +27,8 @@ public sealed class MicrophoneDevicesResponseDto
   public bool ToggleLocked;
   public List<MicrophoneDeviceDto> Devices;
   public string SelectedDeviceId;
+  public int MicrophoneOffsetMs;
+  public int MicrophoneVolumeDb;
 
   public static MicrophoneDevicesResponseDto From(MicrophoneDevicesState state)
   {
@@ -39,6 +41,21 @@ public sealed class MicrophoneDevicesResponseDto
       ToggleLocked = state.ToggleLocked,
       Devices = devices,
       SelectedDeviceId = state.SelectedDeviceId,
+      MicrophoneOffsetMs = state.MicrophoneOffsetMs,
+      MicrophoneVolumeDb = state.MicrophoneVolumeDb,
     };
   }
+}
+
+public sealed class MicrophoneTimingSettingsDto
+{
+  public int MicrophoneOffsetMs;
+  public int MicrophoneVolumeDb;
+
+  public static MicrophoneTimingSettingsDto From(MicrophoneTimingSettingsState state) =>
+    new MicrophoneTimingSettingsDto
+    {
+      MicrophoneOffsetMs = state.MicrophoneOffsetMs,
+      MicrophoneVolumeDb = state.MicrophoneVolumeDb,
+    };
 }

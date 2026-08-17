@@ -186,6 +186,13 @@ export interface MicrophoneDevicesState {
   ToggleLocked: boolean;
   Devices: MicrophoneDevice[];
   SelectedDeviceId: string | null;
+  MicrophoneOffsetMs: number;
+  MicrophoneVolumeDb: number;
+}
+
+export interface MicrophoneTimingSettings {
+  MicrophoneOffsetMs: number;
+  MicrophoneVolumeDb: number;
 }
 
 export type MicrophoneCalibrationState =

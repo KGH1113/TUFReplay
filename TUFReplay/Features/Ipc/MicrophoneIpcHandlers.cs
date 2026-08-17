@@ -70,4 +70,38 @@ public static class MicrophoneIpcHandlers
       return IpcDomainError.Create("microphone_toggle_failed", "Microphone access could not be updated.");
     }
   }
+
+  public static object SetOffset(IpcRequest request)
+  {
+    int? offsetMs = IpcParams.OptionalInt(request, "offsetMs");
+    if (!offsetMs.HasValue)
+      return IpcDomainError.Create("invalid_microphone_offset", "offsetMs must be an integer.");
+    if (
+      !MicrophoneTimingSettingsService.TrySetOffset(
+        offsetMs.Value,
+        out MicrophoneTimingSettingsState state,
+        out string errorCode,
+        out string errorMessage
+      )
+    )
+      return IpcDomainError.Create(errorCode, errorMessage);
+    return MicrophoneTimingSettingsDto.From(state);
+  }
+
+  public static object SetVolume(IpcRequest request)
+  {
+    int? volumeDb = IpcParams.OptionalInt(request, "volumeDb");
+    if (!volumeDb.HasValue)
+      return IpcDomainError.Create("invalid_microphone_volume", "volumeDb must be an integer.");
+    if (
+      !MicrophoneTimingSettingsService.TrySetVolume(
+        volumeDb.Value,
+        out MicrophoneTimingSettingsState state,
+        out string errorCode,
+        out string errorMessage
+      )
+    )
+      return IpcDomainError.Create(errorCode, errorMessage);
+    return MicrophoneTimingSettingsDto.From(state);
+  }
 }

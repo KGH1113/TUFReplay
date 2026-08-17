@@ -7,7 +7,7 @@ namespace TUFReplay.Application.Microphone;
 
 internal sealed class Pcm16LimiterEnvelope
 {
-  internal const float Ceiling = 0.8912509f;
+  internal const float Ceiling = 0.9660509f;
 
   private readonly float[] _controlPeaks;
   private readonly int _sampleRate;
@@ -52,7 +52,7 @@ internal sealed class Pcm16LimiterEnvelope
 
 internal sealed class Pcm16Limiter
 {
-  private const float ReleaseSeconds = 0.1f;
+  private const float ReleaseSeconds = 0.03f;
 
   private readonly Pcm16LimiterEnvelope _envelope;
   private readonly float _releaseStep;

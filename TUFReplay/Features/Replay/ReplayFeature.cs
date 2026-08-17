@@ -19,6 +19,7 @@ public class ReplayFeature
       return;
     Active = true;
     ReplayMicrophonePlaybackFiles.Initialize();
+    ReplayTimelineHud.Initialize();
   }
 
   public void Disable()
@@ -26,6 +27,8 @@ public class ReplayFeature
     if (!Active)
       return;
     Active = false;
+
+    ReplayTimelineHud.Shutdown();
 
     ReplayPlaybackCoordinator.Shutdown();
     ReplayLevelFilePickerCoordinator.Shutdown();

@@ -52,7 +52,7 @@ public class RecordedRunPayload
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = Inputs.Count,
-      hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection",
+      hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection-resolvedHitMargin-timeUs",
       hitContextCount = HitContexts.Count,
       micRecord = false,
     };
@@ -110,8 +110,18 @@ public class RecordedRunPayload
         .Append(',')
         .Append(hit.RDCAuto ? '1' : '0')
         .Append(',')
-        .Append(hit.CurFreeRoamSection)
-        .Append('\n');
+        .Append(hit.CurFreeRoamSection);
+
+      if (hit.ResolvedHitMargin.HasValue)
+      {
+        builder.Append(',').Append(hit.ResolvedHitMargin.Value);
+        if (hit.TimeUs.HasValue)
+        {
+          builder.Append(',').Append(hit.TimeUs.Value);
+        }
+      }
+
+      builder.Append('\n');
     }
 
     return Encoding.UTF8.GetBytes(builder.ToString());

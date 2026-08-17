@@ -11,7 +11,7 @@ public sealed class TUFReplaySetting
   public const int MinMicrophoneOffsetMs = -500;
   public const int MaxMicrophoneOffsetMs = 500;
   public const int MinMicrophoneVolumeDb = -20;
-  public const int MaxMicrophoneVolumeDb = 20;
+  public const int MaxMicrophoneVolumeDb = 30;
 
   public bool AutoRecord { get; set; } = true;
   public bool MicrophoneEnabled { get; set; } = true;

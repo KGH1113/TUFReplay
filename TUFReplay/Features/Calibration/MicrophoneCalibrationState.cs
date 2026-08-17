@@ -75,6 +75,22 @@ internal sealed class MicrophoneCalibrationState
       _status = status;
   }
 
+  public void BeginMeasurement(string operationId, int microphoneVolumeDb)
+  {
+    lock (_gate)
+    {
+      _result = null;
+      _status = new MicrophoneCalibrationStatus
+      {
+        OperationId = operationId,
+        State = MicrophoneCalibrationStates.Arming,
+        Message = "Preparing microphone access.",
+        MicrophoneOffsetMs = 0,
+        MicrophoneVolumeDb = microphoneVolumeDb,
+      };
+    }
+  }
+
   public void Update(string state, string message)
   {
     lock (_gate)

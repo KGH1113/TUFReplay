@@ -10,6 +10,75 @@ namespace TUFReplay.Features.Replay;
 public static class ReplayInputPatches
 {
   private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;
+  private static bool ShouldHideTimelineRestartVisuals => IsActive && ReplaySessionService.IsTimelineRestartPending;
+
+  [HarmonyPatch(typeof(scrController), nameof(scrController.Scrub), new[] { typeof(int), typeof(bool) })]
+  [HarmonyPrefix]
+  private static void OnScrubPrefix(ref bool forceDontStartMusicFourTilesBefore)
+  {
+    if (ShouldHideTimelineRestartVisuals)
+      forceDontStartMusicFourTilesBefore = true;
+  }
+
+  [HarmonyPatch(typeof(scrConductor), nameof(scrConductor.PlayHitTimes))]
+  [HarmonyPrefix]
+  private static void OnPlayHitTimesPrefix(scrConductor __instance, out bool __state)
+  {
+    __state = __instance.fastTakeoff;
+    if (ShouldHideTimelineRestartVisuals)
+      __instance.fastTakeoff = true;
+  }
+
+  [HarmonyPatch(typeof(scrConductor), nameof(scrConductor.PlayHitTimes))]
+  [HarmonyPostfix]
+  private static void OnPlayHitTimesPostfix(scrConductor __instance, bool __state)
+  {
+    __instance.fastTakeoff = __state;
+  }
+
+  [HarmonyPatch(typeof(scrUIController), nameof(scrUIController.SetToBlack))]
+  [HarmonyPrefix]
+  private static bool OnSetToBlackPrefix(scrUIController __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.SetToTransparent();
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrUIController), nameof(scrUIController.FadeFromBlack))]
+  [HarmonyPrefix]
+  private static bool OnFadeFromBlackPrefix(scrUIController __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.SetToTransparent();
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrCountdown), "Update")]
+  [HarmonyPrefix]
+  private static bool OnCountdownUpdatePrefix(scrCountdown __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.CancelGo();
+    return false;
+  }
+
+  [HarmonyPatch(typeof(scrCountdown), nameof(scrCountdown.ShowGetReady))]
+  [HarmonyPrefix]
+  private static bool OnShowGetReadyPrefix(scrCountdown __instance)
+  {
+    if (!ShouldHideTimelineRestartVisuals)
+      return true;
+
+    __instance.CancelGo();
+    return false;
+  }
 
   [HarmonyPatch(typeof(scnGame), "LoadLevel")]
   [HarmonyPostfix]
@@ -89,6 +158,21 @@ public static class ReplayInputPatches
     }
   }
 
+  [HarmonyPatch(typeof(scnEditor), "DragCamera", new[] { typeof(UnityEngine.Vector3) })]
+  [HarmonyPrefix]
+  private static bool OnEditorDragCameraPrefix()
+  {
+    try
+    {
+      return !IsActive || !ReplayTimelineHud.IsConsumingDragInput;
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnEditorDragCameraPrefix), exception);
+      return true;
+    }
+  }
+
   [HarmonyPatch(typeof(scrController), "PlayerControl_Update")]
   [HarmonyPostfix]
   private static void OnPlayerControlUpdatePostfix(scrController __instance)
@@ -104,6 +188,17 @@ public static class ReplayInputPatches
     {
       Main.Instance?.LogException(nameof(OnPlayerControlUpdatePostfix), exception);
     }
+  }
+
+  [HarmonyPatch(typeof(scrPlanet), "AsyncRefreshAngles")]
+  [HarmonyPrefix]
+  private static bool OnAsyncRefreshAnglesPrefix()
+  {
+    // Replay native input is intentionally injected through SkyHook, but its async timestamp belongs
+    // to the live OS clock. After a timeline scrub that clock can overwrite the conductor-derived
+    // planet angle with a value from the abandoned timeline. Hit-context playback already restores
+    // the authoritative replay orbit, so keep the synchronous angle path while a replay is active.
+    return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();
   }
 
   [HarmonyPatch(typeof(scrPlayer), "ValidInputWasTriggered")]

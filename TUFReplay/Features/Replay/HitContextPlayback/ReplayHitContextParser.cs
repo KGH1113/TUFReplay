@@ -29,8 +29,13 @@ public static class ReplayHitContextParser
   {
     context = default;
 
-    Span<Range> parts = stackalloc Range[11];
-    if (!Utf8Csv.TrySplit(line, parts))
+    Span<Range> timedParts = stackalloc Range[13];
+    Span<Range> resolvedParts = stackalloc Range[12];
+    Span<Range> legacyParts = stackalloc Range[11];
+    bool hasTimeUs = Utf8Csv.TrySplit(line, timedParts);
+    bool hasResolvedHitMargin = hasTimeUs || Utf8Csv.TrySplit(line, resolvedParts);
+    Span<Range> parts = hasTimeUs ? timedParts : hasResolvedHitMargin ? resolvedParts : legacyParts;
+    if (!hasResolvedHitMargin && !Utf8Csv.TrySplit(line, legacyParts))
       return false;
 
     if (!Utf8Csv.TryParseInt32(line[parts[0]], out int currentFloorID))
@@ -56,6 +61,22 @@ public static class ReplayHitContextParser
     if (!Utf8Csv.TryParseInt32(line[parts[10]], out int curFreeRoamSection))
       return false;
 
+    int? resolvedHitMargin = null;
+    if (hasResolvedHitMargin)
+    {
+      if (!Utf8Csv.TryParseInt32(line[parts[11]], out int hitMarginValue))
+        return false;
+      resolvedHitMargin = hitMarginValue;
+    }
+
+    long? timeUs = null;
+    if (hasTimeUs)
+    {
+      if (!Utf8Csv.TryParseInt64(line[parts[12]], out long parsedTimeUs))
+        return false;
+      timeUs = parsedTimeUs;
+    }
+
     context = new ReplayHitContext(
       currentFloorID,
       currAngle,
@@ -67,9 +88,10 @@ public static class ReplayHitContextParser
       targetExitAngle,
       midspinInfiniteMargin,
       rdcAuto,
-      curFreeRoamSection
+      curFreeRoamSection,
+      resolvedHitMargin,
+      timeUs
     );
     return true;
   }
-
 }

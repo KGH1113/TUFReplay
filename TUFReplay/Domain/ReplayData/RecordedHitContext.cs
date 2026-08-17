@@ -13,4 +13,6 @@ public struct RecordedHitContext
   public bool MidspinInfiniteMargin;
   public bool RDCAuto;
   public int CurFreeRoamSection;
+  public int? ResolvedHitMargin;
+  public long? TimeUs;
 }

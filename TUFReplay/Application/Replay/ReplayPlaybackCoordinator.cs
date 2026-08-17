@@ -50,6 +50,15 @@ public static class ReplayPlaybackCoordinator
     }
   }
 
+  internal static bool IsTimelinePlaying
+  {
+    get
+    {
+      lock (Gate)
+        return _status.State == ReplayPlaybackStates.Playing;
+    }
+  }
+
   public static bool ShouldCancelForEditorQuitToMenu
   {
     get
@@ -103,7 +112,9 @@ public static class ReplayPlaybackCoordinator
     string levelPath,
     StoredMicrophoneRecording microphoneRecording,
     Pcm16WaveInfo microphoneWave,
-    Pcm16LimiterEnvelope microphoneLimiterEnvelope
+    Pcm16LimiterEnvelope microphoneLimiterEnvelope,
+    int microphoneOffsetMs,
+    int microphoneVolumeDb
   )
   {
     lock (CommandGate)
@@ -136,6 +147,8 @@ public static class ReplayPlaybackCoordinator
           MicrophoneRecording = microphoneRecording,
           MicrophoneWave = microphoneWave,
           MicrophoneLimiterEnvelope = microphoneLimiterEnvelope,
+          MicrophoneOffsetMs = microphoneOffsetMs,
+          MicrophoneVolumeDb = microphoneVolumeDb,
         };
         CancelPendingPreparation();
         CancelCurrentReplayForReplacement(operationId);
@@ -562,6 +575,12 @@ public static class ReplayPlaybackCoordinator
 
   private static void WaitForFocusOrStart(PendingReplay operation)
   {
+    if (!operation.PathEditingLockApplied)
+    {
+      scnEditor.instance.LockPathEditing(true);
+      operation.PathEditingLockApplied = true;
+    }
+
     if (operation.AllowBackground)
     {
       operation.NativeInputFocusGuard = AlwaysReadyFocusGuard.Instance;
@@ -621,8 +640,8 @@ public static class ReplayPlaybackCoordinator
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
           operation.MicrophoneLimiterEnvelope,
-          settings?.MicrophoneOffsetMs ?? 0,
-          settings?.MicrophoneVolumeDb ?? 0
+          operation.MicrophoneOffsetMs ?? settings?.MicrophoneOffsetMs ?? 0,
+          operation.MicrophoneVolumeDb ?? settings?.MicrophoneVolumeDb ?? 0
         );
         operation.TransferMicrophoneOwnership();
       }
@@ -971,10 +990,13 @@ public static class ReplayPlaybackCoordinator
     public string LoadedLevelValidationMessage;
     public byte[] ValidatedLoadedGameplayHash;
     public int ValidatedLoadedGameplayHashVersion;
+    public bool PathEditingLockApplied;
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
     public Pcm16LimiterEnvelope MicrophoneLimiterEnvelope;
+    public int? MicrophoneOffsetMs;
+    public int? MicrophoneVolumeDb;
     public bool AllowBackground;
 
     public PendingReplay(
