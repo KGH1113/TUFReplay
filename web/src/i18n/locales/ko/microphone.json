@@ -16,6 +16,7 @@
   "errors": {
     "readDevices": "마이크 장치를 확인하지 못했습니다",
     "saveOffset": "오프셋을 저장하지 못했습니다.",
+    "saveTiming": "마이크 타이밍 설정을 저장하지 못했습니다.",
     "calibrationFailed": "보정에 실패했습니다.",
     "loadWaveforms": "보정 파형을 불러오지 못했습니다.",
     "startCalibration": "마이크 보정을 시작하지 못했습니다.",
@@ -26,6 +27,15 @@
   },
   "adjustOffset": "타이밍 오프셋 조정",
   "alignAudio": "마이크와 게임 오디오 맞추기",
+  "timingLocked": "현재 플레이를 먼저 종료하세요",
+  "timingSettings": {
+    "title": "마이크 타이밍",
+    "description": "레벨을 열지 않고 리플레이 타이밍과 마이크 게인을 조절합니다.",
+    "offsetDescription": "리플레이에서 녹음된 마이크 소리를 앞이나 뒤로 이동합니다.",
+    "gainDescription": "미리듣기와 리플레이에 적용되는 마이크 음량을 조절합니다(-20~+30 dB).",
+    "resetBoth": "타이밍과 게인 초기화",
+    "calibrateWithLevel": "레벨에서 정밀 보정"
+  },
   "calibration": {
     "launchTitle": "마이크 타이밍 보정",
     "failedToStart": "보정을 시작하지 못했습니다.",

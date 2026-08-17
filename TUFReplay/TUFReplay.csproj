@@ -12,6 +12,63 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/ReplayTimelineView.cs"
+      Link="Unity/ReplayTimeline/ReplayTimelineView.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIFloatingPanelDragHandle.cs"
+      Link="Unity/ReplayTimeline/UIFloatingPanelDragHandle.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIFloatingPanelDockController.cs"
+      Link="Unity/ReplayTimeline/UIFloatingPanelDockController.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIDockTabProximityTrigger.cs"
+      Link="Unity/ReplayTimeline/UIDockTabProximityTrigger.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIEdgeArrowGraphic.cs"
+      Link="Unity/ReplayTimeline/UIEdgeArrowGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UILucideChevronGraphic.cs"
+      Link="Unity/ReplayTimeline/UILucideChevronGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UICloseGraphic.cs"
+      Link="Unity/ReplayTimeline/UICloseGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIFilledCircleGraphic.cs"
+      Link="Unity/ReplayTimeline/UIFilledCircleGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UILinearTimelineGraphic.cs"
+      Link="Unity/ReplayTimeline/UILinearTimelineGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIJudgmentMarkerGraphic.cs"
+      Link="Unity/ReplayTimeline/UIJudgmentMarkerGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIJudgmentFilterDropdown.cs"
+      Link="Unity/ReplayTimeline/UIJudgmentFilterDropdown.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UITimelineSeekInput.cs"
+      Link="Unity/ReplayTimeline/UITimelineSeekInput.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIPlayPauseGraphic.cs"
+      Link="Unity/ReplayTimeline/UIPlayPauseGraphic.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIRoundedPanelGraphic.cs"
+      Link="Unity/ReplayTimeline/UIRoundedPanelGraphic.cs"
+    />
+
     <Reference Include="AdofaiIpc">
       <HintPath>$(AdofaiIpcDll)</HintPath>
       <Private>false</Private>

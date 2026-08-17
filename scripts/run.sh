@@ -13,6 +13,7 @@ Commands:
   build       Build, test, and install the mod
   package     Build the release package and metadata
   mac-helper  Build and verify the macOS microphone helper
+  unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
   check       Validate all shell scripts
   help        Show this help
 USAGE
@@ -28,6 +29,9 @@ case "$command_name" in
     ;;
   mac-helper)
     run_task "Build macOS microphone helper" "$SCRIPTS_DIR/tasks/build/macos-microphone-helper.sh"
+    ;;
+  unity-ui)
+    run_task "Build Unity replay timeline bundles" "$SCRIPTS_DIR/tasks/build/unity-ui.sh"
     ;;
   check)
     exec "$SCRIPTS_DIR/workflows/check-scripts.sh"

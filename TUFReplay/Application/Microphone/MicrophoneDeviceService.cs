@@ -17,6 +17,8 @@ public static class MicrophoneDeviceService
       ToggleLocked = IsToggleLocked(),
       Devices = enabled ? MicrophoneCaptureRuntime.ListDevices() : new List<MicrophoneDeviceInfo>(),
       SelectedDeviceId = TUFReplaySettingStore.Current?.MicrophoneDeviceId,
+      MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
+      MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
     };
   }
 
@@ -108,7 +110,7 @@ public static class MicrophoneDeviceService
     return true;
   }
 
-  private static bool IsToggleLocked()
+  internal static bool IsToggleLocked()
   {
     if (FeatureRegistry.MicrophoneCalibration?.Active == true)
       return true;

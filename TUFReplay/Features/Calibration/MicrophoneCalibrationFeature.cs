@@ -71,16 +71,7 @@ public sealed class MicrophoneCalibrationFeature
       return Error("calibration_assets_missing", "The packaged calibration level, song, or waveform is missing.");
 
     string operationId = Guid.NewGuid().ToString("N");
-    _state.Set(
-      new MicrophoneCalibrationStatus
-      {
-        OperationId = operationId,
-        State = MicrophoneCalibrationStates.Arming,
-        Message = "Preparing microphone access.",
-        MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
-        MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
-      }
-    );
+    _state.BeginMeasurement(operationId, TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0);
     if (FeatureRegistry.MicrophoneRecording == null)
       return Error("microphone_unavailable", "The microphone capture feature is unavailable.", operationId);
     if (!FeatureRegistry.MicrophoneRecording.ArmForCalibration(out string error))
@@ -174,14 +165,8 @@ public sealed class MicrophoneCalibrationFeature
   {
     if (!_state.IsCurrent(operationId))
       return _state.StaleOperation();
-    TUFReplaySetting settings = TUFReplaySettingStore.Current;
-    settings.MicrophoneOffsetMs = Math.Max(
-      TUFReplaySetting.MinMicrophoneOffsetMs,
-      Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, offsetMs)
-    );
-    TUFReplaySettingStore.Save();
+    MicrophoneTimingSettingsState settings = MicrophoneTimingSettingsService.SetOffset(offsetMs);
     _state.SetOffset(settings.MicrophoneOffsetMs);
-    ReplaySessionService.UpdateActiveMicrophoneLatency(settings.MicrophoneOffsetMs);
     return GetStatus();
   }
 
@@ -189,14 +174,8 @@ public sealed class MicrophoneCalibrationFeature
   {
     if (!_state.IsCurrent(operationId))
       return _state.StaleOperation();
-    TUFReplaySetting settings = TUFReplaySettingStore.Current;
-    settings.MicrophoneVolumeDb = Math.Max(
-      TUFReplaySetting.MinMicrophoneVolumeDb,
-      Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
-    );
-    TUFReplaySettingStore.Save();
+    MicrophoneTimingSettingsState settings = MicrophoneTimingSettingsService.SetVolume(volumeDb);
     _state.SetVolume(settings.MicrophoneVolumeDb);
-    ReplaySessionService.UpdateActiveMicrophoneVolume(settings.MicrophoneVolumeDb);
     return GetStatus();
   }
 

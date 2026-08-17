@@ -1,7 +1,12 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import i18n from "../../i18n/i18n";
-import type { ConnectionStatus, MicrophoneDevice, MicrophoneDevicesState } from "../activity.model";
+import type {
+  ConnectionStatus,
+  MicrophoneDevice,
+  MicrophoneDevicesState,
+  MicrophoneTimingSettings,
+} from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
 import { localizedErrorMessage } from "../lib/localized-error";
 
@@ -10,6 +15,8 @@ const EMPTY_STATE: MicrophoneDevicesState = {
   ToggleLocked: false,
   Devices: [],
   SelectedDeviceId: null,
+  MicrophoneOffsetMs: 0,
+  MicrophoneVolumeDb: 0,
 };
 
 const DEVICE_REFRESH_MAX_AGE_MS = 5_000;
@@ -33,9 +40,19 @@ export function useMicrophoneDevices(
       ToggleLocked: next.ToggleLocked === true,
       Devices: Array.isArray(next.Devices) ? next.Devices : [],
       SelectedDeviceId: next.SelectedDeviceId ?? null,
+      MicrophoneOffsetMs: next.MicrophoneOffsetMs ?? 0,
+      MicrophoneVolumeDb: next.MicrophoneVolumeDb ?? 0,
     };
     setState((current) => (microphoneStatesEqual(current, normalized) ? current : normalized));
     setError((current) => (current ? "" : current));
+  }, []);
+
+  const applyTimingSettings = useCallback((next: MicrophoneTimingSettings) => {
+    setState((current) => ({
+      ...current,
+      MicrophoneOffsetMs: next.MicrophoneOffsetMs,
+      MicrophoneVolumeDb: next.MicrophoneVolumeDb,
+    }));
   }, []);
 
   const refresh = useCallback(async () => {
@@ -121,6 +138,8 @@ export function useMicrophoneDevices(
     enabled: state.Enabled,
     toggleLocked: state.ToggleLocked,
     selectedDeviceId: state.SelectedDeviceId,
+    microphoneOffsetMs: state.MicrophoneOffsetMs,
+    microphoneVolumeDb: state.MicrophoneVolumeDb,
     loading,
     pendingDeviceId,
     pendingEnabled,
@@ -129,6 +148,7 @@ export function useMicrophoneDevices(
     refreshIfStale,
     select,
     setEnabled,
+    applyTimingSettings,
   };
 }
 
@@ -137,6 +157,8 @@ function microphoneStatesEqual(left: MicrophoneDevicesState, right: MicrophoneDe
     left.Enabled !== right.Enabled ||
     left.ToggleLocked !== right.ToggleLocked ||
     left.SelectedDeviceId !== right.SelectedDeviceId ||
+    left.MicrophoneOffsetMs !== right.MicrophoneOffsetMs ||
+    left.MicrophoneVolumeDb !== right.MicrophoneVolumeDb ||
     left.Devices.length !== right.Devices.length
   )
     return false;

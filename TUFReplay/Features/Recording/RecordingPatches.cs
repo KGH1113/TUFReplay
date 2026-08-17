@@ -12,11 +12,13 @@ public static class RecordingPatches
 {
   private static scrFloor _hitFloor;
   private static readonly HitMarginSnapshot HitMargins = new();
+  private static bool _pendingHitMarginCapture;
   private static bool IsActive => RecordingFeature.Instance != null && RecordingFeature.Instance.Active;
 
   public static void ResetHitContextState()
   {
     _hitFloor = null;
+    _pendingHitMarginCapture = false;
     HitMargins.Reset();
   }
 
@@ -79,6 +81,7 @@ public static class RecordingPatches
 
   public static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
   {
+    _pendingHitMarginCapture = false;
     if (!IsActive)
       return true;
     if (!ShouldCaptureHitContext(__instance))
@@ -118,8 +121,26 @@ public static class RecordingPatches
     _hitFloor = currentHitFloor;
     HitMargins.Capture(currentHitMarginsCount);
     session.AddHitContext(BuildHitContext(controller, isAuto));
+    _pendingHitMarginCapture = true;
 
     return true;
+  }
+
+  public static void OnScrPlayerHitPostfix(scrPlayer __instance)
+  {
+    if (!_pendingHitMarginCapture)
+      return;
+
+    _pendingHitMarginCapture = false;
+    if (!ShouldCaptureHitContext(__instance))
+      return;
+
+    RecordingSession session = RecordingFeature.Instance?.Session;
+    int[] currentHitMarginsCount = scrController.instance?.playerOne?.marginTracker?.hitMarginsCount;
+    if (session == null || !HitMargins.TryGetSingleIncrement(currentHitMarginsCount, out int hitMargin))
+      return;
+
+    session.SetLastHitContextMargin(hitMargin);
   }
 
   public static void OnChangeState(States newState)

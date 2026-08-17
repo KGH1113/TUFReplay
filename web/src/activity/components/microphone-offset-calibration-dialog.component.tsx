@@ -47,6 +47,7 @@ export function MicrophoneOffsetCalibrationDialog({
   getPlaybackPositionMs,
   audioError,
   onClose,
+  onStartCalibration,
   onCommitOffset,
   onCommitMicrophoneVolume,
   onResetOffset,
@@ -60,7 +61,8 @@ export function MicrophoneOffsetCalibrationDialog({
   playbackPositionMs: number;
   getPlaybackPositionMs: () => number;
   audioError: string;
-  onClose: () => void;
+  onClose: () => void | Promise<void>;
+  onStartCalibration: () => void;
   onCommitOffset: (offsetMs: number) => void;
   onCommitMicrophoneVolume: (volumeDb: number) => void;
   onResetOffset: () => void;
@@ -74,18 +76,33 @@ export function MicrophoneOffsetCalibrationDialog({
   }, [dragging, offsetMs]);
 
   const open = phase !== "closed";
+  const settings = phase === "settings";
   const editing = phase === "editing";
 
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && onClose()}>
+    <Dialog open={open} onOpenChange={(nextOpen) => !nextOpen && void onClose()}>
       <DialogContent
         aria-describedby="microphone-offset-description"
         className={cn(
-          "w-[calc(100vw_-_2rem)] overflow-hidden p-0 transition-[max-width] duration-300 motion-reduce:transition-none",
-          editing ? "max-h-[calc(100svh-2rem)] min-h-0 max-w-[68rem]" : "max-w-[38rem]",
+          "w-[calc(100vw_-_2rem)] overflow-hidden p-0 transition-[max-width] duration-300 ease-out motion-reduce:transition-none",
+          editing
+            ? "max-h-[calc(100svh-2rem)] min-h-0 max-w-[68rem]"
+            : settings
+              ? "max-w-[32rem]"
+              : "max-w-[38rem]",
         )}
       >
-        {editing ? (
+        {settings ? (
+          <TimingSettingsPanel
+            offsetMs={offsetMs}
+            microphoneVolumeDb={microphoneVolumeDb}
+            audioError={audioError}
+            onCommitOffset={onCommitOffset}
+            onCommitMicrophoneVolume={onCommitMicrophoneVolume}
+            onClose={onClose}
+            onStartCalibration={onStartCalibration}
+          />
+        ) : editing ? (
           <OffsetEditor
             data={data}
             offsetMs={offsetMs}
@@ -112,6 +129,150 @@ export function MicrophoneOffsetCalibrationDialog({
   );
 }
 
+function TimingSettingsPanel({
+  offsetMs,
+  microphoneVolumeDb,
+  audioError,
+  onCommitOffset,
+  onCommitMicrophoneVolume,
+  onClose,
+  onStartCalibration,
+}: {
+  offsetMs: number;
+  microphoneVolumeDb: number;
+  audioError: string;
+  onCommitOffset: (offsetMs: number) => void;
+  onCommitMicrophoneVolume: (volumeDb: number) => void;
+  onClose: () => void | Promise<void>;
+  onStartCalibration: () => void;
+}) {
+  const { t } = useTranslation("microphone");
+  return (
+    <section className="motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200">
+      <header className="border-b border-border px-6 py-5 sm:px-7">
+        <DialogTitle>{t("timingSettings.title")}</DialogTitle>
+        <p id="microphone-offset-description" className="mt-1 text-sm text-muted-foreground">
+          {t("timingSettings.description")}
+        </p>
+      </header>
+
+      <div className="divide-y divide-border px-6 sm:px-7">
+        <TimingRangeControl
+          id="microphone-timing-offset"
+          icon={WaveSquareIcon}
+          label={t("calibration.offset")}
+          description={t("timingSettings.offsetDescription")}
+          min={MIN_MICROPHONE_OFFSET_MS}
+          max={MAX_MICROPHONE_OFFSET_MS}
+          value={offsetMs}
+          valueText={formatMicrophoneOffset(offsetMs)}
+          onChange={onCommitOffset}
+        />
+        <TimingRangeControl
+          id="microphone-timing-gain"
+          icon={Mic02Icon}
+          label={t("calibration.micGain")}
+          description={t("timingSettings.gainDescription")}
+          min={MIN_MICROPHONE_VOLUME_DB}
+          max={MAX_MICROPHONE_VOLUME_DB}
+          value={microphoneVolumeDb}
+          valueText={formatMicrophoneVolumeDb(microphoneVolumeDb)}
+          onChange={onCommitMicrophoneVolume}
+        />
+      </div>
+
+      <div className="px-6 pb-1 sm:px-7">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={offsetMs === 0 && microphoneVolumeDb === 0}
+          onClick={() => {
+            onCommitOffset(0);
+            onCommitMicrophoneVolume(0);
+          }}
+        >
+          <HugeiconsIcon data-icon="inline-start" icon={RefreshIcon} size={14} strokeWidth={2} />
+          {t("timingSettings.resetBoth")}
+        </Button>
+      </div>
+
+      {audioError ? (
+        <p
+          role="alert"
+          className="mx-6 mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive sm:mx-7"
+        >
+          {audioError}
+        </p>
+      ) : null}
+
+      <footer className="mt-5 flex flex-col-reverse gap-2 border-t border-border bg-muted/15 px-6 py-4 sm:flex-row sm:justify-end sm:px-7">
+        <Button type="button" variant="outline" onClick={() => void onClose()}>
+          {t("calibration.done")}
+        </Button>
+        <Button type="button" onClick={onStartCalibration}>
+          <HugeiconsIcon data-icon="inline-start" icon={WaveSquareIcon} size={15} strokeWidth={2} />
+          {t("timingSettings.calibrateWithLevel")}
+        </Button>
+      </footer>
+    </section>
+  );
+}
+
+function TimingRangeControl({
+  id,
+  icon,
+  label,
+  description,
+  min,
+  max,
+  value,
+  valueText,
+  onChange,
+}: {
+  id: string;
+  icon: typeof Mic02Icon;
+  label: string;
+  description: string;
+  min: number;
+  max: number;
+  value: number;
+  valueText: string;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="py-5">
+      <div className="flex items-start gap-3">
+        <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-primary/12 text-primary">
+          <HugeiconsIcon aria-hidden="true" icon={icon} size={15} strokeWidth={2} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline justify-between gap-4">
+            <label htmlFor={id} className="text-sm font-medium">
+              {label}
+            </label>
+            <output htmlFor={id} className="shrink-0 text-sm font-semibold tabular-nums">
+              {valueText}
+            </output>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+          <input
+            id={id}
+            type="range"
+            min={min}
+            max={max}
+            step={1}
+            value={value}
+            aria-valuetext={valueText}
+            onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
+            className="mt-4 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CalibrationProgress({
   phase,
   error,
@@ -126,7 +287,7 @@ function CalibrationProgress({
   const waiting = phase === "waiting_for_clear";
   const failed = phase === "error";
   return (
-    <section className="p-6 sm:p-8">
+    <section className="p-6 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 sm:p-8">
       <div className="flex items-start gap-4">
         <span
           className={cn(

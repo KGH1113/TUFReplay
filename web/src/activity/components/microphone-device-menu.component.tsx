@@ -21,6 +21,7 @@ export function MicrophoneDeviceMenu({
   pendingEnabled,
   error,
   showOffsetCalibration,
+  offsetAdjustmentLocked,
   onRefresh,
   onSetEnabled,
   onSelect,
@@ -36,6 +37,7 @@ export function MicrophoneDeviceMenu({
   pendingEnabled: boolean | undefined;
   error: string;
   showOffsetCalibration: boolean;
+  offsetAdjustmentLocked: boolean;
   onRefresh: () => void;
   onSetEnabled: (enabled: boolean) => void;
   onSelect: (deviceId: string | null) => void;
@@ -158,7 +160,8 @@ export function MicrophoneDeviceMenu({
               <DropdownMenuPrimitive.Separator className="my-1 h-px bg-border" />
               <DropdownMenuPrimitive.Item
                 onSelect={onAdjustOffset}
-                className="flex cursor-default select-none items-center gap-3 rounded-lg px-2.5 py-2 outline-none transition-colors data-[highlighted]:bg-muted/70"
+                disabled={offsetAdjustmentLocked}
+                className="flex cursor-default select-none items-center gap-3 rounded-lg px-2.5 py-2 outline-none transition-colors data-[disabled]:pointer-events-none data-[disabled]:opacity-45 data-[highlighted]:bg-muted/70"
               >
                 <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/15 text-primary">
                   <HugeiconsIcon
@@ -171,7 +174,7 @@ export function MicrophoneDeviceMenu({
                 <span className="min-w-0">
                   <span className="block text-sm font-medium">{t("adjustOffset")}</span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {t("alignAudio")}
+                    {offsetAdjustmentLocked ? t("timingLocked") : t("alignAudio")}
                   </span>
                 </span>
               </DropdownMenuPrimitive.Item>

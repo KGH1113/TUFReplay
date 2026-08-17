@@ -31,11 +31,11 @@
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
-The project is built around preserving low-level play data instead of trusting final judgment labels. That makes the recorded output more useful for server-side validation, exports, dashboards, and future replay workflows. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
+The project preserves low-level play data and, for new recordings, the resolved margin of each accepted hit. The resolved margin lets timeline scrubbing rebuild ADOFAI's canonical judgment tracker exactly, while older recordings remain playable by deriving margins from their existing hit contexts. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
 ## Features
 
-- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, creating activity sessions only when a non-replay run actually starts.
+- Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, saving activity runs only after native input is captured.
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
@@ -44,7 +44,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash.
-- Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels continue directly into replay from the run's recorded start tile.
+- Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels open with path editing locked and continue directly into replay from the run's recorded start tile.
 - Stores a versioned gameplay hash so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. New records use SHA-256 hash v4, which treats the `.adofai` format version, run pitch, and hit-sound selection and volume as playback or serialization details rather than chart identity. On startup, verified v1-v3 rows are migrated and merged into v4; missing, changed, or unverifiable level files leave the original rows intact.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
@@ -52,6 +52,7 @@ The project is built around preserving low-level play data instead of trusting f
 - Streams microphone WAV files into a separate `tufreplay.microphones.sqlite` database without loading the full recording into memory; this isolates large BLOB writes from activity-run writes. Temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
+- Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
@@ -78,6 +79,7 @@ Reflection consumers should cache the resolved type and property getter, query t
 ## Repository Layout
 
 - `TUFReplay/`: UnityModManager mod source.
+- `TUFReplay.Unity/`: Unity 6.3 project for the replay timeline prefab, Canvas graphics, shader, and platform AssetBundle builder.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
 - `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
@@ -121,6 +123,7 @@ Important environment variables:
 - `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
 - `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
 - `ADOFAI_IPC_DEPENDENCY_SHIM_DLL`: fixed AdofaiIpc dependency shim assembly path.
+- `ADOFAI_IPC_MIGRATION_DLL`: AdofaiIpc migration assembly path.
 - `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 
@@ -135,13 +138,16 @@ The package script creates an optimized Release build in `build/TUFReplay.zip` w
 Build only the macOS helper or validate the shell layer with:
 
 ```bash
+./scripts/run.sh unity-ui
 ./scripts/run.sh mac-helper
 ./scripts/run.sh check
 ```
 
+`unity-ui` rebuilds `ReplayTimelineRuntime.prefab` with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
+
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. Beta.9 automatically installs the fixed dependency entrypoint for existing users, pauses TUFReplay for that session, and asks the user to reinstall only AdofaiIPC 0.3.0 before restarting the game. Later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. Beta.9 automatically installs the fixed dependency entrypoint for existing users, pauses TUFReplay for that session, and asks the user to reinstall only AdofaiIPC 0.3.0 before restarting the game. Later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Beta.10 adds the in-game replay timeline HUD with judgment markers, transport controls, scrubbing, and a draggable panel, and improves microphone timing calibration and replay synchronization. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
 
 ## Web Development
 
@@ -255,6 +261,8 @@ Registered methods:
 - `microphone.devices.get`
 - `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
 - `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
+- `microphone.offset.set` (`offsetMs` updates the global replay microphone timing outside gameplay and calibration)
+- `microphone.volume.set` (`volumeDb` updates the global replay microphone gain outside gameplay and calibration)
 - `microphone.calibration.start`
 - `microphone.calibration.status.get`
 - `microphone.calibration.result.get`
@@ -274,8 +282,8 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.1.0-beta.9",
-  "ProtocolVersion": 4,
+  "ModVersion": "0.1.0-beta.10",
+  "ProtocolVersion": 5,
   "ServerVersion": 1
 }
 ```
@@ -286,7 +294,7 @@ The companion web UI asks the user to fully quit and restart ADOFAI so the start
 a compatible TUFReplay release. `ServerVersion` remains as a legacy compatibility field and is not the
 TUFReplay namespace protocol version.
 
-Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin song and microphone waveforms to the web editor. The precomputed song reference is aligned from ADOFAI's actual playback sample position on the recorded run timeline. Preview playback runs in ADOFAI while the browser polls the game clock; the saved global offset and `-20 dB` to `+20 dB` microphone gain (`0 dB` by default) are applied to calibration previews and all stored microphone replays.
+The timing dialog first offers compact global offset and microphone-gain controls without opening a level. Starting precise calibration transitions the same dialog into the existing calibration progress UI and opens the packaged level. Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin native-input and microphone waveforms to the web editor. Every calibration starts from the raw, uncorrected microphone timing so repeated calibrations measure the absolute microphone delay instead of the residual after the previous correction. Preview playback runs in ADOFAI while the browser polls the game clock; the calibration's current offset and `-20 dB` to `+30 dB` microphone gain (`0 dB` by default, up to about `31.6x` before limiting) are applied to its preview, while the saved global values are applied to stored microphone replays. The true-peak limiter uses a `-0.3 dBFS` ceiling with a `30 ms` release so amplified playback remains protected while recovering quickly after transients.
 
 ## Tech Stack
 

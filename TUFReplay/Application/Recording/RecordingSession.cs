@@ -243,6 +243,7 @@ public class RecordingSession
     {
       if (!IsRecording)
         return;
+      hitContext.TimeUs = Math.Max(0L, CurrentTimelineTimeUsLocked());
       RefreshNoFailModeLocked();
       Data.HitContexts.Add(hitContext);
     }
@@ -255,6 +256,20 @@ public class RecordingSession
       if (!IsRecording || Data.HitContexts.Count == 0)
         return;
       Data.HitContexts.RemoveAt(Data.HitContexts.Count - 1);
+    }
+  }
+
+  public void SetLastHitContextMargin(int hitMargin)
+  {
+    lock (_lock)
+    {
+      if (!IsRecording || Data.HitContexts.Count == 0)
+        return;
+
+      int index = Data.HitContexts.Count - 1;
+      RecordedHitContext context = Data.HitContexts[index];
+      context.ResolvedHitMargin = hitMargin;
+      Data.HitContexts[index] = context;
     }
   }
 

@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import type { MicrophoneCalibrationStatus } from "../activity.model";
 import type { ActivityGateway } from "../data/activity.gateway";
 import {
+  createCalibrationOffsetReconciler,
   createCalibrationOffsetSaveQueue,
   extrapolateCalibrationPlaybackPosition,
   installCalibrationStatusPolling,
@@ -40,6 +41,42 @@ describe("microphone calibration offset saving", () => {
     finishSave();
     await close;
     expect(events).toEqual(["save started", "closed"]);
+  });
+
+  test("keeps the latest optimistic offset while polling and older saves complete", () => {
+    const reconciler = createCalibrationOffsetReconciler(0);
+    const first = reconciler.begin(80);
+    const second = reconciler.begin(140);
+
+    expect(reconciler.synchronize(0)).toBe(140);
+    expect(reconciler.resolve(first, 80)).toEqual({ offsetMs: 140, latest: false });
+    expect(reconciler.synchronize(80)).toBe(140);
+    expect(reconciler.resolve(second, 140)).toEqual({ offsetMs: 140, latest: true });
+    expect(reconciler.synchronize(80)).toBe(140);
+    expect(reconciler.synchronize(140)).toBe(140);
+  });
+
+  test("restores the last confirmed offset when the latest save fails", () => {
+    const reconciler = createCalibrationOffsetReconciler(20);
+    const first = reconciler.begin(80);
+    const second = reconciler.begin(140);
+
+    expect(reconciler.resolve(first, 80)).toEqual({ offsetMs: 140, latest: false });
+    expect(reconciler.reject(second)).toEqual({ offsetMs: 80, latest: true });
+    expect(reconciler.synchronize(80)).toBe(80);
+  });
+
+  test("does not confuse an old matching poll with confirmation of an unsaved commit", () => {
+    const reconciler = createCalibrationOffsetReconciler(80);
+    const first = reconciler.begin(140);
+    const second = reconciler.begin(80);
+
+    expect(reconciler.synchronize(80)).toBe(80);
+    expect(reconciler.resolve(first, 140)).toEqual({ offsetMs: 80, latest: false });
+    expect(reconciler.synchronize(140)).toBe(80);
+    expect(reconciler.resolve(second, 80)).toEqual({ offsetMs: 80, latest: true });
+    expect(reconciler.synchronize(140)).toBe(80);
+    expect(reconciler.synchronize(80)).toBe(80);
   });
 });
 

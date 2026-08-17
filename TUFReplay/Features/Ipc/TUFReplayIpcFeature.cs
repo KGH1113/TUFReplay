@@ -48,6 +48,8 @@ public sealed class TUFReplayIpcFeature
     ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
     ipc.RegisterMainThread("microphone.enabled.set", MicrophoneIpcHandlers.SetEnabled);
     ipc.RegisterMainThread("microphone.device.select", MicrophoneIpcHandlers.SelectDevice);
+    ipc.RegisterMainThread("microphone.offset.set", MicrophoneIpcHandlers.SetOffset);
+    ipc.RegisterMainThread("microphone.volume.set", MicrophoneIpcHandlers.SetVolume);
     ipc.RegisterMainThread("microphone.calibration.start", MicrophoneCalibrationIpcHandlers.Start);
     ipc.RegisterMainThread("microphone.calibration.status.get", MicrophoneCalibrationIpcHandlers.GetStatus);
     ipc.RegisterMainThread("microphone.calibration.result.get", MicrophoneCalibrationIpcHandlers.GetResult);
