@@ -71,6 +71,8 @@ public static class RecordingPatches
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
 
+    RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
+
     bool captureAllowed = IsNativeInputCaptureAllowed();
     RecordInputTracker.SetCaptureWindowActive(captureAllowed);
     if (!captureAllowed)
