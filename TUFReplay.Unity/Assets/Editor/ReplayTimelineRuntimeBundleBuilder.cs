@@ -1,10 +1,12 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using TMPro;
 using TUFReplay.Unity.ReplayTimeline;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace TUFReplay.Unity.Editor
 {
@@ -128,7 +130,9 @@ namespace TUFReplay.Unity.Editor
       ValidateRect(dockButton, "dock button", new Vector2(30f, 30f), new Vector2(190f, -32f));
       if (dockButton?.GetComponentInChildren<UICloseGraphic>(true) == null)
         throw new InvalidOperationException("Runtime timeline dock button does not contain the rounded close graphic.");
-      ValidateRect(FindRect(prefab.transform, "JudgmentDropdown"), "judgment dropdown", new Vector2(272f, 196f), null);
+      RectTransform judgmentDropdown = FindRect(prefab.transform, "JudgmentDropdown");
+      ValidateRect(judgmentDropdown, "judgment dropdown", new Vector2(432f, 140f), null);
+      ValidateJudgmentOptions(judgmentDropdown);
       RectTransform dockTab = FindRect(prefab.transform, "DockTab");
       ValidateRect(dockTab, "dock tab", new Vector2(36f, 42f), null);
       RectTransform dockTabIcon = dockTab?.Find("Icon") as RectTransform;
@@ -165,6 +169,46 @@ namespace TUFReplay.Unity.Editor
         .FirstOrDefault(candidate => string.Equals(candidate.name, name, StringComparison.Ordinal));
     }
 
+    private static void ValidateJudgmentOptions(RectTransform dropdown)
+    {
+      ReplayJudgmentKind[] categories =
+      {
+        ReplayJudgmentKind.EarlyPerfect,
+        ReplayJudgmentKind.Perfect,
+        ReplayJudgmentKind.LatePerfect,
+        ReplayJudgmentKind.TooEarly,
+        ReplayJudgmentKind.Early,
+        ReplayJudgmentKind.Late,
+        ReplayJudgmentKind.Miss,
+        ReplayJudgmentKind.Overload,
+      };
+      Vector2[] optionPositions =
+      {
+        new Vector2(-142f, 24f),
+        new Vector2(0f, 24f),
+        new Vector2(142f, 24f),
+        new Vector2(-118f, -6f),
+        new Vector2(0f, -6f),
+        new Vector2(118f, -6f),
+        new Vector2(-64f, -36f),
+        new Vector2(64f, -36f),
+      };
+      for (int index = 0; index < categories.Length; index++)
+      {
+        string optionName = "Option_" + categories[index];
+        RectTransform option = FindRect(dropdown, optionName);
+        ValidateRect(option, optionName, new Vector2(132f, 26f), optionPositions[index]);
+        if (option?.GetComponent<Toggle>() == null || option.GetComponent<CanvasGroup>() == null)
+          throw new InvalidOperationException("Runtime timeline " + optionName + " is missing its interaction state.");
+        ValidateTextFont(option?.Find("Label")?.GetComponent<TMP_Text>(), optionName + " label");
+        ValidateTextFont(option?.Find("Count")?.GetComponent<TMP_Text>(), optionName + " count");
+      }
+      if (FindRect(dropdown, "Option_TooLate") != null)
+        throw new InvalidOperationException(
+          "Runtime timeline judgment layout contains the non-result Too Late option."
+        );
+    }
+
     private static void ValidateRect(RectTransform rect, string label, Vector2 expectedSize, Vector2? expectedPosition)
     {
       if (rect == null || (rect.sizeDelta - expectedSize).sqrMagnitude > 0.001f)
@@ -192,6 +236,8 @@ namespace TUFReplay.Unity.Editor
         if (dragHandle == null || dockController == null)
           throw new InvalidOperationException("Runtime timeline interaction components are invalid.");
 
+        ValidateJudgmentFiltering(instance);
+
         dragHandle.ClampPosition(Vector2.zero);
         dockController.ResetExpanded(default, false);
         dockController.Dock();
@@ -202,6 +248,62 @@ namespace TUFReplay.Unity.Editor
           UnityEngine.Object.DestroyImmediate(instance);
         UnityEngine.Object.DestroyImmediate(canvasRoot);
       }
+    }
+
+    private static void ValidateJudgmentFiltering(GameObject instance)
+    {
+      UIJudgmentFilterDropdown filter = instance.GetComponent<UIJudgmentFilterDropdown>();
+      UIJudgmentMarkerGraphic markerGraphic = instance.GetComponentInChildren<UIJudgmentMarkerGraphic>(true);
+      RectTransform earlyPerfectOption = FindRect(instance.transform, "Option_EarlyPerfect");
+      RectTransform perfectOption = FindRect(instance.transform, "Option_Perfect");
+      Toggle earlyPerfectToggle = earlyPerfectOption?.GetComponent<Toggle>();
+      Toggle perfectToggle = perfectOption?.GetComponent<Toggle>();
+      TMP_Text earlyPerfectCount = earlyPerfectOption?.Find("Count")?.GetComponent<TMP_Text>();
+      TMP_Text perfectCount = perfectOption?.Find("Count")?.GetComponent<TMP_Text>();
+      TMP_Text selectedCount = FindRect(instance.transform, "CountBadge")?.Find("Count")?.GetComponent<TMP_Text>();
+      if (
+        filter == null
+        || markerGraphic == null
+        || earlyPerfectToggle == null
+        || perfectToggle == null
+        || earlyPerfectCount == null
+        || perfectCount == null
+        || selectedCount == null
+      )
+        throw new InvalidOperationException("Runtime timeline judgment filter references are invalid.");
+
+      filter.SetMarkers(
+        new[]
+        {
+          new ReplayJudgmentMarker(0.1f, ReplayJudgmentKind.EarlyPerfect),
+          new ReplayJudgmentMarker(0.2f, ReplayJudgmentKind.EarlyPerfect),
+        }
+      );
+      if (!earlyPerfectToggle.interactable || earlyPerfectCount.text != "2")
+        throw new InvalidOperationException("Runtime timeline does not expose a populated judgment option.");
+      if (perfectToggle.interactable || perfectToggle.isOn || perfectCount.text != "0")
+        throw new InvalidOperationException("Runtime timeline does not disable an empty judgment option.");
+
+      earlyPerfectToggle.isOn = true;
+      MethodInfo refreshFilter = typeof(UIJudgmentFilterDropdown).GetMethod(
+        "RefreshFilter",
+        BindingFlags.Instance | BindingFlags.NonPublic
+      );
+      if (refreshFilter == null)
+        throw new InvalidOperationException("Runtime timeline judgment refresh method is missing.");
+      refreshFilter.Invoke(filter, null);
+      int earlyPerfectMask = 1 << (int)ReplayJudgmentKind.EarlyPerfect;
+      if (markerGraphic.VisibleMask != earlyPerfectMask || selectedCount.text != "1")
+        throw new InvalidOperationException("Runtime timeline does not apply a selected judgment filter.");
+
+      filter.SetMarkers(new[] { new ReplayJudgmentMarker(0.3f, ReplayJudgmentKind.Perfect) });
+      if (
+        earlyPerfectToggle.interactable
+        || earlyPerfectToggle.isOn
+        || markerGraphic.VisibleMask != 0
+        || selectedCount.text != "0"
+      )
+        throw new InvalidOperationException("Runtime timeline does not clear a judgment selection that became empty.");
     }
 
     private static void ValidateTextFont(TMP_Text text, string label)

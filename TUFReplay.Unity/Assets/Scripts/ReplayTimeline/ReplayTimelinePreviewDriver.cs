@@ -31,7 +31,6 @@ namespace TUFReplay.Unity.ReplayTimeline
       new ReplayJudgmentMarker(0.39f, ReplayJudgmentKind.Perfect),
       new ReplayJudgmentMarker(0.45f, ReplayJudgmentKind.LatePerfect),
       new ReplayJudgmentMarker(0.51f, ReplayJudgmentKind.Late),
-      new ReplayJudgmentMarker(0.58f, ReplayJudgmentKind.TooLate),
       new ReplayJudgmentMarker(0.64f, ReplayJudgmentKind.Miss),
       new ReplayJudgmentMarker(0.70f, ReplayJudgmentKind.EarlyPerfect),
       new ReplayJudgmentMarker(0.75f, ReplayJudgmentKind.Perfect),

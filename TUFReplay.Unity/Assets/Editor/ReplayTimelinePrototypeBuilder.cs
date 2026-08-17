@@ -392,7 +392,7 @@ namespace TUFReplay.Unity.Editor
 
       GameObject popupObject = CreateUIObject("JudgmentDropdown", parent);
       RectTransform popupRect = popupObject.GetComponent<RectTransform>();
-      SetCenteredRect(popupRect, Vector2.zero, new Vector2(272f, 196f));
+      SetCenteredRect(popupRect, Vector2.zero, new Vector2(432f, 140f));
 
       GameObject shadowObject = CreateUIObject("Shadow", popupObject.transform);
       RectTransform shadowRect = shadowObject.GetComponent<RectTransform>();
@@ -423,40 +423,50 @@ namespace TUFReplay.Unity.Editor
         font,
         TextAlignmentOptions.Left
       );
-      SetCenteredRect(popupTitle.rectTransform, new Vector2(-1f, 78f), new Vector2(236f, 18f));
+      SetCenteredRect(popupTitle.rectTransform, new Vector2(0f, 55f), new Vector2(396f, 18f));
 
       ReplayJudgmentKind[] categories =
       {
-        ReplayJudgmentKind.Overload,
-        ReplayJudgmentKind.TooEarly,
-        ReplayJudgmentKind.Early,
         ReplayJudgmentKind.EarlyPerfect,
         ReplayJudgmentKind.Perfect,
         ReplayJudgmentKind.LatePerfect,
+        ReplayJudgmentKind.TooEarly,
+        ReplayJudgmentKind.Early,
         ReplayJudgmentKind.Late,
-        ReplayJudgmentKind.TooLate,
         ReplayJudgmentKind.Miss,
+        ReplayJudgmentKind.Overload,
       };
       string[] labels =
       {
-        "Overload",
-        "Too Early",
-        "Early",
-        "Early Perfect",
-        "Perfect",
-        "Late Perfect",
-        "Late",
-        "Too Late",
-        "Miss",
+        "Early Perfect:",
+        "Perfect:",
+        "Late Perfect:",
+        "Too Early:",
+        "Early:",
+        "Late:",
+        "Miss:",
+        "Overload:",
+      };
+      Vector2[] optionPositions =
+      {
+        new Vector2(-142f, 24f),
+        new Vector2(0f, 24f),
+        new Vector2(142f, 24f),
+        new Vector2(-118f, -6f),
+        new Vector2(0f, -6f),
+        new Vector2(118f, -6f),
+        new Vector2(-64f, -36f),
+        new Vector2(64f, -36f),
       };
       Toggle[] toggles = new Toggle[categories.Length];
+      CanvasGroup[] optionVisuals = new CanvasGroup[categories.Length];
+      TMP_Text[] optionCountLabels = new TMP_Text[categories.Length];
       for (int index = 0; index < categories.Length; index++)
       {
         GameObject rowObject = CreateUIObject("Option_" + categories[index], popupObject.transform);
         RectTransform rowRect = rowObject.GetComponent<RectTransform>();
-        int column = index / 5;
-        int row = index % 5;
-        SetCenteredRect(rowRect, new Vector2(column == 0 ? -64f : 64f, 48f - row * 29f), new Vector2(120f, 26f));
+        SetCenteredRect(rowRect, optionPositions[index], new Vector2(132f, 26f));
+        CanvasGroup optionVisual = rowObject.AddComponent<CanvasGroup>();
 
         Image rowHitArea = rowObject.AddComponent<Image>();
         rowHitArea.color = Color.clear;
@@ -468,7 +478,6 @@ namespace TUFReplay.Unity.Editor
 
         GameObject boxObject = CreateUIObject("Checkbox", rowObject.transform);
         RectTransform boxRect = boxObject.GetComponent<RectTransform>();
-        SetCenteredRect(boxRect, new Vector2(-49f, 0f), new Vector2(16f, 16f));
         UIRoundedPanelGraphic box = boxObject.AddComponent<UIRoundedPanelGraphic>();
         box.Configure(Html("#FFFFFF08"), Html("#FFFFFF2E"), 1f, 8f);
         box.raycastTarget = true;
@@ -489,10 +498,32 @@ namespace TUFReplay.Unity.Editor
           font,
           TextAlignmentOptions.Left
         );
-        label.rectTransform.anchorMin = new Vector2(0f, 0f);
-        label.rectTransform.anchorMax = new Vector2(1f, 1f);
-        label.rectTransform.offsetMin = new Vector2(24f, 0f);
-        label.rectTransform.offsetMax = Vector2.zero;
+        label.ForceMeshUpdate();
+        float labelWidth = Mathf.Ceil(label.preferredWidth);
+
+        TextMeshProUGUI count = BuildText(
+          "Count",
+          rowObject.transform,
+          "0",
+          11f,
+          ReplayJudgmentPalette.GetColor(categories[index]),
+          font,
+          TextAlignmentOptions.Left
+        );
+        const float countWidth = 14f;
+        float contentWidth = 16f + 7f + labelWidth + 5f + countWidth;
+        float contentLeft = contentWidth * -0.5f;
+        SetCenteredRect(boxRect, new Vector2(contentLeft + 8f, 0f), new Vector2(16f, 16f));
+        SetCenteredRect(
+          label.rectTransform,
+          new Vector2(contentLeft + 23f + labelWidth * 0.5f, 0f),
+          new Vector2(labelWidth, 20f)
+        );
+        SetCenteredRect(
+          count.rectTransform,
+          new Vector2(contentLeft + 28f + labelWidth + countWidth * 0.5f, 0f),
+          new Vector2(countWidth, 20f)
+        );
 
         toggle.targetGraphic = rowHitArea;
         toggle.graphic = selected;
@@ -505,6 +536,8 @@ namespace TUFReplay.Unity.Editor
         toggleColors.fadeDuration = 0.1f;
         toggle.colors = toggleColors;
         toggles[index] = toggle;
+        optionVisuals[index] = optionVisual;
+        optionCountLabels[index] = count;
       }
 
       UIJudgmentFilterDropdown controller = parent.gameObject.AddComponent<UIJudgmentFilterDropdown>();
@@ -519,6 +552,8 @@ namespace TUFReplay.Unity.Editor
         judgmentButton.transform.Find("CountBadge/Count").GetComponent<TMP_Text>(),
         judgmentButton.transform.Find("Chevron") as RectTransform,
         toggles,
+        optionVisuals,
+        optionCountLabels,
         categories,
         markerGraphic
       );
