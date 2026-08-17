@@ -38,6 +38,7 @@ internal static class Program
       TestPlaybackWaveReader(root);
       TestPcm16PrefetchBuffer();
       TestPlaybackLimiter(root);
+      TestMicrophoneTimelineAnchor();
       TestReplayMicrophoneClock();
       TestCalibrationSettings(root);
       TestMicrophoneCalibrationState();
@@ -1054,6 +1055,26 @@ internal static class Program
     AssertThrows<OperationCanceledException>(
       () => Pcm16WaveAnalyzer.Analyze(recording, wave, cancelled.Token),
       "Cancelled limiter analysis completed."
+    );
+  }
+
+  private static void TestMicrophoneTimelineAnchor()
+  {
+    Assert(
+      MicrophoneTimelineAnchor.CalculateCorrectionUs(0L, 1d, 3.2d) == -3_200_000L,
+      "Normal microphone preroll correction is incorrect."
+    );
+    Assert(
+      MicrophoneTimelineAnchor.CalculateCorrectionUs(500_000L, 1d, 3d) == -2_500_000L,
+      "Frozen countdown correction did not preserve the resumed timeline position."
+    );
+    Assert(
+      MicrophoneTimelineAnchor.CalculateCorrectionUs(750_000L, 1.5d, 3d) == -2_500_000L,
+      "Frozen countdown correction did not account for gameplay pitch."
+    );
+    Assert(
+      MicrophoneTimelineAnchor.CalculateCorrectionUs(500_000L, double.NaN, 1d) == -500_000L,
+      "Invalid gameplay pitch did not fall back to real-time playback."
     );
   }
 
