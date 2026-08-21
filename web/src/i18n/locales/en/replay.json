@@ -36,7 +36,7 @@
   },
   "errors": {
     "run_not_found": "The selected run could not be found.",
-    "level_gameplay_modified": "The selected level's gameplay does not match the recorded run.",
+    "level_gameplay_modified": "The selected level may have been modified since this run was recorded.",
     "level_file_invalid": "The selected level file is invalid.",
     "calibration_operation_stale": "The calibration operation is no longer active."
   }

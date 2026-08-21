@@ -56,6 +56,8 @@ The project preserves low-level play data and, for new recordings, the resolved 
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
+- Groups revisions of the same TUF level or local level path into one web activity card. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
+- Counts a run as a clear only when it starts at tile zero, reaches the clear terminal state, and does not use No-Fail mode.
 
 ## Runtime
 
@@ -283,7 +285,7 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
   "Ok": true,
   "Mod": "TUFReplay",
   "ModVersion": "0.1.0-beta.10",
-  "ProtocolVersion": 5,
+  "ProtocolVersion": 6,
   "ServerVersion": 1
 }
 ```

@@ -1,6 +1,7 @@
 export interface ActivityLevelSessionOverview {
   Id: string;
   LogicalLevelId: string;
+  LevelGroupId: string;
   AppSessionId: string;
   TufLevelId: number | null;
   Song: string | null;
@@ -157,9 +158,17 @@ export interface ReplayLevelFilePickerResult {
 export interface ActivityDay {
   date: string;
   appSessions: ActivityAppSession[];
-  levelSessions: ActivityLogicalLevelOverview[];
+  levelSessions: ActivityLevelCardOverview[];
+  hasOpenableLevels: boolean;
   runCount: number;
   clearRunCount: number;
+}
+
+export interface ActivityLevelCardOverview extends ActivityLogicalLevelOverview {
+  LevelGroupId: string;
+  CanOpen: boolean;
+  VisibleRunCount: number;
+  HiddenRunCount: number;
 }
 
 export interface LevelMetadata {

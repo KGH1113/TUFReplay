@@ -1,7 +1,8 @@
 import type {
   ActivityAppSession,
   ActivityDay,
-  ActivityLogicalLevelOverview,
+  ActivityLevelCardOverview,
+  ActivityLevelSessionOverview,
   ActivityRun,
   RunMarker,
 } from "../activity.model";
@@ -29,6 +30,7 @@ export function groupSessionsByDay(
   sessions: ActivityAppSession[],
   timeZone: string,
 ): ActivityDay[] {
+  const latestRevisionByGroup = buildLatestRevisionByGroup(sessions);
   const groups = new Map<string, ActivityAppSession[]>();
   for (const session of sessions) {
     const key = dateKeyInTimeZone(session.StartedAtUtc, timeZone);
@@ -39,65 +41,120 @@ export function groupSessionsByDay(
   return [...groups.entries()]
     .sort(([left], [right]) => right.localeCompare(left))
     .map(([date, appSessions]) => {
-      const logicalLevels = buildLogicalLevelOverviews(appSessions);
-      const visits = appSessions.flatMap((session) => session.LevelSessions);
-      const logicalIds = new Set(visits.map((visit) => visit.LogicalLevelId));
-      const levelSessions = [...logicalIds]
-        .map((id) => logicalLevels.get(id))
-        .filter((level): level is ActivityLogicalLevelOverview => level !== undefined);
+      const levelSessions = [
+        ...buildLevelCardOverviews(appSessions, latestRevisionByGroup).values(),
+      ];
       return {
         date,
         appSessions,
         levelSessions,
-        runCount: visits.reduce((sum, session) => sum + session.RunCount, 0),
-        clearRunCount: visits.reduce((sum, session) => sum + session.ClearRunCount, 0),
+        hasOpenableLevels: levelSessions.some((level) => level.CanOpen),
+        runCount: levelSessions.reduce((sum, level) => sum + level.RunCount, 0),
+        clearRunCount: levelSessions.reduce((sum, level) => sum + level.ClearRunCount, 0),
       };
     });
 }
 
-export function buildLogicalLevelOverviews(
+export function buildLevelCardOverviews(
   sessions: ActivityAppSession[],
-): Map<string, ActivityLogicalLevelOverview> {
-  const result = new Map<string, ActivityLogicalLevelOverview>();
+  latestRevisionByGroup = buildLatestRevisionByGroup(sessions),
+): Map<string, ActivityLevelCardOverview> {
+  const visitsByGroup = new Map<string, ActivityLevelSessionOverview[]>();
   for (const visit of sessions.flatMap((session) => session.LevelSessions)) {
-    const current = result.get(visit.LogicalLevelId);
-    if (!current) {
-      result.set(visit.LogicalLevelId, {
-        Id: visit.LogicalLevelId,
-        TufLevelId: visit.TufLevelId,
-        Song: visit.Song,
-        Author: visit.Author,
-        Artist: visit.Artist,
-        FirstSeenAtUtc: visit.OpenedAtUtc,
-        LastSeenAtUtc: visit.ClosedAtUtc ?? visit.OpenedAtUtc,
-        FloorCount: visit.FloorCount,
-        VisitCount: 1,
-        RunCount: visit.RunCount,
-        ClearRunCount: visit.ClearRunCount,
-        NoFailRunCount: visit.NoFailRunCount,
-        FirstStartTile: visit.FirstStartTile,
-        LastStartTile: visit.LastStartTile,
-        ChartAvailable: visit.ChartAvailable,
-      });
-      continue;
-    }
-    current.TufLevelId ??= visit.TufLevelId;
-    current.Song ??= visit.Song;
-    current.Author ??= visit.Author;
-    current.Artist ??= visit.Artist;
-    if (visit.OpenedAtUtc < current.FirstSeenAtUtc) current.FirstSeenAtUtc = visit.OpenedAtUtc;
-    const visitEnd = visit.ClosedAtUtc ?? visit.OpenedAtUtc;
-    if (visitEnd > current.LastSeenAtUtc) current.LastSeenAtUtc = visitEnd;
-    current.FloorCount = Math.max(current.FloorCount, visit.FloorCount);
-    current.VisitCount += 1;
-    current.RunCount += visit.RunCount;
-    current.ClearRunCount += visit.ClearRunCount;
-    current.NoFailRunCount += visit.NoFailRunCount;
-    current.FirstStartTile = minNullable(current.FirstStartTile, visit.FirstStartTile);
-    current.LastStartTile = maxNullable(current.LastStartTile, visit.LastStartTile);
-    current.ChartAvailable ||= visit.ChartAvailable;
+    const visits = visitsByGroup.get(visit.LevelGroupId);
+    if (visits) visits.push(visit);
+    else visitsByGroup.set(visit.LevelGroupId, [visit]);
+  }
+
+  const result = new Map<string, ActivityLevelCardOverview>();
+  for (const [levelGroupId, visits] of visitsByGroup) {
+    const latestVisitForDay = visits.reduce((latest, visit) =>
+      isLaterVisit(visit, latest) ? visit : latest,
+    );
+    const latestRevisionId = latestRevisionByGroup.get(levelGroupId);
+    const visibleVisits = visits.filter((visit) => visit.LogicalLevelId === latestRevisionId);
+    const hiddenRunCount = visits
+      .filter((visit) => visit.LogicalLevelId !== latestRevisionId)
+      .reduce((sum, visit) => sum + visit.RunCount, 0);
+    const canOpen = visibleVisits.length > 0;
+    const countedVisits = canOpen ? visibleVisits : visits;
+    const primaryVisit = canOpen ? visibleVisits[0] : latestVisitForDay;
+    const overview = createLevelCardOverview(levelGroupId, primaryVisit, canOpen, hiddenRunCount);
+    for (const visit of countedVisits)
+      if (visit !== primaryVisit) mergeCountedVisit(overview, visit);
+    result.set(levelGroupId, overview);
   }
   return result;
+}
+
+function buildLatestRevisionByGroup(sessions: ActivityAppSession[]) {
+  const latestVisitByGroup = new Map<string, ActivityLevelSessionOverview>();
+  for (const visit of sessions.flatMap((session) => session.LevelSessions)) {
+    const latest = latestVisitByGroup.get(visit.LevelGroupId);
+    if (!latest || isLaterVisit(visit, latest)) latestVisitByGroup.set(visit.LevelGroupId, visit);
+  }
+  return new Map(
+    [...latestVisitByGroup].map(([levelGroupId, visit]) => [levelGroupId, visit.LogicalLevelId]),
+  );
+}
+
+function createLevelCardOverview(
+  levelGroupId: string,
+  visit: ActivityLevelSessionOverview,
+  canOpen: boolean,
+  hiddenRunCount: number,
+): ActivityLevelCardOverview {
+  return {
+    Id: visit.LogicalLevelId,
+    LevelGroupId: levelGroupId,
+    CanOpen: canOpen,
+    VisibleRunCount: canOpen ? visit.RunCount : 0,
+    HiddenRunCount: hiddenRunCount,
+    TufLevelId: visit.TufLevelId,
+    Song: visit.Song,
+    Author: visit.Author,
+    Artist: visit.Artist,
+    FirstSeenAtUtc: visit.OpenedAtUtc,
+    LastSeenAtUtc: visit.ClosedAtUtc ?? visit.OpenedAtUtc,
+    FloorCount: visit.FloorCount,
+    VisitCount: 1,
+    RunCount: visit.RunCount,
+    ClearRunCount: visit.ClearRunCount,
+    NoFailRunCount: visit.NoFailRunCount,
+    FirstStartTile: visit.FirstStartTile,
+    LastStartTile: visit.LastStartTile,
+    ChartAvailable: visit.ChartAvailable,
+  };
+}
+
+function mergeCountedVisit(
+  current: ActivityLevelCardOverview,
+  visit: ActivityLevelSessionOverview,
+) {
+  current.TufLevelId ??= visit.TufLevelId;
+  current.Song ??= visit.Song;
+  current.Author ??= visit.Author;
+  current.Artist ??= visit.Artist;
+  if (visit.OpenedAtUtc < current.FirstSeenAtUtc) current.FirstSeenAtUtc = visit.OpenedAtUtc;
+  const visitEnd = visit.ClosedAtUtc ?? visit.OpenedAtUtc;
+  if (visitEnd > current.LastSeenAtUtc) current.LastSeenAtUtc = visitEnd;
+  current.FloorCount = Math.max(current.FloorCount, visit.FloorCount);
+  current.VisitCount += 1;
+  current.RunCount += visit.RunCount;
+  if (current.CanOpen) current.VisibleRunCount += visit.RunCount;
+  current.ClearRunCount += visit.ClearRunCount;
+  current.NoFailRunCount += visit.NoFailRunCount;
+  current.FirstStartTile = minNullable(current.FirstStartTile, visit.FirstStartTile);
+  current.LastStartTile = maxNullable(current.LastStartTile, visit.LastStartTile);
+  current.ChartAvailable ||= visit.ChartAvailable;
+}
+
+function isLaterVisit(
+  candidate: ActivityLevelSessionOverview,
+  current: ActivityLevelSessionOverview,
+) {
+  const timestampComparison = candidate.OpenedAtUtc.localeCompare(current.OpenedAtUtc);
+  return timestampComparison > 0 || (timestampComparison === 0 && candidate.Id > current.Id);
 }
 
 function minNullable(left: number | null, right: number | null): number | null {
@@ -134,7 +191,8 @@ export function aggregateRunMarkers(runs: ActivityRun[]): RunMarker[] {
 }
 
 export function isClearRun(run: ActivityRun): boolean {
-  return run.Result.toLowerCase() === "cleared" || run.Result.toLowerCase() === "completed";
+  const result = run.Result.toLowerCase();
+  return (result === "cleared" || result === "completed") && run.StartTile === 0 && !run.NoFailMode;
 }
 
 export function runsForMarker(runs: ActivityRun[], marker: RunMarker | null): ActivityRun[] {

@@ -23,7 +23,7 @@ export function ActivityDashboard() {
   const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const timeZone = browserTimeZone;
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [selectedLevelSessionId, setSelectedLevelSessionId] = useState<string | null>(null);
+  const [selectedLevelGroupId, setSelectedLevelGroupId] = useState<string | null>(null);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [firstMarkerLevelSessionId, setFirstMarkerLevelSessionId] = useState<string | null>(null);
@@ -39,8 +39,10 @@ export function ActivityDashboard() {
   );
   const levelSessions = selectedDay?.levelSessions ?? [];
   const selectedLevel =
-    levelSessions.find((session) => session.Id === selectedLevelSessionId) ??
-    levelSessions[0] ??
+    levelSessions.find(
+      (session) => session.LevelGroupId === selectedLevelGroupId && session.CanOpen,
+    ) ??
+    levelSessions.find((session) => session.CanOpen) ??
     null;
   const levelData = useLevelSessionData(
     selectedLevel?.Id ?? null,
@@ -66,15 +68,19 @@ export function ActivityDashboard() {
   }, [days, selectedDate]);
   useEffect(() => {
     if (!levelSessions.length) {
-      setSelectedLevelSessionId(null);
+      setSelectedLevelGroupId(null);
       return;
     }
-    if (!levelSessions.some((session) => session.Id === selectedLevelSessionId)) {
-      const firstLevelId = levelSessions[0].Id;
-      setSelectedLevelSessionId(firstLevelId);
-      setFirstMarkerLevelSessionId(firstLevelId);
+    if (
+      !levelSessions.some(
+        (session) => session.LevelGroupId === selectedLevelGroupId && session.CanOpen,
+      )
+    ) {
+      const firstLevel = levelSessions.find((session) => session.CanOpen) ?? null;
+      setSelectedLevelGroupId(firstLevel?.LevelGroupId ?? null);
+      setFirstMarkerLevelSessionId(firstLevel?.Id ?? null);
     }
-  }, [levelSessions, selectedLevelSessionId]);
+  }, [levelSessions, selectedLevelGroupId]);
   useEffect(() => {
     if (selectedMarkerId && !markers.some((marker) => marker.id === selectedMarkerId)) {
       setSelectedMarkerId(null);
@@ -116,17 +122,22 @@ export function ActivityDashboard() {
   const handleRun = (run: ActivityRun) =>
     setSelectedRunId((current) => (current === run.Id ? null : run.Id));
   const handleDate = (date: string) => {
-    const firstLevelSessionId = days.find((day) => day.date === date)?.levelSessions[0]?.Id ?? null;
+    const firstLevel =
+      days.find((day) => day.date === date)?.levelSessions.find((level) => level.CanOpen) ?? null;
     setSelectedDate(date);
+    setSelectedLevelGroupId(firstLevel?.LevelGroupId ?? null);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
-    setFirstMarkerLevelSessionId(firstLevelSessionId);
+    setFirstMarkerLevelSessionId(firstLevel?.Id ?? null);
   };
-  const handleLevel = (id: string) => {
-    setSelectedLevelSessionId(id);
+  const handleLevel = (levelGroupId: string) => {
+    const level =
+      levelSessions.find((item) => item.LevelGroupId === levelGroupId && item.CanOpen) ?? null;
+    if (!level) return;
+    setSelectedLevelGroupId(levelGroupId);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
-    setFirstMarkerLevelSessionId(id);
+    setFirstMarkerLevelSessionId(level.Id);
   };
   const handleDeleteMicrophoneRecording = async (run: ActivityRun) => {
     const gateway = activity.gatewayRef.current;
@@ -177,10 +188,10 @@ export function ActivityDashboard() {
             />
             <LevelStrip
               levelSessions={levelSessions}
-              selectedLevelSessionId={selectedLevel?.Id ?? null}
+              selectedLevelGroupId={selectedLevel?.LevelGroupId ?? null}
               timeZone={timeZone}
               metadataFor={metadataFor}
-              onSelectLevelSession={handleLevel}
+              onSelectLevelGroup={handleLevel}
             />
             {activity.status === "incompatible" ? (
               <ConnectionStatePanel
@@ -197,6 +208,17 @@ export function ActivityDashboard() {
                   versionMismatch={activity.versionMismatch}
                   onRetry={() => void activity.retry()}
                 />
+              ) : selectedDay && !selectedDay.hasOpenableLevels && levelSessions.length > 0 ? (
+                <div className="grid flex-1 place-items-center px-6 text-center">
+                  <div className="max-w-md">
+                    <h2 className="font-heading text-lg font-semibold">
+                      {activityT("levels.unavailableTitle")}
+                    </h2>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      {activityT("levels.unavailableBody")}
+                    </p>
+                  </div>
+                </div>
               ) : (
                 <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
                   {activityT("empty")}
