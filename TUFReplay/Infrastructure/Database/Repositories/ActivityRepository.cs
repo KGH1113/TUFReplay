@@ -10,7 +10,7 @@ public static class ActivityRepository
 {
   private const string Select =
     @"SELECT l.id,l.level_id,l.app_session_id,g.tuf_level_id,l.opened_at_utc,l.closed_at_utc,g.level_tile_count,
-count(r.id),coalesce(sum(CASE WHEN r.result='cleared' THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
+count(r.id),coalesce(sum(CASE WHEN lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0 THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
 g.adofai_path,g.song,g.author,g.artist,g.metadata_state
 FROM level_sessions l JOIN levels g ON g.id=l.level_id LEFT JOIN runs r ON r.level_session_id=l.id ";
 
@@ -31,7 +31,7 @@ FROM level_sessions l JOIN levels g ON g.id=l.level_id LEFT JOIN runs r ON r.lev
     q.CommandText =
       @"SELECT g.id,g.tuf_level_id,g.song,g.author,g.artist,g.first_seen_at_utc,g.last_seen_at_utc,
 g.level_tile_count,count(DISTINCT l.id),count(r.id),
-coalesce(sum(CASE WHEN r.result='cleared' THEN 1 ELSE 0 END),0),
+coalesce(sum(CASE WHEN lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0 THEN 1 ELSE 0 END),0),
 coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile)
 FROM levels g
 LEFT JOIN level_sessions l ON l.level_id=g.id

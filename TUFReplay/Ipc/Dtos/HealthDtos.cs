@@ -2,7 +2,7 @@ namespace TUFReplay.Ipc.Dtos;
 
 public sealed class HealthResponseDto
 {
-  public const int CurrentProtocolVersion = 5;
+  public const int CurrentProtocolVersion = 6;
 
   public bool Ok;
   public string Mod;

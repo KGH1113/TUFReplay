@@ -29,7 +29,7 @@ const FILE_PICKER_POLL_INTERVAL_MS = 100;
 const IPC_PROBE_TIMEOUT_MS = 500;
 const IPC_REQUEST_TIMEOUT_MS = 30_000;
 const NAMESPACE_READY_TIMEOUT_MS = 30_000;
-export const SUPPORTED_PROTOCOL_VERSION = 5;
+export const SUPPORTED_PROTOCOL_VERSION = 6;
 
 export interface ActivityHealth {
   Ok: boolean;

@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using TUFReplay.Domain.Activity;
+using TUFReplay.Infrastructure.Unity;
 
 namespace TUFReplay.Ipc.Dtos;
 
@@ -67,6 +68,7 @@ public sealed class ActivityLevelSessionOverviewDto
 {
   public string Id;
   public string LogicalLevelId;
+  public string LevelGroupId;
   public string AppSessionId;
   public int? TufLevelId;
   public string Song;
@@ -87,6 +89,7 @@ public sealed class ActivityLevelSessionOverviewDto
     {
       Id = s.Id,
       LogicalLevelId = s.LogicalLevelId,
+      LevelGroupId = LevelGroupIdentity.Create(s.TufLevelId, s.LevelPath),
       AppSessionId = s.AppSessionId,
       TufLevelId = s.TufLevelId,
       Song = s.Song,

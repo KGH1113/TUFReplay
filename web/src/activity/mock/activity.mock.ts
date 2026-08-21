@@ -9,6 +9,7 @@ import type {
   ReplayStatus,
 } from "../activity.model";
 import { ActivityDomainError, type ActivityGateway } from "../data/activity.gateway";
+import { isClearRun } from "../lib/activity-data.utils";
 
 import level5Text from "./levels/tuf-5.adofai?raw";
 import level303Text from "./levels/tuf-303.adofai?raw";
@@ -95,7 +96,7 @@ export function createMockActivityGateway(): ActivityGateway {
       Ok: true,
       Mod: "TUFReplay",
       ModVersion: "mock",
-      ProtocolVersion: 5,
+      ProtocolVersion: 6,
       ServerVersion: 1,
     }),
     listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
@@ -325,11 +326,12 @@ function createLevel(
   const runs = starts.map((startTile, index) =>
     createRun(id, tufLevelId, openedAtUtc, floorCount, startTile, index),
   );
-  const clearRunCount = runs.filter((run) => run.Result === "Cleared").length;
+  const clearRunCount = runs.filter(isClearRun).length;
   return {
     session: {
       Id: id,
       LogicalLevelId: id,
+      LevelGroupId: `mock-tuf-${tufLevelId}`,
       AppSessionId: appSessionId,
       TufLevelId: tufLevelId,
       Song: null,

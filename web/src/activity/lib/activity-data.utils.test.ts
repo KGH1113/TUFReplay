@@ -5,7 +5,7 @@ import type {
   ActivityLevelSessionOverview,
   ActivityRun,
 } from "../activity.model";
-import { aggregateRunMarkers, groupSessionsByDay } from "./activity-data.utils";
+import { aggregateRunMarkers, groupSessionsByDay, isClearRun } from "./activity-data.utils";
 
 const session = (id: string, started: string): ActivityAppSession => ({
   Id: id,
@@ -21,9 +21,13 @@ const visit = (
   appSessionId: string,
   openedAtUtc: string,
   runCount: number,
+  levelGroupId = "group-7",
+  clearRunCount = 0,
+  noFailRunCount = 0,
 ): ActivityLevelSessionOverview => ({
   Id: id,
   LogicalLevelId: logicalLevelId,
+  LevelGroupId: levelGroupId,
   AppSessionId: appSessionId,
   TufLevelId: 7,
   Song: "Same level",
@@ -33,8 +37,8 @@ const visit = (
   ClosedAtUtc: null,
   FloorCount: 100,
   RunCount: runCount,
-  ClearRunCount: 0,
-  NoFailRunCount: 0,
+  ClearRunCount: clearRunCount,
+  NoFailRunCount: noFailRunCount,
   FirstStartTile: 0,
   LastStartTile: 0,
   ChartAvailable: true,
@@ -99,7 +103,25 @@ describe("activity data", () => {
 
   test("aggregates markers by StartTile with the exact marker fields", () => {
     expect(aggregateRunMarkers([run("a", 12, 20), run("b", 12, 30, "cleared")])).toEqual([
-      { id: "floor-12", floorIndex: 12, count: 2, clearCount: 1, bestLastFloorIndex: 30 },
+      { id: "floor-12", floorIndex: 12, count: 2, clearCount: 0, bestLastFloorIndex: 30 },
+    ]);
+  });
+
+  test("counts a clear only for a full normal-mode run from tile zero", () => {
+    const qualified = run("qualified", 0, 100, "cleared");
+    const checkpoint = run("checkpoint", 40, 100, "cleared");
+    const noFail = { ...run("no-fail", 0, 100, "completed"), NoFailMode: true };
+    const roundedOnly = run("rounded", 0, 99, "failed");
+
+    expect([qualified, checkpoint, noFail, roundedOnly].map(isClearRun)).toEqual([
+      true,
+      false,
+      false,
+      false,
+    ]);
+    expect(aggregateRunMarkers([qualified, checkpoint, noFail, roundedOnly])).toEqual([
+      { id: "floor-0", floorIndex: 0, count: 3, clearCount: 1, bestLastFloorIndex: 100 },
+      { id: "floor-40", floorIndex: 40, count: 1, clearCount: 0, bestLastFloorIndex: 100 },
     ]);
   });
 
@@ -110,8 +132,104 @@ describe("activity data", () => {
     second.LevelSessions = [visit("visit-b", "logical-7", second.Id, second.StartedAtUtc, 3)];
     const [day] = groupSessionsByDay([first, second], "UTC");
     expect(day.levelSessions).toHaveLength(1);
-    expect(day.levelSessions[0]).toMatchObject({ Id: "logical-7", VisitCount: 2, RunCount: 5 });
+    expect(day.levelSessions[0]).toMatchObject({
+      Id: "logical-7",
+      VisitCount: 2,
+      RunCount: 5,
+      HiddenRunCount: 0,
+    });
     expect(day.runCount).toBe(5);
+  });
+
+  test("shows only the latest revision and counts runs from earlier revisions as hidden", () => {
+    const before = session("app-before", "2026-01-01T01:00:00Z");
+    const after = session("app-after", "2026-01-01T02:00:00Z");
+    before.LevelSessions = [
+      visit("visit-before", "revision-before", before.Id, before.StartedAtUtc, 3, "group-7", 2, 1),
+    ];
+    after.LevelSessions = [
+      visit("visit-after", "revision-after", after.Id, after.StartedAtUtc, 5, "group-7", 4, 2),
+    ];
+
+    const [day] = groupSessionsByDay([before, after], "UTC");
+    expect(day.levelSessions).toHaveLength(1);
+    expect(day.levelSessions[0]).toMatchObject({
+      Id: "revision-after",
+      RunCount: 5,
+      ClearRunCount: 4,
+      NoFailRunCount: 2,
+      HiddenRunCount: 3,
+    });
+    expect(day.runCount).toBe(5);
+    expect(day.clearRunCount).toBe(4);
+  });
+
+  test("keeps an earlier day's counts but blocks its outdated revision", () => {
+    const oldDay = session("app-old", "2026-08-14T01:00:00Z");
+    const beforeEdit = session("app-before-edit", "2026-08-16T01:00:00Z");
+    const afterEdit = session("app-after-edit", "2026-08-16T02:00:00Z");
+    oldDay.LevelSessions = [
+      visit("visit-old", "revision-a", oldDay.Id, oldDay.StartedAtUtc, 4, "group-7", 2),
+    ];
+    beforeEdit.LevelSessions = [
+      visit(
+        "visit-before-edit",
+        "revision-a",
+        beforeEdit.Id,
+        beforeEdit.StartedAtUtc,
+        3,
+        "group-7",
+        1,
+      ),
+    ];
+    afterEdit.LevelSessions = [
+      visit(
+        "visit-after-edit",
+        "revision-b",
+        afterEdit.Id,
+        afterEdit.StartedAtUtc,
+        5,
+        "group-7",
+        4,
+      ),
+    ];
+
+    const [latestDay, earlierDay] = groupSessionsByDay([oldDay, beforeEdit, afterEdit], "UTC");
+    expect(latestDay.levelSessions[0]).toMatchObject({
+      Id: "revision-b",
+      CanOpen: true,
+      RunCount: 5,
+      VisibleRunCount: 5,
+      HiddenRunCount: 3,
+    });
+    expect(latestDay.runCount).toBe(5);
+    expect(earlierDay.levelSessions[0]).toMatchObject({
+      Id: "revision-a",
+      CanOpen: false,
+      RunCount: 4,
+      VisibleRunCount: 0,
+      HiddenRunCount: 4,
+    });
+    expect(earlierDay).toMatchObject({ hasOpenableLevels: false, runCount: 4, clearRunCount: 2 });
+  });
+
+  test("uses every visit of the revision played most recently after an A-B-A sequence", () => {
+    const firstA = session("app-a1", "2026-01-01T01:00:00Z");
+    const revisionB = session("app-b", "2026-01-01T02:00:00Z");
+    const latestA = session("app-a2", "2026-01-01T03:00:00Z");
+    firstA.LevelSessions = [visit("visit-a1", "revision-a", firstA.Id, firstA.StartedAtUtc, 2)];
+    revisionB.LevelSessions = [
+      visit("visit-b", "revision-b", revisionB.Id, revisionB.StartedAtUtc, 4),
+    ];
+    latestA.LevelSessions = [visit("visit-a2", "revision-a", latestA.Id, latestA.StartedAtUtc, 3)];
+
+    const [day] = groupSessionsByDay([firstA, revisionB, latestA], "UTC");
+    expect(day.levelSessions[0]).toMatchObject({
+      Id: "revision-a",
+      VisitCount: 2,
+      RunCount: 5,
+      HiddenRunCount: 4,
+    });
   });
 
   test("keeps the same logical level's summary scoped to each day", () => {
@@ -125,5 +243,6 @@ describe("activity data", () => {
       ["2026-01-02", 5],
       ["2026-01-01", 2],
     ]);
+    expect(days.map((day) => day.levelSessions[0].HiddenRunCount)).toEqual([0, 0]);
   });
 });

@@ -52,6 +52,7 @@ internal static class Program
       TestRunDeletionHierarchy(root);
       TestLogicalRunSessionFilter(root);
       TestLogicalLevelIdentity(root);
+      TestQualifiedClearCounts(root);
       TestReplayInputStableOrder();
       TestReplayCsvParserCompatibility();
       TestReplayTimelineTimeMath();
@@ -2124,6 +2125,21 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
     LevelSessionRepository.Save(fileChanged);
     Assert(fileA.LevelId == fileB.LevelId, "Equal local gameplay revisions were not merged.");
     Assert(fileA.LevelId != fileChanged.LevelId, "Changed local gameplay revisions were incorrectly merged.");
+
+    string tufGroupA = LevelGroupIdentity.Create(77, "/tmp/tuf-a.adofai");
+    string tufGroupB = LevelGroupIdentity.Create(77, "/tmp/tuf-b.adofai");
+    string otherTufGroup = LevelGroupIdentity.Create(78, "/tmp/tuf-a.adofai");
+    Assert(tufGroupA == tufGroupB, "TUF revisions with the same level ID were not grouped.");
+    Assert(tufGroupA != otherTufGroup, "Different TUF level IDs shared a group ID.");
+
+    string localPath = Path.Combine(root, "group", "local.adofai");
+    string equivalentLocalPath = Path.Combine(root, "group", "nested", "..", "local.adofai");
+    string localGroupA = LevelGroupIdentity.Create(null, localPath);
+    string localGroupB = LevelGroupIdentity.Create(null, equivalentLocalPath);
+    string otherLocalGroup = LevelGroupIdentity.Create(null, Path.Combine(root, "group", "other.adofai"));
+    Assert(localGroupA == localGroupB, "Equivalent local paths were not grouped.");
+    Assert(localGroupA != otherLocalGroup, "Different local paths shared a group ID.");
+    Assert(!localGroupA.Contains(localPath), "The local level path leaked into the group ID.");
   }
 
   private static LevelSession LogicalVisit(string id, string path, int? tufLevelId, byte[] gameplayHash)
@@ -2151,6 +2167,37 @@ VALUES('run-a','level-a',0,'2026-01-01',0,'clear'),
       AppSessionId = "logical-app",
       OpenedAtUtc = timestamp,
     };
+  }
+
+  private static void TestQualifiedClearCounts(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "qualified-clear-counts.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand seed = connection.CreateCommand();
+      seed.CommandText =
+        @"
+INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes)
+VALUES('clear-app','2026-01-01',0);
+INSERT INTO levels(id,identity_key,source_kind,adofai_path,level_tile_count,first_seen_at_utc,last_seen_at_utc)
+VALUES('clear-level','clear-identity',0,'clear.adofai',100,'2026-01-01','2026-01-01');
+INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc)
+VALUES('clear-session','clear-level','clear-app','2026-01-01');
+INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,last_tile,result,no_fail_mode)
+VALUES
+  ('qualified','clear-session',0,'2026-01-01T00:00:00Z',0,100,'cleared',0),
+  ('legacy-completed','clear-session',1,'2026-01-01T00:01:00Z',0,100,'completed',0),
+  ('checkpoint','clear-session',2,'2026-01-01T00:02:00Z',40,100,'cleared',0),
+  ('no-fail','clear-session',3,'2026-01-01T00:03:00Z',0,100,'cleared',1),
+  ('rounded-only','clear-session',4,'2026-01-01T00:04:00Z',0,99,'failed',0);";
+      seed.ExecuteNonQuery();
+    }
+
+    LevelSessionOverview session = ActivityRepository.GetLevelSessionOverview("clear-session");
+    LogicalLevelOverview level = ActivityRepository.GetLogicalLevelOverview("clear-level");
+    Assert(session.ClearRunCount == 2, "Level-session clear count included an unqualified run.");
+    Assert(level.ClearRunCount == 2, "Logical-level clear count included an unqualified run.");
   }
 
   private static void InsertRun(SqliteConnection connection)
