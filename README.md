@@ -80,7 +80,18 @@ Reflection consumers should cache the resolved type and property getter, query t
 
 ## Repository Layout
 
-- `TUFReplay/`: UnityModManager mod source.
+- `TUFReplay/`: UnityModManager mod source, organized first by feature and then by concrete role.
+  - `Activity/`: `Models`, `Queries`, `Tracking`, `Repositories`, `Migrations`, `Charts`, and `Ipc`.
+  - `Replay/`: `Models`, `Sessions`, `Preparation`, `Transport`, `Playback`, `NativeInput`, `Levels`, `Timeline`, `Patches`, and `Ipc`.
+  - `Recording/`: `Models`, `Sessions`, `Input`, `Activity`, `Microphone`, and `Patches`.
+  - `Microphone/`: `Models`, `Devices`, `Capture`, `Playback`, `Processing`, `Timing`, `Recording`, `Repositories`, and `Ipc`.
+  - `Calibration/`: `Models`, `Sessions`, `Analysis`, `Playback`, `Levels`, and `Ipc`.
+  - `Composition/`: the mod composition root and feature registry. This is separate from the fixed launcher assembly in `TUFReplay.Bootstrap/`.
+  - `Shared/`: database, IPC, settings, native-input, and Unity primitives shared by multiple features.
+- `TUFReplay.Bootstrap/`: fixed launcher that selects and loads a versioned TUFReplay runtime.
+- `TUFReplay.UpdateEngine/`: versioned update and package installation engine.
+- `TUFReplay.Tests/`: executable C# test harness, grouped into activity/database, microphone/calibration, and replay/native-input suites.
+- `TUFReplay.UpdateTests/`: updater test suite linked into the main C# test harness.
 - `TUFReplay.Unity/`: Unity 6.3 project for the replay timeline prefab, Canvas graphics, shader, and platform AssetBundle builder.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.

@@ -1,0 +1,219 @@
+using System.Collections.Generic;
+using TUFReplay.Activity.Charts;
+using TUFReplay.Activity.Models;
+
+namespace TUFReplay.Activity.Ipc;
+
+public sealed class ActivityAppSessionDto
+{
+  public string Id;
+  public string StartedAtUtc;
+  public string EndedAtUtc;
+  public string RecorderTimeZoneId;
+  public int RecorderUtcOffsetMinutes;
+  public List<ActivityLevelSessionOverviewDto> LevelSessions;
+
+  public static ActivityAppSessionDto From(AppSession s, List<ActivityLevelSessionOverviewDto> levels) =>
+    new ActivityAppSessionDto
+    {
+      Id = s.Id,
+      StartedAtUtc = s.StartedAtUtc,
+      EndedAtUtc = s.EndedAtUtc,
+      RecorderTimeZoneId = s.RecorderTimeZoneId,
+      RecorderUtcOffsetMinutes = s.RecorderUtcOffsetMinutes,
+      LevelSessions = levels,
+    };
+}
+
+public sealed class ActivityLogicalLevelOverviewDto
+{
+  public string Id;
+  public int? TufLevelId;
+  public string Song;
+  public string Author;
+  public string Artist;
+  public string FirstSeenAtUtc;
+  public string LastSeenAtUtc;
+  public int FloorCount;
+  public int VisitCount;
+  public int RunCount;
+  public int ClearRunCount;
+  public int NoFailRunCount;
+  public int? FirstStartTile;
+  public int? LastStartTile;
+  public bool ChartAvailable;
+
+  public static ActivityLogicalLevelOverviewDto From(LogicalLevelOverview level) =>
+    new ActivityLogicalLevelOverviewDto
+    {
+      Id = level.Id,
+      TufLevelId = level.TufLevelId,
+      Song = level.Song,
+      Author = level.Author,
+      Artist = level.Artist,
+      FirstSeenAtUtc = level.FirstSeenAtUtc,
+      LastSeenAtUtc = level.LastSeenAtUtc,
+      FloorCount = level.LevelTileCount,
+      VisitCount = level.VisitCount,
+      RunCount = level.RunCount,
+      ClearRunCount = level.ClearRunCount,
+      NoFailRunCount = level.NoFailRunCount,
+      FirstStartTile = level.FirstStartTile,
+      LastStartTile = level.LastStartTile,
+      ChartAvailable = level.ChartAvailable,
+    };
+}
+
+public sealed class ActivityLevelSessionOverviewDto
+{
+  public string Id;
+  public string LogicalLevelId;
+  public string LevelGroupId;
+  public string AppSessionId;
+  public int? TufLevelId;
+  public string Song;
+  public string Author;
+  public string Artist;
+  public string OpenedAtUtc;
+  public string ClosedAtUtc;
+  public int FloorCount;
+  public int RunCount;
+  public int ClearRunCount;
+  public int NoFailRunCount;
+  public int? FirstStartTile;
+  public int? LastStartTile;
+  public bool ChartAvailable;
+
+  public static ActivityLevelSessionOverviewDto From(LevelSessionOverview s) =>
+    new ActivityLevelSessionOverviewDto
+    {
+      Id = s.Id,
+      LogicalLevelId = s.LogicalLevelId,
+      LevelGroupId = LevelGroupIdentity.Create(s.TufLevelId, s.LevelPath),
+      AppSessionId = s.AppSessionId,
+      TufLevelId = s.TufLevelId,
+      Song = s.Song,
+      Author = s.Author,
+      Artist = s.Artist,
+      OpenedAtUtc = s.OpenedAtUtc,
+      ClosedAtUtc = s.ClosedAtUtc,
+      FloorCount = s.LevelTileCount,
+      RunCount = s.RunCount,
+      ClearRunCount = s.ClearRunCount,
+      NoFailRunCount = s.NoFailRunCount,
+      FirstStartTile = s.FirstStartTile,
+      LastStartTile = s.LastStartTile,
+      ChartAvailable = s.ChartAvailable,
+    };
+}
+
+public sealed class ActivityRunDto
+{
+  public string Id;
+  public string LevelSessionId;
+  public int? TufLevelId;
+  public int RunIndex;
+  public string StartedAtUtc;
+  public string EndedAtUtc;
+  public int FloorCount;
+  public int StartTile;
+  public int? LastTile;
+  public string Result;
+  public bool NoFailMode;
+  public double? GameplayStartSongPosition;
+  public int? LevelPitchPercent;
+  public float? EffectivePitch;
+  public float? XAccuracy;
+  public string JudgmentDifficulty;
+  public JudgmentCountsDto JudgmentCounts;
+  public int InputCount;
+  public int HitContextCount;
+  public long InputBytes;
+  public long HitContextBytes;
+  public bool HasMicrophoneRecording;
+  public long MicrophoneRecordingBytes;
+  public double? MicrophoneDurationSeconds;
+  public int? MicrophoneSampleRate;
+  public int? MicrophoneChannels;
+  public bool MicrophoneRecordingPermanent;
+  public string MicrophoneRecordingExpiresAtUtc;
+
+  public static ActivityRunDto From(RunRecord r) =>
+    new ActivityRunDto
+    {
+      Id = r.Id,
+      LevelSessionId = r.LevelSessionId,
+      TufLevelId = r.TufLevelId,
+      RunIndex = r.RunIndex,
+      StartedAtUtc = r.StartedAtUtc,
+      EndedAtUtc = r.EndedAtUtc,
+      FloorCount = r.LevelTileCount,
+      StartTile = r.StartTile,
+      LastTile = r.LastTile,
+      Result = r.Result,
+      NoFailMode = r.NoFailMode,
+      GameplayStartSongPosition = r.GameplayStartSongPosition,
+      LevelPitchPercent = r.LevelPitchPercent,
+      EffectivePitch = r.EffectivePitch,
+      XAccuracy = r.XAccuracy,
+      JudgmentDifficulty = r.JudgmentDifficulty?.ToString(),
+      JudgmentCounts = JudgmentCountsDto.From(r.JudgmentCounts),
+      InputCount = r.InputCount,
+      HitContextCount = r.HitContextCount,
+      InputBytes = r.InputCsvBytes,
+      HitContextBytes = r.HitContextCsvBytes,
+      HasMicrophoneRecording = r.MicrophoneRecordingBytes > 0,
+      MicrophoneRecordingBytes = r.MicrophoneRecordingBytes,
+      MicrophoneDurationSeconds =
+        r.MicrophoneFrameCount.HasValue && r.MicrophoneSampleRate > 0
+          ? (double?)r.MicrophoneFrameCount.Value / r.MicrophoneSampleRate.Value
+          : null,
+      MicrophoneSampleRate = r.MicrophoneSampleRate,
+      MicrophoneChannels = r.MicrophoneChannels,
+      MicrophoneRecordingPermanent = r.MicrophoneRecordingPermanent,
+      MicrophoneRecordingExpiresAtUtc = r.MicrophoneRecordingExpiresAtUtc,
+    };
+}
+
+public sealed class JudgmentCountsDto
+{
+  public int Overload;
+  public int TooEarly;
+  public int Early;
+  public int EarlyPerfect;
+  public int Perfect;
+  public int LatePerfect;
+  public int Late;
+  public int TooLate;
+  public int Miss;
+
+  public static JudgmentCountsDto From(JudgmentCounts counts)
+  {
+    counts ??= new JudgmentCounts();
+    return new JudgmentCountsDto
+    {
+      Overload = counts.Overload,
+      TooEarly = counts.TooEarly,
+      Early = counts.Early,
+      EarlyPerfect = counts.EarlyPerfect,
+      Perfect = counts.Perfect,
+      LatePerfect = counts.LatePerfect,
+      Late = counts.Late,
+      TooLate = counts.TooLate,
+      Miss = counts.Miss,
+    };
+  }
+}
+
+public sealed class ActivityChartDto
+{
+  public string LevelSessionId;
+  public string LevelText;
+  public int FloorCount;
+}
+
+public sealed class ActivityRunDeleteResultDto
+{
+  public string RunId;
+  public bool Deleted;
+}
