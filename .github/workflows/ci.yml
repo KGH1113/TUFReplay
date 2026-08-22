@@ -15,11 +15,22 @@ concurrency:
 
 jobs:
   checks:
-    name: Bun checks
+    name: Source checks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Check C# formatting
+        run: dotnet csharpier check TUFReplay TUFReplay.Tests
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
