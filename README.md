@@ -182,11 +182,23 @@ The web UI bundles English and Korean translation resources under `web/src/i18n/
 
 To run the UI against the bundled activity, chart, run, and replay mock data instead of AdofaiIpc, open the development URL with `?mock=1` (for example, `http://localhost:5174/?mock=1`) or start Vite with `VITE_USE_MOCK_ACTIVITY=true`.
 
+The web source uses a one-way layered architecture. Each layer is subdivided by domain where applicable:
+
+```text
+shared clients/UI → schemas → models → api → state/mocks → hooks
+                  → components → sections → pages → app
+```
+
+AdofaiIpc and HTTP payloads enter the application as unknown data and are validated by Zod in the API layer. TanStack Query owns server and IPC state; calibration editing state stays in its feature reducer. Hooks act as page/component ViewModels: they own application state, derived display values, and commands, while pages and components focus on composition and rendering. The app composition root is the only place that selects the production or mock `AppApi` bundle. Canonical shadcn primitives live in `web/src/shared/ui` and cannot import domain code.
+
+Tests live separately under `web/tests`, mirror the source domains, and use purpose-specific suffixes such as `*.unit.test.ts`, `*.contract.test.ts`, and `*.integration.test.tsx`. The architecture contract test enforces the allowed import direction.
+
 Test, type-check, or build the web workspace:
 
 ```bash
 bun run web:test
 bun run web:typecheck
+bun run web:biome
 bun run web:build
 ```
 
@@ -325,3 +337,4 @@ The timing dialog first offers compact global offset and microphone-gain control
 ## Special Thanks
 
 - **Teo** — Gave his idea to me and started this project.
+- **Potato** - Developed CReplay, a mod that was heavily referenced in this project.

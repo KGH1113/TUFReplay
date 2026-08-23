@@ -1,0 +1,82 @@
+import { clampMicrophoneOffset } from "@/models/calibration/microphone-offset";
+import {
+  clampMicrophoneVolumeDb,
+  DEFAULT_MICROPHONE_VOLUME_DB,
+} from "@/models/calibration/microphone-volume";
+
+export type MicrophoneOffsetCalibrationPhase =
+  | "closed"
+  | "settings"
+  | "launching"
+  | "waiting_for_clear"
+  | "editing"
+  | "error";
+
+export interface MicrophoneOffsetCalibrationState {
+  phase: MicrophoneOffsetCalibrationPhase;
+  offsetMs: number;
+  microphoneVolumeDb: number;
+}
+
+export type MicrophoneOffsetCalibrationAction =
+  | { type: "open_settings"; offsetMs: number; microphoneVolumeDb: number }
+  | { type: "start" }
+  | { type: "level_opened" }
+  | { type: "run_cleared" }
+  | { type: "commit_offset"; offsetMs: number }
+  | { type: "commit_microphone_volume"; volumeDb: number }
+  | {
+      type: "sync";
+      phase: MicrophoneOffsetCalibrationPhase;
+      offsetMs: number;
+      microphoneVolumeDb: number;
+    }
+  | { type: "close" };
+
+export function createMicrophoneOffsetCalibrationState(
+  initialOffsetMs: number,
+  initialMicrophoneVolumeDb = DEFAULT_MICROPHONE_VOLUME_DB,
+): MicrophoneOffsetCalibrationState {
+  return {
+    phase: "closed",
+    offsetMs: clampMicrophoneOffset(initialOffsetMs),
+    microphoneVolumeDb: clampMicrophoneVolumeDb(initialMicrophoneVolumeDb),
+  };
+}
+
+export function microphoneOffsetCalibrationReducer(
+  state: MicrophoneOffsetCalibrationState,
+  action: MicrophoneOffsetCalibrationAction,
+): MicrophoneOffsetCalibrationState {
+  if (action.type === "open_settings")
+    return {
+      phase: "settings",
+      offsetMs: clampMicrophoneOffset(action.offsetMs),
+      microphoneVolumeDb: clampMicrophoneVolumeDb(action.microphoneVolumeDb),
+    };
+  if (action.type === "start") return { ...state, phase: "launching" };
+  if (action.type === "level_opened" && state.phase === "launching")
+    return { ...state, phase: "waiting_for_clear" };
+  if (action.type === "run_cleared" && state.phase === "waiting_for_clear")
+    return { ...state, phase: "editing" };
+  if (action.type === "commit_offset")
+    return { ...state, offsetMs: clampMicrophoneOffset(action.offsetMs) };
+  if (action.type === "commit_microphone_volume")
+    return {
+      ...state,
+      microphoneVolumeDb: clampMicrophoneVolumeDb(action.volumeDb),
+    };
+  if (action.type === "sync") {
+    const offsetMs = clampMicrophoneOffset(action.offsetMs);
+    const microphoneVolumeDb = clampMicrophoneVolumeDb(action.microphoneVolumeDb);
+    if (
+      state.phase === action.phase &&
+      state.offsetMs === offsetMs &&
+      state.microphoneVolumeDb === microphoneVolumeDb
+    )
+      return state;
+    return { phase: action.phase, offsetMs, microphoneVolumeDb };
+  }
+  if (action.type === "close") return { ...state, phase: "closed" };
+  return state;
+}
