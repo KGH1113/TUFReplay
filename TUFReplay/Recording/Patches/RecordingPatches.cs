@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using HarmonyLib;
 using MonsterLove.StateMachine;
 using TUFReplay.Recording.Input;
@@ -16,6 +17,8 @@ public static class RecordingPatches
   private static scrFloor _hitFloor;
   private static readonly HitMarginSnapshot HitMargins = new();
   private static bool _pendingHitMarginCapture;
+  private static long _conductorUpdatePrefixTicks;
+  private static bool? _lastCaptureAllowed;
   private static bool IsActive => RecordingFeature.Instance != null && RecordingFeature.Instance.Active;
 
   public static void ResetHitContextState()
@@ -23,6 +26,51 @@ public static class RecordingPatches
     _hitFloor = null;
     _pendingHitMarginCapture = false;
     HitMargins.Reset();
+    _lastCaptureAllowed = null;
+  }
+
+  [HarmonyPatch(typeof(scrConductor), "Update")]
+  [HarmonyPrefix]
+  private static void OnConductorUpdatePrefix()
+  {
+    _conductorUpdatePrefixTicks = Stopwatch.GetTimestamp();
+  }
+
+  [HarmonyPatch(typeof(scrConductor), "Update")]
+  [HarmonyPostfix]
+  private static void OnConductorUpdatePostfix(scrConductor __instance)
+  {
+    try
+    {
+      if (!IsActive || __instance == null)
+        return;
+      RecordingSession session = RecordingFeature.Instance?.Session;
+      if (session == null || !session.IsRecording || !session.IsCapturingInput)
+        return;
+
+      long postfixTicks = Stopwatch.GetTimestamp();
+      RecordInputTracker.Sample(session);
+      bool captureAllowed = IsNativeInputCaptureAllowed();
+      ObserveCapturePermissionTransition(session, captureAllowed);
+      if (!captureAllowed)
+        return;
+      float pitch = __instance.song != null ? __instance.song.pitch : 0f;
+      double songPosition = __instance.songposition_minusi;
+      bool ready =
+        __instance.hasSongStarted
+        && __instance.song != null
+        && __instance.crotchetAtStart > 0d
+        && pitch > 0f
+        && !double.IsNaN(songPosition)
+        && !double.IsInfinity(songPosition)
+        && !float.IsNaN(pitch)
+        && !float.IsInfinity(pitch);
+      session.ObserveInputAnchor(_conductorUpdatePrefixTicks, postfixTicks, songPosition, pitch, ready);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(OnConductorUpdatePostfix), exception);
+    }
   }
 
   [HarmonyPatch(typeof(scrController), "Countdown_Update")]
@@ -77,6 +125,7 @@ public static class RecordingPatches
     RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
 
     bool captureAllowed = IsNativeInputCaptureAllowed();
+    ObserveCapturePermissionTransition(session, captureAllowed);
     RecordInputTracker.SetCaptureWindowActive(captureAllowed);
     if (!captureAllowed)
       return;
@@ -160,6 +209,7 @@ public static class RecordingPatches
     {
       case States.Countdown:
       case States.Checkpoint:
+        recording.Session.BreakInputTimeline(newState.ToString().ToLowerInvariant());
         if (!recording.Session.IsRecording)
           return;
 
@@ -188,6 +238,7 @@ public static class RecordingPatches
 
       case States.Fail:
       case States.Fail2:
+        recording.Session.BreakInputTimeline("fail");
         RecordingFeature.Instance.OnRunFailed();
         break;
     }
@@ -217,12 +268,34 @@ public static class RecordingPatches
     return UnityEngine.Application.isFocused && !NativeInputUmmWindowInterlock.IsBlocked;
   }
 
+  private static void ObserveCapturePermissionTransition(RecordingSession session, bool captureAllowed)
+  {
+    if (_lastCaptureAllowed.HasValue && _lastCaptureAllowed.Value != captureAllowed)
+      session.BreakInputTimeline(captureAllowed ? "focus_or_umm_resume" : "focus_or_umm_block");
+    _lastCaptureAllowed = captureAllowed;
+  }
+
   private static bool IsNativeInputCaptureState(States state)
   {
     return state == States.Countdown
       || state == States.Checkpoint
       || state == States.PlayerControl
       || state == States.Won;
+  }
+
+  [HarmonyPatch(typeof(scrController), "TogglePauseGame")]
+  [HarmonyPostfix]
+  private static void OnTogglePauseGamePostfix(scrController __instance)
+  {
+    RecordingSession session = RecordingFeature.Instance?.Session;
+    if (session == null || !session.IsRecording || !session.IsCapturingInput)
+      return;
+    if (__instance != null && __instance.paused)
+      RecordInputTracker.Sample(session);
+    session.BreakInputTimeline(__instance != null && __instance.paused ? "pause" : "resume");
+    RecordInputTracker.SetCaptureWindowActive(
+      __instance != null && !__instance.paused && IsNativeInputCaptureAllowed()
+    );
   }
 
   [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]

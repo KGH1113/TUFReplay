@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
@@ -9,7 +10,10 @@ namespace TUFReplay.Recording.Sessions;
 public class RecordingSession
 {
   private readonly object _lock = new object();
-  private readonly List<PendingSongPositionInput> _pendingSongPositionInputs = new List<PendingSongPositionInput>();
+  private readonly List<NativeInputTransition> _pendingNativeInputs = new List<NativeInputTransition>();
+  private InputTimelineAnchor? _previousInputAnchor;
+  private bool _gameplayStateReached;
+  private long _gameplayStateCaptureTicks;
   private double? _wonUnscaledTime;
   private long _lastTimelineTimeUs;
   private bool _hasTimelineTime;
@@ -59,7 +63,10 @@ public class RecordingSession
         GameplayHashVersion = gameplayHashVersion,
       };
       RefreshPitchLocked();
-      _pendingSongPositionInputs.Clear();
+      _pendingNativeInputs.Clear();
+      _previousInputAnchor = null;
+      _gameplayStateReached = false;
+      _gameplayStateCaptureTicks = 0L;
       _wonUnscaledTime = null;
       _lastTimelineTimeUs = 0L;
       _hasTimelineTime = false;
@@ -73,6 +80,16 @@ public class RecordingSession
 
   public void Stop()
   {
+    bool stopInputCapture;
+    lock (_lock)
+    {
+      if (!IsRecording)
+        return;
+      stopInputCapture = IsCapturingInput;
+    }
+    if (stopInputCapture)
+      StopInputCapture("session_stop");
+
     lock (_lock)
     {
       if (!IsRecording)
@@ -81,9 +98,11 @@ public class RecordingSession
       IsRecording = false;
       IsCapturingInput = false;
       RefreshPitchLocked();
+      FlushPendingNativeInputsLocked();
       MarkTerminalLocked();
     }
 
+    RecordInputTracker.CopyDiagnosticsTo(Data);
     RecordInputTracker.Reset();
     Main.Instance.Log("[Recording] Stopped. inputs=" + InputCount + ", hitContexts=" + HitContextCount);
   }
@@ -115,10 +134,10 @@ public class RecordingSession
       RefreshPitchLocked();
       if (!Data.JudgmentDifficulty.HasValue)
         Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
-      if (!Data.GameplayStartSongPosition.HasValue)
+      if (!_gameplayStateReached)
       {
-        Data.GameplayStartSongPosition = RecordingClock.CurrentSongPosition();
-        FlushPendingSongPositionInputsLocked();
+        _gameplayStateReached = true;
+        _gameplayStateCaptureTicks = Stopwatch.GetTimestamp();
       }
     }
 
@@ -132,11 +151,25 @@ public class RecordingSession
       if (!IsRecording || Data.WonTimeUs.HasValue)
         return;
 
-      long wonTimeUs = CurrentTimelineTimeUsLocked();
+      long wonCaptureTicks = Stopwatch.GetTimestamp();
+      double wonSongPosition = RecordingClock.CurrentSongPosition();
+      ObserveInputAnchorLocked(
+        wonCaptureTicks,
+        wonSongPosition,
+        EffectiveTimelineRateLocked(),
+        ready: true,
+        forceSegmentBreak: false
+      );
+      long wonTimeUs = ToRecordTimeUs(wonSongPosition);
+      if (_hasTimelineTime)
+        wonTimeUs = Math.Max(_lastTimelineTimeUs, wonTimeUs);
       Data.WonTimeUs = wonTimeUs;
       _wonUnscaledTime = RecordingClock.CurrentUnscaledTime();
       _lastTimelineTimeUs = wonTimeUs;
       _hasTimelineTime = true;
+      _previousInputAnchor = new InputTimelineAnchor(wonCaptureTicks, wonTimeUs, 1d);
+      Data.InputDiscontinuities++;
+      Data.InputLastDiscontinuity = "won";
     }
 
     Main.Instance.Log("[Recording] Won timeline anchored. wonTimeUs=" + Data.WonTimeUs);
@@ -162,9 +195,11 @@ public class RecordingSession
     }
 
     Main.Instance.Log("[Recording/InputDebug] Before stop: " + RecordInputTracker.DebugSnapshot());
-    RecordInputTracker.StopCapture();
+    RecordInputTracker.StopCapture(this);
     lock (_lock)
-      Data.InputCapture = RecordInputTracker.CaptureMode;
+      FlushPendingNativeInputsLocked();
+    lock (_lock)
+      RecordInputTracker.CopyDiagnosticsTo(Data);
     Main.Instance.Log("[Recording/InputDebug] After stop: " + RecordInputTracker.DebugSnapshot());
   }
 
@@ -177,7 +212,15 @@ public class RecordingSession
 
       if (!Data.GameplayStartSongPosition.HasValue)
       {
-        _pendingSongPositionInputs.Add(new PendingSongPositionInput(RecordingClock.CurrentSongPosition(), key, flags));
+        _pendingNativeInputs.Add(
+          new NativeInputTransition(
+            Stopwatch.GetTimestamp(),
+            0L,
+            key,
+            (flags & RecordInputFlags.Down) != 0,
+            (flags & RecordInputFlags.ExtendedKey) != 0
+          )
+        );
         return;
       }
 
@@ -195,45 +238,47 @@ public class RecordingSession
       if (!IsRecording)
         return 0;
 
-      long newestTimestampNs = inputs[0].TimestampNs;
-      for (int i = 1; i < inputs.Length; i++)
-      {
-        newestTimestampNs = Math.Max(newestTimestampNs, inputs[i].TimestampNs);
-      }
-
-      double timelineRate = 1d;
-      if (!Data.WonTimeUs.HasValue && Data.EffectivePitch.HasValue && Data.EffectivePitch.Value > 0f)
-        timelineRate = Data.EffectivePitch.Value;
-
-      if (!Data.GameplayStartSongPosition.HasValue)
-      {
-        double anchorSongPosition = RecordingClock.CurrentSongPosition();
-        for (int i = 0; i < inputs.Length; i++)
-        {
-          NativeInputTransition input = inputs[i];
-          double elapsedSeconds = ElapsedSeconds(newestTimestampNs, input.TimestampNs);
-          _pendingSongPositionInputs.Add(
-            new PendingSongPositionInput(
-              anchorSongPosition - elapsedSeconds * timelineRate,
-              input.Key,
-              ToRecordInputFlags(input.Down, input.ExtendedKey)
-            )
-          );
-        }
-
-        return inputs.Length;
-      }
-
-      long anchorTimeUs = CurrentTimelineTimeUsLocked();
       for (int i = 0; i < inputs.Length; i++)
-      {
-        NativeInputTransition input = inputs[i];
-        double elapsedSeconds = ElapsedSeconds(newestTimestampNs, input.TimestampNs);
-        long elapsedTimeUs = (long)(elapsedSeconds * timelineRate * 1_000_000d);
-        AddInputLocked(anchorTimeUs - elapsedTimeUs, input.Key, ToRecordInputFlags(input.Down, input.ExtendedKey));
-      }
+        _pendingNativeInputs.Add(inputs[i]);
+
+      Data.InputPendingMax = Math.Max(Data.InputPendingMax, _pendingNativeInputs.Count);
 
       return inputs.Length;
+    }
+  }
+
+  internal void ObserveInputAnchor(
+    long prefixCaptureTicks,
+    long postfixCaptureTicks,
+    double songPosition,
+    double timelineRate,
+    bool ready
+  )
+  {
+    lock (_lock)
+    {
+      if (!IsRecording || !IsCapturingInput)
+        return;
+
+      long durationTicks = Math.Max(0L, postfixCaptureTicks - prefixCaptureTicks);
+      long durationUs = CaptureTicksToMicroseconds(durationTicks);
+      Data.InputAnchorMaxDurationUs = Math.Max(Data.InputAnchorMaxDurationUs, durationUs);
+      long captureTicks = prefixCaptureTicks + durationTicks / 2L;
+      ObserveInputAnchorLocked(captureTicks, songPosition, timelineRate, ready, forceSegmentBreak: false);
+    }
+  }
+
+  internal void BreakInputTimeline(string reason)
+  {
+    lock (_lock)
+    {
+      if (_previousInputAnchor.HasValue)
+      {
+        FlushPendingNativeInputsLocked();
+        _previousInputAnchor = null;
+        Data.InputDiscontinuities++;
+        Data.InputLastDiscontinuity = reason;
+      }
     }
   }
 
@@ -478,11 +523,75 @@ public class RecordingSession
     return index >= 0 && index < hits.Length ? Math.Max(0, hits[index]) : 0;
   }
 
-  private static double ElapsedSeconds(long newestTimestampNs, long timestampNs)
+  private void ObserveInputAnchorLocked(
+    long captureTicks,
+    double songPosition,
+    double timelineRate,
+    bool ready,
+    bool forceSegmentBreak
+  )
   {
-    if (timestampNs <= 0 || timestampNs >= newestTimestampNs)
-      return 0d;
-    return (newestTimestampNs - timestampNs) / 1_000_000_000d;
+    if (
+      !ready
+      || !_gameplayStateReached
+      || captureTicks <= 0
+      || !IsFinite(songPosition)
+      || !IsFinite(timelineRate)
+      || timelineRate <= 0d
+    )
+    {
+      Data.InputInvalidAnchors++;
+      return;
+    }
+
+    if (_pendingNativeInputs.Count > 0)
+    {
+      long pendingTicks = Math.Max(0L, captureTicks - _pendingNativeInputs[0].CaptureTimestampTicks);
+      Data.InputPendingMaxDurationUs = Math.Max(
+        Data.InputPendingMaxDurationUs,
+        CaptureTicksToMicroseconds(pendingTicks)
+      );
+    }
+
+    if (!Data.GameplayStartSongPosition.HasValue)
+    {
+      double elapsedSeconds = CaptureTicksToSeconds(captureTicks - _gameplayStateCaptureTicks);
+      Data.GameplayStartSongPosition = songPosition - elapsedSeconds * timelineRate;
+    }
+
+    long timelineUs = Data.WonTimeUs.HasValue
+      ? CurrentTimelineTimeUsLocked()
+      : ToRecordTimeUs(songPosition);
+    double effectiveRate = Data.WonTimeUs.HasValue ? 1d : timelineRate;
+    InputTimelineAnchor current = new InputTimelineAnchor(captureTicks, timelineUs, effectiveRate);
+
+    bool discontinuity = forceSegmentBreak;
+    if (_previousInputAnchor.HasValue)
+    {
+      InputTimelineAnchor previous = _previousInputAnchor.Value;
+      long elapsedUs = CaptureTicksToMicroseconds(current.CaptureTicks - previous.CaptureTicks);
+      double expectedUs = elapsedUs * previous.Rate;
+      long actualUs = current.TimeUs - previous.TimeUs;
+      double toleranceUs = Math.Max(50_000d, Math.Abs(expectedUs) * 0.25d + 2_000d);
+      if (
+        current.CaptureTicks <= previous.CaptureTicks
+        || actualUs < 0L
+        || Math.Abs(current.Rate - previous.Rate) > 0.0001d
+        || Math.Abs(actualUs - expectedUs) > toleranceUs
+      )
+      {
+        discontinuity = true;
+      }
+    }
+
+    if (discontinuity)
+    {
+      Data.InputDiscontinuities++;
+      Data.InputLastDiscontinuity = "anchor_residual";
+    }
+
+    MapPendingNativeInputsLocked(current, discontinuity);
+    _previousInputAnchor = current;
   }
 
   private static RecordInputFlags ToRecordInputFlags(bool down, bool extendedKey)
@@ -530,36 +639,128 @@ public class RecordingSession
     Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
   }
 
-  private void FlushPendingSongPositionInputsLocked()
+  private void MapPendingNativeInputsLocked(InputTimelineAnchor current, bool discontinuity)
   {
-    foreach (PendingSongPositionInput input in _pendingSongPositionInputs)
+    int mapped = 0;
+    InputTimelineAnchor? previous = discontinuity ? null : _previousInputAnchor;
+    while (mapped < _pendingNativeInputs.Count)
     {
-      AddInputLocked(ToRecordTimeUs(input.SongPosition), input.Key, input.Flags);
+      NativeInputTransition input = _pendingNativeInputs[mapped];
+      if (input.CaptureTimestampTicks > current.CaptureTicks)
+        break;
+
+      long timeUs;
+      if (
+        previous.HasValue
+        && input.CaptureTimestampTicks >= previous.Value.CaptureTicks
+        && current.CaptureTicks > previous.Value.CaptureTicks
+      )
+      {
+        timeUs = InputTimelineMath.Interpolate(
+          input.CaptureTimestampTicks,
+          previous.Value.CaptureTicks,
+          previous.Value.TimeUs,
+          current.CaptureTicks,
+          current.TimeUs
+        );
+      }
+      else
+      {
+        timeUs = InputTimelineMath.BackProject(
+          input.CaptureTimestampTicks,
+          current.CaptureTicks,
+          current.TimeUs,
+          current.Rate
+        );
+      }
+
+      AddInputLocked(
+        timeUs,
+        input.Key,
+        ToRecordInputFlags(input.Down, input.ExtendedKey),
+        input.NativeCode,
+        input.NativeFlags
+      );
+      mapped++;
     }
 
-    _pendingSongPositionInputs.Clear();
+    if (mapped > 0)
+      _pendingNativeInputs.RemoveRange(0, mapped);
   }
 
-  private void AddInputLocked(long timeUs, int key, RecordInputFlags flags)
+  private void FlushPendingNativeInputsLocked()
+  {
+    if (_pendingNativeInputs.Count == 0)
+      return;
+    if (!_previousInputAnchor.HasValue)
+    {
+      Data.InputUnmappedEvents += _pendingNativeInputs.Count;
+      Data.InputDegradedReason = "no_valid_anchor";
+      _pendingNativeInputs.Clear();
+      return;
+    }
+
+    InputTimelineAnchor previous = _previousInputAnchor.Value;
+    NativeInputTransition last = _pendingNativeInputs[_pendingNativeInputs.Count - 1];
+    long deltaTicks = Math.Max(0L, last.CaptureTimestampTicks - previous.CaptureTicks);
+    if (CaptureTicksToMicroseconds(deltaTicks) > 250_000L)
+    {
+      Data.InputDegradedEvents += _pendingNativeInputs.Count;
+      Data.InputDegradedReason = "segment_tail_extrapolation_over_250ms";
+    }
+    InputTimelineAnchor extrapolated = new InputTimelineAnchor(
+      last.CaptureTimestampTicks,
+      previous.TimeUs + (long)(CaptureTicksToMicroseconds(deltaTicks) * previous.Rate),
+      previous.Rate
+    );
+    MapPendingNativeInputsLocked(extrapolated, discontinuity: false);
+  }
+
+  private double EffectiveTimelineRateLocked()
+  {
+    if (Data.WonTimeUs.HasValue)
+      return 1d;
+    return Data.EffectivePitch.HasValue && Data.EffectivePitch.Value > 0f ? Data.EffectivePitch.Value : 1d;
+  }
+
+  private static long CaptureTicksToMicroseconds(long ticks)
+  {
+    return (long)(ticks * 1_000_000d / Stopwatch.Frequency);
+  }
+
+  private static double CaptureTicksToSeconds(long ticks)
+  {
+    return ticks / (double)Stopwatch.Frequency;
+  }
+
+  private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
+
+  private void AddInputLocked(
+    long timeUs,
+    int key,
+    RecordInputFlags flags,
+    int nativeCode = -1,
+    ulong nativeFlags = 0
+  )
   {
     if (_hasTimelineTime)
       timeUs = Math.Max(_lastTimelineTimeUs, timeUs);
     _lastTimelineTimeUs = timeUs;
     _hasTimelineTime = true;
-    Data.Inputs.Add(new RecordedInput(timeUs, key, flags));
+    Data.Inputs.Add(new RecordedInput(timeUs, key, flags, nativeCode, nativeFlags));
   }
 
-  private readonly struct PendingSongPositionInput
+  private readonly struct InputTimelineAnchor
   {
-    public readonly double SongPosition;
-    public readonly int Key;
-    public readonly RecordInputFlags Flags;
+    public readonly long CaptureTicks;
+    public readonly long TimeUs;
+    public readonly double Rate;
 
-    public PendingSongPositionInput(double songPosition, int key, RecordInputFlags flags)
+    public InputTimelineAnchor(long captureTicks, long timeUs, double rate)
     {
-      SongPosition = songPosition;
-      Key = key;
-      Flags = flags;
+      CaptureTicks = captureTicks;
+      TimeUs = timeUs;
+      Rate = rate;
     }
   }
 }

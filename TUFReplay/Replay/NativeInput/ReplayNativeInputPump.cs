@@ -32,6 +32,8 @@ internal sealed class ReplayNativeInputPump : IDisposable
   private long _stateSeeks;
   private long _emissionFailures;
   private long _maxLatenessUs;
+  private long _nativeMetadataEmitted;
+  private long _fallbackEmitted;
 
   public ReplayNativeInputPump(ReplayInputScheduler scheduler, INativeInputEmitter emitter)
   {
@@ -57,6 +59,8 @@ internal sealed class ReplayNativeInputPump : IDisposable
           _stateSeeks,
           _emissionFailures,
           _maxLatenessUs,
+          _nativeMetadataEmitted,
+          _fallbackEmitted,
           _scheduler.NextIndex,
           _scheduler.Count
         );
@@ -266,7 +270,13 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (!input.Async || !_emitter.IsSupported(input.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(input.Key, input.Down, input.ExtendedKey);
+      _emissions[count++] = new NativeInputEmission(
+        input.Key,
+        input.Down,
+        input.ExtendedKey,
+        input.NativeCode,
+        input.NativeFlags
+      );
     }
 
     if (count == 0)
@@ -288,6 +298,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
     }
 
     _emitted += count;
+    CountEmissionMetadataLocked(count);
     if (latenessUs > _maxLatenessUs)
       _maxLatenessUs = latenessUs;
   }
@@ -302,7 +313,13 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (target.Contains(heldKey) || !_emitter.IsSupported(heldKey.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(heldKey.Key, false, heldKey.ExtendedKey);
+      _emissions[count++] = new NativeInputEmission(
+        heldKey.Key,
+        false,
+        heldKey.ExtendedKey,
+        heldKey.NativeCode,
+        heldKey.NativeFlags
+      );
     }
 
     for (int i = 0; i < targetHeldKeys.Count; i++)
@@ -311,7 +328,13 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (_heldKeys.Contains(key) || !_emitter.IsSupported(key.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(key.Key, true, key.ExtendedKey);
+      _emissions[count++] = new NativeInputEmission(
+        key.Key,
+        true,
+        key.ExtendedKey,
+        key.NativeCode,
+        key.NativeFlags
+      );
     }
 
     if (count == 0)
@@ -338,6 +361,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
         _heldKeys.Add(key);
     }
     _emitted += count;
+    CountEmissionMetadataLocked(count);
     return count;
   }
 
@@ -352,11 +376,20 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (!_emitter.IsSupported(key.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(key.Key, false, key.ExtendedKey);
+      _emissions[count++] = new NativeInputEmission(
+        key.Key,
+        false,
+        key.ExtendedKey,
+        key.NativeCode,
+        key.NativeFlags
+      );
     }
 
     if (count > 0 && _emitter.EmitBatch(_emissions, count))
+    {
       _emitted += count;
+      CountEmissionMetadataLocked(count);
+    }
     else if (count > 0)
       _emissionFailures++;
     _heldKeys.Clear();
@@ -366,6 +399,17 @@ internal sealed class ReplayNativeInputPump : IDisposable
   {
     double deltaUs = (replayTimeUs - _anchorReplayUs) / _timelineRate;
     return _anchorTicks + (long)(deltaUs * Stopwatch.Frequency / 1_000_000d);
+  }
+
+  private void CountEmissionMetadataLocked(int count)
+  {
+    for (int i = 0; i < count; i++)
+    {
+      if (_emissions[i].NativeCode >= 0)
+        _nativeMetadataEmitted++;
+      else
+        _fallbackEmitted++;
+    }
   }
 
   private long PredictReplayTimeLocked(long ticks)
@@ -401,6 +445,8 @@ public readonly struct ReplayNativeInputStats
   public readonly long StateSeeks;
   public readonly long EmissionFailures;
   public readonly long MaxLatenessUs;
+  public readonly long NativeMetadataEmitted;
+  public readonly long FallbackEmitted;
   public readonly int NextIndex;
   public readonly int Count;
 
@@ -409,6 +455,8 @@ public readonly struct ReplayNativeInputStats
     long stateSeeks,
     long emissionFailures,
     long maxLatenessUs,
+    long nativeMetadataEmitted,
+    long fallbackEmitted,
     int nextIndex,
     int count
   )
@@ -417,6 +465,8 @@ public readonly struct ReplayNativeInputStats
     StateSeeks = stateSeeks;
     EmissionFailures = emissionFailures;
     MaxLatenessUs = maxLatenessUs;
+    NativeMetadataEmitted = nativeMetadataEmitted;
+    FallbackEmitted = fallbackEmitted;
     NextIndex = nextIndex;
     Count = count;
   }

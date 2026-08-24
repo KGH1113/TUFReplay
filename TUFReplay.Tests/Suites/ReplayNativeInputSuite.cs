@@ -45,6 +45,9 @@ internal static class ReplayNativeInputSuite
   {
     TestReplayInputStableOrder();
     TestReplayCsvParserCompatibility();
+    TestNativeInputCsvRoundTrip();
+    TestInputTimelineMath();
+    TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
     TestReplayTimelineTopGlowPolicy();
     TestReplayTimelineJudgmentMapping();
@@ -57,6 +60,7 @@ internal static class ReplayNativeInputSuite
     TestWindowsPhysicalStateUsesCurrentDownBit();
     TestLegacyWindowsInitialStateRemoval();
     TestNativeInputMigrationCompatibility();
+    TestCrossPlatformNativeInputFallback();
     TestWindowsPhysicalKeyMetadata();
     TestReplaySchedulerChord();
     TestReplayPumpTimingAndBatching();
@@ -126,6 +130,105 @@ internal static class ReplayNativeInputSuite
 
     byte[] malformedTimedCsv = System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4,not-a-time\n");
     Assert(ReplayHitContextParser.Parse(malformedTimedCsv).Count == 0, "Malformed 13-column timestamp was accepted.");
+  }
+
+  private static void TestNativeInputCsvRoundTrip()
+  {
+    var payload = new RecordedRunPayload();
+    payload.Inputs.Add(new RecordedInput(-125_000, 0xA2, RecordInputFlags.Async | RecordInputFlags.Down, 0x1D, 0x11));
+    payload.Inputs.Add(new RecordedInput(250, 0xA2, RecordInputFlags.Async, 0x1D, 0x91));
+
+    List<RecordedInput> parsed = ReplayInputParser.Parse(payload.ToInputCsvBytes());
+    Assert(parsed.Count == 2, "Five-column input CSV did not round-trip.");
+    Assert(
+      parsed[0].TimeUs == -125_000
+        && parsed[0].NativeCode == 0x1D
+        && parsed[0].NativeFlags == 0x11
+        && parsed[0].Down,
+      "Five-column native metadata changed during round-trip."
+    );
+    Assert(parsed[1].NativeFlags == 0x91 && !parsed[1].Down, "Key-up native provenance was not preserved.");
+
+    byte[] malformed = System.Text.Encoding.UTF8.GetBytes("1,65,3,30,not-a-flag\n2,66,3,31,1\n");
+    parsed = ReplayInputParser.Parse(malformed);
+    Assert(parsed.Count == 1 && parsed[0].Key == 66, "Malformed native metadata was accepted or hid valid rows.");
+
+    Assert(
+      SkyHookInputKeyMigration.TryConvertInputCsv(
+        payload.ToInputCsvBytes(),
+        out byte[] migrated,
+        out int migratedCount,
+        out int migratedDropped
+      ),
+      "Existing input migration rejected the new five-column format."
+    );
+    Assert(
+      migratedCount == 2
+        && migratedDropped == 0
+        && System.Text.Encoding.UTF8.GetString(migrated) == System.Text.Encoding.UTF8.GetString(payload.ToInputCsvBytes()),
+      "Existing input migration modified five-column native metadata."
+    );
+  }
+
+  private static void TestInputTimelineMath()
+  {
+    long frequency = System.Diagnostics.Stopwatch.Frequency;
+    int[] frameRates = { 30, 60, 144, 240 };
+    foreach (int frameRate in frameRates)
+    {
+      long frameTicks = frequency / frameRate;
+      long eventTicks = frameTicks * 3 / 4;
+      long mapped = InputTimelineMath.Interpolate(eventTicks, 0, 0, frameTicks, 1_000_000L / frameRate);
+      long expected = 750_000L / frameRate;
+      Assert(Math.Abs(mapped - expected) <= 2, "Frame-interior input interpolation changed at " + frameRate + " FPS.");
+    }
+
+    long stallTicks = frequency / 4;
+    long stallMapped = InputTimelineMath.Interpolate(stallTicks / 2, 0, 1_000_000, stallTicks, 1_250_000);
+    Assert(stallMapped == 1_125_000, "250 ms frame-stall interpolation attached input to a frame boundary.");
+
+    long countdown = InputTimelineMath.BackProject(0, frequency / 2, 0, 1.0);
+    Assert(Math.Abs(countdown + 500_000) <= 1, "First-anchor countdown back-projection lost negative time.");
+    long pitched = InputTimelineMath.BackProject(0, frequency / 2, 0, 1.5);
+    Assert(Math.Abs(pitched + 750_000) <= 1, "Pitch was not applied to first-anchor back-projection.");
+  }
+
+  private static void TestNativeInputRingBufferStress()
+  {
+    var buffer = new NativeInputTransitionRingBuffer();
+    var drain = new NativeInputTransition[256];
+    int expected = 0;
+    int drainedTotal = 0;
+    for (int chord = 0; chord < 1_000; chord++)
+    {
+      for (int key = 0; key < 32; key++)
+      {
+        int sequence = chord * 32 + key;
+        Assert(
+          buffer.TryEnqueue(new NativeInputTransition(sequence, sequence, key + 1, true, false, key + 1, 0)),
+          "Ring buffer overflowed during regularly drained 32-key chord stress."
+        );
+      }
+
+      if ((chord & 3) != 3)
+        continue;
+      int count = buffer.DrainTo(drain);
+      for (int i = 0; i < count; i++)
+        Assert(drain[i].CaptureTimestampTicks == expected++, "Ring buffer changed native callback ordering.");
+      drainedTotal += count;
+    }
+
+    int remaining;
+    while ((remaining = buffer.DrainTo(drain)) > 0)
+    {
+      for (int i = 0; i < remaining; i++)
+        Assert(drain[i].CaptureTimestampTicks == expected++, "Ring buffer changed tail ordering.");
+      drainedTotal += remaining;
+    }
+    Assert(drainedTotal == 32_000, "Ring buffer stress test lost transitions.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x10, 0x36, false) == 0xA1, "Right Shift was not normalized.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x11, 0x1D, true) == 0xA3, "Right Ctrl was not normalized.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, true) == 0xA5, "Right Alt was not normalized.");
   }
 
   private static void TestLegacyJudgmentOverloadMath()
@@ -462,6 +565,39 @@ internal static class ReplayNativeInputSuite
     corrupted[0] = new RecordedInput(1, ambiguousBackslash, RecordInputFlags.Async | RecordInputFlags.Down);
     repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
     Assert(repaired.Count == 0 && dropped == 1, "Ambiguous historical key corruption was replayed unsafely.");
+  }
+
+  private static void TestCrossPlatformNativeInputFallback()
+  {
+    bool currentIsMac = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+      System.Runtime.InteropServices.OSPlatform.OSX
+    );
+    bool currentIsWindows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+      System.Runtime.InteropServices.OSPlatform.Windows
+    );
+    if (!currentIsMac && !currentIsWindows)
+      return;
+
+    string sourcePlatform = currentIsMac ? "windows" : "macos";
+    int sourceA = currentIsMac ? 0x41 : 0x00;
+    var meta = new ReplayMetadata
+    {
+      formatVersion = 3,
+      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
+      inputNativePlatform = sourcePlatform,
+      inputFormat = RecordedRunPayload.NativeInputFormatV2,
+    };
+    var foreignInputs = new List<RecordedInput>
+    {
+      new RecordedInput(1, sourceA, RecordInputFlags.Async | RecordInputFlags.Down, 0x1E, 0x91),
+    };
+    List<RecordedInput> normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(foreignInputs, meta, out int dropped);
+    Assert(dropped == 0 && normalized.Count == 1, "Cross-platform logical key fallback dropped a supported key.");
+    Assert(
+      NativeInputKeyCodeMapper.TryConvertKeyLabel(KeyLabel.A, out int expectedA) && normalized[0].Key == expectedA,
+      "Cross-platform logical key fallback produced the wrong current-platform key."
+    );
+    Assert(!normalized[0].HasNativeMetadata, "Foreign-platform scan code or flags leaked into native emission.");
   }
 
   private static void TestWindowsSkyHookRawKeyPreservation()

@@ -103,7 +103,7 @@ internal static class SkyHookInputKeyMigration
     foreach (string line in lines)
     {
       string[] parts = line.Split(',');
-      if (parts.Length != 3)
+      if (parts.Length != 3 && parts.Length != 5)
         return false;
       if (!long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long timeUs))
         return false;
@@ -112,7 +112,16 @@ internal static class SkyHookInputKeyMigration
       if (!ushort.TryParse(parts[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
         return false;
 
-      builder.Append(timeUs).Append(',').Append(nativeKeyCode).Append(',').Append(rawFlags).Append('\n');
+      builder.Append(timeUs).Append(',').Append(nativeKeyCode).Append(',').Append(rawFlags);
+      if (parts.Length == 5)
+      {
+        if (!int.TryParse(parts[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out int nativeCode))
+          return false;
+        if (!ulong.TryParse(parts[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong nativeFlags))
+          return false;
+        builder.Append(',').Append(nativeCode).Append(',').Append(nativeFlags);
+      }
+      builder.Append('\n');
       convertedInputCount++;
     }
 

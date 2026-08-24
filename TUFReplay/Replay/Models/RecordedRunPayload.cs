@@ -9,6 +9,7 @@ namespace TUFReplay.Replay.Models;
 
 public class RecordedRunPayload
 {
+  public const string NativeInputFormatV2 = "csv-conductor-timeus-key-flags-nativecode-nativeflags-v2";
   public int? TufLevelId;
   public string StartedAtUtc;
   public string EndedAtUtc;
@@ -17,6 +18,23 @@ public class RecordedRunPayload
   public long? TerminalTimeUs;
   public string InputTimeBase = ReplayInputTimeBases.Hybrid;
   public string InputCapture = "skyhook-events-high-resolution-physical-state";
+  public int InputPendingMax;
+  public long InputPendingMaxDurationUs;
+  public long InputAnchorMaxDurationUs;
+  public long InputInvalidAnchors;
+  public long InputDiscontinuities;
+  public string InputLastDiscontinuity;
+  public long InputUnmappedEvents;
+  public long InputDegradedEvents;
+  public string InputDegradedReason;
+  public string InputFallbackReason;
+  public long InputReceived;
+  public long InputRecorded;
+  public long InputRepeatDropped;
+  public long InputOverflowDropped;
+  public long InputResyncs;
+  public long InputReadFailures;
+  public int InputMaxQueueDepth;
   public bool NoFailMode;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
@@ -46,9 +64,26 @@ public class RecordedRunPayload
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,
       pitchSource = PitchSource,
-      inputFormat = "csv-conductor-timeus-key-flags",
+      inputFormat = NativeInputFormatV2,
       inputTimeBase = InputTimeBase,
       inputCapture = InputCapture,
+      inputPendingMax = InputPendingMax,
+      inputPendingMaxDurationUs = InputPendingMaxDurationUs,
+      inputAnchorMaxDurationUs = InputAnchorMaxDurationUs,
+      inputInvalidAnchors = InputInvalidAnchors,
+      inputDiscontinuities = InputDiscontinuities,
+      inputLastDiscontinuity = InputLastDiscontinuity,
+      inputUnmappedEvents = InputUnmappedEvents,
+      inputDegradedEvents = InputDegradedEvents,
+      inputDegradedReason = InputDegradedReason,
+      inputFallbackReason = InputFallbackReason,
+      inputReceived = InputReceived,
+      inputRecorded = InputRecorded,
+      inputRepeatDropped = InputRepeatDropped,
+      inputOverflowDropped = InputOverflowDropped,
+      inputResyncs = InputResyncs,
+      inputReadFailures = InputReadFailures,
+      inputMaxQueueDepth = InputMaxQueueDepth,
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = Inputs.Count,
@@ -77,7 +112,17 @@ public class RecordedRunPayload
 
     foreach (RecordedInput input in Inputs)
     {
-      builder.Append(input.TimeUs).Append(',').Append(input.Key).Append(',').Append((ushort)input.Flags).Append('\n');
+      builder
+        .Append(input.TimeUs)
+        .Append(',')
+        .Append(input.Key)
+        .Append(',')
+        .Append((ushort)input.Flags)
+        .Append(',')
+        .Append(input.NativeCode)
+        .Append(',')
+        .Append(input.NativeFlags)
+        .Append('\n');
     }
 
     return Encoding.UTF8.GetBytes(builder.ToString());

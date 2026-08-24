@@ -377,10 +377,11 @@ public static partial class ReplayPlaybackCoordinator
     if (
       !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
       && !string.Equals(meta.inputNativePlatform, current, StringComparison.OrdinalIgnoreCase)
+      && !string.Equals(meta.inputFormat, RecordedRunPayload.NativeInputFormatV2, StringComparison.Ordinal)
     )
       return Error(
         "native_platform_mismatch",
-        "This replay was recorded on a different operating system.",
+        "This legacy replay was recorded on a different operating system.",
         out errorCode,
         out errorMessage
       );

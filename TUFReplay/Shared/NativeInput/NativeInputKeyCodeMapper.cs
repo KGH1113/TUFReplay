@@ -126,6 +126,7 @@ internal static class NativeInputKeyCodeMapper
     { KeyLabel.ArrowDown, 0x7D },
     { KeyLabel.ArrowUp, 0x7E },
   };
+  private static readonly Dictionary<ushort, KeyLabel> MacVirtualKeyLabels = CreateReverseMap(MacVirtualKeyCodes);
 
   public static List<RecordedInput> NormalizeForPlayback(
     List<RecordedInput> inputs,
@@ -139,14 +140,32 @@ internal static class NativeInputKeyCodeMapper
 
     if (string.Equals(meta?.inputKeySpace, NativeKeySpace, StringComparison.OrdinalIgnoreCase))
     {
+      List<RecordedInput> normalized = inputs;
       if (
         meta.formatVersion == 3
         && string.Equals(meta.inputCapture, CorruptedNativeStateMigrationCapture, StringComparison.OrdinalIgnoreCase)
       )
-        return RepairCorruptedNativeStateMigration(inputs, out dropped);
-      if (ShouldRemoveLegacyWindowsInitialState(inputs, meta))
-        return RemoveFirstTimestampGroup(inputs, out dropped);
-      return inputs;
+        normalized = RepairCorruptedNativeStateMigration(inputs, out dropped);
+      else if (ShouldRemoveLegacyWindowsInitialState(inputs, meta))
+        normalized = RemoveFirstTimestampGroup(inputs, out dropped);
+
+      string currentPlatform = CurrentPlatform();
+      if (
+        !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
+        && string.Equals(meta.inputFormat, RecordedRunPayload.NativeInputFormatV2, StringComparison.Ordinal)
+        && currentPlatform != "unsupported"
+        && !string.Equals(meta.inputNativePlatform, currentPlatform, StringComparison.OrdinalIgnoreCase)
+      )
+      {
+        List<RecordedInput> crossPlatformInputs = ConvertNativePlatform(
+          normalized,
+          meta.inputNativePlatform,
+          out int crossDropped
+        );
+        dropped += crossDropped;
+        return crossPlatformInputs;
+      }
+      return normalized;
     }
 
     List<RecordedInput> converted = new List<RecordedInput>(inputs.Count);
@@ -166,6 +185,217 @@ internal static class NativeInputKeyCodeMapper
     }
 
     return converted;
+  }
+
+  private static List<RecordedInput> ConvertNativePlatform(
+    List<RecordedInput> inputs,
+    string sourcePlatform,
+    out int dropped
+  )
+  {
+    dropped = 0;
+    List<RecordedInput> converted = new List<RecordedInput>(inputs.Count);
+    foreach (RecordedInput input in inputs)
+    {
+      if (
+        !TryGetSourceKeyLabel(sourcePlatform, input.Key, out KeyLabel label)
+        || !TryConvertKeyLabel(label, out int currentKey)
+      )
+      {
+        dropped++;
+        continue;
+      }
+
+      RecordInputFlags flags = input.Flags & ~RecordInputFlags.ExtendedKey;
+      if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label))
+        flags |= RecordInputFlags.ExtendedKey;
+      converted.Add(new RecordedInput(input.TimeUs, currentKey, flags));
+    }
+    return converted;
+  }
+
+  private static bool TryGetSourceKeyLabel(string sourcePlatform, int nativeKey, out KeyLabel label)
+  {
+    label = KeyLabel.Unknown;
+    if (nativeKey < 0 || nativeKey > ushort.MaxValue)
+      return false;
+    if (string.Equals(sourcePlatform, "macos", StringComparison.OrdinalIgnoreCase))
+      return MacVirtualKeyLabels.TryGetValue((ushort)nativeKey, out label);
+    if (!string.Equals(sourcePlatform, "windows", StringComparison.OrdinalIgnoreCase))
+      return false;
+    return TryGetWindowsKeyLabel(nativeKey, out label);
+  }
+
+  private static bool TryGetWindowsKeyLabel(int key, out KeyLabel label)
+  {
+    if (key >= 0x41 && key <= 0x5A)
+    {
+      KeyLabel[] letters =
+      {
+        KeyLabel.A,
+        KeyLabel.B,
+        KeyLabel.C,
+        KeyLabel.D,
+        KeyLabel.E,
+        KeyLabel.F,
+        KeyLabel.G,
+        KeyLabel.H,
+        KeyLabel.I,
+        KeyLabel.J,
+        KeyLabel.K,
+        KeyLabel.L,
+        KeyLabel.M,
+        KeyLabel.N,
+        KeyLabel.O,
+        KeyLabel.P,
+        KeyLabel.Q,
+        KeyLabel.R,
+        KeyLabel.S,
+        KeyLabel.T,
+        KeyLabel.U,
+        KeyLabel.V,
+        KeyLabel.W,
+        KeyLabel.X,
+        KeyLabel.Y,
+        KeyLabel.Z,
+      };
+      label = letters[key - 0x41];
+      return true;
+    }
+    if (key >= 0x30 && key <= 0x39)
+    {
+      KeyLabel[] digits =
+      {
+        KeyLabel.Alpha0,
+        KeyLabel.Alpha1,
+        KeyLabel.Alpha2,
+        KeyLabel.Alpha3,
+        KeyLabel.Alpha4,
+        KeyLabel.Alpha5,
+        KeyLabel.Alpha6,
+        KeyLabel.Alpha7,
+        KeyLabel.Alpha8,
+        KeyLabel.Alpha9,
+      };
+      label = digits[key - 0x30];
+      return true;
+    }
+    if (key >= 0x70 && key <= 0x87)
+    {
+      KeyLabel[] functionKeys =
+      {
+        KeyLabel.F1,
+        KeyLabel.F2,
+        KeyLabel.F3,
+        KeyLabel.F4,
+        KeyLabel.F5,
+        KeyLabel.F6,
+        KeyLabel.F7,
+        KeyLabel.F8,
+        KeyLabel.F9,
+        KeyLabel.F10,
+        KeyLabel.F11,
+        KeyLabel.F12,
+        KeyLabel.F13,
+        KeyLabel.F14,
+        KeyLabel.F15,
+        KeyLabel.F16,
+        KeyLabel.F17,
+        KeyLabel.F18,
+        KeyLabel.F19,
+        KeyLabel.F20,
+        KeyLabel.F21,
+        KeyLabel.F22,
+        KeyLabel.F23,
+        KeyLabel.F24,
+      };
+      label = functionKeys[key - 0x70];
+      return true;
+    }
+    if (key >= 0x60 && key <= 0x69)
+    {
+      KeyLabel[] keypadDigits =
+      {
+        KeyLabel.Keypad0,
+        KeyLabel.Keypad1,
+        KeyLabel.Keypad2,
+        KeyLabel.Keypad3,
+        KeyLabel.Keypad4,
+        KeyLabel.Keypad5,
+        KeyLabel.Keypad6,
+        KeyLabel.Keypad7,
+        KeyLabel.Keypad8,
+        KeyLabel.Keypad9,
+      };
+      label = keypadDigits[key - 0x60];
+      return true;
+    }
+
+    switch (key)
+    {
+      case 0x08: label = KeyLabel.Backspace; return true;
+      case 0x09: label = KeyLabel.Tab; return true;
+      case 0x0D: label = KeyLabel.Enter; return true;
+      case 0x13: label = KeyLabel.PauseBreak; return true;
+      case 0x14: label = KeyLabel.CapsLock; return true;
+      case 0x1B: label = KeyLabel.Escape; return true;
+      case 0x20: label = KeyLabel.Space; return true;
+      case 0x21: label = KeyLabel.PageUp; return true;
+      case 0x22: label = KeyLabel.PageDown; return true;
+      case 0x23: label = KeyLabel.End; return true;
+      case 0x24: label = KeyLabel.Home; return true;
+      case 0x25: label = KeyLabel.ArrowLeft; return true;
+      case 0x26: label = KeyLabel.ArrowUp; return true;
+      case 0x27: label = KeyLabel.ArrowRight; return true;
+      case 0x28: label = KeyLabel.ArrowDown; return true;
+      case 0x2C: label = KeyLabel.PrintScreen; return true;
+      case 0x2D: label = KeyLabel.Insert; return true;
+      case 0x2E: label = KeyLabel.Delete; return true;
+      case 0x5B:
+      case 0x5C: label = KeyLabel.Super; return true;
+      case 0x6A: label = KeyLabel.KeypadAsterisk; return true;
+      case 0x6B: label = KeyLabel.KeypadPlus; return true;
+      case 0x6D: label = KeyLabel.KeypadMinus; return true;
+      case 0x6E: label = KeyLabel.KeypadDot; return true;
+      case 0x6F: label = KeyLabel.KeypadSlash; return true;
+      case 0x90: label = KeyLabel.NumLock; return true;
+      case 0x91: label = KeyLabel.ScrollLock; return true;
+      case 0xA0: label = KeyLabel.LShift; return true;
+      case 0xA1: label = KeyLabel.RShift; return true;
+      case 0xA2: label = KeyLabel.LControl; return true;
+      case 0xA3: label = KeyLabel.RControl; return true;
+      case 0xA4: label = KeyLabel.LAlt; return true;
+      case 0xA5: label = KeyLabel.RAlt; return true;
+      case 0xBA: label = KeyLabel.Semicolon; return true;
+      case 0xBB: label = KeyLabel.Equal; return true;
+      case 0xBC: label = KeyLabel.Comma; return true;
+      case 0xBD: label = KeyLabel.Minus; return true;
+      case 0xBE: label = KeyLabel.Dot; return true;
+      case 0xBF: label = KeyLabel.Slash; return true;
+      case 0xC0: label = KeyLabel.Grave; return true;
+      case 0xDB: label = KeyLabel.LeftBrace; return true;
+      case 0xDC: label = KeyLabel.BackSlash; return true;
+      case 0xDD: label = KeyLabel.RightBrace; return true;
+      case 0xDE: label = KeyLabel.Apostrophe; return true;
+      default: label = KeyLabel.Unknown; return false;
+    }
+  }
+
+  private static Dictionary<ushort, KeyLabel> CreateReverseMap(Dictionary<KeyLabel, ushort> source)
+  {
+    Dictionary<ushort, KeyLabel> result = new Dictionary<ushort, KeyLabel>();
+    foreach (KeyValuePair<KeyLabel, ushort> pair in source)
+      result[pair.Value] = pair.Key;
+    return result;
+  }
+
+  private static string CurrentPlatform()
+  {
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+      return "macos";
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+      return "windows";
+    return "unsupported";
   }
 
   private static bool ShouldRemoveLegacyWindowsInitialState(List<RecordedInput> inputs, ReplayMetadata meta)
