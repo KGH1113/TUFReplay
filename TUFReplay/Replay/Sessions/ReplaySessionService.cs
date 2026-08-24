@@ -24,6 +24,18 @@ public static partial class ReplaySessionService
   private static bool _timelinePauseOwnsEditorState;
   private static bool _timelineEditorPausedBeforePause;
 
+  public static bool TryGetNativeInputStats(out ReplayNativeInputStats stats)
+  {
+    ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
+    if (player == null)
+    {
+      stats = default;
+      return false;
+    }
+    stats = player.Stats;
+    return true;
+  }
+
   public static bool HasActiveContext => _activeContext != null;
   public static bool UsesHitContextPlayback => _activeContext?.HitContextPlayer?.Count > 0;
   public static string ActiveRunId => _activeContext?.RunId;
@@ -401,7 +413,47 @@ public static partial class ReplaySessionService
     }
 
     player.SkipTo(nowUs);
+    _playbackPauseSuspended = true;
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
+  }
+
+  internal static void ResumeNativeInputAfterUmmWindow()
+  {
+    if (_activeContext?.NativeInputPlayer == null || ADOBase.controller == null || ADOBase.controller.paused)
+      return;
+    if (TryComputeReplayTimeUs(out long nowUs, out _))
+      ResumeReplayAt(nowUs);
+  }
+
+  internal static void OnNativeInputPauseChanged(bool paused)
+  {
+    ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
+    if (player == null)
+      return;
+    if (!TryComputeReplayTimeUs(out long nowUs, out _))
+    {
+      if (paused)
+        player.ReleaseAll();
+      return;
+    }
+    if (paused)
+      SuspendReplayAt(nowUs);
+    else
+      ResumeReplayAt(nowUs);
+  }
+
+  internal static void OnApplicationFocusChanged(bool focused)
+  {
+    ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
+    if (player == null)
+      return;
+    if (!focused)
+    {
+      SuspendNativeInputForUmmWindow();
+      return;
+    }
+    if (ADOBase.controller != null && !ADOBase.controller.paused)
+      ResumeNativeInputAfterUmmWindow();
   }
 
   private static bool EnsurePlayerControlRunStarted()
@@ -483,6 +535,26 @@ public static partial class ReplaySessionService
         + value.EmissionFailures
         + ", maxLatenessUs="
         + value.MaxLatenessUs
+        + ", p50LatenessUs="
+        + value.P50LatenessUs
+        + ", p95LatenessUs="
+        + value.P95LatenessUs
+        + ", p99LatenessUs="
+        + value.P99LatenessUs
+        + ", catchUpEvents="
+        + value.CatchUpEvents
+        + ", partialRetries="
+        + value.PartialRetries
+        + ", failedEvents="
+        + value.FailedEvents
+        + ", unsupportedEvents="
+        + value.UnsupportedEvents
+        + ", waiter="
+        + value.Waiter
+        + ", waiterFallbacks="
+        + value.WaiterFallbacks
+        + ", waiterFallbackReason="
+        + (value.WaiterFallbackReason ?? "none")
         + ", nativeMetadataEmitted="
         + value.NativeMetadataEmitted
         + ", fallbackEmitted="

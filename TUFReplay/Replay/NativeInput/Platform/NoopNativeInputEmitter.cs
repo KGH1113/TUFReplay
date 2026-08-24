@@ -7,8 +7,8 @@ public sealed class NoopNativeInputEmitter : INativeInputEmitter
     return false;
   }
 
-  public bool EmitBatch(NativeInputEmission[] emissions, int count)
+  public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count)
   {
-    return false;
+    return new NativeInputEmitResult(0, -1);
   }
 }

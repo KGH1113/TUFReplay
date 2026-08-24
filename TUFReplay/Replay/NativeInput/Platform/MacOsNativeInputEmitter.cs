@@ -45,28 +45,28 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
     return key >= 0 && key <= 0x7F && !IsBlockedKey(key);
   }
 
-  public bool EmitBatch(NativeInputEmission[] emissions, int count)
+  public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count)
   {
-    if (emissions == null || count < 0 || count > emissions.Length)
-      return false;
+    if (emissions == null || offset < 0 || count < 0 || offset > emissions.Length - count)
+      return new NativeInputEmitResult(0, -1);
     if (count == 0)
-      return true;
+      return new NativeInputEmitResult(0);
 
     for (int i = 0; i < count; i++)
     {
-      NativeInputEmission emission = emissions[i];
+      NativeInputEmission emission = emissions[offset + i];
       if (!IsSupported(emission.Key))
-        return false;
+        return new NativeInputEmitResult(i, -1);
 
       int nativeKey = emission.NativeCode >= 0 ? emission.NativeCode : emission.Key;
       if (nativeKey < 0 || nativeKey > 0x7F)
-        return false;
+        return new NativeInputEmitResult(i, -1);
       CGEventFlags nextFlags = emission.NativeCode >= 0
         ? (CGEventFlags)emission.NativeFlags
         : GetNextModifierFlags(emission.Key, emission.Down);
       IntPtr ev = CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)nativeKey, emission.Down);
       if (ev == IntPtr.Zero)
-        return false;
+        return new NativeInputEmitResult(i, -1);
 
       try
       {
@@ -80,7 +80,7 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
       }
     }
 
-    return true;
+    return new NativeInputEmitResult(count);
   }
 
   private static bool IsBlockedKey(int key)

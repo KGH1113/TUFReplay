@@ -23,14 +23,17 @@ public static class RecordInputTracker
   private static readonly NativeInputTransition[] DrainBuffer = new NativeInputTransition[
     NativeInputTransitionRingBuffer.Capacity
   ];
+  private static readonly NativeInputTransition[] FilteredDrainBuffer = new NativeInputTransition[
+    NativeInputTransitionRingBuffer.Capacity
+  ];
   private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
   private static readonly bool[] KeyStates = new bool[(ushort.MaxValue + 1) * 2];
 
-  private static bool _capturing;
+  private static volatile bool _capturing;
   private static bool _captureWindowActive;
-  private static bool _acceptingEvents;
+  private static volatile bool _acceptingEvents;
   private static bool _usingEvents;
-  private static bool _overflowed;
+  private static volatile bool _overflowed;
   private static bool _restartAttempted;
   private static string _mode = "stopped";
   private static string _fallbackReason;
@@ -57,7 +60,7 @@ public static class RecordInputTracker
     Reset();
 
     Exception startFailure = TryStartEventSource(EventSource);
-    if (startFailure != null && !ReferenceEquals(EventSource, FallbackEventSource))
+    if (startFailure != null && !IsSameEventSourceKind(EventSource, FallbackEventSource))
     {
       string failedSource = EventSource.Name;
       Main.Instance?.Log(
@@ -109,13 +112,13 @@ public static class RecordInputTracker
       _acceptingEvents = false;
     }
 
-    int count = EventQueue.DrainTo(DrainBuffer);
+    StopEventSourceNoThrow();
+    int count = DrainFilteredTransitions();
     if (count > 0 && session != null)
     {
-      int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(DrainBuffer, 0, count));
+      int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
       Interlocked.Add(ref _transitions, recorded);
     }
-    StopEventSourceNoThrow();
     EventSource = NativeInputEventSourceFactory.CreatePrimary();
   }
 
@@ -177,10 +180,10 @@ public static class RecordInputTracker
 
     if (_usingEvents)
     {
-      int count = EventQueue.DrainTo(DrainBuffer);
+      int count = DrainFilteredTransitions();
       if (count > 0)
       {
-        int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(DrainBuffer, 0, count));
+        int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
         Interlocked.Add(ref _transitions, recorded);
       }
 
@@ -260,42 +263,61 @@ public static class RecordInputTracker
 
   private static void OnNativeTransition(NativeInputTransition transition)
   {
-    lock (StateLock)
+    if (!_capturing)
+      return;
+
+    Interlocked.Increment(ref _received);
+
+    if (_overflowed)
     {
-      if (!_capturing)
-        return;
+      Interlocked.Increment(ref _dropped);
+      return;
+    }
+    if (!_acceptingEvents)
+      return;
+    if (!TryGetStateIndex(transition.Key, transition.ExtendedKey, out _))
+    {
+      Interlocked.Increment(ref _readFailures);
+      return;
+    }
 
-      Interlocked.Increment(ref _received);
+    // This method runs directly on the platform hook/event-tap thread. Never
+    // wait for Unity's state lock here: a blocked macOS event-tap callback can
+    // back up system-wide input delivery. State transitions and repeat removal
+    // are applied by the Unity thread when it drains this SPSC queue.
+    if (!EventQueue.TryEnqueue(transition))
+    {
+      _overflowed = true;
+      _acceptingEvents = false;
+      Interlocked.Increment(ref _dropped);
+      return;
+    }
 
-      if (_overflowed)
-      {
-        Interlocked.Increment(ref _dropped);
-        return;
-      }
-      if (!_acceptingEvents)
-        return;
+    UpdateMaxQueueDepth(EventQueue.Count);
+  }
+
+  private static int DrainFilteredTransitions()
+  {
+    int count = EventQueue.DrainTo(DrainBuffer);
+    int accepted = 0;
+    for (int i = 0; i < count; i++)
+    {
+      NativeInputTransition transition = DrainBuffer[i];
       if (!TryGetStateIndex(transition.Key, transition.ExtendedKey, out int stateIndex))
       {
         Interlocked.Increment(ref _readFailures);
-        return;
+        continue;
       }
       if (KeyStates[stateIndex] == transition.Down)
       {
         Interlocked.Increment(ref _duplicates);
-        return;
-      }
-
-      if (!EventQueue.TryEnqueue(transition))
-      {
-        _overflowed = true;
-        _acceptingEvents = false;
-        Interlocked.Increment(ref _dropped);
-        return;
+        continue;
       }
 
       KeyStates[stateIndex] = transition.Down;
-      UpdateMaxQueueDepth(EventQueue.Count);
+      FilteredDrainBuffer[accepted++] = transition;
     }
+    return accepted;
   }
 
   private static void SamplePolling(RecordingSession session)
@@ -433,7 +455,7 @@ public static class RecordInputTracker
 
   private static bool TrySwitchToFallbackEventSource(Exception exception)
   {
-    if (!ReferenceEquals(EventSource, FallbackEventSource))
+    if (!IsSameEventSourceKind(EventSource, FallbackEventSource))
     {
       string failedSource = EventSource.Name;
       lock (StateLock)
@@ -540,6 +562,11 @@ public static class RecordInputTracker
       }
       return exception;
     }
+  }
+
+  private static bool IsSameEventSourceKind(INativeInputEventSource left, INativeInputEventSource right)
+  {
+    return left != null && right != null && string.Equals(left.Name, right.Name, StringComparison.Ordinal);
   }
 
   private static long CurrentUnixTimeNs()

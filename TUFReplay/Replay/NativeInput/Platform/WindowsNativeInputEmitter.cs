@@ -69,19 +69,19 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     return key > 0 && key <= 255 && !IsBlockedKey((ushort)key);
   }
 
-  public bool EmitBatch(NativeInputEmission[] emissions, int count)
+  public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count)
   {
-    if (emissions == null || count < 0 || count > emissions.Length)
-      return false;
+    if (emissions == null || offset < 0 || count < 0 || offset > emissions.Length - count)
+      return new NativeInputEmitResult(0, 87);
     if (count == 0)
-      return true;
+      return new NativeInputEmitResult(0);
 
     EnsureCapacity(count);
     for (int i = 0; i < count; i++)
     {
-      NativeInputEmission emission = emissions[i];
+      NativeInputEmission emission = emissions[offset + i];
       if (!IsSupported(emission.Key))
-        return false;
+        return new NativeInputEmitResult(0, 87);
 
       _inputBuffer[i] = new Input
       {
@@ -90,7 +90,8 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
       };
     }
 
-    return SendInput((uint)count, _inputBuffer, InputSize) == (uint)count;
+    uint emitted = SendInput((uint)count, _inputBuffer, InputSize);
+    return new NativeInputEmitResult((int)Math.Min(emitted, (uint)count), emitted == (uint)count ? 0 : Marshal.GetLastWin32Error());
   }
 
   private void EnsureCapacity(int count)

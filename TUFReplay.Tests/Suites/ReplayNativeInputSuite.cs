@@ -47,6 +47,7 @@ internal static class ReplayNativeInputSuite
     TestReplayCsvParserCompatibility();
     TestNativeInputCsvRoundTrip();
     TestInputTimelineMath();
+    TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
     TestReplayTimelineTopGlowPolicy();
@@ -66,7 +67,9 @@ internal static class ReplayNativeInputSuite
     TestReplayPumpTimingAndBatching();
     TestReplayPumpFocusAndReleaseAll();
     TestReplayPumpPauseSuspendsAndResumes();
-    TestReplayPumpClockJumpSeeksState();
+    TestReplayPumpClockJumpPreservesBacklog();
+    TestReplayPumpCatchUpYieldBoundary();
+    TestReplayPumpPartialEmissionRetry();
     TestPreparedReplayDoesNotEmit();
     TestMiddleStartReplayInitializesFromPlayerControl();
   }
@@ -191,6 +194,19 @@ internal static class ReplayNativeInputSuite
     Assert(Math.Abs(countdown + 500_000) <= 1, "First-anchor countdown back-projection lost negative time.");
     long pitched = InputTimelineMath.BackProject(0, frequency / 2, 0, 1.5);
     Assert(Math.Abs(pitched + 750_000) <= 1, "Pitch was not applied to first-anchor back-projection.");
+  }
+
+  private static void TestReplayLatenessHistogram()
+  {
+    var histogram = new ReplayLatenessHistogram();
+    for (int i = 1; i <= 100; i++)
+      histogram.Record(i * 50L - 1L);
+    Assert(histogram.Count == 100, "Replay lateness histogram lost samples.");
+    Assert(histogram.Percentile(0.50d) == 2_500L, "Replay lateness p50 bucket changed.");
+    Assert(histogram.Percentile(0.95d) == 4_750L, "Replay lateness p95 bucket changed.");
+    Assert(histogram.Percentile(0.99d) == 4_950L, "Replay lateness p99 bucket changed.");
+    histogram.Record(75_000L);
+    Assert(histogram.MaxUs == 75_000L, "Replay lateness overflow bucket lost max latency.");
   }
 
   private static void TestNativeInputRingBufferStress()
@@ -732,7 +748,7 @@ internal static class ReplayNativeInputSuite
     Assert(batches[2].Length == 1 && batches[2][0].Down, "Resume did not restore key-down.");
   }
 
-  private static void TestReplayPumpClockJumpSeeksState()
+  private static void TestReplayPumpClockJumpPreservesBacklog()
   {
     var emitter = new CapturingEmitter();
     var scheduler = new ReplayInputScheduler(
@@ -742,11 +758,46 @@ internal static class ReplayNativeInputSuite
 
     pump.ResetTo(-1_000_000, 1d, true);
     pump.Synchronize(1_000_000, 1d, true);
-    Assert(emitter.WaitForBatchCount(1), "Clock jump did not seek to final held state.");
+    Assert(emitter.WaitForBatchCount(3), "Clock jump did not catch up every overdue transition.");
     List<NativeInputEmission[]> batches = emitter.Snapshot();
-    Assert(batches.Count == 1, "Clock jump emitted stale backlog.");
-    Assert(batches[0].Length == 1 && batches[0][0].Key == 31 && batches[0][0].Down, "Clock seek held state is wrong.");
-    Assert(pump.Snapshot.StateSeeks >= 2, "Clock jump state seek was not counted.");
+    Assert(batches.Count == 3, "Clock jump collapsed overdue transitions into held state.");
+    Assert(batches[0][0].Key == 30 && batches[0][0].Down, "Clock catch-up lost the first key-down.");
+    Assert(batches[1][0].Key == 30 && !batches[1][0].Down, "Clock catch-up lost the key-up.");
+    Assert(batches[2][0].Key == 31 && batches[2][0].Down, "Clock catch-up ordering changed.");
+    Assert(pump.Snapshot.StateSeeks == 1, "Clock residual triggered an implicit state seek.");
+  }
+
+  private static void TestReplayPumpPartialEmissionRetry()
+  {
+    var emitter = new PartialEmitter(firstEmissionCount: 1, retryEmissionCount: int.MaxValue);
+    var scheduler = new ReplayInputScheduler(
+      new List<RecordedInput> { Input(0, 41, true), Input(0, 42, true), Input(0, 43, true) }
+    );
+    using var pump = new ReplayNativeInputPump(scheduler, emitter);
+    pump.ResetTo(-10_000, 1d, true);
+    Assert(emitter.WaitForCallCount(2), "Partial native emission was not retried.");
+    ReplayNativeInputStats stats = pump.Snapshot;
+    Assert(stats.Emitted == 3 && stats.FailedEvents == 0, "Tail retry did not preserve every event.");
+    Assert(stats.PartialRetries == 1, "Partial native emission retry was not counted.");
+    Assert(emitter.Offsets[0] == 0 && emitter.Offsets[1] == 1, "Partial retry resent an emitted prefix.");
+  }
+
+  private static void TestReplayPumpCatchUpYieldBoundary()
+  {
+    var emitter = new CapturingEmitter();
+    var inputs = new List<RecordedInput>();
+    for (int i = 0; i < 300; i++)
+      inputs.Add(Input(i * 1_000L, i + 1_000, true));
+    var scheduler = new ReplayInputScheduler(inputs);
+    using var pump = new ReplayNativeInputPump(scheduler, emitter);
+    pump.ResetTo(-1_000_000, 1d, true);
+    pump.Synchronize(1_000_000, 1d, true);
+    Assert(emitter.WaitForBatchCount(300), "Catch-up stopped at the 256-group yield boundary.");
+    List<NativeInputEmission[]> batches = emitter.Snapshot();
+    Assert(batches.Count == 300, "Catch-up yield boundary lost timestamp groups.");
+    for (int i = 0; i < batches.Count; i++)
+      Assert(batches[i].Length == 1 && batches[i][0].Key == i + 1_000, "Catch-up yield changed event ordering.");
+    Assert(pump.Snapshot.StateSeeks == 1, "Catch-up yield triggered an implicit state seek.");
   }
 
   private static void TestPreparedReplayDoesNotEmit()
@@ -808,13 +859,13 @@ internal static class ReplayNativeInputSuite
 
     public bool IsSupported(int key) => key != 27;
 
-    public bool EmitBatch(NativeInputEmission[] emissions, int count)
+    public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count)
     {
       var copy = new NativeInputEmission[count];
-      Array.Copy(emissions, copy, count);
+      Array.Copy(emissions, offset, copy, 0, count);
       lock (_gate)
         _batches.Add(copy);
-      return true;
+      return new NativeInputEmitResult(count);
     }
 
     public bool WaitForBatchCount(int count)
@@ -836,6 +887,48 @@ internal static class ReplayNativeInputSuite
     {
       lock (_gate)
         return new List<NativeInputEmission[]>(_batches);
+    }
+  }
+
+  private sealed class PartialEmitter : INativeInputEmitter
+  {
+    private readonly object _gate = new object();
+    private readonly int _firstEmissionCount;
+    private readonly int _retryEmissionCount;
+    private int _calls;
+    public readonly List<int> Offsets = new List<int>();
+
+    public PartialEmitter(int firstEmissionCount, int retryEmissionCount)
+    {
+      _firstEmissionCount = firstEmissionCount;
+      _retryEmissionCount = retryEmissionCount;
+    }
+
+    public bool IsSupported(int key) => true;
+
+    public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count)
+    {
+      lock (_gate)
+      {
+        Offsets.Add(offset);
+        int allowed = _calls++ == 0 ? _firstEmissionCount : _retryEmissionCount;
+        return new NativeInputEmitResult(Math.Min(count, allowed), allowed >= count ? 0 : 5);
+      }
+    }
+
+    public bool WaitForCallCount(int count)
+    {
+      var timeout = System.Diagnostics.Stopwatch.StartNew();
+      while (timeout.ElapsedMilliseconds < 1000)
+      {
+        lock (_gate)
+        {
+          if (_calls >= count)
+            return true;
+        }
+        Thread.Sleep(1);
+      }
+      return false;
     }
   }
 }

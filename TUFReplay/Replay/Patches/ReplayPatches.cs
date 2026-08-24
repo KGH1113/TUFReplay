@@ -17,6 +17,14 @@ public static class ReplayInputPatches
   private static bool IsActive => ReplayFeature.Instance != null && ReplayFeature.Instance.Active;
   private static bool ShouldHideTimelineRestartVisuals => IsActive && ReplaySessionService.IsTimelineRestartPending;
 
+  [HarmonyPatch(typeof(scrController), "TogglePauseGame")]
+  [HarmonyPostfix]
+  private static void OnTogglePauseGamePostfix(scrController __instance)
+  {
+    if (IsActive && __instance != null)
+      ReplaySessionService.OnNativeInputPauseChanged(__instance.paused);
+  }
+
   [HarmonyPatch(typeof(scrController), nameof(scrController.Scrub), new[] { typeof(int), typeof(bool) })]
   [HarmonyPrefix]
   private static void OnScrubPrefix(ref bool forceDontStartMusicFourTilesBefore)

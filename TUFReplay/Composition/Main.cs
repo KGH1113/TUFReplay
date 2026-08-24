@@ -4,6 +4,8 @@ using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
+using TUFReplay.Replay.Sessions;
+using TUFReplay.Replay.NativeInput;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -23,6 +25,7 @@ public sealed class Main
 
   private readonly string _updateSettingsPath;
   private bool _enabled;
+  private static bool _showReplayInputDiagnostics;
 
   private Main(UnityModManager.ModEntry modEntry)
   {
@@ -78,6 +81,49 @@ public sealed class Main
     {
       UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
       SaveUpdateSettings(modEntry);
+    }
+
+    _showReplayInputDiagnostics = GUILayout.Toggle(
+      _showReplayInputDiagnostics,
+      "Replay input diagnostics"
+    );
+    if (_showReplayInputDiagnostics)
+    {
+      if (ReplaySessionService.TryGetNativeInputStats(out ReplayNativeInputStats stats))
+      {
+        GUILayout.Label("Waiter: " + stats.Waiter);
+        if (!string.IsNullOrWhiteSpace(stats.WaiterFallbackReason))
+          GUILayout.Label("Waiter fallback: " + stats.WaiterFallbackReason);
+        GUILayout.Label(
+          "Lateness p50/p95/p99/max: "
+            + stats.P50LatenessUs
+            + "/"
+            + stats.P95LatenessUs
+            + "/"
+            + stats.P99LatenessUs
+            + "/"
+            + stats.MaxLatenessUs
+            + " us"
+        );
+        GUILayout.Label(
+          "Scheduled/emitted/failed: " + stats.Scheduled + "/" + stats.Emitted + "/" + stats.FailedEvents
+        );
+        GUILayout.Label(
+          "Catch-up groups/events: " + stats.CatchUpGroups + "/" + stats.CatchUpEvents
+        );
+        GUILayout.Label(
+          "Partial retries / unsupported / waiter fallback: "
+            + stats.PartialRetries
+            + " / "
+            + stats.UnsupportedEvents
+            + " / "
+            + stats.WaiterFallbacks
+        );
+      }
+      else
+      {
+        GUILayout.Label("No active replay.");
+      }
     }
   }
 
@@ -148,6 +194,7 @@ public sealed class Main
     try
     {
       FeatureRegistry.Initialize();
+      Application.focusChanged += ReplaySessionService.OnApplicationFocusChanged;
       _enabled = true;
       NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
     }
@@ -164,6 +211,7 @@ public sealed class Main
       return;
 
     _enabled = false;
+    Application.focusChanged -= ReplaySessionService.OnApplicationFocusChanged;
     try
     {
       ModBootstrap.Shutdown();
