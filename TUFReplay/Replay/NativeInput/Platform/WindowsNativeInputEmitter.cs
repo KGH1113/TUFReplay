@@ -11,6 +11,7 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
   private const uint KeyEventKeyUp = 0x0002;
   private const uint KeyEventScanCode = 0x0008;
   private const uint MapVirtualKeyToScanCodeEx = 4;
+  private const ulong LowLevelExtendedFlag = 0x01UL;
   private const ushort PauseVirtualKey = 0x13;
 
   [StructLayout(LayoutKind.Sequential)]
@@ -127,6 +128,14 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     if (virtualKey == PauseVirtualKey)
     {
       return new KeyboardInput { VirtualKey = virtualKey, Flags = flags };
+    }
+
+    if (emission.NativeCode > 0 && emission.NativeCode <= ushort.MaxValue)
+    {
+      flags |= KeyEventScanCode;
+      if (emission.ExtendedKey || (emission.NativeFlags & LowLevelExtendedFlag) != 0)
+        flags |= KeyEventExtendedKey;
+      return new KeyboardInput { ScanCode = (ushort)emission.NativeCode, Flags = flags };
     }
 
     uint mappedScanCode = MapVirtualKeyW(virtualKey, MapVirtualKeyToScanCodeEx);

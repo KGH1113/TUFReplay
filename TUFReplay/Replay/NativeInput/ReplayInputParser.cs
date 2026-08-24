@@ -81,7 +81,10 @@ public static class ReplayInputParser
     if (line == null)
       return false;
     ReadOnlySpan<char> value = line.AsSpan();
-    Span<Range> parts = stackalloc Range[3];
+    int fieldCount = CountFields(value);
+    if (fieldCount != 3 && fieldCount != 5)
+      return false;
+    Span<Range> parts = stackalloc Range[fieldCount];
     if (!Utf8Csv.TrySplit(value, parts))
       return false;
 
@@ -94,14 +97,26 @@ public static class ReplayInputParser
     if (!ushort.TryParse(value[parts[2]], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
       return false;
 
-    input = new RecordedInput(timeUs, key, (RecordInputFlags)rawFlags);
+    int nativeCode = -1;
+    ulong nativeFlags = 0;
+    if (
+      fieldCount == 5
+      && (!int.TryParse(value[parts[3]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeCode)
+        || !ulong.TryParse(value[parts[4]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeFlags))
+    )
+      return false;
+
+    input = new RecordedInput(timeUs, key, (RecordInputFlags)rawFlags, nativeCode, nativeFlags);
     return true;
   }
 
   private static bool TryParseLine(ReadOnlySpan<byte> line, out RecordedInput input)
   {
     input = default;
-    Span<Range> parts = stackalloc Range[3];
+    int fieldCount = CountFields(line);
+    if (fieldCount != 3 && fieldCount != 5)
+      return false;
+    Span<Range> parts = stackalloc Range[fieldCount];
     if (!Utf8Csv.TrySplit(line, parts))
       return false;
     if (!Utf8Csv.TryParseInt64(line[parts[0]], out long timeUs))
@@ -111,7 +126,56 @@ public static class ReplayInputParser
     if (!Utf8Csv.TryParseUInt16(line[parts[2]], out ushort rawFlags))
       return false;
 
-    input = new RecordedInput(timeUs, key, (RecordInputFlags)rawFlags);
+    int nativeCode = -1;
+    ulong nativeFlags = 0;
+    if (
+      fieldCount == 5
+      && (!Utf8Csv.TryParseInt32(line[parts[3]], out nativeCode)
+        || !TryParseUInt64(line[parts[4]], out nativeFlags))
+    )
+      return false;
+
+    input = new RecordedInput(timeUs, key, (RecordInputFlags)rawFlags, nativeCode, nativeFlags);
+    return true;
+  }
+
+  private static int CountFields(ReadOnlySpan<char> value)
+  {
+    int count = 1;
+    for (int i = 0; i < value.Length; i++)
+    {
+      if (value[i] == ',')
+        count++;
+    }
+    return count;
+  }
+
+  private static int CountFields(ReadOnlySpan<byte> value)
+  {
+    int count = 1;
+    for (int i = 0; i < value.Length; i++)
+    {
+      if (value[i] == (byte)',')
+        count++;
+    }
+    return count;
+  }
+
+  private static bool TryParseUInt64(ReadOnlySpan<byte> value, out ulong result)
+  {
+    result = 0;
+    if (value.Length == 0)
+      return false;
+    for (int i = 0; i < value.Length; i++)
+    {
+      byte digit = value[i];
+      if (digit < (byte)'0' || digit > (byte)'9')
+        return false;
+      ulong previous = result;
+      result = result * 10UL + (ulong)(digit - (byte)'0');
+      if (result < previous)
+        return false;
+    }
     return true;
   }
 }

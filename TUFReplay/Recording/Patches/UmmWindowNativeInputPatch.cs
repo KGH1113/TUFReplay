@@ -2,6 +2,7 @@ using System;
 using System.Reflection;
 using HarmonyLib;
 using TUFReplay.Recording.Input;
+using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Transport;
 using TUFReplay.Shared.NativeInput;
@@ -48,6 +49,10 @@ internal static class UmmWindowNativeInputPatch
 
     try
     {
+      RecordingSession session = RecordingFeature.Instance?.Session;
+      if (session != null)
+        RecordInputTracker.Sample(session);
+      session?.BreakInputTimeline("umm_window");
       RecordInputTracker.SetCaptureWindowActive(false);
     }
     catch (Exception exception)

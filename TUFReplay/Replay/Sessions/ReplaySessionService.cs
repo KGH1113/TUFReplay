@@ -483,6 +483,10 @@ public static partial class ReplaySessionService
         + value.EmissionFailures
         + ", maxLatenessUs="
         + value.MaxLatenessUs
+        + ", nativeMetadataEmitted="
+        + value.NativeMetadataEmitted
+        + ", fallbackEmitted="
+        + value.FallbackEmitted
         + ", index="
         + value.NextIndex
         + "/"

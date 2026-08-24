@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using SkyHook;
@@ -96,7 +97,9 @@ internal sealed class SkyHookNativeInputEventSource : INativeInputEventSource
     }
 
     long timestampNs = inputEvent.TimeSec * 1_000_000_000L + inputEvent.TimeSubsecNano;
-    _onTransition?.Invoke(new NativeInputTransition(timestampNs, nativeKeyCode, down, extendedKey));
+    _onTransition?.Invoke(
+      new NativeInputTransition(Stopwatch.GetTimestamp(), timestampNs, nativeKeyCode, down, extendedKey)
+    );
   }
 
   private static bool TryResolveNativeKey(SkyHookEvent inputEvent, out int nativeKeyCode, out bool extendedKey)

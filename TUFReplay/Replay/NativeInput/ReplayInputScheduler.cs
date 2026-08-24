@@ -65,7 +65,12 @@ public class ReplayInputScheduler
 
         if (input.Async)
         {
-          NativeInputKey key = new NativeInputKey(input.Key, input.ExtendedKey);
+          NativeInputKey key = new NativeInputKey(
+            input.Key,
+            input.ExtendedKey,
+            input.NativeCode,
+            input.NativeFlags
+          );
           if (input.Down)
           {
             if (heldSet.Add(key))
