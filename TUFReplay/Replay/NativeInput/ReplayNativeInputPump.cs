@@ -11,13 +11,14 @@ namespace TUFReplay.Replay.NativeInput;
 internal sealed class ReplayNativeInputPump : IDisposable
 {
   private const long ClockDiscontinuityUs = 50_000L;
-  private const long FineWaitThresholdUs = 500L;
+  private const int MaxCatchUpGroupsBeforeYield = 256;
 
   private readonly object _gate = new object();
   private readonly ReplayInputScheduler _scheduler;
   private readonly INativeInputEmitter _emitter;
   private readonly AutoResetEvent _wake = new AutoResetEvent(false);
   private readonly Thread _thread;
+  private readonly IReplayMonotonicClock _clock;
   private readonly List<RecordedInput> _group = new List<RecordedInput>();
   private readonly HashSet<NativeInputKey> _heldKeys = new HashSet<NativeInputKey>();
 
@@ -34,16 +35,37 @@ internal sealed class ReplayNativeInputPump : IDisposable
   private long _maxLatenessUs;
   private long _nativeMetadataEmitted;
   private long _fallbackEmitted;
+  private long _scheduled;
+  private long _catchUpGroups;
+  private long _catchUpEvents;
+  private long _partialRetries;
+  private long _failedEvents;
+  private long _unsupportedEvents;
+  private long _explicitSeekSkipped;
+  private long _clockResidualCorrections;
+  private long _waiterFallbacks;
+  private readonly ReplayLatenessHistogram _lateness = new ReplayLatenessHistogram();
+  private IReplayDeadlineWaiter _waiter;
 
   public ReplayNativeInputPump(ReplayInputScheduler scheduler, INativeInputEmitter emitter)
+    : this(scheduler, emitter, StopwatchReplayMonotonicClock.Instance, ReplayDeadlineWaiterFactory.Create()) { }
+
+  internal ReplayNativeInputPump(
+    ReplayInputScheduler scheduler,
+    INativeInputEmitter emitter,
+    IReplayMonotonicClock clock,
+    IReplayDeadlineWaiter waiter
+  )
   {
     _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
     _emitter = emitter ?? throw new ArgumentNullException(nameof(emitter));
+    _clock = clock ?? throw new ArgumentNullException(nameof(clock));
+    _waiter = waiter ?? throw new ArgumentNullException(nameof(waiter));
     _thread = new Thread(Run)
     {
       IsBackground = true,
       Name = "TUFReplay Native Input Pump",
-      Priority = ThreadPriority.BelowNormal,
+      Priority = ThreadPriority.AboveNormal,
     };
     _thread.Start();
   }
@@ -61,6 +83,20 @@ internal sealed class ReplayNativeInputPump : IDisposable
           _maxLatenessUs,
           _nativeMetadataEmitted,
           _fallbackEmitted,
+          _scheduled,
+          _catchUpGroups,
+          _catchUpEvents,
+          _partialRetries,
+          _failedEvents,
+          _unsupportedEvents,
+          _explicitSeekSkipped,
+          _clockResidualCorrections,
+          _waiterFallbacks,
+          _lateness.Percentile(0.50d),
+          _lateness.Percentile(0.95d),
+          _lateness.Percentile(0.99d),
+          _waiter.Name,
+          _waiter.FallbackReason,
           _scheduler.NextIndex,
           _scheduler.Count
         );
@@ -91,6 +127,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
         int before = _scheduler.NextIndex;
         ReleaseAllLocked();
         _scheduler.SeekToNativeState(nowUs);
+        _explicitSeekSkipped += Math.Max(0, _scheduler.NextIndex - before);
         _active = false;
         _resumePending = true;
         _wake.Set();
@@ -106,12 +143,10 @@ internal sealed class ReplayNativeInputPump : IDisposable
         return changed;
       }
 
-      long ticks = Stopwatch.GetTimestamp();
+      long ticks = _clock.Timestamp;
       long predictedUs = PredictReplayTimeLocked(ticks);
       if (Math.Abs(nowUs - predictedUs) >= ClockDiscontinuityUs)
-      {
-        return SeekAndAnchorLocked(nowUs, timelineRate, true);
-      }
+        _clockResidualCorrections++;
 
       _anchorReplayUs = nowUs;
       _anchorTicks = ticks;
@@ -140,6 +175,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
       int before = _scheduler.NextIndex;
       ReleaseAllLocked();
       _scheduler.SeekToNativeState(nowUs);
+      _explicitSeekSkipped += Math.Max(0, _scheduler.NextIndex - before);
       _active = false;
       _resumePending = true;
       _wake.Set();
@@ -173,14 +209,18 @@ internal sealed class ReplayNativeInputPump : IDisposable
 
     if (Thread.CurrentThread != _thread)
       _thread.Join(500);
+    _waiter.Dispose();
     _wake.Dispose();
   }
 
   private void Run()
   {
+    int consecutiveCatchUpGroups = 0;
     while (true)
     {
-      int waitMilliseconds;
+      bool waitInactive = false;
+      bool yieldAfterCatchUp = false;
+      long deadlineTicks = 0L;
       lock (_gate)
       {
         if (_shutdown)
@@ -188,7 +228,8 @@ internal sealed class ReplayNativeInputPump : IDisposable
 
         if (!_active)
         {
-          waitMilliseconds = Timeout.Infinite;
+          waitInactive = true;
+          consecutiveCatchUpGroups = 0;
         }
         else
         {
@@ -196,61 +237,75 @@ internal sealed class ReplayNativeInputPump : IDisposable
           if (!next.HasValue)
           {
             _active = false;
-            waitMilliseconds = Timeout.Infinite;
+            waitInactive = true;
+            consecutiveCatchUpGroups = 0;
           }
           else
           {
-            long nowTicks = Stopwatch.GetTimestamp();
-            long deadlineTicks = ReplayTimeToTicksLocked(next.Value.TimeUs);
+            long nowTicks = _clock.Timestamp;
+            deadlineTicks = ReplayTimeToTicksLocked(next.Value.TimeUs);
             long remainingTicks = deadlineTicks - nowTicks;
             if (remainingTicks <= 0)
             {
               long latenessUs = TicksToMicroseconds(-remainingTicks);
-              if (latenessUs >= ClockDiscontinuityUs)
+              long scheduledBefore = _scheduled;
+              EmitNextGroupLocked(latenessUs);
+              _lateness.Record(latenessUs, _scheduled - scheduledBefore);
+              if (latenessUs > 0L)
               {
-                SeekAndAnchorLocked(PredictReplayTimeLocked(nowTicks), _timelineRate, true);
+                _catchUpGroups++;
+                _catchUpEvents += _scheduled - scheduledBefore;
               }
-              else
-              {
-                EmitNextGroupLocked(latenessUs);
-              }
-              continue;
-            }
-
-            long remainingUs = TicksToMicroseconds(remainingTicks);
-            if (remainingUs > FineWaitThresholdUs)
-            {
-              long remainingMs = remainingTicks * 1000L / Stopwatch.Frequency;
-              waitMilliseconds = (int)Math.Min(Math.Max(1L, remainingMs - 1L), 1000L);
+              consecutiveCatchUpGroups++;
+              yieldAfterCatchUp = consecutiveCatchUpGroups >= MaxCatchUpGroupsBeforeYield;
+              if (yieldAfterCatchUp)
+                consecutiveCatchUpGroups = 0;
+              deadlineTicks = 0L;
             }
             else
-            {
-              waitMilliseconds = 0;
-            }
+              consecutiveCatchUpGroups = 0;
           }
         }
       }
 
-      if (waitMilliseconds == 0)
-      {
+      if (yieldAfterCatchUp)
         Thread.Yield();
-      }
-      else
+      else if (waitInactive)
+        _wake.WaitOne();
+      else if (deadlineTicks > 0L)
+        WaitForDeadline(deadlineTicks);
+    }
+  }
+
+  private void WaitForDeadline(long deadlineTicks)
+  {
+    try
+    {
+      _waiter.WaitUntil(deadlineTicks, _wake, _clock);
+    }
+    catch (Exception exception)
+    {
+      lock (_gate)
       {
-        _wake.WaitOne(waitMilliseconds);
+        _waiter.Dispose();
+        _waiter = new ManagedReplayDeadlineWaiter(_waiter.Name + ": " + exception.Message);
+        _waiterFallbacks++;
       }
+      _wake.Set();
     }
   }
 
   private int SeekAndAnchorLocked(long nowUs, double timelineRate, bool emitState)
   {
+    int before = _scheduler.NextIndex;
     List<NativeInputKey> targetHeldKeys = _scheduler.SeekToNativeState(nowUs);
+    _explicitSeekSkipped += Math.Max(0, _scheduler.NextIndex - before);
     int changed = emitState ? EmitStateDeltaLocked(targetHeldKeys) : 0;
     if (!emitState)
       _heldKeys.Clear();
 
     _anchorReplayUs = nowUs;
-    _anchorTicks = Stopwatch.GetTimestamp();
+    _anchorTicks = _clock.Timestamp;
     _timelineRate = NormalizeRate(timelineRate);
     _active = emitState && !_scheduler.Finished;
     _stateSeeks++;
@@ -258,17 +313,22 @@ internal sealed class ReplayNativeInputPump : IDisposable
     return changed;
   }
 
-  private void EmitNextGroupLocked(long latenessUs)
+  private int EmitNextGroupLocked(long latenessUs)
   {
     if (_scheduler.CopyNextTimestampGroup(_group) == 0)
-      return;
+      return 0;
 
     int count = 0;
     for (int i = 0; i < _group.Count; i++)
     {
       RecordedInput input = _group[i];
-      if (!input.Async || !_emitter.IsSupported(input.Key))
+      if (!input.Async)
         continue;
+      if (!_emitter.IsSupported(input.Key))
+      {
+        _unsupportedEvents++;
+        continue;
+      }
       EnsureEmissionCapacity(count + 1);
       _emissions[count++] = new NativeInputEmission(
         input.Key,
@@ -280,27 +340,13 @@ internal sealed class ReplayNativeInputPump : IDisposable
     }
 
     if (count == 0)
-      return;
-    if (!_emitter.EmitBatch(_emissions, count))
-    {
-      _emissionFailures++;
-      return;
-    }
-
-    for (int i = 0; i < count; i++)
-    {
-      NativeInputEmission emission = _emissions[i];
-      NativeInputKey key = new NativeInputKey(emission.Key, emission.ExtendedKey);
-      if (emission.Down)
-        _heldKeys.Add(key);
-      else
-        _heldKeys.Remove(key);
-    }
-
-    _emitted += count;
-    CountEmissionMetadataLocked(count);
+      return 0;
+    _scheduled += count;
+    int emitted = EmitWithRetryLocked(count);
+    ApplyEmittedStateLocked(emitted);
     if (latenessUs > _maxLatenessUs)
       _maxLatenessUs = latenessUs;
+    return emitted;
   }
 
   private int EmitStateDeltaLocked(List<NativeInputKey> targetHeldKeys)
@@ -348,21 +394,10 @@ internal sealed class ReplayNativeInputPump : IDisposable
       return 0;
     }
 
-    if (!_emitter.EmitBatch(_emissions, count))
-    {
-      _emissionFailures++;
-      return 0;
-    }
-
-    _heldKeys.Clear();
-    foreach (NativeInputKey key in target)
-    {
-      if (_emitter.IsSupported(key.Key))
-        _heldKeys.Add(key);
-    }
-    _emitted += count;
-    CountEmissionMetadataLocked(count);
-    return count;
+    _scheduled += count;
+    int emitted = EmitWithRetryLocked(count);
+    ApplyEmittedStateLocked(emitted);
+    return emitted;
   }
 
   private void ReleaseAllLocked()
@@ -385,20 +420,56 @@ internal sealed class ReplayNativeInputPump : IDisposable
       );
     }
 
-    if (count > 0 && _emitter.EmitBatch(_emissions, count))
+    if (count == 0)
+      return;
+    _scheduled += count;
+    int emitted = EmitWithRetryLocked(count);
+    ApplyEmittedStateLocked(emitted);
+  }
+
+  private int EmitWithRetryLocked(int count)
+  {
+    NativeInputEmitResult first = _emitter.EmitBatch(_emissions, 0, count);
+    int emitted = Math.Max(0, Math.Min(count, first.Emitted));
+    if (emitted < count)
     {
-      _emitted += count;
-      CountEmissionMetadataLocked(count);
-    }
-    else if (count > 0)
       _emissionFailures++;
-    _heldKeys.Clear();
+      _partialRetries++;
+      NativeInputEmitResult retry = _emitter.EmitBatch(_emissions, emitted, count - emitted);
+      emitted += Math.Max(0, Math.Min(count - emitted, retry.Emitted));
+      if (emitted < count)
+      {
+        _emissionFailures++;
+        _failedEvents += count - emitted;
+      }
+    }
+    _emitted += emitted;
+    CountEmissionMetadataLocked(emitted);
+    return emitted;
+  }
+
+  private void ApplyEmittedStateLocked(int count)
+  {
+    for (int i = 0; i < count; i++)
+    {
+      NativeInputEmission emission = _emissions[i];
+      NativeInputKey key = new NativeInputKey(
+        emission.Key,
+        emission.ExtendedKey,
+        emission.NativeCode,
+        emission.NativeFlags
+      );
+      if (emission.Down)
+        _heldKeys.Add(key);
+      else
+        _heldKeys.Remove(key);
+    }
   }
 
   private long ReplayTimeToTicksLocked(long replayTimeUs)
   {
     double deltaUs = (replayTimeUs - _anchorReplayUs) / _timelineRate;
-    return _anchorTicks + (long)(deltaUs * Stopwatch.Frequency / 1_000_000d);
+    return _anchorTicks + (long)(deltaUs * _clock.Frequency / 1_000_000d);
   }
 
   private void CountEmissionMetadataLocked(int count)
@@ -414,13 +485,13 @@ internal sealed class ReplayNativeInputPump : IDisposable
 
   private long PredictReplayTimeLocked(long ticks)
   {
-    double elapsedUs = (ticks - _anchorTicks) * 1_000_000d / Stopwatch.Frequency;
+    double elapsedUs = (ticks - _anchorTicks) * 1_000_000d / _clock.Frequency;
     return _anchorReplayUs + (long)(elapsedUs * _timelineRate);
   }
 
-  private static long TicksToMicroseconds(long ticks)
+  private long TicksToMicroseconds(long ticks)
   {
-    return (long)(ticks * 1_000_000d / Stopwatch.Frequency);
+    return (long)(ticks * 1_000_000d / _clock.Frequency);
   }
 
   private static double NormalizeRate(double rate)
@@ -447,6 +518,20 @@ public readonly struct ReplayNativeInputStats
   public readonly long MaxLatenessUs;
   public readonly long NativeMetadataEmitted;
   public readonly long FallbackEmitted;
+  public readonly long Scheduled;
+  public readonly long CatchUpGroups;
+  public readonly long CatchUpEvents;
+  public readonly long PartialRetries;
+  public readonly long FailedEvents;
+  public readonly long UnsupportedEvents;
+  public readonly long ExplicitSeekSkipped;
+  public readonly long ClockResidualCorrections;
+  public readonly long WaiterFallbacks;
+  public readonly long P50LatenessUs;
+  public readonly long P95LatenessUs;
+  public readonly long P99LatenessUs;
+  public readonly string Waiter;
+  public readonly string WaiterFallbackReason;
   public readonly int NextIndex;
   public readonly int Count;
 
@@ -457,6 +542,20 @@ public readonly struct ReplayNativeInputStats
     long maxLatenessUs,
     long nativeMetadataEmitted,
     long fallbackEmitted,
+    long scheduled,
+    long catchUpGroups,
+    long catchUpEvents,
+    long partialRetries,
+    long failedEvents,
+    long unsupportedEvents,
+    long explicitSeekSkipped,
+    long clockResidualCorrections,
+    long waiterFallbacks,
+    long p50LatenessUs,
+    long p95LatenessUs,
+    long p99LatenessUs,
+    string waiter,
+    string waiterFallbackReason,
     int nextIndex,
     int count
   )
@@ -467,6 +566,20 @@ public readonly struct ReplayNativeInputStats
     MaxLatenessUs = maxLatenessUs;
     NativeMetadataEmitted = nativeMetadataEmitted;
     FallbackEmitted = fallbackEmitted;
+    Scheduled = scheduled;
+    CatchUpGroups = catchUpGroups;
+    CatchUpEvents = catchUpEvents;
+    PartialRetries = partialRetries;
+    FailedEvents = failedEvents;
+    UnsupportedEvents = unsupportedEvents;
+    ExplicitSeekSkipped = explicitSeekSkipped;
+    ClockResidualCorrections = clockResidualCorrections;
+    WaiterFallbacks = waiterFallbacks;
+    P50LatenessUs = p50LatenessUs;
+    P95LatenessUs = p95LatenessUs;
+    P99LatenessUs = p99LatenessUs;
+    Waiter = waiter;
+    WaiterFallbackReason = waiterFallbackReason;
     NextIndex = nextIndex;
     Count = count;
   }

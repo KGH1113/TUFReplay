@@ -45,7 +45,10 @@ internal static class UmmWindowNativeInputPatch
   {
     NativeInputUmmWindowInterlock.NotifyWindowOpen(open);
     if (!open)
+    {
+      ReplaySessionService.ResumeNativeInputAfterUmmWindow();
       return;
+    }
 
     try
     {

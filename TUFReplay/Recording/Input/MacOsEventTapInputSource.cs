@@ -7,8 +7,8 @@ namespace TUFReplay.Recording.Input;
 
 internal sealed class MacOsEventTapInputSource : INativeInputEventSource
 {
-  private const int EventTapHid = 0;
-  private const int EventTapHeadInsert = 0;
+  private const int EventTapSession = 1;
+  private const int EventTapTailAppend = 1;
   private const int EventTapListenOnly = 1;
   private const uint KeyDown = 10;
   private const uint KeyUp = 11;
@@ -16,7 +16,6 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
   private const uint TapDisabledByTimeout = 0xFFFFFFFE;
   private const uint TapDisabledByUserInput = 0xFFFFFFFF;
   private const int KeyboardEventKeycode = 9;
-  private const int HidSystemState = 0;
   private const uint Utf8Encoding = 0x08000100;
 
   private delegate IntPtr EventTapCallback(IntPtr proxy, uint type, IntPtr inputEvent, IntPtr userInfo);
@@ -29,6 +28,7 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
   private IntPtr _runLoop;
   private volatile bool _running;
   private Exception _startFailure;
+  private readonly bool[] _keyStates = new bool[128];
 
   public string Name => "macos-cgeventtap";
   public bool IsRunning => _running && _tap != IntPtr.Zero;
@@ -78,7 +78,14 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
     {
       _callback = OnEvent;
       ulong mask = (1UL << (int)KeyDown) | (1UL << (int)KeyUp) | (1UL << (int)FlagsChanged);
-      _tap = CGEventTapCreate(EventTapHid, EventTapHeadInsert, EventTapListenOnly, mask, _callback, IntPtr.Zero);
+      _tap = CGEventTapCreate(
+        EventTapSession,
+        EventTapTailAppend,
+        EventTapListenOnly,
+        mask,
+        _callback,
+        IntPtr.Zero
+      );
       if (_tap == IntPtr.Zero)
         throw new InvalidOperationException("CGEventTapCreate failed; Input Monitoring permission may be missing.");
 
@@ -88,6 +95,11 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
       mode = CFStringCreateWithCString(IntPtr.Zero, "kCFRunLoopDefaultMode", Utf8Encoding);
       _runLoop = CFRunLoopGetCurrent();
       CFRunLoopAddSource(_runLoop, source, mode);
+      // macOS reports modifier transitions as flags-changed events. Seed only
+      // the modifier virtual-key range so a key held before capture starts is
+      // released correctly, without scanning every key during tap startup.
+      for (int keyCode = 0x36; keyCode <= 0x3F; keyCode++)
+        _keyStates[keyCode] = CGEventSourceKeyState(0, (ushort)keyCode);
       CGEventTapEnable(_tap, true);
       _running = true;
       _started.Set();
@@ -116,8 +128,14 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
   {
     if (type == TapDisabledByTimeout || type == TapDisabledByUserInput)
     {
-      if (_tap != IntPtr.Zero)
-        CGEventTapEnable(_tap, true);
+      // Do not immediately re-enable a tap that macOS disabled for taking too
+      // long. Re-enabling it here can create a disable/re-enable loop on the
+      // WindowServer input path. The Unity thread observes IsRunning=false and
+      // performs the normal one-shot restart/fallback sequence instead.
+      _running = false;
+      IntPtr runLoop = _runLoop;
+      if (runLoop != IntPtr.Zero)
+        CFRunLoopStop(runLoop);
       return inputEvent;
     }
     if (!_running || inputEvent == IntPtr.Zero)
@@ -126,7 +144,22 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
       return inputEvent;
 
     int keyCode = unchecked((int)CGEventGetIntegerValueField(inputEvent, KeyboardEventKeycode));
-    bool down = type == KeyDown || (type == FlagsChanged && CGEventSourceKeyState(HidSystemState, (ushort)keyCode));
+    bool down;
+    if (type == FlagsChanged)
+    {
+      // A flags-changed event is itself the physical transition. Tracking the
+      // per-key state locally avoids a synchronous CGEventSourceKeyState call
+      // from inside the event-tap callback and preserves left/right modifiers.
+      if ((uint)keyCode >= (uint)_keyStates.Length)
+        return inputEvent;
+      down = !_keyStates[keyCode];
+    }
+    else
+    {
+      down = type == KeyDown;
+    }
+    if ((uint)keyCode < (uint)_keyStates.Length)
+      _keyStates[keyCode] = down;
     _onTransition?.Invoke(
       new NativeInputTransition(
         Stopwatch.GetTimestamp(),
@@ -164,6 +197,7 @@ internal sealed class MacOsEventTapInputSource : INativeInputEventSource
   private static extern ulong CGEventGetFlags(IntPtr inputEvent);
 
   [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
+  [return: MarshalAs(UnmanagedType.I1)]
   private static extern bool CGEventSourceKeyState(int stateId, ushort keyCode);
 
   [DllImport("/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation")]

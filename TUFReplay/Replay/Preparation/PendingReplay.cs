@@ -105,6 +105,7 @@ public static partial class ReplayPlaybackCoordinator
 
     public bool IsSupported(int key) => true;
 
-    public bool EmitBatch(NativeInputEmission[] emissions, int count) => true;
+    public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count) =>
+      new NativeInputEmitResult(count);
   }
 }

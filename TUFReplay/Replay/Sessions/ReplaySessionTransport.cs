@@ -451,7 +451,7 @@ public static partial class ReplaySessionService
 
   private static void ResumeReplayAt(long replayTimeUs)
   {
-    if (_activeContext == null)
+    if (_activeContext == null || !_playbackPauseSuspended)
       return;
 
     _playbackPauseSuspended = false;
