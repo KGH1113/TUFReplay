@@ -1,6 +1,5 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
-using SkyHook;
 using TUFReplay;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Migrations;
@@ -57,10 +56,10 @@ internal static class ReplayNativeInputSuite
     TestHitContextPlaybackPositionComparison();
     TestReplayNoFailPolicy();
     TestNativeInputUmmWindowInterlock();
-    TestWindowsSkyHookRawKeyPreservation();
+    TestWindowsNativeModifierNormalization();
     TestWindowsPhysicalStateUsesCurrentDownBit();
-    TestLegacyWindowsInitialStateRemoval();
-    TestNativeInputMigrationCompatibility();
+    TestUnsupportedCaptureHasNoPollingFallback();
+    TestReplayInputFormatGate();
     TestCrossPlatformNativeInputFallback();
     TestWindowsPhysicalKeyMetadata();
     TestReplaySchedulerChord();
@@ -156,21 +155,6 @@ internal static class ReplayNativeInputSuite
     parsed = ReplayInputParser.Parse(malformed);
     Assert(parsed.Count == 1 && parsed[0].Key == 66, "Malformed native metadata was accepted or hid valid rows.");
 
-    Assert(
-      SkyHookInputKeyMigration.TryConvertInputCsv(
-        payload.ToInputCsvBytes(),
-        out byte[] migrated,
-        out int migratedCount,
-        out int migratedDropped
-      ),
-      "Existing input migration rejected the new five-column format."
-    );
-    Assert(
-      migratedCount == 2
-        && migratedDropped == 0
-        && System.Text.Encoding.UTF8.GetString(migrated) == System.Text.Encoding.UTF8.GetString(payload.ToInputCsvBytes()),
-      "Existing input migration modified five-column native metadata."
-    );
   }
 
   private static void TestInputTimelineMath()
@@ -543,46 +527,6 @@ internal static class ReplayNativeInputSuite
     Assert(!emitter.IsSupported(0x10), "Generic Shift must remain filtered to avoid duplicate modifier events.");
   }
 
-  private static void TestNativeInputMigrationCompatibility()
-  {
-    byte[] original = System.Text.Encoding.UTF8.GetBytes("1,69,3\n2,160,2\n");
-    Assert(
-      SkyHookInputKeyMigration.TryConvertInputCsv(original, out byte[] preserved, out int count, out int dropped),
-      "Native input migration rejected a valid format-2 payload."
-    );
-    Assert(count == 2 && dropped == 0, "Native input migration changed the input count.");
-    Assert(
-      System.Text.Encoding.UTF8.GetString(preserved) == "1,69,3\n2,160,2\n",
-      "Native input migration reinterpreted OS-native key codes as HID usages."
-    );
-
-    Assert(
-      NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(69, out int incorrectlyMigratedF12),
-      "Test setup could not reproduce the historical HID conversion."
-    );
-    var corruptedMeta = new ReplayMetadata
-    {
-      formatVersion = 3,
-      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
-      inputCapture = NativeInputKeyCodeMapper.CorruptedNativeStateMigrationCapture,
-    };
-    var corrupted = new List<RecordedInput>
-    {
-      new RecordedInput(1, incorrectlyMigratedF12, RecordInputFlags.Async | RecordInputFlags.Down),
-    };
-    List<RecordedInput> repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
-    Assert(repaired.Count == 1 && repaired[0].Key == 69, "Historical E-to-F12 corruption was not repaired.");
-    Assert(dropped == 0, "A uniquely reversible migrated key was dropped.");
-
-    Assert(
-      NativeInputKeyCodeMapper.TryConvertSkyHookHidUsage(49, out int ambiguousBackslash),
-      "Test setup could not reproduce an ambiguous historical conversion."
-    );
-    corrupted[0] = new RecordedInput(1, ambiguousBackslash, RecordInputFlags.Async | RecordInputFlags.Down);
-    repaired = NativeInputKeyCodeMapper.NormalizeForPlayback(corrupted, corruptedMeta, out dropped);
-    Assert(repaired.Count == 0 && dropped == 1, "Ambiguous historical key corruption was replayed unsafely.");
-  }
-
   private static void TestCrossPlatformNativeInputFallback()
   {
     bool currentIsMac = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
@@ -610,83 +554,88 @@ internal static class ReplayNativeInputSuite
     List<RecordedInput> normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(foreignInputs, meta, out int dropped);
     Assert(dropped == 0 && normalized.Count == 1, "Cross-platform logical key fallback dropped a supported key.");
     Assert(
-      NativeInputKeyCodeMapper.TryConvertKeyLabel(KeyLabel.A, out int expectedA) && normalized[0].Key == expectedA,
+      NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.A, out int expectedA)
+        && normalized[0].Key == expectedA,
       "Cross-platform logical key fallback produced the wrong current-platform key."
     );
     Assert(!normalized[0].HasNativeMetadata, "Foreign-platform scan code or flags leaked into native emission.");
   }
 
-  private static void TestWindowsSkyHookRawKeyPreservation()
+  private static void TestWindowsNativeModifierNormalization()
   {
-    AssertWindowsCapture(0x45, KeyLabel.E, 0x45, false, "E");
-    AssertWindowsCapture(0x5D, KeyLabel.Unknown, 0x5D, true, "Menu");
-    AssertWindowsCapture(0x15, KeyLabel.Unknown, 0x15, false, "Hangul");
-    AssertWindowsCapture(0x19, KeyLabel.Unknown, 0x19, false, "Hanja");
-    AssertWindowsCapture(0x10, KeyLabel.LShift, 0xA0, false, "left Shift");
-    AssertWindowsCapture(0x11, KeyLabel.RControl, 0xA3, true, "right Ctrl");
-    AssertWindowsCapture(0x12, KeyLabel.RAlt, 0xA5, true, "right Alt");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x10, 0x2A, false) == 0xA0, "Left Shift changed.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x10, 0x36, false) == 0xA1, "Right Shift changed.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x11, 0x1D, false) == 0xA2, "Left Ctrl changed.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x11, 0x1D, true) == 0xA3, "Right Ctrl changed.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, false) == 0xA4, "Left Alt changed.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, true) == 0xA5, "Right Alt changed.");
+    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x45, 0x12, false) == 0x45, "Ordinary VK changed.");
   }
 
   private static void TestWindowsPhysicalStateUsesCurrentDownBit()
   {
     Assert(
-      WindowsNativeInputStateReader.IsAsyncKeyDown(unchecked((short)0x8000)),
+      WindowsLowLevelKeyboardEventSource.IsAsyncKeyDown(unchecked((short)0x8000)),
       "Windows physical state ignored the current-down bit."
     );
     Assert(
-      !WindowsNativeInputStateReader.IsAsyncKeyDown(0x0001),
+      !WindowsLowLevelKeyboardEventSource.IsAsyncKeyDown(0x0001),
       "Windows physical state treated the recent-press bit as currently down."
     );
-    Assert(!WindowsNativeInputStateReader.IsAsyncKeyDown(0), "Windows physical state reported an idle key as down.");
+    Assert(!WindowsLowLevelKeyboardEventSource.IsAsyncKeyDown(0), "Windows physical state reported an idle key as down.");
   }
 
-  private static void TestLegacyWindowsInitialStateRemoval()
+  private static void TestReplayInputFormatGate()
   {
-    RecordInputFlags down = RecordInputFlags.Async | RecordInputFlags.Down;
-    var inputs = new List<RecordedInput>
-    {
-      new RecordedInput(-877_752, 187, down),
-      new RecordedInput(-877_752, 189, down),
-      new RecordedInput(-877_752, 220, down),
-      new RecordedInput(-836_688, 82, down),
-      new RecordedInput(-820_165, 82, RecordInputFlags.Async),
-    };
-    var legacyMeta = new ReplayMetadata
+    var current = new ReplayMetadata
     {
       formatVersion = 3,
+      inputFormat = RecordedRunPayload.NativeInputFormatV2,
+      inputTimeBase = ReplayInputTimeBases.Hybrid,
       inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
-      inputCapture = NativeInputKeyCodeMapper.LegacyWindowsThreadStateCapture,
+      inputNativePlatform = "windows",
+      inputCapture = "windows-wh-keyboard-ll",
+    };
+    Assert(ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current), "Current five-column native input was rejected.");
+
+    var legacy = new ReplayMetadata
+    {
+      formatVersion = 2,
+      inputFormat = "csv-conductor-timeus-key-flags-v1",
+      inputTimeBase = ReplayInputTimeBases.Hybrid,
+      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
       inputNativePlatform = "windows",
     };
-
-    List<RecordedInput> normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(inputs, legacyMeta, out int dropped);
-    Assert(dropped == 3, "Legacy Windows initial state group was not removed.");
-    Assert(normalized.Count == 2 && normalized[0].Key == 82, "Real countdown input was removed with legacy state.");
-
-    legacyMeta.inputCapture = NativeInputKeyCodeMapper.PhysicalStateCapture;
-    normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(inputs, legacyMeta, out dropped);
-    Assert(dropped == 0 && normalized.Count == inputs.Count, "Physical-state recording was sanitized as legacy data.");
+    Assert(!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(legacy), "Legacy format was accepted without migration.");
+    current.inputCapture = "skyhook-native-events";
+    Assert(!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current), "Legacy capture source was accepted without migration.");
+    current.inputCapture = "windows-wh-keyboard-ll";
+    current.inputNativePlatform = null;
+    Assert(!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current), "Missing native platform metadata was accepted.");
   }
 
-  private static void AssertWindowsCapture(
-    int rawVirtualKey,
-    KeyLabel label,
-    int expectedVirtualKey,
-    bool expectedExtended,
-    string name
-  )
+  private static void TestUnsupportedCaptureHasNoPollingFallback()
   {
-    Assert(
-      SkyHookNativeInputEventSource.TryResolveWindowsNativeKey(
-        rawVirtualKey,
-        label,
-        out int actualVirtualKey,
-        out bool actualExtended
-      ),
-      "Windows capture rejected " + name + "."
-    );
-    Assert(actualVirtualKey == expectedVirtualKey, "Windows capture remapped " + name + " to another key.");
-    Assert(actualExtended == expectedExtended, "Windows capture assigned the wrong extended state to " + name + ".");
+    if (
+      System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+        System.Runtime.InteropServices.OSPlatform.Windows
+      )
+    )
+      return;
+
+    INativeInputEventSource source = NativeInputEventSourceFactory.CreatePrimary();
+    Assert(source.Name == "unsupported-native-input", "A non-Windows capture fallback was enabled.");
+    Assert(source.SnapshotKeyCodes.Count == 0, "Unsupported capture exposed polling keys.");
+    bool rejected = false;
+    try
+    {
+      source.Start(_ => { });
+    }
+    catch (PlatformNotSupportedException)
+    {
+      rejected = true;
+    }
+    Assert(rejected && !source.IsRunning, "Unsupported capture did not fail explicitly.");
   }
 
   private static void TestReplayPumpTimingAndBatching()

@@ -54,7 +54,7 @@ internal static class UmmWindowNativeInputPatch
     {
       RecordingSession session = RecordingFeature.Instance?.Session;
       if (session != null)
-        RecordInputTracker.Sample(session);
+      RecordInputTracker.DrainCapturedTransitions(session);
       session?.BreakInputTimeline("umm_window");
       RecordInputTracker.SetCaptureWindowActive(false);
     }

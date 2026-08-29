@@ -125,16 +125,15 @@ public static partial class ReplayPlaybackCoordinator
       return Error("metadata_invalid", "Replay metadata could not be parsed.", out errorCode, out errorMessage);
     }
 
-    if (meta == null || (meta.formatVersion != 1 && meta.formatVersion != 2 && meta.formatVersion != 3))
-      return Error("format_unsupported", "This replay format is not supported.", out errorCode, out errorMessage);
+    if (!HasCurrentNativeInputFormat(meta))
+      return Error(
+        "input_migration_required",
+        "This replay uses a legacy input format and must be migrated before playback.",
+        out errorCode,
+        out errorMessage
+      );
     if (!meta.gameplayStartSongPosition.HasValue)
       return Error("metadata_invalid", "Replay gameplay timing metadata is missing.", out errorCode, out errorMessage);
-    if (
-      meta.formatVersion >= 2
-      && !string.Equals(meta.inputTimeBase, ReplayInputTimeBases.Hybrid, StringComparison.Ordinal)
-    )
-      return Error("time_base_unsupported", "This replay time base is not supported.", out errorCode, out errorMessage);
-
     if (!ValidateNativePlatform(meta, run.InputCsv, out errorCode, out errorMessage))
       return false;
 
@@ -159,6 +158,19 @@ public static partial class ReplayPlaybackCoordinator
     long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
     pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs);
     return true;
+  }
+
+  internal static bool HasCurrentNativeInputFormat(ReplayMetadata meta)
+  {
+    return meta != null
+      && meta.formatVersion == 3
+      && string.Equals(meta.inputFormat, RecordedRunPayload.NativeInputFormatV2, StringComparison.Ordinal)
+      && string.Equals(meta.inputTimeBase, ReplayInputTimeBases.Hybrid, StringComparison.Ordinal)
+      && string.Equals(meta.inputKeySpace, NativeInputKeyCodeMapper.NativeKeySpace, StringComparison.OrdinalIgnoreCase)
+      && !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
+      && !string.IsNullOrWhiteSpace(meta.inputCapture)
+      && meta.inputCapture.IndexOf("skyhook", StringComparison.OrdinalIgnoreCase) < 0
+      && meta.inputCapture.IndexOf("polling", StringComparison.OrdinalIgnoreCase) < 0;
   }
 
   private static void BeginOnMainThread(PendingReplay operation)

@@ -68,7 +68,7 @@ PRAGMA user_version = 6;"
     }
     if (version == 6)
     {
-      SkyHookInputKeyMigration.Migrate(connection, out _, out _, out _);
+      AdvanceLegacyInputSchemaWithoutMutation(connection);
       version = 7;
     }
     if (version == 7)
@@ -206,5 +206,10 @@ PRAGMA user_version = 15;"
     command.CommandText = sql;
     command.ExecuteNonQuery();
     transaction.Commit();
+  }
+
+  internal static void AdvanceLegacyInputSchemaWithoutMutation(SqliteConnection connection)
+  {
+    Migrate(connection, "PRAGMA user_version = 7;");
   }
 }

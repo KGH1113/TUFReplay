@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Diagnostics;
 using System.Threading;
 using TUFReplay.Recording.Input;
@@ -16,9 +15,7 @@ public static class RecordInputTracker
   private const long UnixEpochTicks = 621355968000000000L;
 
   private static readonly object StateLock = new object();
-  private static readonly INativeInputStateReader StateReader = NativeInputStateReaderFactory.Create();
   private static INativeInputEventSource EventSource = NativeInputEventSourceFactory.CreatePrimary();
-  private static readonly INativeInputEventSource FallbackEventSource = NativeInputEventSourceFactory.CreateFallback();
   private static readonly NativeInputTransitionRingBuffer EventQueue = new NativeInputTransitionRingBuffer();
   private static readonly NativeInputTransition[] DrainBuffer = new NativeInputTransition[
     NativeInputTransitionRingBuffer.Capacity
@@ -26,7 +23,6 @@ public static class RecordInputTracker
   private static readonly NativeInputTransition[] FilteredDrainBuffer = new NativeInputTransition[
     NativeInputTransitionRingBuffer.Capacity
   ];
-  private static readonly bool IsWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
   private static readonly bool[] KeyStates = new bool[(ushort.MaxValue + 1) * 2];
 
   private static volatile bool _capturing;
@@ -51,7 +47,7 @@ public static class RecordInputTracker
     get
     {
       lock (StateLock)
-        return _usingEvents ? _mode : "native-state-polling-low-resolution";
+        return _mode;
     }
   }
 
@@ -59,36 +55,25 @@ public static class RecordInputTracker
   {
     Reset();
 
+    lock (StateLock)
+      _capturing = true;
+
     Exception startFailure = TryStartEventSource(EventSource);
-    if (startFailure != null && !IsSameEventSourceKind(EventSource, FallbackEventSource))
-    {
-      string failedSource = EventSource.Name;
-      Main.Instance?.Log(
-        "[Recording/Input] Native source unavailable; trying SkyHook. source="
-          + EventSource.Name
-          + ", error="
-          + startFailure.Message
-      );
-      EventSource = FallbackEventSource;
-      Exception fallbackFailure = TryStartEventSource(EventSource);
-      if (fallbackFailure == null)
-        _fallbackReason = failedSource + ": " + startFailure.Message;
-      startFailure = fallbackFailure;
-    }
 
     lock (StateLock)
     {
-      _capturing = true;
       _captureWindowActive = false;
       _usingEvents = startFailure == null;
-      _mode = _usingEvents ? EventSource.Name : "native-state-sample-fallback";
+      _mode = _usingEvents ? EventSource.Name : "unsupported";
     }
 
     if (startFailure != null)
     {
       _fallbackReason = EventSource.Name + ": " + startFailure.Message;
       Main.Instance?.Log(
-        "[Recording/Input] LOW_RESOLUTION fallback: event sources unavailable; using state polling. error="
+        "[Recording/Input] High-resolution input recording is unsupported. source="
+          + EventSource.Name
+          + ", error="
           + startFailure.Message
       );
     }
@@ -97,9 +82,9 @@ public static class RecordInputTracker
       "[Recording/InputDebug] Native capture started. mode="
         + _mode
         + ", source="
-        + (_usingEvents ? EventSource.Name : StateReader.Name)
-        + ", supportedKeys="
-        + StateReader.KeyCodes.Count
+        + EventSource.Name
+        + ", snapshotKeys="
+        + EventSource.SnapshotKeyCodes.Count
     );
   }
 
@@ -162,42 +147,31 @@ public static class RecordInputTracker
 
       if (active)
       {
-        SynchronizeStatesLocked(emitTransitions: true);
+        SynchronizePhysicalStateLocked(emitTransitions: true);
         _acceptingEvents = !_overflowed;
         Interlocked.Increment(ref _resyncs);
       }
     }
   }
 
-  public static void Sample(RecordingSession session)
+  public static void DrainCapturedTransitions(RecordingSession session)
   {
-    if (!_capturing)
+    if (!_capturing || !_usingEvents)
       return;
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
 
     Interlocked.Increment(ref _samples);
 
-    if (_usingEvents)
+    int count = DrainFilteredTransitions();
+    if (count > 0)
     {
-      int count = DrainFilteredTransitions();
-      if (count > 0)
-      {
-        int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
-        Interlocked.Add(ref _transitions, recorded);
-      }
-
-      if (!EnsureEventSourceRunning())
-      {
-        SamplePolling(session);
-        return;
-      }
-
-      RecoverFromOverflow();
-      return;
+      int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
+      Interlocked.Add(ref _transitions, recorded);
     }
-
-    SamplePolling(session);
+    if (!EnsureEventSourceRunning())
+      return;
+    RecoverFromOverflow();
   }
 
   public static string DebugSnapshot()
@@ -221,9 +195,9 @@ public static class RecordInputTracker
       + ", mode="
       + mode
       + ", source="
-      + (usingEvents ? EventSource.Name : StateReader.Name)
-      + ", supportedKeys="
-      + StateReader.KeyCodes.Count
+      + EventSource.Name
+      + ", snapshotKeys="
+      + EventSource.SnapshotKeyCodes.Count
       + ", samples="
       + Interlocked.Read(ref _samples)
       + ", received="
@@ -249,7 +223,7 @@ public static class RecordInputTracker
 
     lock (StateLock)
     {
-      payload.InputCapture = _usingEvents ? _mode : "native-state-polling-low-resolution";
+      payload.InputCapture = _mode;
       payload.InputFallbackReason = _fallbackReason;
     }
     payload.InputReceived = Interlocked.Read(ref _received);
@@ -320,65 +294,19 @@ public static class RecordInputTracker
     return accepted;
   }
 
-  private static void SamplePolling(RecordingSession session)
+  private static void SynchronizePhysicalStateLocked(bool emitTransitions)
   {
-    try
-    {
-      StateReader.Refresh();
-    }
-    catch
-    {
-      Interlocked.Increment(ref _readFailures);
-      return;
-    }
-
-    IReadOnlyList<int> keyCodes = StateReader.KeyCodes;
-    for (int i = 0; i < keyCodes.Count; i++)
-    {
-      int key = keyCodes[i];
-      bool extendedKey = IsWindows && WindowsNativeInputKey.IsExtended(key);
-      if (!TryGetStateIndex(key, extendedKey, out int stateIndex) || !StateReader.TryGetIsDown(key, out bool isDown))
-      {
-        Interlocked.Increment(ref _readFailures);
-        continue;
-      }
-
-      bool wasDown = KeyStates[stateIndex];
-      if (isDown == wasDown)
-        continue;
-
-      KeyStates[stateIndex] = isDown;
-      RecordInputFlags flags = RecordInputFlags.Async;
-      if (isDown)
-        flags |= RecordInputFlags.Down;
-      if (extendedKey)
-        flags |= RecordInputFlags.ExtendedKey;
-
-      session.AddInputAtCurrentTime(key, flags);
-      Interlocked.Increment(ref _transitions);
-    }
-  }
-
-  private static void SynchronizeStatesLocked(bool emitTransitions)
-  {
-    try
-    {
-      StateReader.RefreshPhysicalState();
-    }
-    catch
-    {
-      Interlocked.Increment(ref _readFailures);
-      return;
-    }
-
     long timestampNs = CurrentUnixTimeNs();
     long captureTicks = Stopwatch.GetTimestamp();
-    IReadOnlyList<int> keyCodes = StateReader.KeyCodes;
+    IReadOnlyList<int> keyCodes = EventSource.SnapshotKeyCodes;
     for (int i = 0; i < keyCodes.Count; i++)
     {
       int key = keyCodes[i];
-      bool extendedKey = IsWindows && WindowsNativeInputKey.IsExtended(key);
-      if (!TryGetStateIndex(key, extendedKey, out int stateIndex) || !StateReader.TryGetIsDown(key, out bool isDown))
+      bool extendedKey = WindowsNativeInputKey.IsExtended(key);
+      if (
+        !TryGetStateIndex(key, extendedKey, out int stateIndex)
+        || !EventSource.TryGetPhysicalKeyState(key, out bool isDown)
+      )
       {
         Interlocked.Increment(ref _readFailures);
         continue;
@@ -414,7 +342,8 @@ public static class RecordInputTracker
     }
     catch (Exception exception)
     {
-      return TrySwitchToFallbackEventSource(exception);
+      SwitchToUnsupported(exception);
+      return false;
     }
 
     if (!_restartAttempted)
@@ -433,79 +362,40 @@ public static class RecordInputTracker
         {
           lock (StateLock)
           {
-            SynchronizeStatesLocked(emitTransitions: true);
+            SynchronizePhysicalStateLocked(emitTransitions: true);
             _acceptingEvents = _captureWindowActive && !_overflowed;
             Interlocked.Increment(ref _resyncs);
           }
 
-          Main.Instance?.Log("[Recording/Input] Capture source restarted after an unexpected stop. source=" + EventSource.Name);
+          Main.Instance?.Log("[Recording/Input] Native capture source restarted. source=" + EventSource.Name);
           return true;
         }
       }
       catch (Exception exception)
       {
-        return TrySwitchToFallbackEventSource(exception);
+        SwitchToUnsupported(exception);
+        return false;
       }
     }
 
-    return TrySwitchToFallbackEventSource(
-      new InvalidOperationException(EventSource.Name + " stopped while input capture was active.")
-    );
-  }
-
-  private static bool TrySwitchToFallbackEventSource(Exception exception)
-  {
-    if (!IsSameEventSourceKind(EventSource, FallbackEventSource))
-    {
-      string failedSource = EventSource.Name;
-      lock (StateLock)
-        _acceptingEvents = false;
-      StopEventSourceNoThrow();
-      EventSource = FallbackEventSource;
-      Exception fallbackFailure = TryStartEventSource(EventSource);
-      if (fallbackFailure == null)
-      {
-        lock (StateLock)
-        {
-          _usingEvents = true;
-          _overflowed = false;
-          _restartAttempted = false;
-          _mode = EventSource.Name;
-          _fallbackReason = failedSource + ": " + exception.Message;
-          SynchronizeStatesLocked(emitTransitions: true);
-          _acceptingEvents = _capturing && _captureWindowActive && !_overflowed;
-          Interlocked.Increment(ref _resyncs);
-        }
-        Main.Instance?.Log(
-          "[Recording/Input] Capture source failed; switched to SkyHook. source="
-            + failedSource
-            + ", error="
-            + exception.Message
-        );
-        return true;
-      }
-
-      exception = new AggregateException(exception, fallbackFailure);
-    }
-
-    SwitchToPollingFallback(exception);
+    SwitchToUnsupported(new InvalidOperationException(EventSource.Name + " stopped while input capture was active."));
     return false;
   }
 
-  private static void SwitchToPollingFallback(Exception exception)
+  private static void SwitchToUnsupported(Exception exception)
   {
     lock (StateLock)
     {
       _acceptingEvents = false;
       _usingEvents = false;
       _overflowed = false;
-      _mode = "native-state-sample-fallback";
+      _mode = "unsupported";
       _fallbackReason = EventSource.Name + ": " + exception.Message;
     }
 
     StopEventSourceNoThrow();
     Main.Instance?.Log(
-      "[Recording/Input] LOW_RESOLUTION fallback: SkyHook stopped; using state polling. error=" + exception.Message
+      "[Recording/Input] Native capture stopped; no fallback is enabled. error=" + exception.Message
     );
   }
 
@@ -518,14 +408,15 @@ public static class RecordInputTracker
 
       _acceptingEvents = false;
       EventQueue.Clear();
-      SynchronizeStatesLocked(emitTransitions: false);
+      SynchronizePhysicalStateLocked(emitTransitions: false);
       _overflowed = false;
       _acceptingEvents = _capturing && _captureWindowActive;
       Interlocked.Increment(ref _resyncs);
     }
 
     Main.Instance?.Log(
-      "[Recording/Input] Event buffer overflowed; input state resynchronized. dropped=" + Interlocked.Read(ref _dropped)
+      "[Recording/Input] Event buffer overflowed; physical state resynchronized once. dropped="
+        + Interlocked.Read(ref _dropped)
     );
   }
 
@@ -537,7 +428,7 @@ public static class RecordInputTracker
     }
     catch (Exception exception)
     {
-      Main.Instance?.Log("[Recording/Input] Failed to stop SkyHook cleanly. error=" + exception.Message);
+      Main.Instance?.Log("[Recording/Input] Failed to stop native source cleanly. error=" + exception.Message);
     }
   }
 
@@ -562,11 +453,6 @@ public static class RecordInputTracker
       }
       return exception;
     }
-  }
-
-  private static bool IsSameEventSourceKind(INativeInputEventSource left, INativeInputEventSource right)
-  {
-    return left != null && right != null && string.Equals(left.Name, right.Name, StringComparison.Ordinal);
   }
 
   private static long CurrentUnixTimeNs()
