@@ -1,6 +1,5 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
-using SkyHook;
 using TUFReplay;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Migrations;

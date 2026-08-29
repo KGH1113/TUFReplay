@@ -17,7 +17,7 @@ public class RecordedRunPayload
   public long? WonTimeUs;
   public long? TerminalTimeUs;
   public string InputTimeBase = ReplayInputTimeBases.Hybrid;
-  public string InputCapture = "skyhook-events-high-resolution-physical-state";
+  public string InputCapture = "unsupported";
   public int InputPendingMax;
   public long InputPendingMaxDurationUs;
   public long InputAnchorMaxDurationUs;

@@ -134,10 +134,6 @@
       <HintPath>$(AdofaiManaged)/RDTools.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="SkyHook.Unity">
-      <HintPath>$(AdofaiManaged)/SkyHook.Unity.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>
