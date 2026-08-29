@@ -24,7 +24,7 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
     ]);
 
     return (
-      <div className="relative min-h-0 flex-1 overflow-hidden bg-black/30">
+      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black/30 shadow-2xl ring-1 ring-foreground/10">
         {viewModel.showFrame ? (
           <iframe
             ref={viewModel.frameRef}

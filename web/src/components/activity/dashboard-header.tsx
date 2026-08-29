@@ -16,7 +16,7 @@ export function DashboardHeader({
 }) {
   const { t } = useTranslation("common");
   return (
-    <header className="flex min-h-14 items-center justify-between gap-3 border-b border-border bg-background px-4 py-2">
+    <header className="glass-toolbar flex min-h-14 items-center justify-between gap-3 rounded-2xl px-4 py-2">
       <h1 className="font-heading text-2xl font-semibold tracking-tight">{t("appName")}</h1>
       <div className="flex items-center gap-2">
         <MicrophoneControls connectionStatus={status} mockEnabled={mockEnabled} />
