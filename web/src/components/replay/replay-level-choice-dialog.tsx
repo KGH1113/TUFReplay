@@ -118,7 +118,7 @@ export function ReplayLevelChoiceDialog({
     <Dialog open={Boolean(run)} onOpenChange={(open) => !open && close()}>
       <DialogContent
         aria-describedby="replay-level-choice-description"
-        className="min-h-0 w-[min(27rem,calc(100vw-2rem))] overflow-hidden p-0 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+        className="min-h-0 w-[min(27rem,calc(100vw-2rem))] overflow-hidden p-0"
         onEscapeKeyDown={(event) => isPicking && event.preventDefault()}
         onPointerDownOutside={(event) => isPicking && event.preventDefault()}
       >
@@ -161,7 +161,7 @@ export function ReplayLevelChoiceDialog({
                 strokeWidth={2}
               />
             ) : (
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">
+              <span className="text-xs font-semibold uppercase tracking-wide text-primary">
                 {t("dialog.default")}
               </span>
             )}

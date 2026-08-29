@@ -266,7 +266,7 @@ function RunReplayButton({
           disabled={disabled}
           onClick={() => !disabled && pendingRunId === null && onPlay(run)}
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-[11px] font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:cursor-wait aria-disabled:opacity-45",
+            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-xs font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:cursor-wait aria-disabled:opacity-45",
             "min-w-16",
             (starting || playing) && "border-primary/70 bg-primary/25",
             playing && "bg-primary text-primary-foreground shadow-sm shadow-primary/20",
