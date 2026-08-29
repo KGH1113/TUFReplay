@@ -22,7 +22,7 @@
     <Reference Include="SkyHook.Unity">
       <HintPath>$(AdofaiManaged)/SkyHook.Unity.dll</HintPath>
     </Reference>
-    <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.6" />
+    <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.12" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.*" />
   </ItemGroup>
   <ItemGroup>
