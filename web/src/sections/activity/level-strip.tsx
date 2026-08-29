@@ -22,9 +22,9 @@ export function LevelStrip({
   const { t, i18n } = useTranslation("activity");
   const locale = i18n.resolvedLanguage ?? "en";
   return (
-    <div className="border-b border-border bg-muted/10 px-3 py-2">
+    <div className="glass-toolbar rounded-2xl px-1">
       <TooltipProvider>
-        <div className="flex gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <div className="flex gap-2 overflow-x-auto px-1 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {levelSessions.map((session) => {
             const metadata = metadataFor(session);
             const artist =
@@ -54,12 +54,12 @@ export function LevelStrip({
                 aria-label={session.canOpen ? undefined : unavailableRunsWarning}
                 tabIndex={session.canOpen ? undefined : 0}
                 className={cn(
-                  "relative grid w-fit min-w-[22rem] max-w-[26rem] flex-none grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-md border border-border bg-background/60 px-3 py-3 text-left transition",
+                  "relative grid w-fit min-w-[22rem] max-w-[26rem] flex-none grid-cols-[3.5rem_minmax(0,1fr)] items-center gap-3 overflow-hidden rounded-xl border border-transparent bg-background/75 px-3 py-3 text-left shadow-sm ring-1 ring-foreground/8 transition-[background-color,box-shadow,opacity]",
                   !session.canOpen &&
-                    "border-amber-500/30 opacity-40 transition-[border-color,opacity] duration-300 ease-out before:pointer-events-none before:absolute before:inset-0 before:z-0 before:bg-[repeating-linear-gradient(-45deg,rgba(245,158,11,0.18)_0_4px,transparent_4px_14px)] before:opacity-0 before:transition-opacity before:duration-300 before:ease-out before:content-[''] hover:border-amber-500/50 hover:before:opacity-100",
+                    "border-amber-500/30 opacity-40 ring-amber-500/20 transition-[border-color,opacity] duration-300 ease-out before:pointer-events-none before:absolute before:inset-0 before:z-0 before:bg-[repeating-linear-gradient(-45deg,rgba(245,158,11,0.18)_0_4px,transparent_4px_14px)] before:opacity-0 before:transition-opacity before:duration-300 before:ease-out before:content-[''] hover:border-amber-500/50 hover:before:opacity-100",
                   session.canOpen &&
                     selectedLevelGroupId === session.levelGroupId &&
-                    "border-primary/60 bg-primary/10 ring-1 ring-primary/30",
+                    "bg-primary/10 shadow-lg shadow-primary/8 after:pointer-events-none after:absolute after:inset-y-3 after:left-0 after:z-20 after:w-1 after:rounded-r-full after:bg-primary after:content-['']",
                 )}
               >
                 <button
@@ -68,8 +68,8 @@ export function LevelStrip({
                   disabled={!session.canOpen}
                   onClick={() => onSelectLevelGroup(session.levelGroupId)}
                   className={cn(
-                    "absolute inset-0 z-0 rounded-md transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed",
-                    session.canOpen && "hover:bg-muted/50",
+                    "absolute inset-0 z-0 rounded-xl transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed",
+                    session.canOpen && "hover:bg-foreground/5",
                   )}
                 />
                 <div className="pointer-events-none relative z-10 flex size-14 shrink-0 items-center justify-center">

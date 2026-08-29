@@ -34,6 +34,18 @@
 | 오른쪽 실행 카드 상단 | 세로 점 3개 | 메뉴를 열고 microphone recording 하위 메뉴가 있으면 연다. | 메뉴와 하위 메뉴가 짧게 fade/scale되며 파일 크기와 보존 기간 설명이 12px로 읽힌다. Escape로 단계별로 닫힌다. |
 | 실행 카드 하단 | 9개 judgment 숫자 | 숫자와 tooltip을 확인한다. | 숫자가 12px로 읽히며 9개 열이 겹치거나 잘리지 않는다. hover tooltip의 레이블과 값이 정확하다. |
 
+## 플로팅 글래스와 panel 계층
+
+| 화면 위치 | 확인 항목 | 수행 동작 | 기대 결과 |
+| --- | --- | --- | --- |
+| 전체 workspace | panel gutter | 날짜 rail, 헤더, 레벨 strip, chart, 열린 inspector 사이를 확인한다. | 각 구조 panel 사이에 12px 배경 여백이 일정하게 보이고 어느 panel도 겹치거나 잘리지 않는다. |
+| 좌측 `DAYS` rail | 날짜 surface | `Jul 13`과 `Jul 12`를 번갈아 선택한다. | rail은 가장 무거운 glass material로 보이고 반복 하단선과 scrollbar는 보이지 않는다. 선택 날짜에만 밝은 내부 surface와 모서리에 닿지 않는 짧은 초록 accent가 나타난다. |
+| 우측 상단과 레벨 strip | toolbar material | 메뉴를 열고 레벨 카드를 선택한다. | 헤더와 strip은 rail보다 가벼운 glass material로 보이고, 레벨 카드는 반투명 surface 위에서 다시 흐릿하게 겹쳐 보이지 않는다. |
+| 중앙 chart | chart canvas | 밝은 chart 구간과 어두운 chart 구간을 각각 표시한다. | chart는 glass가 아닌 차분한 검은 canvas로 유지되고 둥근 모서리와 외곽 edge가 선명하다. 주변 header와 inspector 텍스트가 chart 밝기에 영향받지 않는다. |
+| 오른쪽 inspector | inspector material | chart marker를 선택해 inspector를 열고 닫는다. | inspector는 chart와 12px 떨어진 독립 glass panel로 보이며 왼쪽 칸막이선이 없다. |
+| 실행 카드 | 선택 상태 | 서로 다른 실행 카드를 번갈아 선택한다. | 선택 카드에 초록 tint와 모서리에 닿지 않는 짧은 초록 accent가 표시되고, 카드 전체를 감싸는 초록 outline 없이 비선택 카드와 구분된다. |
+| 실행 카드 내부 | metric 그룹 | 네 metric과 judgment 영역을 확인한다. | metric 주위의 중첩 회색 사각형은 없지만 아이콘·정렬·간격으로 한 그룹처럼 읽힌다. judgment 구분선은 유지된다. |
+
 ## Floating UI와 calibration
 
 | 화면 위치 | 누를 항목 | 수행 동작 | 기대 결과 |
@@ -66,6 +78,15 @@
 
 검증 후 **동작 줄이기**를 원래 설정으로 되돌린다.
 
+## 투명도와 대비 접근성
+
+1. macOS에서 **시스템 설정 → 손쉬운 사용 → 디스플레이 → 투명도 줄이기**를 켠다.
+2. 페이지를 새로고침하고 날짜 rail, 헤더, 레벨 strip, inspector를 확인한다.
+3. 모든 glass panel이 불투명한 card surface로 바뀌고 blur가 제거되는지 확인한다.
+4. **대비 증가**를 켠 뒤 페이지를 다시 확인한다.
+5. panel 배경이 불투명하고 외곽선이 더 선명하며 그림자 없이도 panel 경계가 구분되는지 확인한다.
+6. 두 설정을 원래 상태로 되돌린다.
+
 ## 키보드와 focus 회귀
 
 1. 페이지를 새로고침하고 마우스를 사용하지 않는다.
@@ -80,5 +101,6 @@
 - 데스크톱 1440 × 1000에서 변경 대상 텍스트가 겹치거나 잘리지 않는다.
 - 일반 모션에서는 floating UI가 동일한 빠른 fade/scale 언어를 사용한다.
 - **동작 줄이기**에서는 scale, slide, run-sort animation이 제거된다.
+- **투명도 줄이기**와 **대비 증가**에서는 glass가 불투명하고 명확한 panel로 대체된다.
 - inspector 개폐 중 chart가 연속 reflow로 버벅이지 않고 선택 marker를 다시 focus한다.
 - 파형 drag, slider keyboard 입력, menu/dialog focus와 Escape 동작에 회귀가 없다.

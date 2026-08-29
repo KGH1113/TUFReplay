@@ -67,7 +67,9 @@ export const RunCard = memo(function RunCard({
     <div
       data-run-id={run.id}
       className={cn(
-        "group/run relative rounded-md border border-border bg-background/60 text-xs transition-colors hover:border-primary/60",
+        "group/run relative overflow-hidden rounded-xl bg-background/55 text-xs shadow-sm ring-1 ring-foreground/8 transition-[background-color,box-shadow] hover:bg-background/70 hover:ring-foreground/15",
+        active &&
+          "bg-primary/[0.07] shadow-md shadow-primary/8 before:pointer-events-none before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-r-full before:bg-primary before:content-['']",
       )}
     >
       <div className="flex min-h-8 items-center gap-2 px-3 pt-2.5">
@@ -151,7 +153,7 @@ function RunCardContent({ run, timeZone }: { run: ActivityRun; timeZone: string 
   );
 
   return (
-    <div className="grid grid-cols-2 gap-x-5 gap-y-2 rounded-md bg-muted/25 p-2.5">
+    <div className="grid grid-cols-2 gap-x-5 gap-y-2 px-1 py-2">
       <ScoreboardMetric
         icon={PercentIcon}
         label={t("sort.progress")}

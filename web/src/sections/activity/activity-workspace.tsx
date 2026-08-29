@@ -243,7 +243,7 @@ export function ActivityWorkspace({
       />
     );
   return (
-    <section className="flex min-h-0 flex-1">
+    <section className={cn("flex min-h-0 flex-1", selectedMarker && "gap-3")}>
       <EmbeddedChart
         ref={chartRef}
         chart={chart}
@@ -256,10 +256,8 @@ export function ActivityWorkspace({
       <aside
         aria-hidden={!selectedMarker}
         className={cn(
-          "flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/10",
-          selectedMarker
-            ? "w-96 border-border p-3"
-            : "pointer-events-none w-0 border-transparent p-0",
+          "flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl",
+          selectedMarker ? "glass-structural w-96 p-3" : "pointer-events-none w-0 p-0",
         )}
       >
         {selectedMarker ? (
@@ -269,7 +267,7 @@ export function ActivityWorkspace({
                 {t("run.sortBy")}
               </div>
               <fieldset className="flex min-w-0 items-center gap-2" aria-label={t("sort.label")}>
-                <div className="grid min-w-0 flex-1 grid-cols-4 rounded-md border border-border bg-background/70 p-1">
+                <div className="grid min-w-0 flex-1 grid-cols-4 rounded-lg bg-background/55 p-1 ring-1 ring-foreground/8">
                   {runSortOptions.map((option) => (
                     <button
                       key={option}
@@ -285,7 +283,7 @@ export function ActivityWorkspace({
                     </button>
                   ))}
                 </div>
-                <div className="grid grid-cols-2 rounded-md border border-border bg-background/70 p-1">
+                <div className="grid grid-cols-2 rounded-lg bg-background/55 p-1 ring-1 ring-foreground/8">
                   <SortDirectionButton
                     direction="asc"
                     selected={sortDirection === "asc"}
@@ -301,7 +299,7 @@ export function ActivityWorkspace({
             </div>
             <div
               ref={runScrollRef}
-              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain pr-1"
+              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-1"
             >
               <TooltipProvider>
                 <div
@@ -353,7 +351,7 @@ export function ActivityWorkspace({
 
 function StatePanel({ title, body }: { title: string; body: string }) {
   return (
-    <section className="grid min-h-0 flex-1 place-items-center p-8 text-center">
+    <section className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 p-8 text-center shadow-2xl ring-1 ring-foreground/10">
       <div>
         <h2 className="font-heading text-xl font-semibold">{title}</h2>
         <p className="mt-2 text-sm text-muted-foreground">{body}</p>
