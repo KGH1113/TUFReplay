@@ -23,7 +23,7 @@ export function DashboardHeader({
         <span
           role="status"
           className={cn(
-            "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium",
+            "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium",
             status === "online" && "border-primary/25 bg-primary/8 text-primary",
             status === "connecting" && "border-border bg-muted/40 text-muted-foreground",
             status === "error" && "border-amber-400/25 bg-amber-400/8 text-amber-300",

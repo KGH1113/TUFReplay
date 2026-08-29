@@ -227,6 +227,11 @@ export function ActivityWorkspace({
       animation.id = "run-sort";
     }
   }, [runRowStride, runSort, sortDirection]);
+  useLayoutEffect(() => {
+    if (!selectedMarker) return;
+    const frame = requestAnimationFrame(() => chartRef.current?.refocusSelection());
+    return () => cancelAnimationFrame(frame);
+  }, [selectedMarker]);
   if (error) return <StatePanel title={t("chart.loadError")} body={error} />;
   if (!chartAvailable)
     return <StatePanel title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
@@ -250,26 +255,17 @@ export function ActivityWorkspace({
       />
       <aside
         aria-hidden={!selectedMarker}
-        onTransitionEnd={(event) => {
-          if (
-            event.currentTarget !== event.target ||
-            event.propertyName !== "width" ||
-            !selectedMarker
-          )
-            return;
-          chartRef.current?.refocusSelection();
-        }}
         className={cn(
-          "flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/10 transition-[width,padding,border-color] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none",
+          "flex min-h-0 shrink-0 flex-col overflow-hidden border-l bg-muted/10",
           selectedMarker
             ? "w-96 border-border p-3"
             : "pointer-events-none w-0 border-transparent p-0",
         )}
       >
         {selectedMarker ? (
-          <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col">
+          <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200">
             <div className="mb-3 shrink-0">
-              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 {t("run.sortBy")}
               </div>
               <fieldset className="flex min-w-0 items-center gap-2" aria-label={t("sort.label")}>
@@ -281,7 +277,7 @@ export function ActivityWorkspace({
                       aria-pressed={runSort === option}
                       onClick={() => changeRunSort(option)}
                       className={cn(
-                        "h-7 rounded-sm px-1.5 text-[11px] font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                        "h-8 rounded-sm px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                         runSort === option && "bg-muted text-foreground shadow-sm",
                       )}
                     >
@@ -385,7 +381,7 @@ function SortDirectionButton({
       title={label}
       onClick={() => onSelect(direction)}
       className={cn(
-        "grid size-7 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        "grid size-8 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         selected && "bg-primary/15 text-primary shadow-sm",
       )}
     >
