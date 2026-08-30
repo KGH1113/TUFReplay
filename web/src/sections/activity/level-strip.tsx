@@ -1,4 +1,4 @@
-import { Alert02Icon } from "@hugeicons/core-free-icons";
+import { Alert02Icon, ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useTranslation } from "react-i18next";
 import { formatTime } from "@/models/activity/activity-date";
@@ -88,16 +88,40 @@ export function LevelStrip({
                   )}
                 </div>
                 <div id={labelId} className="pointer-events-none relative z-10 min-w-0">
-                  <p className="truncate text-xs text-muted-foreground">
-                    {metadata.levelId === null
-                      ? metadata.artist
+                  {metadata.levelId === null ? (
+                    <p className="truncate text-xs text-muted-foreground">
+                      {metadata.artist
                         ? t("metadata.localArtist", { artist })
-                        : t("metadata.localUnknown")
-                      : t("metadata.tufArtist", {
-                          levelId: metadata.levelId,
-                          artist,
-                        })}
-                  </p>
+                        : t("metadata.localUnknown")}
+                    </p>
+                  ) : (
+                    <div className="mb-0.5 flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <a
+                            href={`https://tuforums.com/levels/${metadata.levelId}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            aria-label={t("metadata.openTufLevelLabel", {
+                              levelId: metadata.levelId,
+                            })}
+                            className="pointer-events-auto relative z-20 -my-1 -ml-1 inline-flex shrink-0 items-center gap-0.5 rounded-sm px-1 py-1 font-heading text-[11px] font-medium text-muted-foreground transition-[color,background-color,transform] hover:bg-foreground/5 hover:text-foreground hover:underline hover:decoration-foreground/40 hover:underline-offset-2 active:scale-[0.97] focus-visible:bg-foreground/5 focus-visible:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+                          >
+                            <span>{t("metadata.tufLevelLink", { levelId: metadata.levelId })}</span>
+                            <HugeiconsIcon
+                              aria-hidden="true"
+                              icon={ArrowUpRight01Icon}
+                              size={11}
+                              strokeWidth={2.2}
+                            />
+                          </a>
+                        </TooltipTrigger>
+                        <TooltipContent side="top">{t("metadata.openTufLevel")}</TooltipContent>
+                      </Tooltip>
+                      <span aria-hidden="true">·</span>
+                      <span className="truncate">{artist}</span>
+                    </div>
+                  )}
                   <div className="truncate font-heading text-lg font-semibold">{name}</div>
                   <p className="truncate text-xs text-muted-foreground" title={creator}>
                     {t("metadata.chartBy", { creator })}
