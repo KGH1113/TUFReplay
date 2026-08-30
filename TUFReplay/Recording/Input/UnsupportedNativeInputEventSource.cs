@@ -9,6 +9,7 @@ internal sealed class UnsupportedNativeInputEventSource : INativeInputEventSourc
 
   public string Name => "unsupported-native-input";
   public bool IsRunning => false;
+  public bool UsesExtendedKeyState => false;
   public IReadOnlyList<int> SnapshotKeyCodes => NoKeys;
 
   public void Start(Action<NativeInputTransition> onTransition)
@@ -20,9 +21,15 @@ internal sealed class UnsupportedNativeInputEventSource : INativeInputEventSourc
 
   public void Stop() { }
 
+  public void RefreshPhysicalState() { }
+
   public bool TryGetPhysicalKeyState(int keyCode, out bool isDown)
   {
     isDown = false;
     return false;
   }
+
+  public long ConsumeDroppedEvents() => 0;
+
+  public NativeInputSourceDiagnostics GetDiagnostics() => default;
 }

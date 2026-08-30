@@ -62,6 +62,7 @@ internal static class NativeInputKeyCodeMapper
     { LogicalKeyboardKey.Grave, 0x32 },
     { LogicalKeyboardKey.Backspace, 0x33 },
     { LogicalKeyboardKey.Escape, 0x35 },
+    { LogicalKeyboardKey.RSuper, 0x36 },
     { LogicalKeyboardKey.Super, 0x37 },
     { LogicalKeyboardKey.LShift, 0x38 },
     { LogicalKeyboardKey.CapsLock, 0x39 },
@@ -117,6 +118,107 @@ internal static class NativeInputKeyCodeMapper
     { LogicalKeyboardKey.ArrowUp, 0x7E },
   };
   private static readonly Dictionary<ushort, LogicalKeyboardKey> MacVirtualKeyLabels = CreateReverseMap(MacVirtualKeyCodes);
+
+  internal static bool TryGetLogicalKeyFromHidUsage(int usage, out LogicalKeyboardKey key)
+  {
+    if (usage >= 4 && usage <= 29)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.A + usage - 4);
+      return true;
+    }
+    if (usage >= 30 && usage <= 38)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.Alpha1 + usage - 30);
+      return true;
+    }
+    if (usage == 39)
+    {
+      key = LogicalKeyboardKey.Alpha0;
+      return true;
+    }
+    if (usage >= 58 && usage <= 69)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.F1 + usage - 58);
+      return true;
+    }
+    if (usage >= 89 && usage <= 97)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.Keypad1 + usage - 89);
+      return true;
+    }
+    if (usage >= 104 && usage <= 111)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.F13 + usage - 104);
+      return true;
+    }
+
+    switch (usage)
+    {
+      case 40: key = LogicalKeyboardKey.Enter; return true;
+      case 41: key = LogicalKeyboardKey.Escape; return true;
+      case 42: key = LogicalKeyboardKey.Backspace; return true;
+      case 43: key = LogicalKeyboardKey.Tab; return true;
+      case 44: key = LogicalKeyboardKey.Space; return true;
+      case 45: key = LogicalKeyboardKey.Minus; return true;
+      case 46: key = LogicalKeyboardKey.Equal; return true;
+      case 47: key = LogicalKeyboardKey.LeftBrace; return true;
+      case 48: key = LogicalKeyboardKey.RightBrace; return true;
+      case 49:
+      case 50:
+      case 100: key = LogicalKeyboardKey.BackSlash; return true;
+      case 51: key = LogicalKeyboardKey.Semicolon; return true;
+      case 52: key = LogicalKeyboardKey.Apostrophe; return true;
+      case 53: key = LogicalKeyboardKey.Grave; return true;
+      case 54: key = LogicalKeyboardKey.Comma; return true;
+      case 55: key = LogicalKeyboardKey.Dot; return true;
+      case 56: key = LogicalKeyboardKey.Slash; return true;
+      case 57: key = LogicalKeyboardKey.CapsLock; return true;
+      case 70: key = LogicalKeyboardKey.PrintScreen; return true;
+      case 71: key = LogicalKeyboardKey.ScrollLock; return true;
+      case 72: key = LogicalKeyboardKey.PauseBreak; return true;
+      case 73: key = LogicalKeyboardKey.Insert; return true;
+      case 74: key = LogicalKeyboardKey.Home; return true;
+      case 75: key = LogicalKeyboardKey.PageUp; return true;
+      case 76: key = LogicalKeyboardKey.Delete; return true;
+      case 77: key = LogicalKeyboardKey.End; return true;
+      case 78: key = LogicalKeyboardKey.PageDown; return true;
+      case 79: key = LogicalKeyboardKey.ArrowRight; return true;
+      case 80: key = LogicalKeyboardKey.ArrowLeft; return true;
+      case 81: key = LogicalKeyboardKey.ArrowDown; return true;
+      case 82: key = LogicalKeyboardKey.ArrowUp; return true;
+      case 83: key = LogicalKeyboardKey.NumLock; return true;
+      case 84: key = LogicalKeyboardKey.KeypadSlash; return true;
+      case 85: key = LogicalKeyboardKey.KeypadAsterisk; return true;
+      case 86: key = LogicalKeyboardKey.KeypadMinus; return true;
+      case 87: key = LogicalKeyboardKey.KeypadPlus; return true;
+      case 88: key = LogicalKeyboardKey.KeypadEnter; return true;
+      case 98: key = LogicalKeyboardKey.Keypad0; return true;
+      case 99: key = LogicalKeyboardKey.KeypadDot; return true;
+      case 224: key = LogicalKeyboardKey.LControl; return true;
+      case 225: key = LogicalKeyboardKey.LShift; return true;
+      case 226: key = LogicalKeyboardKey.LAlt; return true;
+      case 227: key = LogicalKeyboardKey.Super; return true;
+      case 228: key = LogicalKeyboardKey.RControl; return true;
+      case 229: key = LogicalKeyboardKey.RShift; return true;
+      case 230: key = LogicalKeyboardKey.RAlt; return true;
+      case 231: key = LogicalKeyboardKey.RSuper; return true;
+      default:
+        key = LogicalKeyboardKey.Unknown;
+        return false;
+    }
+  }
+
+  internal static bool TryGetMacVirtualKeyFromHidUsage(int usage, out int virtualKey)
+  {
+    virtualKey = 0;
+    if (
+      !TryGetLogicalKeyFromHidUsage(usage, out LogicalKeyboardKey key)
+      || !MacVirtualKeyCodes.TryGetValue(key, out ushort mapped)
+    )
+      return false;
+    virtualKey = mapped;
+    return true;
+  }
 
   public static List<RecordedInput> NormalizeForPlayback(
     List<RecordedInput> inputs,
@@ -311,8 +413,8 @@ internal static class NativeInputKeyCodeMapper
       case 0x2C: label = LogicalKeyboardKey.PrintScreen; return true;
       case 0x2D: label = LogicalKeyboardKey.Insert; return true;
       case 0x2E: label = LogicalKeyboardKey.Delete; return true;
-      case 0x5B:
-      case 0x5C: label = LogicalKeyboardKey.Super; return true;
+      case 0x5B: label = LogicalKeyboardKey.Super; return true;
+      case 0x5C: label = LogicalKeyboardKey.RSuper; return true;
       case 0x6A: label = LogicalKeyboardKey.KeypadAsterisk; return true;
       case 0x6B: label = LogicalKeyboardKey.KeypadPlus; return true;
       case 0x6D: label = LogicalKeyboardKey.KeypadMinus; return true;

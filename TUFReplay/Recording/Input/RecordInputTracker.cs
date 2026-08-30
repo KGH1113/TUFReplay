@@ -41,6 +41,7 @@ public static class RecordInputTracker
   private static long _readFailures;
   private static long _resyncs;
   private static int _maxQueueDepth;
+  private static NativeInputSourceDiagnostics _sourceDiagnostics;
 
   public static string CaptureMode
   {
@@ -69,7 +70,7 @@ public static class RecordInputTracker
 
     if (startFailure != null)
     {
-      _fallbackReason = EventSource.Name + ": " + startFailure.Message;
+      _fallbackReason = GetStableFailureReason(startFailure);
       Main.Instance?.Log(
         "[Recording/Input] High-resolution input recording is unsupported. source="
           + EventSource.Name
@@ -97,6 +98,7 @@ public static class RecordInputTracker
       _acceptingEvents = false;
     }
 
+    CaptureSourceDiagnostics();
     StopEventSourceNoThrow();
     int count = DrainFilteredTransitions();
     if (count > 0 && session != null)
@@ -129,6 +131,7 @@ public static class RecordInputTracker
       _readFailures = 0;
       _resyncs = 0;
       _maxQueueDepth = 0;
+      _sourceDiagnostics = default;
     }
 
     StopEventSourceNoThrow();
@@ -162,6 +165,14 @@ public static class RecordInputTracker
       return;
 
     Interlocked.Increment(ref _samples);
+
+    long sourceDropped = EventSource.ConsumeDroppedEvents();
+    if (sourceDropped > 0)
+    {
+      Interlocked.Add(ref _dropped, sourceDropped);
+      _overflowed = true;
+      _acceptingEvents = false;
+    }
 
     int count = DrainFilteredTransitions();
     if (count > 0)
@@ -233,6 +244,11 @@ public static class RecordInputTracker
     payload.InputResyncs = Interlocked.Read(ref _resyncs);
     payload.InputReadFailures = Interlocked.Read(ref _readFailures);
     payload.InputMaxQueueDepth = Volatile.Read(ref _maxQueueDepth);
+    payload.InputNativeCallbacks = _sourceDiagnostics.Callbacks;
+    payload.InputNativeRepeatDropped = _sourceDiagnostics.Repeats;
+    payload.InputNativeUnmapped = _sourceDiagnostics.Unmapped;
+    payload.InputNativeDevices = _sourceDiagnostics.Devices;
+    payload.InputNativeQueueDepth = _sourceDiagnostics.QueueDepth;
   }
 
   private static void OnNativeTransition(NativeInputTransition transition)
@@ -296,13 +312,14 @@ public static class RecordInputTracker
 
   private static void SynchronizePhysicalStateLocked(bool emitTransitions)
   {
+    EventSource.RefreshPhysicalState();
     long timestampNs = CurrentUnixTimeNs();
     long captureTicks = Stopwatch.GetTimestamp();
     IReadOnlyList<int> keyCodes = EventSource.SnapshotKeyCodes;
     for (int i = 0; i < keyCodes.Count; i++)
     {
       int key = keyCodes[i];
-      bool extendedKey = WindowsNativeInputKey.IsExtended(key);
+      bool extendedKey = EventSource.UsesExtendedKeyState && WindowsNativeInputKey.IsExtended(key);
       if (
         !TryGetStateIndex(key, extendedKey, out int stateIndex)
         || !EventSource.TryGetPhysicalKeyState(key, out bool isDown)
@@ -390,13 +407,21 @@ public static class RecordInputTracker
       _usingEvents = false;
       _overflowed = false;
       _mode = "unsupported";
-      _fallbackReason = EventSource.Name + ": " + exception.Message;
+      _fallbackReason = GetStableFailureReason(exception);
     }
 
     StopEventSourceNoThrow();
     Main.Instance?.Log(
       "[Recording/Input] Native capture stopped; no fallback is enabled. error=" + exception.Message
     );
+  }
+
+  private static string GetStableFailureReason(Exception exception)
+  {
+    string macOsReason = MacOsInputMonitoringAccess.FailureReason;
+    return !string.IsNullOrEmpty(macOsReason)
+      ? macOsReason
+      : EventSource.Name + ": " + exception.Message;
   }
 
   private static void RecoverFromOverflow()
@@ -429,6 +454,18 @@ public static class RecordInputTracker
     catch (Exception exception)
     {
       Main.Instance?.Log("[Recording/Input] Failed to stop native source cleanly. error=" + exception.Message);
+    }
+  }
+
+  private static void CaptureSourceDiagnostics()
+  {
+    try
+    {
+      _sourceDiagnostics = EventSource.GetDiagnostics();
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Recording/Input] Failed to read native source diagnostics. error=" + exception.Message);
     }
   }
 

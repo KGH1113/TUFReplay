@@ -9,15 +9,18 @@ public class ReplayInputScheduler
 {
   private readonly object _gate = new object();
   private readonly List<RecordedInput> _events;
+  private readonly List<NativeInputKey> _initialHeldKeys;
   private int _nextIndex;
 
   public ReplayInputScheduler(List<RecordedInput> events)
   {
     _events = events ?? new List<RecordedInput>();
+    _initialHeldKeys = InferInitialHeldKeys(_events);
     _nextIndex = 0;
   }
 
   public int Count => _events.Count;
+  public int InitialHeldCount => _initialHeldKeys.Count;
   public int NextIndex
   {
     get
@@ -56,8 +59,8 @@ public class ReplayInputScheduler
     {
       _nextIndex = 0;
 
-      List<NativeInputKey> heldKeys = new List<NativeInputKey>();
-      HashSet<NativeInputKey> heldSet = new HashSet<NativeInputKey>();
+      List<NativeInputKey> heldKeys = new List<NativeInputKey>(_initialHeldKeys);
+      HashSet<NativeInputKey> heldSet = new HashSet<NativeInputKey>(_initialHeldKeys);
 
       while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
       {
@@ -87,6 +90,31 @@ public class ReplayInputScheduler
 
       return heldKeys;
     }
+  }
+
+  private static List<NativeInputKey> InferInitialHeldKeys(List<RecordedInput> events)
+  {
+    var initialHeldKeys = new List<NativeInputKey>();
+    var seenKeys = new HashSet<NativeInputKey>();
+
+    for (int i = 0; i < events.Count; i++)
+    {
+      RecordedInput input = events[i];
+      if (!input.Async)
+        continue;
+
+      var key = new NativeInputKey(input.Key, input.ExtendedKey, input.NativeCode, input.NativeFlags);
+      if (!seenKeys.Add(key))
+        continue;
+
+      // A key whose first recorded transition is up was already held when
+      // the recording window opened. Preserve that implicit initial state
+      // instead of normalizing every known key through synthetic up/down events.
+      if (!input.Down)
+        initialHeldKeys.Add(key);
+    }
+
+    return initialHeldKeys;
   }
 
   public int CopyNextTimestampGroup(List<RecordedInput> destination)

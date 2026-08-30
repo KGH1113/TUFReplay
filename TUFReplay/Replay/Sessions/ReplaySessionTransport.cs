@@ -412,10 +412,10 @@ public static partial class ReplaySessionService
     if (!TryComputeReplayTimeUs(out long replayTimeUs, out _))
       return;
 
+    ResetReplayHeldInputState();
     _activeContext.NativeInputPlayer?.ResetTo(replayTimeUs, CurrentTimelineRate());
     _activeContext.MicrophonePlayer?.ResetTo(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
     _activeContext.HitContextPlayer?.ResetToAndRebuildJudgments(ADOBase.controller, skipPassedAngles: true);
-    ResetReplayHeldInputState();
     _playbackPauseSuspended = false;
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
     if (pauseAtPlayerControl)
@@ -455,6 +455,7 @@ public static partial class ReplaySessionService
       return;
 
     _playbackPauseSuspended = false;
+    ResetReplayHeldInputState();
     _activeContext.NativeInputPlayer?.ResetTo(replayTimeUs, CurrentTimelineRate());
     _activeContext.MicrophonePlayer?.ResetTo(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
     _activeContext.MicrophonePlayer?.Tick(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs(), paused: false);

@@ -87,7 +87,7 @@ public static partial class ReplayPlaybackCoordinator
     ReplaySessionService.ClearActiveContext();
     previous?.CleanupPreparedMicrophone();
     _operation = null;
-    _waitingForEditor = false;
+    ClearEditorTransitionState();
     _returnRequested = false;
     _forcedFail = false;
   }
@@ -206,13 +206,12 @@ public static partial class ReplayPlaybackCoordinator
     ReplaySessionService.ClearActiveContext();
     _operation = operation;
     _returnRequested = false;
-    _waitingForEditor = false;
+    ClearEditorTransitionState();
     _forcedFail = false;
 
     if (scnEditor.instance != null && scnEditor.instance.playMode)
     {
-      _waitingForEditor = true;
-      scnEditor.instance.SwitchToEditMode();
+      BeginEditorTransition();
       return;
     }
 

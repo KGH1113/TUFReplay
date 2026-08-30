@@ -1,5 +1,8 @@
 ﻿using System;
 using TUFReplay.Composition;
+using TUFReplay.Recording.Input;
+using TUFReplay.Replay.Levels;
+using TUFReplay.Replay.Preparation;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Settings;
@@ -130,6 +133,10 @@ public sealed class Main
   private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)
   {
     ModBootstrap.UpdateRuntime();
+    UnityMainThread.DrainPending();
+    ReplayLevelOpenService.Tick();
+    ReplayPlaybackCoordinator.Tick();
+    ReplaySessionService.TickStartup();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 
@@ -194,6 +201,7 @@ public sealed class Main
     try
     {
       FeatureRegistry.Initialize();
+      MacOsInputMonitoringAccess.InitializeAtGameStart();
       Application.focusChanged += ReplaySessionService.OnApplicationFocusChanged;
       _enabled = true;
       NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();

@@ -16,6 +16,7 @@ public static partial class ReplaySessionService
   private static int _pendingReplayPitchApplyFrame = -1;
   private static bool _suppressReplayMarkFail;
   private static bool _playbackPauseSuspended;
+  private static string _lastStartupBlockReason;
   private static bool _timelineScrubActive;
   private static bool _timelineScrubWasPaused;
   private static long _timelineScrubOriginTimeUs;
@@ -70,6 +71,7 @@ public static partial class ReplaySessionService
     LogLifecycleTransition(ReplayPlaybackPhase.Stopped, ReplayPlaybackPhase.Prepared, "context_installed");
     _suppressReplayMarkFail = false;
     _playbackPauseSuspended = false;
+    _lastStartupBlockReason = null;
     ResetTimelineTransportState();
   }
 
@@ -141,6 +143,7 @@ public static partial class ReplaySessionService
     _pendingReplayPitchApplyFrame = -1;
     _suppressReplayMarkFail = false;
     _playbackPauseSuspended = false;
+    _lastStartupBlockReason = null;
     RestoreTimelineEditorPauseState();
     ResetTimelineTransportState();
   }
@@ -198,6 +201,27 @@ public static partial class ReplaySessionService
     }
   }
 
+  public static void TickStartup()
+  {
+    if (_activeContext == null || _activeContext.RunStarted)
+      return;
+    if (!TryGetControllerState(out States state))
+      return;
+
+    switch (state)
+    {
+      case States.Countdown:
+      case States.Checkpoint:
+        if (ReplayRunController.ShouldInitializeFromPreRoll(_activeContext))
+          ResetReplayRun("heartbeat_preroll_" + state, ReplayPlaybackPhase.Armed);
+        break;
+
+      case States.PlayerControl:
+        EnsurePlayerControlRunStarted();
+        break;
+    }
+  }
+
   private static bool IsReplayLevelStillCurrent()
   {
     if (_activeContext == null)
@@ -245,34 +269,31 @@ public static partial class ReplaySessionService
     Main.Instance?.Log("[ReplaySessionService] Replay run restart prepared. reason=" + reason);
   }
 
-  private static void ResetReplayRun(string reason, ReplayPlaybackPhase phase)
+  private static bool ResetReplayRun(string reason, ReplayPlaybackPhase phase)
   {
     if (_activeContext == null)
-      return;
+      return false;
 
-    bool hasReplayTime = TryComputeReplayTimeUs(out long nowUs, out _);
-
-    if (hasReplayTime)
+    if (!TryComputeReplayTimeUs(out long nowUs, out string blockedReason))
     {
-      _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate());
-      _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentGameplayRate(), CurrentWonTimeUs());
-    }
-    else
-    {
-      _activeContext.NativeInputPlayer?.Reset();
-      _activeContext.MicrophonePlayer?.ResetTo(0L, CurrentGameplayRate(), CurrentWonTimeUs());
+      LogStartupBlocked(blockedReason);
+      return false;
     }
 
+    ResetReplayHeldInputState();
+    _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate());
+    _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentGameplayRate(), CurrentWonTimeUs());
     bool skipPassedAngles = TryGetControllerState(out States state) && state == States.PlayerControl;
     _activeContext.HitContextPlayer?.ResetTo(ADOBase.controller, skipPassedAngles);
-    ResetReplayHeldInputState();
     _playbackPauseSuspended = false;
+    _lastStartupBlockReason = null;
 
     _activeContext.RunStarted = true;
     TransitionTo(phase, reason);
     _suppressReplayMarkFail = true;
 
     ApplyReplayNoFailNow();
+    return true;
   }
 
   public static bool ShouldBlockFreeroam(scrController controller)
@@ -348,6 +369,13 @@ public static partial class ReplaySessionService
   {
     nowUs = 0L;
     reason = null;
+
+    ReplayRuntimeReadiness readiness = GetRuntimeReadiness();
+    if (!readiness.Ready)
+    {
+      reason = readiness.Reason;
+      return false;
+    }
 
     return ReplayClock.TryComputeReplayTimeUs(_activeContext, out nowUs, out reason);
   }
@@ -466,11 +494,51 @@ public static partial class ReplaySessionService
       return false;
     if (!TryGetControllerState(out States state) || state != States.PlayerControl)
       return false;
-    if (!TryComputeReplayTimeUs(out _, out _))
+    if (!TryComputeReplayTimeUs(out _, out string blockedReason))
+    {
+      LogStartupBlocked(blockedReason);
       return false;
+    }
 
-    ResetReplayRun("player_control_without_countdown", ReplayPlaybackPhase.Running);
-    return _activeContext?.RunStarted == true;
+    return ResetReplayRun("player_control_without_countdown", ReplayPlaybackPhase.Running);
+  }
+
+  private static ReplayRuntimeReadiness GetRuntimeReadiness()
+  {
+    bool hasState = TryGetControllerState(out States state);
+    double? startPosition = _activeContext?.Meta?.gameplayStartSongPosition;
+    double songPosition = ADOBase.conductor?.songposition_minusi ?? double.NaN;
+    bool requiresEditorPlayMode = ADOBase.isLevelEditor;
+
+    return ReplayRuntimeReadinessEvaluator.Evaluate(
+      _activeContext != null,
+      ADOBase.conductor != null,
+      ADOBase.conductor != null && ADOBase.conductor.gameObject.activeInHierarchy,
+      ADOBase.controller != null,
+      ADOBase.controller != null && ADOBase.controller.gameObject.activeInHierarchy,
+      requiresEditorPlayMode,
+      !requiresEditorPlayMode || (scnEditor.instance != null && scnEditor.instance.playMode),
+      ADOBase.conductor != null
+        && ADOBase.conductor.hasSongStarted
+        && ADOBase.conductor.song != null
+        && ADOBase.conductor.crotchetAtStart > 0d
+        && ADOBase.conductor.song.pitch > 0f
+        && !float.IsNaN(ADOBase.conductor.song.pitch)
+        && !float.IsInfinity(ADOBase.conductor.song.pitch),
+      IsFinite(songPosition),
+      startPosition.HasValue && IsFinite(startPosition.Value),
+      hasState && IsReplayTimelinePlaybackState(state)
+    );
+  }
+
+  private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
+
+  private static void LogStartupBlocked(string reason)
+  {
+    if (string.IsNullOrEmpty(reason) || string.Equals(_lastStartupBlockReason, reason, StringComparison.Ordinal))
+      return;
+    _lastStartupBlockReason = reason;
+    Main.Instance?.Log("[Replay/Lifecycle] Replay start blocked. reason=" + reason);
   }
 
   private static double CurrentTimelineRate()

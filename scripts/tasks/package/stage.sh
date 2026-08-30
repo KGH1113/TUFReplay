@@ -26,6 +26,8 @@ copy_runtime_core "$runtime"
 copy_windows_sqlite "$runtime"
 copy_assets "$runtime" required
 copy_mac_helper "$runtime" required
+copy_mac_native_input "$runtime" required
+"$TASK_DIR/../validate/macos-native-input-artifact.sh" "$runtime/libTUFReplayInput.dylib"
 copy_runtime_dependencies "$runtime" required
 
 mkdir -p "$TUFREPLAY_PACKAGE_STAGE/Runtime"

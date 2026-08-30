@@ -54,6 +54,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
 
   public string Name => "windows-wh-keyboard-ll";
   public bool IsRunning => _running && _hook != IntPtr.Zero;
+  public bool UsesExtendedKeyState => true;
   public IReadOnlyList<int> SnapshotKeyCodes => PhysicalKeyCodes;
 
   public void Start(Action<NativeInputTransition> onTransition)
@@ -105,6 +106,12 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     return true;
   }
 
+  public void RefreshPhysicalState() { }
+
+  public long ConsumeDroppedEvents() => 0;
+
+  public NativeInputSourceDiagnostics GetDiagnostics() => default;
+
   private void Run()
   {
     try
@@ -149,8 +156,10 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
       if (down || up)
       {
         KeyboardHookData data = Marshal.PtrToStructure<KeyboardHookData>(lParam);
-        bool extended = (data.Flags & LlkhfExtended) != 0;
-        int key = NormalizeModifierKey(unchecked((int)data.VirtualKey), unchecked((int)data.ScanCode), extended);
+        bool reportedExtended = (data.Flags & LlkhfExtended) != 0;
+        int scanCode = unchecked((int)data.ScanCode);
+        int key = NormalizeModifierKey(unchecked((int)data.VirtualKey), scanCode, reportedExtended);
+        bool extended = WindowsNativeInputKey.NormalizeExtended(key, scanCode, reportedExtended);
         if (key > 0 && key <= byte.MaxValue && !WindowsNativeInputKey.IsMouseButton(key))
         {
           _onTransition?.Invoke(
@@ -160,7 +169,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
               key,
               down,
               extended,
-              unchecked((int)data.ScanCode),
+              scanCode,
               data.Flags
             )
           );
