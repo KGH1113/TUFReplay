@@ -110,6 +110,7 @@ internal enum LogicalKeyboardKey
   RAlt,
   RControl,
   RShift,
+  RSuper,
   RightBrace,
   ScrollLock,
   Semicolon,

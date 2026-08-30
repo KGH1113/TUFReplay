@@ -58,11 +58,17 @@ internal static class ReplayNativeInputSuite
     TestNativeInputUmmWindowInterlock();
     TestWindowsNativeModifierNormalization();
     TestWindowsPhysicalStateUsesCurrentDownBit();
+    TestMacOsHidMappingAndTimestampConversion();
+    TestMacOsNativeShimAbi();
     TestUnsupportedCaptureHasNoPollingFallback();
     TestReplayInputFormatGate();
     TestCrossPlatformNativeInputFallback();
     TestWindowsPhysicalKeyMetadata();
+    TestReplayEditorTransitionRecoveryClassification();
+    TestReplayRuntimeReadinessGate();
     TestReplaySchedulerChord();
+    TestReplaySchedulerInfersInitialHeldFromFirstUp();
+    TestNegativePreRollHeldStateRestore();
     TestReplayPumpTimingAndBatching();
     TestReplayPumpFocusAndReleaseAll();
     TestReplayPumpPauseSuspendsAndResumes();
@@ -496,6 +502,43 @@ internal static class ReplayNativeInputSuite
       Assert(chord[i].Key == i + 1, "Chord order changed.");
   }
 
+  private static void TestReplaySchedulerInfersInitialHeldFromFirstUp()
+  {
+    int[] initiallyHeld = { 44, 43, 11, 41 };
+    var inputs = new List<RecordedInput>();
+    for (int i = 0; i < initiallyHeld.Length; i++)
+      inputs.Add(Input(100, initiallyHeld[i], false));
+    inputs.Add(Input(100, 12, true));
+    for (int i = 0; i < initiallyHeld.Length; i++)
+      inputs.Add(Input(200, initiallyHeld[i], true));
+
+    var scheduler = new ReplayInputScheduler(inputs);
+    Assert(scheduler.InitialHeldCount == 4, "First-up CSV transitions did not infer the initial held state.");
+
+    List<NativeInputKey> beforeFirstTransition = scheduler.SeekToNativeState(0);
+    Assert(beforeFirstTransition.Count == 4, "Replay start normalized or omitted inferred held keys.");
+    for (int i = 0; i < initiallyHeld.Length; i++)
+      Assert(
+        beforeFirstTransition.Exists(key => key.Key == initiallyHeld[i]),
+        "Replay start omitted an inferred held key. key=" + initiallyHeld[i]
+      );
+    Assert(
+      !beforeFirstTransition.Exists(key => key.Key == 12),
+      "A key whose first transition was down was incorrectly inferred as initially held."
+    );
+
+    Assert(scheduler.SeekToNativeState(100).Count == 1, "First key-up transitions did not clear inferred state.");
+    List<NativeInputKey> afterRepress = scheduler.SeekToNativeState(200);
+    Assert(afterRepress.Count == 5, "Release/re-press transitions did not rebuild the CSV state.");
+
+    var emitter = new CapturingEmitter();
+    var pumpScheduler = new ReplayInputScheduler(inputs);
+    using var pump = new ReplayNativeInputPump(pumpScheduler, emitter);
+    Assert(pump.ResetTo(0, 1d, true) == 4, "Replay emitted more than the inferred initial held-key delta.");
+    Assert(emitter.WaitForBatchCount(1), "Inferred initial held keys were not emitted at replay start.");
+    Assert(emitter.Snapshot()[0].Length == 4, "Replay normalized unrelated CSV keys at startup.");
+  }
+
   private static void TestWindowsPhysicalKeyMetadata()
   {
     RecordInputFlags mainEnterFlags = RecordInputFlags.Async | RecordInputFlags.Down;
@@ -570,6 +613,22 @@ internal static class ReplayNativeInputSuite
     Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, false) == 0xA4, "Left Alt changed.");
     Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, true) == 0xA5, "Right Alt changed.");
     Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x45, 0x12, false) == 0x45, "Ordinary VK changed.");
+    Assert(
+      !WindowsNativeInputKey.NormalizeExtended(0xA1, 0x36, true),
+      "Right Shift hook provenance leaked into KEYEVENTF_EXTENDEDKEY."
+    );
+    Assert(
+      !WindowsNativeInputKey.NormalizeExtended(0xA1, 0x36, false),
+      "Right Shift was treated as an E0 extended key."
+    );
+    Assert(
+      WindowsNativeInputKey.NormalizeExtended(0xA3, 0x1D, true),
+      "Right Ctrl lost its E0 extended-key flag."
+    );
+    Assert(
+      WindowsNativeInputKey.NormalizeExtended(0xA5, 0x38, true),
+      "Right Alt lost its E0 extended-key flag."
+    );
   }
 
   private static void TestWindowsPhysicalStateUsesCurrentDownBit()
@@ -620,6 +679,9 @@ internal static class ReplayNativeInputSuite
       System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
         System.Runtime.InteropServices.OSPlatform.Windows
       )
+      || System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+        System.Runtime.InteropServices.OSPlatform.OSX
+      )
     )
       return;
 
@@ -638,6 +700,79 @@ internal static class ReplayNativeInputSuite
     Assert(rejected && !source.IsRunning, "Unsupported capture did not fail explicitly.");
   }
 
+  private static void TestMacOsHidMappingAndTimestampConversion()
+  {
+    Assert(
+      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(4, out int a) && a == 0x00,
+      "HID A did not map to the macOS A virtual key."
+    );
+    Assert(
+      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(30, out int one) && one == 0x12,
+      "HID 1 did not map to the macOS 1 virtual key."
+    );
+    Assert(
+      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(225, out int leftShift) && leftShift == 0x38,
+      "HID left Shift mapping changed."
+    );
+    Assert(
+      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(229, out int rightShift) && rightShift == 0x3C,
+      "HID right Shift mapping changed."
+    );
+    Assert(
+      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(231, out int rightCommand) && rightCommand == 0x36,
+      "HID right Command mapping changed."
+    );
+    Assert(
+      !NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(0xE9, out _),
+      "Consumer-page volume usage was accepted as a keyboard key."
+    );
+
+    long origin = 123_456;
+    var converter = new MacOsMachTimeConverter(1_000_000, origin, 1, 1);
+    long mapped = converter.ToStopwatchTicks(1_001_000_000);
+    Assert(
+      Math.Abs(mapped - (origin + System.Diagnostics.Stopwatch.Frequency)) <= 1,
+      "Mach absolute time did not map to Stopwatch ticks."
+    );
+    Assert(converter.ToNanoseconds(1_001_000_000) == 1_001_000_000, "Mach nanosecond conversion changed.");
+  }
+
+  private static void TestMacOsNativeShimAbi()
+  {
+    if (
+      !System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+        System.Runtime.InteropServices.OSPlatform.OSX
+      )
+    )
+      return;
+    Assert(
+      MacOsIoHidNativeLibrary.TryLoad(out MacOsIoHidNativeLibrary library, out string failure),
+      "macOS native input shim did not load: " + failure
+    );
+    MacOsInputAccess access = library.CheckAccess();
+    Assert(
+      access == MacOsInputAccess.Granted
+        || access == MacOsInputAccess.Denied
+        || access == MacOsInputAccess.Unknown,
+      "macOS native input shim returned an invalid access state."
+    );
+    INativeInputEventSource source = NativeInputEventSourceFactory.CreatePrimary();
+    Assert(source.Name == "macos-iohid-manager-v1", "macOS factory did not select IOHID capture.");
+    Assert(!source.UsesExtendedKeyState, "macOS capture enabled Windows extended-key state.");
+    if (access == MacOsInputAccess.Granted)
+    {
+      for (int i = 0; i < 3; i++)
+      {
+        source.Start(_ => { });
+        Assert(source.IsRunning, "macOS IOHID source did not start with granted permission.");
+        source.RefreshPhysicalState();
+        Assert(source.ConsumeDroppedEvents() == 0, "macOS IOHID source dropped events during idle startup.");
+        source.Stop();
+        Assert(!source.IsRunning, "macOS IOHID source remained active after stop.");
+      }
+    }
+  }
+
   private static void TestReplayPumpTimingAndBatching()
   {
     var emitter = new CapturingEmitter();
@@ -652,6 +787,107 @@ internal static class ReplayNativeInputSuite
     Assert(batches[0].Length == 2, "Same-time chord was not emitted as one batch.");
     Assert(batches[0][0].Key == 10 && batches[0][1].Key == 11, "Modifier/chord order changed.");
     Assert(batches[1].Length == 1 && !batches[1][0].Down, "200us key-up was merged or lost.");
+  }
+
+  private static void TestReplayEditorTransitionRecoveryClassification()
+  {
+    var exception = new TypeLoadException("external postfix failed");
+    ReplayEditorTransitionResult recovered = ReplayEditorTransition.ClassifyAfterException(false, exception);
+    Assert(recovered.Recovered && !recovered.Failed, "Completed editor transition was not recovered after postfix failure.");
+    Assert(ReferenceEquals(recovered.Exception, exception), "Recovered editor transition lost the original exception.");
+
+    ReplayEditorTransitionResult failed = ReplayEditorTransition.ClassifyAfterException(true, exception);
+    Assert(failed.Failed && !failed.Recovered, "Editor transition failure was accepted while play mode remained active.");
+    Assert(
+      !ReplayEditorTransition.HasTimedOut(100d, 109.999d, 10d)
+        && ReplayEditorTransition.HasTimedOut(100d, 110d, 10d),
+      "Editor transition timeout boundary changed."
+    );
+  }
+
+  private static void TestReplayRuntimeReadinessGate()
+  {
+    ReplayRuntimeReadiness ready = ReplayRuntimeReadinessEvaluator.Evaluate(
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true,
+      true
+    );
+    Assert(ready.Ready, "Valid replay runtime was blocked.");
+
+    Assert(
+      ReplayRuntimeReadinessEvaluator
+          .Evaluate(true, true, false, true, true, false, true, true, true, true, true)
+          .Reason
+        == "conductor_inactive",
+      "Inactive conductor did not block replay startup."
+    );
+    Assert(
+      ReplayRuntimeReadinessEvaluator
+          .Evaluate(true, true, true, true, true, true, false, true, true, true, true)
+          .Reason
+        == "editor_not_in_play_mode",
+      "Editor replay started outside play mode."
+    );
+    Assert(
+      ReplayRuntimeReadinessEvaluator
+          .Evaluate(true, true, true, true, true, false, true, false, true, true, true)
+          .Reason
+        == "conductor_timeline_uninitialized",
+      "Uninitialized first-frame conductor timeline did not block replay startup."
+    );
+    Assert(
+      ReplayRuntimeReadinessEvaluator
+          .Evaluate(true, true, true, true, true, false, true, true, false, true, true)
+          .Reason
+        == "song_position_invalid",
+      "Non-finite song position did not block replay startup."
+    );
+    Assert(
+      ReplayRuntimeReadinessEvaluator
+          .Evaluate(true, true, true, true, true, false, true, true, true, true, false)
+          .Reason
+        == "controller_state_not_playback",
+      "Non-playback controller state did not block replay startup."
+    );
+  }
+
+  private static void TestNegativePreRollHeldStateRestore()
+  {
+    var inputs = new List<RecordedInput>();
+    for (int i = 0; i < 32; i++)
+      inputs.Add(Input(-4_000_000, 1_000 + i, true));
+    inputs.Add(Input(-3_900_000, 2_000, true));
+    inputs.Add(Input(-3_800_000, 2_000, false));
+    inputs.Add(Input(-3_500_000, 1_000, false));
+    inputs.Add(Input(-2_000_000, 1_000, true));
+
+    var emitter = new CapturingEmitter();
+    var scheduler = new ReplayInputScheduler(inputs);
+    using var pump = new ReplayNativeInputPump(scheduler, emitter);
+
+    int restored = pump.ResetTo(-3_000_000, 1d, true);
+    Assert(restored == 31, "Pre-roll state restore did not emit exactly the currently held keys.");
+    Assert(emitter.WaitForBatchCount(1), "Pre-roll held chord was not emitted.");
+    NativeInputEmission[] held = emitter.Snapshot()[0];
+    Assert(held.Length == 31, "Completed or released pre-roll presses leaked into the held chord.");
+    Assert(!held.Any(value => value.Key == 1_000), "A key released before pre-roll startup was restored.");
+    Assert(!held.Any(value => value.Key == 2_000), "A completed pre-roll press was replayed as held.");
+
+    pump.Synchronize(-1_000_000, 1d, true);
+    Assert(emitter.WaitForBatchCount(2), "Future negative-time re-press was not scheduled.");
+    NativeInputEmission[] replayed = emitter.Snapshot()[1];
+    Assert(
+      replayed.Length == 1 && replayed[0].Key == 1_000 && replayed[0].Down,
+      "Negative-time release/re-press ordering changed after state restore."
+    );
   }
 
   private static void TestReplayPumpFocusAndReleaseAll()

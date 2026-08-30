@@ -46,6 +46,25 @@ public static class ReplayClock
       return false;
     }
 
+    if (!ADOBase.conductor.gameObject.activeInHierarchy)
+    {
+      reason = "conductor_inactive";
+      return false;
+    }
+
+    if (
+      !ADOBase.conductor.hasSongStarted
+      || ADOBase.conductor.song == null
+      || ADOBase.conductor.crotchetAtStart <= 0d
+      || ADOBase.conductor.song.pitch <= 0f
+      || float.IsNaN(ADOBase.conductor.song.pitch)
+      || float.IsInfinity(ADOBase.conductor.song.pitch)
+    )
+    {
+      reason = "conductor_timeline_uninitialized";
+      return false;
+    }
+
     if (!context.Meta.gameplayStartSongPosition.HasValue)
     {
       reason = "gameplay_start_song_position_missing";
@@ -53,7 +72,19 @@ public static class ReplayClock
     }
 
     double start = context.Meta.gameplayStartSongPosition.Value;
-    nowUs = (long)((ADOBase.conductor.songposition_minusi - start) * 1_000_000d);
+    double songPosition = ADOBase.conductor.songposition_minusi;
+    if (
+      double.IsNaN(start)
+      || double.IsInfinity(start)
+      || double.IsNaN(songPosition)
+      || double.IsInfinity(songPosition)
+    )
+    {
+      reason = "song_position_invalid";
+      return false;
+    }
+
+    nowUs = (long)((songPosition - start) * 1_000_000d);
     return true;
   }
 }

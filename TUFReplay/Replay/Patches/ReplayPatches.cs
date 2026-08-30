@@ -122,7 +122,6 @@ public static class ReplayInputPatches
         return;
 
       ReplaySessionService.TickReplayPitchEditorApply();
-      ReplayPlaybackCoordinator.Tick();
     }
     catch (Exception exception)
     {
@@ -155,8 +154,6 @@ public static class ReplayInputPatches
       if (!IsActive)
         return;
 
-      UnityMainThread.DrainPending();
-      ReplayLevelOpenService.Tick();
       if (!ReplaySessionService.HasActiveContext)
         return;
       if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs))

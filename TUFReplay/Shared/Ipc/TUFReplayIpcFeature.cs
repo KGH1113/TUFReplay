@@ -30,6 +30,7 @@ public sealed class TUFReplayIpcFeature
           "https://tufreplay.impl1113.dev",
           "http://localhost",
           "http://127.0.0.1",
+          "https://guhyeons-macbook-pro.tail234c02.ts.net/",
         },
       }
     );

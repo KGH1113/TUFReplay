@@ -3,6 +3,9 @@ namespace TUFReplay.Shared.NativeInput;
 
 internal static class WindowsNativeInputKey
 {
+  private const int RightShiftVirtualKey = 0xA1;
+  private const int RightShiftScanCode = 0x36;
+
   public static bool IsMouseButton(int virtualKey)
   {
     return virtualKey >= 0x01 && virtualKey <= 0x06;
@@ -36,6 +39,16 @@ internal static class WindowsNativeInputKey
     }
   }
 
+  public static bool NormalizeExtended(int virtualKey, int scanCode, bool reportedExtended)
+  {
+    // Right Shift has its own scan code, but it is not an E0 extended key.
+    // Some low-level hooks report LLKHF_EXTENDED for it; preserve that raw
+    // provenance separately, never translate it to KEYEVENTF_EXTENDEDKEY.
+    if (virtualKey == RightShiftVirtualKey || scanCode == RightShiftScanCode)
+      return false;
+    return reportedExtended;
+  }
+
   public static bool IsExtendedLabel(LogicalKeyboardKey label)
   {
     switch (label)
@@ -43,6 +56,7 @@ internal static class WindowsNativeInputKey
       case LogicalKeyboardKey.RControl:
       case LogicalKeyboardKey.RAlt:
       case LogicalKeyboardKey.Super:
+      case LogicalKeyboardKey.RSuper:
       case LogicalKeyboardKey.PrintScreen:
       case LogicalKeyboardKey.Insert:
       case LogicalKeyboardKey.Delete:
