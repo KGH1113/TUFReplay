@@ -83,7 +83,9 @@
     "levelNumber": "Level #{{levelId}}",
     "tufDatabase": "TUF database",
     "localArtist": "Local · {{artist}}",
-    "tufArtist": "#{{levelId}} · {{artist}}",
+    "tufLevelLink": "TUF #{{levelId}}",
+    "openTufLevel": "Open TUF level page",
+    "openTufLevelLabel": "Open TUF level #{{levelId}} in a new tab",
     "chartBy": "Chart by {{creator}}"
   },
   "sort": {

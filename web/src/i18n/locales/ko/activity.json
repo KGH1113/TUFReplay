@@ -83,7 +83,9 @@
     "levelNumber": "레벨 #{{levelId}}",
     "tufDatabase": "TUF 데이터베이스",
     "localArtist": "로컬 · {{artist}}",
-    "tufArtist": "#{{levelId}} · {{artist}}",
+    "tufLevelLink": "TUF #{{levelId}}",
+    "openTufLevel": "TUF 레벨 페이지 열기",
+    "openTufLevelLabel": "TUF 레벨 #{{levelId}} 페이지 열기 (새 탭)",
     "chartBy": "{{creator}} 제작"
   },
   "sort": {
