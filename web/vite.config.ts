@@ -23,10 +23,7 @@ export default defineConfig({
     },
   },
   server: {
-    allowedHosts: [
-      "tufreplay.impl1113.dev",
-      "guhyeons-macbook-pro.tail234c02.ts.net",
-    ],
+    allowedHosts: ["tufreplay.impl1113.dev"],
     proxy: tufApiProxy,
   },
   preview: { proxy: tufApiProxy },
