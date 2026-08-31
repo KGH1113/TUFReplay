@@ -280,9 +280,10 @@ public static partial class ReplaySessionService
       return false;
     }
 
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(nowUs);
     ResetReplayHeldInputState();
-    _activeContext.NativeInputPlayer?.ResetTo(nowUs, CurrentTimelineRate());
-    _activeContext.MicrophonePlayer?.ResetTo(nowUs, CurrentGameplayRate(), CurrentWonTimeUs());
+    _activeContext.NativeInputPlayer?.ResetTo(snapshot);
+    _activeContext.MicrophonePlayer?.ResetTo(snapshot);
     bool skipPassedAngles = TryGetControllerState(out States state) && state == States.PlayerControl;
     _activeContext.HitContextPlayer?.ResetTo(ADOBase.controller, skipPassedAngles);
     _playbackPauseSuspended = false;
@@ -346,23 +347,17 @@ public static partial class ReplaySessionService
     }
   }
 
-  public static int TickNativeVisual(long nowUs)
+  public static int TickReplayPlayback(long nowUs)
   {
-    int emitted = _activeContext?.NativeInputPlayer?.Tick(nowUs, CurrentTimelineRate()) ?? 0;
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(nowUs);
+    int emitted = _activeContext?.NativeInputPlayer?.Tick(snapshot) ?? 0;
 
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
-    return emitted;
-  }
-
-  public static void TickMicrophonePlayback(long nowUs)
-  {
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
-    if (player == null)
-      return;
-    if (!TryGetControllerState(out States state) || !IsReplayTimelinePlaybackState(state))
-      return;
+    if (player != null && TryGetControllerState(out States state) && IsReplayTimelinePlaybackState(state))
+      player.Tick(snapshot);
 
-    player.Tick(nowUs, CurrentGameplayRate(), CurrentWonTimeUs(), ADOBase.controller.paused);
+    return emitted;
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)
@@ -557,6 +552,15 @@ public static partial class ReplaySessionService
   }
 
   private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
+
+  private static ReplayPlaybackSnapshot CreatePlaybackSnapshot(long timelineTimeUs, bool? paused = null) =>
+    new ReplayPlaybackSnapshot(
+      timelineTimeUs,
+      CurrentTimelineRate(),
+      CurrentGameplayRate(),
+      CurrentWonTimeUs(),
+      paused ?? ADOBase.controller?.paused == true
+    );
 
   private static void ResetReplayHeldInputState()
   {

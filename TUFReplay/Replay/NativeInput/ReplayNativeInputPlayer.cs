@@ -1,4 +1,5 @@
 using System;
+using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.NativeInput;
 
 namespace TUFReplay.Replay.NativeInput;
@@ -38,6 +39,8 @@ public sealed class ReplayNativeInputPlayer : IDisposable
     return restored;
   }
 
+  public int ResetTo(ReplayPlaybackSnapshot snapshot) => ResetTo(snapshot.TimelineTimeUs, snapshot.TimelineRate);
+
   public int Tick(long nowUs, double timelineRate)
   {
     bool focusReady = _focusGuard.IsStable(out _);
@@ -47,6 +50,8 @@ public sealed class ReplayNativeInputPlayer : IDisposable
     _lastReportedEmitted = stats.Emitted;
     return emitted > int.MaxValue ? int.MaxValue : (int)emitted;
   }
+
+  public int Tick(ReplayPlaybackSnapshot snapshot) => Tick(snapshot.TimelineTimeUs, snapshot.TimelineRate);
 
   public bool CanEmit(out string reason)
   {

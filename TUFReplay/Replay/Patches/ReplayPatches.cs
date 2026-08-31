@@ -159,8 +159,7 @@ public static class ReplayInputPatches
       if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs))
         return;
 
-      ReplaySessionService.TickNativeVisual(nowUs);
-      ReplaySessionService.TickMicrophonePlayback(nowUs);
+      ReplaySessionService.TickReplayPlayback(nowUs);
     }
     catch (Exception exception)
     {

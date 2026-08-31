@@ -48,6 +48,8 @@ internal static class MicrophoneCalibrationSuite
     TestWavWriter(root);
     TestPlaybackWaveReader(root);
     TestPcm16PrefetchBuffer();
+    TestPcm16PrefetchUnderrunRecovery();
+    TestMicrophonePlaybackDecisions();
     TestPlaybackLimiter(root);
     TestMicrophoneTimelineAnchor();
     TestReplayMicrophoneClock();
@@ -264,6 +266,78 @@ internal static class MicrophoneCalibrationSuite
     Assert(prefetch.Failure == null, "PCM prefetch worker failed during normal reads.");
   }
 
+  private static void TestPcm16PrefetchUnderrunRecovery()
+  {
+    byte[] source = new byte[64];
+    for (int i = 0; i < source.Length; i++)
+      source[i] = (byte)i;
+
+    using var stream = new ControlledReadStream(source, 8);
+    using var prefetch = new Pcm16PrefetchBuffer(stream, 0, source.Length, 16);
+    int initialGeneration = prefetch.Generation;
+    Assert(WaitUntilReady(prefetch, initialGeneration, 8), "Delayed PCM prefetch never produced its first buffer.");
+
+    byte[] first = new byte[8];
+    Assert(prefetch.Read(first, 0, first.Length, 2) == 8, "Initial delayed PCM data was not consumed.");
+    byte[] silence = new byte[8];
+    Assert(prefetch.Read(silence, 0, silence.Length, 2) == 0, "An underrun blocked the consumer thread.");
+    Assert(prefetch.Read(silence, 0, silence.Length, 2) == 0, "A consecutive underrun blocked the consumer thread.");
+    Assert(
+      prefetch.Generation == initialGeneration,
+      "Repeated short reads created recovery seeks on the consumer thread."
+    );
+
+    int recoveryGeneration = prefetch.Seek(24);
+    Assert(recoveryGeneration == initialGeneration + 1, "Underrun recovery was not coalesced into one generation.");
+    stream.AllowBlockedReads();
+    Assert(WaitUntilReady(prefetch, recoveryGeneration, 8), "PCM prefetch did not recover after the delayed read.");
+    byte[] recovered = new byte[8];
+    Assert(prefetch.Read(recovered, 0, recovered.Length, 2) == 8, "Recovered PCM data was unavailable.");
+    Assert(
+      recovered[0] == 24 && recovered[7] == 31,
+      "A stale prefetch generation was played instead of the canonical recovery target."
+    );
+  }
+
+  private static bool WaitUntilReady(Pcm16PrefetchBuffer prefetch, int generation, int minimumBytes)
+  {
+    for (int attempt = 0; attempt < 200; attempt++)
+    {
+      if (prefetch.IsReady(generation, minimumBytes))
+        return true;
+      System.Threading.Thread.Sleep(1);
+    }
+    return false;
+  }
+
+  private static void TestMicrophonePlaybackDecisions()
+  {
+    Assert(
+      ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 4, 4, true, 100, false, 0, 10),
+      "A duplicate prefetch reset was not suppressed."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 4, 4, false, 0, true, 105, 10),
+      "A duplicate checkpoint reset at the active position was not suppressed."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 4, 4, false, 0, true, 500, 10),
+      "A timeline seek back to an old reset target was incorrectly suppressed."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 5, 4, true, 100, false, 0, 10),
+      "A reset from a new recovery generation was incorrectly suppressed."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.IsCurrentRecovery(7, 7),
+      "The active underrun generation was not accepted for recovery."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.IsCurrentRecovery(6, 7),
+      "A stale underrun generation triggered another recovery seek."
+    );
+  }
+
   private static int ReadPrefetched(Pcm16PrefetchBuffer prefetch, byte[] destination, int expected, int count = -1)
   {
     int requested = count < 0 ? destination.Length : count;
@@ -419,6 +493,32 @@ internal static class MicrophoneCalibrationSuite
     Assert(
       ReplayMicrophoneClock.ToFrame(0L, 1d, -900_000L, 48000, 100000) == 43200,
       "User offset and microphone pre-roll composition is wrong."
+    );
+
+    var physicalInputSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: false);
+    long physicalInputFrame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
+    foreach (int gameInputOffsetMs in new[] { 0, 100, -100 })
+    {
+      long frame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
+      Assert(
+        frame == physicalInputFrame,
+        "Game input offset changed the recorded physical microphone timeline: " + gameInputOffsetMs
+      );
+    }
+    var pausedSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: true);
+    Assert(
+      ReplayMicrophoneClock.ToFrame(pausedSnapshot, 0L, 48000, 100000) == physicalInputFrame,
+      "Pause state changed the canonical microphone frame."
+    );
+    var pitchedSnapshot = new ReplayPlaybackSnapshot(500_000L, 2d, 2d, null, paused: false);
+    Assert(
+      ReplayMicrophoneClock.ToFrame(pitchedSnapshot, 0L, 48000, 100000) == 12000,
+      "Playback snapshot did not preserve pitched real time."
+    );
+    var wonSnapshot = new ReplayPlaybackSnapshot(2_500_000L, 1d, 2d, 2_000_000L, paused: false);
+    Assert(
+      ReplayMicrophoneClock.ToFrame(wonSnapshot, -1_000_000L, 48000, 200000) == 120000,
+      "Playback snapshot did not switch to real time after won."
     );
   }
 
@@ -608,6 +708,35 @@ internal static class MicrophoneCalibrationSuite
     {
       System.Threading.Volatile.Write(ref _readThreadId, System.Threading.Thread.CurrentThread.ManagedThreadId);
       return base.Read(buffer, offset, count);
+    }
+  }
+
+  private sealed class ControlledReadStream : MemoryStream
+  {
+    private readonly int _maximumReadBytes;
+    private readonly System.Threading.ManualResetEventSlim _allowBlockedReads = new(false);
+    private int _readCount;
+
+    public ControlledReadStream(byte[] buffer, int maximumReadBytes)
+      : base(buffer)
+    {
+      _maximumReadBytes = maximumReadBytes;
+    }
+
+    public void AllowBlockedReads() => _allowBlockedReads.Set();
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+      if (System.Threading.Interlocked.Increment(ref _readCount) > 1)
+        _allowBlockedReads.Wait(1000);
+      return base.Read(buffer, offset, Math.Min(count, _maximumReadBytes));
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+      _allowBlockedReads.Set();
+      _allowBlockedReads.Dispose();
+      base.Dispose(disposing);
     }
   }
 
