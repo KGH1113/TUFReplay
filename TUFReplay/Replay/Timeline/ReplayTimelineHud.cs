@@ -3,6 +3,7 @@ using System.IO;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
 using TUFReplay.Replay.Transport;
+using TUFReplay.Unity.Notifications;
 using TUFReplay.Unity.ReplayTimeline;
 using UnityEngine;
 using UnityEngine.UI;
@@ -12,11 +13,14 @@ namespace TUFReplay.Replay.Timeline;
 internal sealed class ReplayTimelineHud : MonoBehaviour
 {
   private const string RuntimePrefabPath = "Assets/Prefabs/ReplayTimelineRuntime.prefab";
+  private const string MicrophonePermissionWarningPrefabPath =
+    "Assets/Prefabs/MicrophonePermissionWarningRuntime.prefab";
   private const int TimelineSortOrder = 32000;
   private static ReplayTimelineHud _instance;
 
   private AssetBundle _bundle;
   private ReplayTimelineView _view;
+  private MicrophonePermissionWarningView _microphonePermissionWarningView;
   private UIFloatingPanelDragHandle _panelDragHandle;
   private string _activeRunId;
   private long _lastElapsedSecond = -1L;
@@ -66,6 +70,15 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
         bundle.Unload(true);
         return;
       }
+      GameObject microphonePermissionWarningPrefab = bundle.LoadAsset<GameObject>(
+        MicrophonePermissionWarningPrefabPath
+      );
+      if (microphonePermissionWarningPrefab == null)
+      {
+        Main.Instance?.Log("[ReplayTimelineHud] Microphone permission warning prefab is missing from the UI bundle.");
+        bundle.Unload(true);
+        return;
+      }
 
       GameObject canvasObject = new GameObject(
         "TUFReplayTimelineCanvas",
@@ -105,6 +118,21 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       hud._view.BindScrub(hud.BeginScrub, hud.PreviewScrub, hud.CommitScrub, hud.CancelScrub);
       hud._view.BindExpandDocked(hud.ExpandDockedTimeline);
       hud._view.gameObject.SetActive(false);
+
+      GameObject microphonePermissionWarning = Instantiate(
+        microphonePermissionWarningPrefab,
+        canvasObject.transform,
+        false
+      );
+      microphonePermissionWarning.name = "MicrophonePermissionWarningRuntime";
+      MicrophonePermissionWarningView microphonePermissionWarningView =
+        microphonePermissionWarning.GetComponent<MicrophonePermissionWarningView>();
+      if (microphonePermissionWarningView == null)
+        throw new InvalidOperationException(
+          "MicrophonePermissionWarningRuntime.prefab has no MicrophonePermissionWarningView."
+        );
+      hud._microphonePermissionWarningView = microphonePermissionWarningView;
+      hud._microphonePermissionWarningView.ResetImmediate();
       _instance = hud;
     }
     catch (Exception exception)
@@ -123,12 +151,28 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
 
     AssetBundle bundle = instance._bundle;
     instance._bundle = null;
+    instance._microphonePermissionWarningView?.ResetImmediate();
     if (instance.gameObject != null)
     {
       instance.gameObject.SetActive(false);
       Destroy(instance.gameObject);
     }
     bundle?.Unload(true);
+  }
+
+  internal static bool ShowMicrophonePermissionWarning()
+  {
+    MicrophonePermissionWarningView view = _instance?._microphonePermissionWarningView;
+    if (view == null)
+      return false;
+
+    view.Show(MicrophonePermissionWarningView.DefaultTitle, MicrophonePermissionWarningView.DefaultMessage);
+    return true;
+  }
+
+  internal static void ResetMicrophonePermissionWarning()
+  {
+    _instance?._microphonePermissionWarningView?.ResetImmediate();
   }
 
   private void Update()
@@ -376,6 +420,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private void OnDestroy()
   {
     CancelScrub();
+    _microphonePermissionWarningView?.ResetImmediate();
     if (_instance == this)
       _instance = null;
   }

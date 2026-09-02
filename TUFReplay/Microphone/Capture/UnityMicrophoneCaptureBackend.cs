@@ -28,6 +28,11 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
   public void RequestPermission() { }
 
+  public void RefreshPermissionStatus() { }
+
+  public MicrophonePermissionStatus GetPermissionStatus() =>
+    new MicrophonePermissionStatus { State = MicrophonePermissionState.NotApplicable };
+
   public List<MicrophoneDeviceInfo> ListDevices() => UnityMicrophoneDeviceProvider.ListDevices();
 
   public bool Arm(string deviceId, out string error)

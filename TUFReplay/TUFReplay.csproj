@@ -68,6 +68,10 @@
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIRoundedPanelGraphic.cs"
       Link="Unity/ReplayTimeline/UIRoundedPanelGraphic.cs"
     />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/MicrophonePermissionWarningView.cs"
+      Link="Unity/Notifications/MicrophonePermissionWarningView.cs"
+    />
 
     <Reference Include="AdofaiIpc">
       <HintPath>$(AdofaiIpcDll)</HintPath>
