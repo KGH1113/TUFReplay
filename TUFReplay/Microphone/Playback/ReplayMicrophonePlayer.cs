@@ -103,8 +103,14 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       );
       _source.clip = _clip;
       Main.Instance?.Log(
-        "[Replay/Microphone] Player ready. frames=" + wave.FrameCount + ", sampleRate=" + wave.SampleRate
-          + ", captureOffsetUs=" + recording.CaptureStartOffsetUs + ", volumeDb=" + volumeDb
+        "[Replay/Microphone] Player ready. frames="
+          + wave.FrameCount
+          + ", sampleRate="
+          + wave.SampleRate
+          + ", captureOffsetUs="
+          + recording.CaptureStartOffsetUs
+          + ", volumeDb="
+          + volumeDb
       );
     }
     catch
@@ -217,7 +223,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         return;
       }
 
-      long expectedFrame = _dspAnchorFrame + (long)Math.Max(0d, (AudioSettings.dspTime - _dspAnchorTime) * _wave.SampleRate);
+      long expectedFrame =
+        _dspAnchorFrame + (long)Math.Max(0d, (AudioSettings.dspTime - _dspAnchorTime) * _wave.SampleRate);
       long actualFrame = _source.timeSamples;
       long driftFrames = Math.Max(Math.Abs(actualFrame - expectedFrame), Math.Abs(actualFrame - targetFrame));
       RecordMaximumDrift(driftFrames);
@@ -278,25 +285,26 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   }
 
   private long TargetFrame(ReplayPlaybackSnapshot snapshot) =>
-    ReplayMicrophoneClock.ToFrame(
-      snapshot,
-      EffectiveCaptureOffsetUs(),
-      _wave.SampleRate,
-      _wave.FrameCount
-    );
+    ReplayMicrophoneClock.ToFrame(snapshot, EffectiveCaptureOffsetUs(), _wave.SampleRate, _wave.FrameCount);
 
   private long EffectiveCaptureOffsetUs() =>
     ReplayMicrophoneClock.ApplyLatencyCorrection(_recording.CaptureStartOffsetUs, _microphoneLatencyUs);
 
   private void SetLatency(int latencyMs)
   {
-    int clampedLatency = Math.Max(TUFReplaySetting.MinMicrophoneOffsetMs, Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, latencyMs));
+    int clampedLatency = Math.Max(
+      TUFReplaySetting.MinMicrophoneOffsetMs,
+      Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, latencyMs)
+    );
     _microphoneLatencyUs = clampedLatency * 1000L;
   }
 
   private void SetVolume(int volumeDb)
   {
-    int clampedVolumeDb = Math.Max(TUFReplaySetting.MinMicrophoneVolumeDb, Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb));
+    int clampedVolumeDb = Math.Max(
+      TUFReplaySetting.MinMicrophoneVolumeDb,
+      Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
+    );
     _gain = MicrophoneGain.FromDecibels(clampedVolumeDb);
   }
 
@@ -361,7 +369,12 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     {
       _playbackStartLogged = true;
       Main.Instance?.Log(
-        "[Replay/Microphone] Playback started. replayTimeUs=" + timelineTimeUs + ", targetFrame=" + targetFrame + ", gain=" + _gain
+        "[Replay/Microphone] Playback started. replayTimeUs="
+          + timelineTimeUs
+          + ", targetFrame="
+          + targetFrame
+          + ", gain="
+          + _gain
       );
     }
   }
@@ -475,7 +488,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     }
   }
 
-  private Exception PrefetchFailure() => _prefetch.Failure ?? new InvalidOperationException("The microphone audio callback failed.");
+  private Exception PrefetchFailure() =>
+    _prefetch.Failure ?? new InvalidOperationException("The microphone audio callback failed.");
 
   private void Fail(Exception exception)
   {
@@ -498,11 +512,16 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     _diagnosticsLogged = true;
     double maximumDriftMs = Interlocked.Read(ref _maximumDriftFrames) * 1000d / _wave.SampleRate;
     Main.Instance?.Log(
-      "[Replay/Microphone] Playback stats. underruns=" + Interlocked.Read(ref _underrunCount)
-        + ", missingFrames=" + Interlocked.Read(ref _missingFrames)
-        + ", recoverySeeks=" + Interlocked.Read(ref _recoverySeekCount)
-        + ", duplicateResets=" + Interlocked.Read(ref _duplicateResetCount)
-        + ", maxDriftMs=" + maximumDriftMs.ToString("0.###")
+      "[Replay/Microphone] Playback stats. underruns="
+        + Interlocked.Read(ref _underrunCount)
+        + ", missingFrames="
+        + Interlocked.Read(ref _missingFrames)
+        + ", recoverySeeks="
+        + Interlocked.Read(ref _recoverySeekCount)
+        + ", duplicateResets="
+        + Interlocked.Read(ref _duplicateResetCount)
+        + ", maxDriftMs="
+        + maximumDriftMs.ToString("0.###")
     );
   }
 

@@ -334,11 +334,7 @@ public static class RecordInputTracker
       if (!emitTransitions || isDown == wasDown)
         continue;
 
-      if (
-        !EventQueue.TryEnqueue(
-          new NativeInputTransition(captureTicks, timestampNs, key, isDown, extendedKey)
-        )
-      )
+      if (!EventQueue.TryEnqueue(new NativeInputTransition(captureTicks, timestampNs, key, isDown, extendedKey)))
       {
         _overflowed = true;
         _acceptingEvents = false;
@@ -411,17 +407,13 @@ public static class RecordInputTracker
     }
 
     StopEventSourceNoThrow();
-    Main.Instance?.Log(
-      "[Recording/Input] Native capture stopped; no fallback is enabled. error=" + exception.Message
-    );
+    Main.Instance?.Log("[Recording/Input] Native capture stopped; no fallback is enabled. error=" + exception.Message);
   }
 
   private static string GetStableFailureReason(Exception exception)
   {
     string macOsReason = MacOsInputMonitoringAccess.FailureReason;
-    return !string.IsNullOrEmpty(macOsReason)
-      ? macOsReason
-      : EventSource.Name + ": " + exception.Message;
+    return !string.IsNullOrEmpty(macOsReason) ? macOsReason : EventSource.Name + ": " + exception.Message;
   }
 
   private static void RecoverFromOverflow()

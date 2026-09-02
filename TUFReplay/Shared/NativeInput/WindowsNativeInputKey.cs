@@ -1,4 +1,3 @@
-
 namespace TUFReplay.Shared.NativeInput;
 
 internal static class WindowsNativeInputKey

@@ -113,7 +113,9 @@ internal sealed class MacOsIoHidNativeLibrary
     if (_handle == IntPtr.Zero)
     {
       IntPtr error = dlerror();
-      throw new DllNotFoundException(path + ": " + (error == IntPtr.Zero ? "dlopen failed" : Marshal.PtrToStringAnsi(error)));
+      throw new DllNotFoundException(
+        path + ": " + (error == IntPtr.Zero ? "dlopen failed" : Marshal.PtrToStringAnsi(error))
+      );
     }
 
     AbiVersionDelegate abiVersion = Bind<AbiVersionDelegate>("tufreplay_input_abi_version");
@@ -176,17 +178,30 @@ internal sealed class MacOsIoHidNativeLibrary
   }
 
   public MacOsInputAccess CheckAccess() => (MacOsInputAccess)_checkAccess();
+
   public MacOsInputAccess RequestAccess() => (MacOsInputAccess)_requestAccess();
+
   public void GetTimebase(out uint numerator, out uint denominator) => _timebase(out numerator, out denominator);
+
   public ulong MachNow() => _machNow();
+
   public IntPtr Create() => _create();
+
   public MacOsInputError Start(IntPtr context) => (MacOsInputError)_start(context);
+
   public void Stop(IntPtr context) => _stop(context);
+
   public void Destroy(IntPtr context) => _destroy(context);
+
   public bool IsRunning(IntPtr context) => context != IntPtr.Zero && _isRunning(context);
+
   public MacOsInputError LastError(IntPtr context) => (MacOsInputError)_lastError(context);
-  public int WaitDequeue(IntPtr context, IntPtr events, int capacity, int timeoutMs) => _waitDequeue(context, events, capacity, timeoutMs);
+
+  public int WaitDequeue(IntPtr context, IntPtr events, int capacity, int timeoutMs) =>
+    _waitDequeue(context, events, capacity, timeoutMs);
+
   public int CopyState(IntPtr context, IntPtr state, int capacity) => _copyState(context, state, capacity);
+
   public ulong TakeDropped(IntPtr context) => _takeDropped(context);
 
   public MacOsIoHidNativeStats GetStats(IntPtr context)

@@ -141,13 +141,7 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
 
     lock (_gate)
     {
-      if (
-        _disposed
-        || _failure != null
-        || generation != _generation
-        || _seekPending
-        || byteCount > _bufferedBytes
-      )
+      if (_disposed || _failure != null || generation != _generation || _seekPending || byteCount > _bufferedBytes)
         return false;
 
       _readIndex = (_readIndex + byteCount) % _ring.Length;

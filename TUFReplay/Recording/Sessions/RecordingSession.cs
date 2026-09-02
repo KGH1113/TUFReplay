@@ -559,9 +559,7 @@ public class RecordingSession
       Data.GameplayStartSongPosition = songPosition - elapsedSeconds * timelineRate;
     }
 
-    long timelineUs = Data.WonTimeUs.HasValue
-      ? CurrentTimelineTimeUsLocked()
-      : ToRecordTimeUs(songPosition);
+    long timelineUs = Data.WonTimeUs.HasValue ? CurrentTimelineTimeUsLocked() : ToRecordTimeUs(songPosition);
     double effectiveRate = Data.WonTimeUs.HasValue ? 1d : timelineRate;
     InputTimelineAnchor current = new InputTimelineAnchor(captureTicks, timelineUs, effectiveRate);
 
@@ -735,13 +733,7 @@ public class RecordingSession
 
   private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
-  private void AddInputLocked(
-    long timeUs,
-    int key,
-    RecordInputFlags flags,
-    int nativeCode = -1,
-    ulong nativeFlags = 0
-  )
+  private void AddInputLocked(long timeUs, int key, RecordInputFlags flags, int nativeCode = -1, ulong nativeFlags = 0)
   {
     if (_hasTimelineTime)
       timeUs = Math.Max(_lastTimelineTimeUs, timeUs);

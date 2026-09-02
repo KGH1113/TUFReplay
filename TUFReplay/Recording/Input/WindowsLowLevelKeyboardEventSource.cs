@@ -67,11 +67,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     _onTransition = onTransition;
     _startFailure = null;
     _started.Reset();
-    _thread = new Thread(Run)
-    {
-      IsBackground = true,
-      Name = "TUFReplay Windows Keyboard Hook",
-    };
+    _thread = new Thread(Run) { IsBackground = true, Name = "TUFReplay Windows Keyboard Hook" };
     _thread.Start();
     if (!_started.WaitOne(2000) || !IsRunning)
     {
@@ -201,12 +197,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     List<int> keys = new List<int>(byte.MaxValue);
     for (int key = 1; key <= byte.MaxValue; key++)
     {
-      if (
-        WindowsNativeInputKey.IsMouseButton(key)
-        || key == 0x10
-        || key == 0x11
-        || key == 0x12
-      )
+      if (WindowsNativeInputKey.IsMouseButton(key) || key == 0x10 || key == 0x11 || key == 0x12)
         continue;
       keys.Add(key);
     }

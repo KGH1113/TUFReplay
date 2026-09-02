@@ -8,7 +8,10 @@ namespace TUFReplay.Shared.NativeInput;
 internal static class NativeInputKeyCodeMapper
 {
   public const string NativeKeySpace = "os-native-key-code";
-  private static readonly Dictionary<LogicalKeyboardKey, ushort> MacVirtualKeyCodes = new Dictionary<LogicalKeyboardKey, ushort>
+  private static readonly Dictionary<LogicalKeyboardKey, ushort> MacVirtualKeyCodes = new Dictionary<
+    LogicalKeyboardKey,
+    ushort
+  >
   {
     { LogicalKeyboardKey.A, 0x00 },
     { LogicalKeyboardKey.S, 0x01 },
@@ -117,7 +120,9 @@ internal static class NativeInputKeyCodeMapper
     { LogicalKeyboardKey.ArrowDown, 0x7D },
     { LogicalKeyboardKey.ArrowUp, 0x7E },
   };
-  private static readonly Dictionary<ushort, LogicalKeyboardKey> MacVirtualKeyLabels = CreateReverseMap(MacVirtualKeyCodes);
+  private static readonly Dictionary<ushort, LogicalKeyboardKey> MacVirtualKeyLabels = CreateReverseMap(
+    MacVirtualKeyCodes
+  );
 
   internal static bool TryGetLogicalKeyFromHidUsage(int usage, out LogicalKeyboardKey key)
   {
@@ -154,54 +159,146 @@ internal static class NativeInputKeyCodeMapper
 
     switch (usage)
     {
-      case 40: key = LogicalKeyboardKey.Enter; return true;
-      case 41: key = LogicalKeyboardKey.Escape; return true;
-      case 42: key = LogicalKeyboardKey.Backspace; return true;
-      case 43: key = LogicalKeyboardKey.Tab; return true;
-      case 44: key = LogicalKeyboardKey.Space; return true;
-      case 45: key = LogicalKeyboardKey.Minus; return true;
-      case 46: key = LogicalKeyboardKey.Equal; return true;
-      case 47: key = LogicalKeyboardKey.LeftBrace; return true;
-      case 48: key = LogicalKeyboardKey.RightBrace; return true;
+      case 40:
+        key = LogicalKeyboardKey.Enter;
+        return true;
+      case 41:
+        key = LogicalKeyboardKey.Escape;
+        return true;
+      case 42:
+        key = LogicalKeyboardKey.Backspace;
+        return true;
+      case 43:
+        key = LogicalKeyboardKey.Tab;
+        return true;
+      case 44:
+        key = LogicalKeyboardKey.Space;
+        return true;
+      case 45:
+        key = LogicalKeyboardKey.Minus;
+        return true;
+      case 46:
+        key = LogicalKeyboardKey.Equal;
+        return true;
+      case 47:
+        key = LogicalKeyboardKey.LeftBrace;
+        return true;
+      case 48:
+        key = LogicalKeyboardKey.RightBrace;
+        return true;
       case 49:
       case 50:
-      case 100: key = LogicalKeyboardKey.BackSlash; return true;
-      case 51: key = LogicalKeyboardKey.Semicolon; return true;
-      case 52: key = LogicalKeyboardKey.Apostrophe; return true;
-      case 53: key = LogicalKeyboardKey.Grave; return true;
-      case 54: key = LogicalKeyboardKey.Comma; return true;
-      case 55: key = LogicalKeyboardKey.Dot; return true;
-      case 56: key = LogicalKeyboardKey.Slash; return true;
-      case 57: key = LogicalKeyboardKey.CapsLock; return true;
-      case 70: key = LogicalKeyboardKey.PrintScreen; return true;
-      case 71: key = LogicalKeyboardKey.ScrollLock; return true;
-      case 72: key = LogicalKeyboardKey.PauseBreak; return true;
-      case 73: key = LogicalKeyboardKey.Insert; return true;
-      case 74: key = LogicalKeyboardKey.Home; return true;
-      case 75: key = LogicalKeyboardKey.PageUp; return true;
-      case 76: key = LogicalKeyboardKey.Delete; return true;
-      case 77: key = LogicalKeyboardKey.End; return true;
-      case 78: key = LogicalKeyboardKey.PageDown; return true;
-      case 79: key = LogicalKeyboardKey.ArrowRight; return true;
-      case 80: key = LogicalKeyboardKey.ArrowLeft; return true;
-      case 81: key = LogicalKeyboardKey.ArrowDown; return true;
-      case 82: key = LogicalKeyboardKey.ArrowUp; return true;
-      case 83: key = LogicalKeyboardKey.NumLock; return true;
-      case 84: key = LogicalKeyboardKey.KeypadSlash; return true;
-      case 85: key = LogicalKeyboardKey.KeypadAsterisk; return true;
-      case 86: key = LogicalKeyboardKey.KeypadMinus; return true;
-      case 87: key = LogicalKeyboardKey.KeypadPlus; return true;
-      case 88: key = LogicalKeyboardKey.KeypadEnter; return true;
-      case 98: key = LogicalKeyboardKey.Keypad0; return true;
-      case 99: key = LogicalKeyboardKey.KeypadDot; return true;
-      case 224: key = LogicalKeyboardKey.LControl; return true;
-      case 225: key = LogicalKeyboardKey.LShift; return true;
-      case 226: key = LogicalKeyboardKey.LAlt; return true;
-      case 227: key = LogicalKeyboardKey.Super; return true;
-      case 228: key = LogicalKeyboardKey.RControl; return true;
-      case 229: key = LogicalKeyboardKey.RShift; return true;
-      case 230: key = LogicalKeyboardKey.RAlt; return true;
-      case 231: key = LogicalKeyboardKey.RSuper; return true;
+      case 100:
+        key = LogicalKeyboardKey.BackSlash;
+        return true;
+      case 51:
+        key = LogicalKeyboardKey.Semicolon;
+        return true;
+      case 52:
+        key = LogicalKeyboardKey.Apostrophe;
+        return true;
+      case 53:
+        key = LogicalKeyboardKey.Grave;
+        return true;
+      case 54:
+        key = LogicalKeyboardKey.Comma;
+        return true;
+      case 55:
+        key = LogicalKeyboardKey.Dot;
+        return true;
+      case 56:
+        key = LogicalKeyboardKey.Slash;
+        return true;
+      case 57:
+        key = LogicalKeyboardKey.CapsLock;
+        return true;
+      case 70:
+        key = LogicalKeyboardKey.PrintScreen;
+        return true;
+      case 71:
+        key = LogicalKeyboardKey.ScrollLock;
+        return true;
+      case 72:
+        key = LogicalKeyboardKey.PauseBreak;
+        return true;
+      case 73:
+        key = LogicalKeyboardKey.Insert;
+        return true;
+      case 74:
+        key = LogicalKeyboardKey.Home;
+        return true;
+      case 75:
+        key = LogicalKeyboardKey.PageUp;
+        return true;
+      case 76:
+        key = LogicalKeyboardKey.Delete;
+        return true;
+      case 77:
+        key = LogicalKeyboardKey.End;
+        return true;
+      case 78:
+        key = LogicalKeyboardKey.PageDown;
+        return true;
+      case 79:
+        key = LogicalKeyboardKey.ArrowRight;
+        return true;
+      case 80:
+        key = LogicalKeyboardKey.ArrowLeft;
+        return true;
+      case 81:
+        key = LogicalKeyboardKey.ArrowDown;
+        return true;
+      case 82:
+        key = LogicalKeyboardKey.ArrowUp;
+        return true;
+      case 83:
+        key = LogicalKeyboardKey.NumLock;
+        return true;
+      case 84:
+        key = LogicalKeyboardKey.KeypadSlash;
+        return true;
+      case 85:
+        key = LogicalKeyboardKey.KeypadAsterisk;
+        return true;
+      case 86:
+        key = LogicalKeyboardKey.KeypadMinus;
+        return true;
+      case 87:
+        key = LogicalKeyboardKey.KeypadPlus;
+        return true;
+      case 88:
+        key = LogicalKeyboardKey.KeypadEnter;
+        return true;
+      case 98:
+        key = LogicalKeyboardKey.Keypad0;
+        return true;
+      case 99:
+        key = LogicalKeyboardKey.KeypadDot;
+        return true;
+      case 224:
+        key = LogicalKeyboardKey.LControl;
+        return true;
+      case 225:
+        key = LogicalKeyboardKey.LShift;
+        return true;
+      case 226:
+        key = LogicalKeyboardKey.LAlt;
+        return true;
+      case 227:
+        key = LogicalKeyboardKey.Super;
+        return true;
+      case 228:
+        key = LogicalKeyboardKey.RControl;
+        return true;
+      case 229:
+        key = LogicalKeyboardKey.RShift;
+        return true;
+      case 230:
+        key = LogicalKeyboardKey.RAlt;
+        return true;
+      case 231:
+        key = LogicalKeyboardKey.RSuper;
+        return true;
       default:
         key = LogicalKeyboardKey.Unknown;
         return false;
@@ -266,11 +363,7 @@ internal static class NativeInputKeyCodeMapper
     return converted;
   }
 
-  private static bool TryGetSourceLogicalKey(
-    string sourcePlatform,
-    RecordedInput input,
-    out LogicalKeyboardKey label
-  )
+  private static bool TryGetSourceLogicalKey(string sourcePlatform, RecordedInput input, out LogicalKeyboardKey label)
   {
     label = LogicalKeyboardKey.Unknown;
     int nativeKey = input.Key;
@@ -395,51 +488,141 @@ internal static class NativeInputKeyCodeMapper
 
     switch (key)
     {
-      case 0x08: label = LogicalKeyboardKey.Backspace; return true;
-      case 0x09: label = LogicalKeyboardKey.Tab; return true;
-      case 0x0D: label = LogicalKeyboardKey.Enter; return true;
-      case 0x13: label = LogicalKeyboardKey.PauseBreak; return true;
-      case 0x14: label = LogicalKeyboardKey.CapsLock; return true;
-      case 0x1B: label = LogicalKeyboardKey.Escape; return true;
-      case 0x20: label = LogicalKeyboardKey.Space; return true;
-      case 0x21: label = LogicalKeyboardKey.PageUp; return true;
-      case 0x22: label = LogicalKeyboardKey.PageDown; return true;
-      case 0x23: label = LogicalKeyboardKey.End; return true;
-      case 0x24: label = LogicalKeyboardKey.Home; return true;
-      case 0x25: label = LogicalKeyboardKey.ArrowLeft; return true;
-      case 0x26: label = LogicalKeyboardKey.ArrowUp; return true;
-      case 0x27: label = LogicalKeyboardKey.ArrowRight; return true;
-      case 0x28: label = LogicalKeyboardKey.ArrowDown; return true;
-      case 0x2C: label = LogicalKeyboardKey.PrintScreen; return true;
-      case 0x2D: label = LogicalKeyboardKey.Insert; return true;
-      case 0x2E: label = LogicalKeyboardKey.Delete; return true;
-      case 0x5B: label = LogicalKeyboardKey.Super; return true;
-      case 0x5C: label = LogicalKeyboardKey.RSuper; return true;
-      case 0x6A: label = LogicalKeyboardKey.KeypadAsterisk; return true;
-      case 0x6B: label = LogicalKeyboardKey.KeypadPlus; return true;
-      case 0x6D: label = LogicalKeyboardKey.KeypadMinus; return true;
-      case 0x6E: label = LogicalKeyboardKey.KeypadDot; return true;
-      case 0x6F: label = LogicalKeyboardKey.KeypadSlash; return true;
-      case 0x90: label = LogicalKeyboardKey.NumLock; return true;
-      case 0x91: label = LogicalKeyboardKey.ScrollLock; return true;
-      case 0xA0: label = LogicalKeyboardKey.LShift; return true;
-      case 0xA1: label = LogicalKeyboardKey.RShift; return true;
-      case 0xA2: label = LogicalKeyboardKey.LControl; return true;
-      case 0xA3: label = LogicalKeyboardKey.RControl; return true;
-      case 0xA4: label = LogicalKeyboardKey.LAlt; return true;
-      case 0xA5: label = LogicalKeyboardKey.RAlt; return true;
-      case 0xBA: label = LogicalKeyboardKey.Semicolon; return true;
-      case 0xBB: label = LogicalKeyboardKey.Equal; return true;
-      case 0xBC: label = LogicalKeyboardKey.Comma; return true;
-      case 0xBD: label = LogicalKeyboardKey.Minus; return true;
-      case 0xBE: label = LogicalKeyboardKey.Dot; return true;
-      case 0xBF: label = LogicalKeyboardKey.Slash; return true;
-      case 0xC0: label = LogicalKeyboardKey.Grave; return true;
-      case 0xDB: label = LogicalKeyboardKey.LeftBrace; return true;
-      case 0xDC: label = LogicalKeyboardKey.BackSlash; return true;
-      case 0xDD: label = LogicalKeyboardKey.RightBrace; return true;
-      case 0xDE: label = LogicalKeyboardKey.Apostrophe; return true;
-      default: label = LogicalKeyboardKey.Unknown; return false;
+      case 0x08:
+        label = LogicalKeyboardKey.Backspace;
+        return true;
+      case 0x09:
+        label = LogicalKeyboardKey.Tab;
+        return true;
+      case 0x0D:
+        label = LogicalKeyboardKey.Enter;
+        return true;
+      case 0x13:
+        label = LogicalKeyboardKey.PauseBreak;
+        return true;
+      case 0x14:
+        label = LogicalKeyboardKey.CapsLock;
+        return true;
+      case 0x1B:
+        label = LogicalKeyboardKey.Escape;
+        return true;
+      case 0x20:
+        label = LogicalKeyboardKey.Space;
+        return true;
+      case 0x21:
+        label = LogicalKeyboardKey.PageUp;
+        return true;
+      case 0x22:
+        label = LogicalKeyboardKey.PageDown;
+        return true;
+      case 0x23:
+        label = LogicalKeyboardKey.End;
+        return true;
+      case 0x24:
+        label = LogicalKeyboardKey.Home;
+        return true;
+      case 0x25:
+        label = LogicalKeyboardKey.ArrowLeft;
+        return true;
+      case 0x26:
+        label = LogicalKeyboardKey.ArrowUp;
+        return true;
+      case 0x27:
+        label = LogicalKeyboardKey.ArrowRight;
+        return true;
+      case 0x28:
+        label = LogicalKeyboardKey.ArrowDown;
+        return true;
+      case 0x2C:
+        label = LogicalKeyboardKey.PrintScreen;
+        return true;
+      case 0x2D:
+        label = LogicalKeyboardKey.Insert;
+        return true;
+      case 0x2E:
+        label = LogicalKeyboardKey.Delete;
+        return true;
+      case 0x5B:
+        label = LogicalKeyboardKey.Super;
+        return true;
+      case 0x5C:
+        label = LogicalKeyboardKey.RSuper;
+        return true;
+      case 0x6A:
+        label = LogicalKeyboardKey.KeypadAsterisk;
+        return true;
+      case 0x6B:
+        label = LogicalKeyboardKey.KeypadPlus;
+        return true;
+      case 0x6D:
+        label = LogicalKeyboardKey.KeypadMinus;
+        return true;
+      case 0x6E:
+        label = LogicalKeyboardKey.KeypadDot;
+        return true;
+      case 0x6F:
+        label = LogicalKeyboardKey.KeypadSlash;
+        return true;
+      case 0x90:
+        label = LogicalKeyboardKey.NumLock;
+        return true;
+      case 0x91:
+        label = LogicalKeyboardKey.ScrollLock;
+        return true;
+      case 0xA0:
+        label = LogicalKeyboardKey.LShift;
+        return true;
+      case 0xA1:
+        label = LogicalKeyboardKey.RShift;
+        return true;
+      case 0xA2:
+        label = LogicalKeyboardKey.LControl;
+        return true;
+      case 0xA3:
+        label = LogicalKeyboardKey.RControl;
+        return true;
+      case 0xA4:
+        label = LogicalKeyboardKey.LAlt;
+        return true;
+      case 0xA5:
+        label = LogicalKeyboardKey.RAlt;
+        return true;
+      case 0xBA:
+        label = LogicalKeyboardKey.Semicolon;
+        return true;
+      case 0xBB:
+        label = LogicalKeyboardKey.Equal;
+        return true;
+      case 0xBC:
+        label = LogicalKeyboardKey.Comma;
+        return true;
+      case 0xBD:
+        label = LogicalKeyboardKey.Minus;
+        return true;
+      case 0xBE:
+        label = LogicalKeyboardKey.Dot;
+        return true;
+      case 0xBF:
+        label = LogicalKeyboardKey.Slash;
+        return true;
+      case 0xC0:
+        label = LogicalKeyboardKey.Grave;
+        return true;
+      case 0xDB:
+        label = LogicalKeyboardKey.LeftBrace;
+        return true;
+      case 0xDC:
+        label = LogicalKeyboardKey.BackSlash;
+        return true;
+      case 0xDD:
+        label = LogicalKeyboardKey.RightBrace;
+        return true;
+      case 0xDE:
+        label = LogicalKeyboardKey.Apostrophe;
+        return true;
+      default:
+        label = LogicalKeyboardKey.Unknown;
+        return false;
     }
   }
 
@@ -498,5 +681,4 @@ internal static class NativeInputKeyCodeMapper
 
     return false;
   }
-
 }
