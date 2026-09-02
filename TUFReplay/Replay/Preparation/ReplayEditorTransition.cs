@@ -46,10 +46,7 @@ internal static class ReplayEditorTransition
     }
   }
 
-  internal static ReplayEditorTransitionResult ClassifyAfterException(
-    bool playModeAfterException,
-    Exception exception
-  )
+  internal static ReplayEditorTransitionResult ClassifyAfterException(bool playModeAfterException, Exception exception)
   {
     return new ReplayEditorTransitionResult(
       playModeAfterException

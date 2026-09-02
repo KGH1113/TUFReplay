@@ -8,13 +8,7 @@ public readonly struct NativeInputEmission
   public readonly int NativeCode;
   public readonly ulong NativeFlags;
 
-  public NativeInputEmission(
-    int key,
-    bool down,
-    bool extendedKey = false,
-    int nativeCode = -1,
-    ulong nativeFlags = 0
-  )
+  public NativeInputEmission(int key, bool down, bool extendedKey = false, int nativeCode = -1, ulong nativeFlags = 0)
   {
     Key = key;
     Down = down;

@@ -23,12 +23,7 @@ internal sealed class MacOsMachTimeConverter
     _nanosecondsPerMachTick = (double)numerator / denominator;
   }
 
-  internal MacOsMachTimeConverter(
-    ulong machOrigin,
-    long stopwatchOrigin,
-    uint numerator,
-    uint denominator
-  )
+  internal MacOsMachTimeConverter(ulong machOrigin, long stopwatchOrigin, uint numerator, uint denominator)
   {
     _machOrigin = machOrigin;
     _stopwatchOrigin = stopwatchOrigin;
@@ -37,9 +32,8 @@ internal sealed class MacOsMachTimeConverter
 
   public long ToStopwatchTicks(ulong machTimestamp)
   {
-    double deltaMach = machTimestamp >= _machOrigin
-      ? machTimestamp - _machOrigin
-      : -(double)(_machOrigin - machTimestamp);
+    double deltaMach =
+      machTimestamp >= _machOrigin ? machTimestamp - _machOrigin : -(double)(_machOrigin - machTimestamp);
     double deltaStopwatch = deltaMach * _nanosecondsPerMachTick * Stopwatch.Frequency / 1_000_000_000d;
     return _stopwatchOrigin + (long)Math.Round(deltaStopwatch);
   }

@@ -149,10 +149,7 @@ internal static class ReplayNativeInputSuite
     List<RecordedInput> parsed = ReplayInputParser.Parse(payload.ToInputCsvBytes());
     Assert(parsed.Count == 2, "Five-column input CSV did not round-trip.");
     Assert(
-      parsed[0].TimeUs == -125_000
-        && parsed[0].NativeCode == 0x1D
-        && parsed[0].NativeFlags == 0x11
-        && parsed[0].Down,
+      parsed[0].TimeUs == -125_000 && parsed[0].NativeCode == 0x1D && parsed[0].NativeFlags == 0x11 && parsed[0].Down,
       "Five-column native metadata changed during round-trip."
     );
     Assert(parsed[1].NativeFlags == 0x91 && !parsed[1].Down, "Key-up native provenance was not preserved.");
@@ -160,7 +157,6 @@ internal static class ReplayNativeInputSuite
     byte[] malformed = System.Text.Encoding.UTF8.GetBytes("1,65,3,30,not-a-flag\n2,66,3,31,1\n");
     parsed = ReplayInputParser.Parse(malformed);
     Assert(parsed.Count == 1 && parsed[0].Key == 66, "Malformed native metadata was accepted or hid valid rows.");
-
   }
 
   private static void TestInputTimelineMath()
@@ -232,9 +228,18 @@ internal static class ReplayNativeInputSuite
       drainedTotal += remaining;
     }
     Assert(drainedTotal == 32_000, "Ring buffer stress test lost transitions.");
-    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x10, 0x36, false) == 0xA1, "Right Shift was not normalized.");
-    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x11, 0x1D, true) == 0xA3, "Right Ctrl was not normalized.");
-    Assert(WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, true) == 0xA5, "Right Alt was not normalized.");
+    Assert(
+      WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x10, 0x36, false) == 0xA1,
+      "Right Shift was not normalized."
+    );
+    Assert(
+      WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x11, 0x1D, true) == 0xA3,
+      "Right Ctrl was not normalized."
+    );
+    Assert(
+      WindowsLowLevelKeyboardEventSource.NormalizeModifierKey(0x12, 0x38, true) == 0xA5,
+      "Right Alt was not normalized."
+    );
   }
 
   private static void TestLegacyJudgmentOverloadMath()
@@ -594,7 +599,11 @@ internal static class ReplayNativeInputSuite
     {
       new RecordedInput(1, sourceA, RecordInputFlags.Async | RecordInputFlags.Down, 0x1E, 0x91),
     };
-    List<RecordedInput> normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(foreignInputs, meta, out int dropped);
+    List<RecordedInput> normalized = NativeInputKeyCodeMapper.NormalizeForPlayback(
+      foreignInputs,
+      meta,
+      out int dropped
+    );
     Assert(dropped == 0 && normalized.Count == 1, "Cross-platform logical key fallback dropped a supported key.");
     Assert(
       NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.A, out int expectedA)
@@ -621,14 +630,8 @@ internal static class ReplayNativeInputSuite
       !WindowsNativeInputKey.NormalizeExtended(0xA1, 0x36, false),
       "Right Shift was treated as an E0 extended key."
     );
-    Assert(
-      WindowsNativeInputKey.NormalizeExtended(0xA3, 0x1D, true),
-      "Right Ctrl lost its E0 extended-key flag."
-    );
-    Assert(
-      WindowsNativeInputKey.NormalizeExtended(0xA5, 0x38, true),
-      "Right Alt lost its E0 extended-key flag."
-    );
+    Assert(WindowsNativeInputKey.NormalizeExtended(0xA3, 0x1D, true), "Right Ctrl lost its E0 extended-key flag.");
+    Assert(WindowsNativeInputKey.NormalizeExtended(0xA5, 0x38, true), "Right Alt lost its E0 extended-key flag.");
   }
 
   private static void TestWindowsPhysicalStateUsesCurrentDownBit()
@@ -641,7 +644,10 @@ internal static class ReplayNativeInputSuite
       !WindowsLowLevelKeyboardEventSource.IsAsyncKeyDown(0x0001),
       "Windows physical state treated the recent-press bit as currently down."
     );
-    Assert(!WindowsLowLevelKeyboardEventSource.IsAsyncKeyDown(0), "Windows physical state reported an idle key as down.");
+    Assert(
+      !WindowsLowLevelKeyboardEventSource.IsAsyncKeyDown(0),
+      "Windows physical state reported an idle key as down."
+    );
   }
 
   private static void TestReplayInputFormatGate()
@@ -655,7 +661,10 @@ internal static class ReplayNativeInputSuite
       inputNativePlatform = "windows",
       inputCapture = "windows-wh-keyboard-ll",
     };
-    Assert(ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current), "Current five-column native input was rejected.");
+    Assert(
+      ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current),
+      "Current five-column native input was rejected."
+    );
 
     var legacy = new ReplayMetadata
     {
@@ -665,23 +674,28 @@ internal static class ReplayNativeInputSuite
       inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
       inputNativePlatform = "windows",
     };
-    Assert(!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(legacy), "Legacy format was accepted without migration.");
+    Assert(
+      !ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(legacy),
+      "Legacy format was accepted without migration."
+    );
     current.inputCapture = "skyhook-native-events";
-    Assert(!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current), "Legacy capture source was accepted without migration.");
+    Assert(
+      !ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current),
+      "Legacy capture source was accepted without migration."
+    );
     current.inputCapture = "windows-wh-keyboard-ll";
     current.inputNativePlatform = null;
-    Assert(!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current), "Missing native platform metadata was accepted.");
+    Assert(
+      !ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current),
+      "Missing native platform metadata was accepted."
+    );
   }
 
   private static void TestUnsupportedCaptureHasNoPollingFallback()
   {
     if (
-      System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-        System.Runtime.InteropServices.OSPlatform.Windows
-      )
-      || System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-        System.Runtime.InteropServices.OSPlatform.OSX
-      )
+      System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
+      || System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX)
     )
       return;
 
@@ -739,11 +753,7 @@ internal static class ReplayNativeInputSuite
 
   private static void TestMacOsNativeShimAbi()
   {
-    if (
-      !System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
-        System.Runtime.InteropServices.OSPlatform.OSX
-      )
-    )
+    if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
       return;
     Assert(
       MacOsIoHidNativeLibrary.TryLoad(out MacOsIoHidNativeLibrary library, out string failure),
@@ -751,9 +761,7 @@ internal static class ReplayNativeInputSuite
     );
     MacOsInputAccess access = library.CheckAccess();
     Assert(
-      access == MacOsInputAccess.Granted
-        || access == MacOsInputAccess.Denied
-        || access == MacOsInputAccess.Unknown,
+      access == MacOsInputAccess.Granted || access == MacOsInputAccess.Denied || access == MacOsInputAccess.Unknown,
       "macOS native input shim returned an invalid access state."
     );
     INativeInputEventSource source = NativeInputEventSourceFactory.CreatePrimary();
@@ -793,14 +801,19 @@ internal static class ReplayNativeInputSuite
   {
     var exception = new TypeLoadException("external postfix failed");
     ReplayEditorTransitionResult recovered = ReplayEditorTransition.ClassifyAfterException(false, exception);
-    Assert(recovered.Recovered && !recovered.Failed, "Completed editor transition was not recovered after postfix failure.");
+    Assert(
+      recovered.Recovered && !recovered.Failed,
+      "Completed editor transition was not recovered after postfix failure."
+    );
     Assert(ReferenceEquals(recovered.Exception, exception), "Recovered editor transition lost the original exception.");
 
     ReplayEditorTransitionResult failed = ReplayEditorTransition.ClassifyAfterException(true, exception);
-    Assert(failed.Failed && !failed.Recovered, "Editor transition failure was accepted while play mode remained active.");
     Assert(
-      !ReplayEditorTransition.HasTimedOut(100d, 109.999d, 10d)
-        && ReplayEditorTransition.HasTimedOut(100d, 110d, 10d),
+      failed.Failed && !failed.Recovered,
+      "Editor transition failure was accepted while play mode remained active."
+    );
+    Assert(
+      !ReplayEditorTransition.HasTimedOut(100d, 109.999d, 10d) && ReplayEditorTransition.HasTimedOut(100d, 110d, 10d),
       "Editor transition timeout boundary changed."
     );
   }
@@ -824,37 +837,31 @@ internal static class ReplayNativeInputSuite
 
     Assert(
       ReplayRuntimeReadinessEvaluator
-          .Evaluate(true, true, false, true, true, false, true, true, true, true, true)
-          .Reason
-        == "conductor_inactive",
+        .Evaluate(true, true, false, true, true, false, true, true, true, true, true)
+        .Reason == "conductor_inactive",
       "Inactive conductor did not block replay startup."
     );
     Assert(
-      ReplayRuntimeReadinessEvaluator
-          .Evaluate(true, true, true, true, true, true, false, true, true, true, true)
-          .Reason
+      ReplayRuntimeReadinessEvaluator.Evaluate(true, true, true, true, true, true, false, true, true, true, true).Reason
         == "editor_not_in_play_mode",
       "Editor replay started outside play mode."
     );
     Assert(
       ReplayRuntimeReadinessEvaluator
-          .Evaluate(true, true, true, true, true, false, true, false, true, true, true)
-          .Reason
-        == "conductor_timeline_uninitialized",
+        .Evaluate(true, true, true, true, true, false, true, false, true, true, true)
+        .Reason == "conductor_timeline_uninitialized",
       "Uninitialized first-frame conductor timeline did not block replay startup."
     );
     Assert(
       ReplayRuntimeReadinessEvaluator
-          .Evaluate(true, true, true, true, true, false, true, true, false, true, true)
-          .Reason
-        == "song_position_invalid",
+        .Evaluate(true, true, true, true, true, false, true, true, false, true, true)
+        .Reason == "song_position_invalid",
       "Non-finite song position did not block replay startup."
     );
     Assert(
       ReplayRuntimeReadinessEvaluator
-          .Evaluate(true, true, true, true, true, false, true, true, true, true, false)
-          .Reason
-        == "controller_state_not_playback",
+        .Evaluate(true, true, true, true, true, false, true, true, true, true, false)
+        .Reason == "controller_state_not_playback",
       "Non-playback controller state did not block replay startup."
     );
   }

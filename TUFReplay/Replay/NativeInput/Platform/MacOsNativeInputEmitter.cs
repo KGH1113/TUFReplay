@@ -61,9 +61,10 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
       int nativeKey = emission.NativeCode >= 0 ? emission.NativeCode : emission.Key;
       if (nativeKey < 0 || nativeKey > 0x7F)
         return new NativeInputEmitResult(i, -1);
-      CGEventFlags nextFlags = emission.NativeCode >= 0
-        ? (CGEventFlags)emission.NativeFlags
-        : GetNextModifierFlags(emission.Key, emission.Down);
+      CGEventFlags nextFlags =
+        emission.NativeCode >= 0
+          ? (CGEventFlags)emission.NativeFlags
+          : GetNextModifierFlags(emission.Key, emission.Down);
       IntPtr ev = CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)nativeKey, emission.Down);
       if (ev == IntPtr.Zero)
         return new NativeInputEmitResult(i, -1);

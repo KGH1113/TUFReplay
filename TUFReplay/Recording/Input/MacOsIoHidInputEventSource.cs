@@ -98,11 +98,7 @@ internal sealed class MacOsIoHidInputEventSource : INativeInputEventSource
       }
       RefreshPhysicalState();
       _running = true;
-      _worker = new Thread(RunWorker)
-      {
-        IsBackground = true,
-        Name = "TUFReplay macOS IOHID Bridge",
-      };
+      _worker = new Thread(RunWorker) { IsBackground = true, Name = "TUFReplay macOS IOHID Bridge" };
       _worker.Start();
     }
     catch
@@ -215,7 +211,9 @@ internal sealed class MacOsIoHidInputEventSource : INativeInputEventSource
         for (int i = 0; i < count; i++)
           ProcessNativeEvent(_nativeEvents[i]);
         if (!_stopping && !_library.IsRunning(_context))
-          throw new InvalidOperationException("macOS IOHID native thread stopped unexpectedly: " + _library.LastError(_context));
+          throw new InvalidOperationException(
+            "macOS IOHID native thread stopped unexpectedly: " + _library.LastError(_context)
+          );
       }
     }
     catch (Exception exception)

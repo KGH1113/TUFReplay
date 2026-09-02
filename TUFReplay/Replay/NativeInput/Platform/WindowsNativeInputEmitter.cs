@@ -91,7 +91,10 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     }
 
     uint emitted = SendInput((uint)count, _inputBuffer, InputSize);
-    return new NativeInputEmitResult((int)Math.Min(emitted, (uint)count), emitted == (uint)count ? 0 : Marshal.GetLastWin32Error());
+    return new NativeInputEmitResult(
+      (int)Math.Min(emitted, (uint)count),
+      emitted == (uint)count ? 0 : Marshal.GetLastWin32Error()
+    );
   }
 
   private void EnsureCapacity(int count)
@@ -152,13 +155,7 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     bool mappedExtended = (mappedScanCode & 0xFF00u) == 0xE000u;
     flags |= KeyEventScanCode;
     bool fallbackExtended = emission.ExtendedKey || mappedExtended || WindowsNativeInputKey.IsExtended(virtualKey);
-    if (
-      WindowsNativeInputKey.NormalizeExtended(
-        virtualKey,
-        (int)(mappedScanCode & 0xFFu),
-        fallbackExtended
-      )
-    )
+    if (WindowsNativeInputKey.NormalizeExtended(virtualKey, (int)(mappedScanCode & 0xFFu), fallbackExtended))
       flags |= KeyEventExtendedKey;
 
     return new KeyboardInput { ScanCode = (ushort)(mappedScanCode & 0xFFu), Flags = flags };

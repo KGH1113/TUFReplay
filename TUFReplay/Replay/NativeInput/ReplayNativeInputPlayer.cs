@@ -1,6 +1,6 @@
 using System;
-using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.NativeInput;
+using TUFReplay.Replay.Playback;
 
 namespace TUFReplay.Replay.NativeInput;
 

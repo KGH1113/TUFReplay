@@ -374,13 +374,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (_heldKeys.Contains(key) || !_emitter.IsSupported(key.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(
-        key.Key,
-        true,
-        key.ExtendedKey,
-        key.NativeCode,
-        key.NativeFlags
-      );
+      _emissions[count++] = new NativeInputEmission(key.Key, true, key.ExtendedKey, key.NativeCode, key.NativeFlags);
     }
 
     if (count == 0)
@@ -411,13 +405,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
       if (!_emitter.IsSupported(key.Key))
         continue;
       EnsureEmissionCapacity(count + 1);
-      _emissions[count++] = new NativeInputEmission(
-        key.Key,
-        false,
-        key.ExtendedKey,
-        key.NativeCode,
-        key.NativeFlags
-      );
+      _emissions[count++] = new NativeInputEmission(key.Key, false, key.ExtendedKey, key.NativeCode, key.NativeFlags);
     }
 
     if (count == 0)
