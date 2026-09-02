@@ -17,7 +17,7 @@ namespace TUFReplay.Microphone.Capture;
 
 public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 {
-  private const int ProtocolVersion = 1;
+  private const int ProtocolVersion = 2;
   private const int ConnectTimeoutMilliseconds = 10000;
   private const int CommandTimeoutMilliseconds = 300000;
 
@@ -32,6 +32,10 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   private ArmState _armState;
   private string _armError;
   private int _armGeneration;
+  private MicrophonePermissionState _permissionState = MicrophonePermissionState.Unknown;
+  private string _permissionError;
+  private bool _permissionRequested;
+  private bool _permissionRefreshQueued;
   private PendingRun _run;
   private bool _deviceRefreshQueued;
   private volatile bool _disposed;
@@ -46,19 +50,49 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
   public void RequestPermission()
   {
-    QueueCommand(() =>
+    lock (_stateGate)
     {
-      try
-      {
-        Send(new JObject { ["command"] = "authorize" });
-        RefreshDevices();
-        Main.Instance?.Log("[Microphone] macOS microphone permission is ready.");
-      }
-      catch (Exception exception)
-      {
-        Main.Instance?.Log("[Microphone] macOS microphone permission request failed. error=" + exception.Message);
-      }
-    });
+      if (_permissionRequested || _disposed)
+        return;
+      _permissionRequested = true;
+      _permissionState = MicrophonePermissionState.Requesting;
+      _permissionError = null;
+    }
+
+    if (!QueueCommand(CompletePermissionRequest))
+      SetPermissionFailure("macOS microphone helper is shutting down.");
+  }
+
+  public void RefreshPermissionStatus()
+  {
+    lock (_stateGate)
+    {
+      if (
+        _disposed
+        || _permissionRefreshQueued
+        || _permissionState == MicrophonePermissionState.Requesting
+        || _permissionState == MicrophonePermissionState.Checking
+      )
+        return;
+      _permissionRefreshQueued = true;
+      _permissionState = MicrophonePermissionState.Checking;
+      _permissionError = null;
+    }
+
+    if (!QueueCommand(CompletePermissionRefresh))
+    {
+      lock (_stateGate)
+        _permissionRefreshQueued = false;
+      SetPermissionFailure("macOS microphone helper is shutting down.");
+    }
+  }
+
+  public MicrophonePermissionStatus GetPermissionStatus()
+  {
+    lock (_stateGate)
+    {
+      return new MicrophonePermissionStatus { State = _permissionState, Error = _permissionError };
+    }
   }
 
   public List<MicrophoneDeviceInfo> ListDevices()
@@ -245,6 +279,9 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       ++_armGeneration;
       _armState = ArmState.Idle;
       _armError = null;
+      _permissionState = MicrophonePermissionState.NotApplicable;
+      _permissionError = null;
+      _permissionRefreshQueued = false;
     }
     try
     {
@@ -291,6 +328,91 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     Main.Instance?.Log(
       error == null ? "[Microphone] macOS microphone is armed." : "[Microphone] Arm failed. error=" + error
     );
+  }
+
+  private void CompletePermissionRequest()
+  {
+    try
+    {
+      JObject response = Send(new JObject { ["command"] = "authorize" });
+      ApplyPermissionStatus((string)response["authorizationStatus"]);
+      if (GetPermissionStatus().State == MicrophonePermissionState.Authorized)
+        RefreshDevices();
+    }
+    catch (Exception exception)
+    {
+      SetPermissionFailure(exception.Message);
+    }
+
+    MicrophonePermissionStatus status = GetPermissionStatus();
+    Main.Instance?.Log(
+      status.State == MicrophonePermissionState.Authorized
+        ? "[Microphone] macOS microphone permission is ready."
+        : "[Microphone] macOS microphone permission request finished. state="
+          + status.State
+          + (string.IsNullOrEmpty(status.Error) ? string.Empty : ", error=" + status.Error)
+    );
+  }
+
+  private void CompletePermissionRefresh()
+  {
+    try
+    {
+      JObject response = Send(new JObject { ["command"] = "authorizationStatus" });
+      ApplyPermissionStatus((string)response["authorizationStatus"]);
+    }
+    catch (Exception exception)
+    {
+      SetPermissionFailure(exception.Message);
+    }
+    finally
+    {
+      lock (_stateGate)
+        _permissionRefreshQueued = false;
+    }
+  }
+
+  private void ApplyPermissionStatus(string value)
+  {
+    MicrophonePermissionState state = ParsePermissionState(value, out string error);
+    lock (_stateGate)
+    {
+      if (_disposed)
+        return;
+      _permissionState = state;
+      _permissionError = error;
+    }
+  }
+
+  private void SetPermissionFailure(string error)
+  {
+    lock (_stateGate)
+    {
+      if (_disposed)
+        return;
+      _permissionState = MicrophonePermissionState.Failed;
+      _permissionError = string.IsNullOrWhiteSpace(error) ? "Microphone permission request failed." : error;
+    }
+  }
+
+  internal static MicrophonePermissionState ParsePermissionState(string value, out string error)
+  {
+    error = null;
+    switch (value)
+    {
+      case "authorized":
+        return MicrophonePermissionState.Authorized;
+      case "denied":
+        return MicrophonePermissionState.Denied;
+      case "restricted":
+        return MicrophonePermissionState.Restricted;
+      case "notDetermined":
+        error = "Microphone authorization status is still undetermined after the permission request.";
+        return MicrophonePermissionState.Failed;
+      default:
+        error = "macOS microphone helper returned an unknown authorization status: " + (value ?? "<missing>");
+        return MicrophonePermissionState.Failed;
+    }
   }
 
   private void QueueDisarm(int generation, string tempPath = null)

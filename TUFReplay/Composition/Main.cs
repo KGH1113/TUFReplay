@@ -1,5 +1,6 @@
 ﻿using System;
 using TUFReplay.Composition;
+using TUFReplay.Microphone.Permissions;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Preparation;
@@ -134,6 +135,7 @@ public sealed class Main
   {
     ModBootstrap.UpdateRuntime();
     UnityMainThread.DrainPending();
+    MicrophonePermissionWarningCoordinator.Tick();
     ReplayLevelOpenService.Tick();
     ReplayPlaybackCoordinator.Tick();
     ReplaySessionService.TickStartup();

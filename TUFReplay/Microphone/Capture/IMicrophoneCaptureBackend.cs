@@ -8,6 +8,8 @@ namespace TUFReplay.Microphone.Capture;
 public interface IMicrophoneCaptureBackend : IDisposable
 {
   void RequestPermission();
+  void RefreshPermissionStatus();
+  MicrophonePermissionStatus GetPermissionStatus();
   List<MicrophoneDeviceInfo> ListDevices();
   bool Arm(string deviceId, out string error);
   MicrophoneArmStatus GetArmStatus();
