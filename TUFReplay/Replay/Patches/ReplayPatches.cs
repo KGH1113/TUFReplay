@@ -122,7 +122,6 @@ public static class ReplayInputPatches
         return;
 
       ReplaySessionService.TickReplayPitchEditorApply();
-      ReplayPlaybackCoordinator.Tick();
     }
     catch (Exception exception)
     {
@@ -155,15 +154,12 @@ public static class ReplayInputPatches
       if (!IsActive)
         return;
 
-      UnityMainThread.DrainPending();
-      ReplayLevelOpenService.Tick();
       if (!ReplaySessionService.HasActiveContext)
         return;
       if (!ReplaySessionService.TryGetNativeReplayTimeUs(out long nowUs))
         return;
 
-      ReplaySessionService.TickNativeVisual(nowUs);
-      ReplaySessionService.TickMicrophonePlayback(nowUs);
+      ReplaySessionService.TickReplayPlayback(nowUs);
     }
     catch (Exception exception)
     {
@@ -207,8 +203,8 @@ public static class ReplayInputPatches
   [HarmonyPrefix]
   private static bool OnAsyncRefreshAnglesPrefix()
   {
-    // Replay native input is intentionally injected through SkyHook, but its async timestamp belongs
-    // to the live OS clock. After a timeline scrub that clock can overwrite the conductor-derived
+    // Replay input is injected through the native OS path, whose async timestamp belongs to the live
+    // OS clock. After a timeline scrub that clock can overwrite the conductor-derived
     // planet angle with a value from the abandoned timeline. Hit-context playback already restores
     // the authoritative replay orbit, so keep the synchronous angle path while a replay is active.
     return !IsActive || !ReplaySessionService.ShouldSuppressGameplayInput();

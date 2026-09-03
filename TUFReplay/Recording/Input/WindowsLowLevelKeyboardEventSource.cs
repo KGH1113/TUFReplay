@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -15,6 +16,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
   private const uint WmSysKeyUp = 0x0105;
   private const uint WmQuit = 0x0012;
   private const uint LlkhfExtended = 0x01;
+  private static readonly int[] PhysicalKeyCodes = CreatePhysicalKeyCodes();
 
   [StructLayout(LayoutKind.Sequential)]
   private struct KeyboardHookData
@@ -52,6 +54,8 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
 
   public string Name => "windows-wh-keyboard-ll";
   public bool IsRunning => _running && _hook != IntPtr.Zero;
+  public bool UsesExtendedKeyState => true;
+  public IReadOnlyList<int> SnapshotKeyCodes => PhysicalKeyCodes;
 
   public void Start(Action<NativeInputTransition> onTransition)
   {
@@ -63,11 +67,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     _onTransition = onTransition;
     _startFailure = null;
     _started.Reset();
-    _thread = new Thread(Run)
-    {
-      IsBackground = true,
-      Name = "TUFReplay Windows Keyboard Hook",
-    };
+    _thread = new Thread(Run) { IsBackground = true, Name = "TUFReplay Windows Keyboard Hook" };
     _thread.Start();
     if (!_started.WaitOne(2000) || !IsRunning)
     {
@@ -89,6 +89,24 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     _threadId = 0;
     _onTransition = null;
   }
+
+  public bool TryGetPhysicalKeyState(int keyCode, out bool isDown)
+  {
+    if (keyCode <= 0 || keyCode > byte.MaxValue || WindowsNativeInputKey.IsMouseButton(keyCode))
+    {
+      isDown = false;
+      return false;
+    }
+
+    isDown = IsAsyncKeyDown(GetAsyncKeyState(keyCode));
+    return true;
+  }
+
+  public void RefreshPhysicalState() { }
+
+  public long ConsumeDroppedEvents() => 0;
+
+  public NativeInputSourceDiagnostics GetDiagnostics() => default;
 
   private void Run()
   {
@@ -134,8 +152,10 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
       if (down || up)
       {
         KeyboardHookData data = Marshal.PtrToStructure<KeyboardHookData>(lParam);
-        bool extended = (data.Flags & LlkhfExtended) != 0;
-        int key = NormalizeModifierKey(unchecked((int)data.VirtualKey), unchecked((int)data.ScanCode), extended);
+        bool reportedExtended = (data.Flags & LlkhfExtended) != 0;
+        int scanCode = unchecked((int)data.ScanCode);
+        int key = NormalizeModifierKey(unchecked((int)data.VirtualKey), scanCode, reportedExtended);
+        bool extended = WindowsNativeInputKey.NormalizeExtended(key, scanCode, reportedExtended);
         if (key > 0 && key <= byte.MaxValue && !WindowsNativeInputKey.IsMouseButton(key))
         {
           _onTransition?.Invoke(
@@ -145,7 +165,7 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
               key,
               down,
               extended,
-              unchecked((int)data.ScanCode),
+              scanCode,
               data.Flags
             )
           );
@@ -170,6 +190,20 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     }
   }
 
+  internal static bool IsAsyncKeyDown(short state) => (state & unchecked((short)0x8000)) != 0;
+
+  private static int[] CreatePhysicalKeyCodes()
+  {
+    List<int> keys = new List<int>(byte.MaxValue);
+    for (int key = 1; key <= byte.MaxValue; key++)
+    {
+      if (WindowsNativeInputKey.IsMouseButton(key) || key == 0x10 || key == 0x11 || key == 0x12)
+        continue;
+      keys.Add(key);
+    }
+    return keys.ToArray();
+  }
+
   [DllImport("user32.dll", SetLastError = true)]
   private static extern IntPtr SetWindowsHookEx(int hook, HookProc callback, IntPtr module, uint threadId);
 
@@ -187,6 +221,9 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
 
   [DllImport("user32.dll")]
   private static extern bool TranslateMessage(ref Message message);
+
+  [DllImport("user32.dll")]
+  private static extern short GetAsyncKeyState(int virtualKey);
 
   [DllImport("user32.dll")]
   private static extern IntPtr DispatchMessage(ref Message message);

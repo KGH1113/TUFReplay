@@ -28,12 +28,14 @@ public sealed partial class MicrophoneRecordingFeature
   private int _retentionCleanupRunning;
   private string _tempDirectory;
   private bool _active;
+  private bool _permissionRequestStarted;
 
   public void Enable()
   {
     if (_active)
       return;
     _active = true;
+    _permissionRequestStarted = false;
     try
     {
       _tempDirectory = Path.Combine(Main.Instance.InstallPath, "Data", "MicrophoneTemp");
@@ -154,7 +156,7 @@ public sealed partial class MicrophoneRecordingFeature
 
     try
     {
-      _backend.RequestPermission();
+      RequestPermissionOnce();
       return _backend.Arm(TUFReplaySettingStore.Current.MicrophoneDeviceId, out error);
     }
     catch (Exception exception)
@@ -167,6 +169,21 @@ public sealed partial class MicrophoneRecordingFeature
   public MicrophoneArmStatus GetArmStatus() =>
     _backend?.GetArmStatus()
     ?? new MicrophoneArmStatus { State = MicrophoneArmState.Failed, Error = "Microphone capture is unavailable." };
+
+  public MicrophonePermissionStatus GetPermissionStatus() =>
+    _backend?.GetPermissionStatus()
+    ?? new MicrophonePermissionStatus
+    {
+      State = IsCaptureEnabled() ? MicrophonePermissionState.Failed : MicrophonePermissionState.NotApplicable,
+      Error = IsCaptureEnabled() ? "Microphone capture is unavailable." : null,
+    };
+
+  public void RefreshPermissionStatus()
+  {
+    if (!IsCaptureEnabled())
+      return;
+    _backend?.RefreshPermissionStatus();
+  }
 
   public void Disarm()
   {
@@ -274,14 +291,16 @@ public sealed partial class MicrophoneRecordingFeature
       UnityEngine.Object.DontDestroyOnLoad(gameObject);
       MicrophoneCaptureTicker ticker = gameObject.AddComponent<MicrophoneCaptureTicker>();
       ticker.Backend = backend;
-      if (TUFReplaySettingStore.Current?.AutoRecord != false)
-        backend.RequestPermission();
       _backend = backend;
       _ticker = ticker;
       MicrophoneCaptureRuntime.Backend = backend;
+      RequestPermissionOnce();
     }
     catch
     {
+      _backend = null;
+      _ticker = null;
+      MicrophoneCaptureRuntime.Backend = null;
       if (gameObject != null)
         UnityEngine.Object.Destroy(gameObject);
       backend.Dispose();
@@ -322,6 +341,14 @@ public sealed partial class MicrophoneRecordingFeature
     {
       Main.Instance?.Log("[Microphone] Shutdown failed. error=" + exception.Message);
     }
+  }
+
+  private void RequestPermissionOnce()
+  {
+    if (_permissionRequestStarted || _backend == null)
+      return;
+    _permissionRequestStarted = true;
+    _backend.RequestPermission();
   }
 
   private static void DisposeBackend(IMicrophoneCaptureBackend backend)

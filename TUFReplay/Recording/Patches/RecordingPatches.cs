@@ -49,7 +49,7 @@ public static class RecordingPatches
         return;
 
       long postfixTicks = Stopwatch.GetTimestamp();
-      RecordInputTracker.Sample(session);
+      RecordInputTracker.DrainCapturedTransitions(session);
       bool captureAllowed = IsNativeInputCaptureAllowed();
       ObserveCapturePermissionTransition(session, captureAllowed);
       if (!captureAllowed)
@@ -130,7 +130,7 @@ public static class RecordingPatches
     if (!captureAllowed)
       return;
 
-    RecordInputTracker.Sample(session);
+    RecordInputTracker.DrainCapturedTransitions(session);
   }
 
   public static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
@@ -254,12 +254,12 @@ public static class RecordingPatches
     if (active)
     {
       RecordInputTracker.SetCaptureWindowActive(true);
-      RecordInputTracker.Sample(session);
+      RecordInputTracker.DrainCapturedTransitions(session);
       return;
     }
 
     if (captureAllowed)
-      RecordInputTracker.Sample(session);
+      RecordInputTracker.DrainCapturedTransitions(session);
     RecordInputTracker.SetCaptureWindowActive(false);
   }
 
@@ -291,7 +291,7 @@ public static class RecordingPatches
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
     if (__instance != null && __instance.paused)
-      RecordInputTracker.Sample(session);
+      RecordInputTracker.DrainCapturedTransitions(session);
     session.BreakInputTimeline(__instance != null && __instance.paused ? "pause" : "resume");
     RecordInputTracker.SetCaptureWindowActive(
       __instance != null && !__instance.paused && IsNativeInputCaptureAllowed()

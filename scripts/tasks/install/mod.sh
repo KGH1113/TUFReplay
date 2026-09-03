@@ -25,7 +25,8 @@ for runtime_dll in "${TUFREPLAY_RUNTIME_DLLS[@]}"; do
 done
 rm -f "$TUFREPLAY_INSTALL_PATH/e_sqlite3.dll" \
   "$TUFREPLAY_INSTALL_PATH/libe_sqlite3.dylib" \
-  "$TUFREPLAY_INSTALL_PATH/libe_sqlite3.so"
+  "$TUFREPLAY_INSTALL_PATH/libe_sqlite3.so" \
+  "$TUFREPLAY_INSTALL_PATH/libTUFReplayInput.dylib"
 for legacy_payload_dir in Assets Helpers; do
   if [ -e "$TUFREPLAY_INSTALL_PATH/$legacy_payload_dir" ]; then
     safe_remove_tree "$TUFREPLAY_INSTALL_PATH/$legacy_payload_dir" "$TUFREPLAY_INSTALL_PATH"
@@ -44,6 +45,7 @@ copy_runtime_core "$runtime"
 copy_assets "$runtime" optional
 if is_macos; then
   copy_mac_helper "$runtime" required
+  copy_mac_native_input "$runtime" required
 fi
 copy_runtime_dependencies "$runtime" optional
 copy_sqlite_override "$runtime"

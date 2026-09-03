@@ -2,8 +2,8 @@
   "name": "TUFReplay",
   "rootNamespace": "TUFReplay",
   "references": [
-    "Unity.UGUI",
-    "Unity.TextMeshPro"
+    "GUID:2bafac87e7f4b9b418d9448d219b01ab",
+    "GUID:6055be8ebefd69e48b49212b09b47b2f"
   ],
   "autoReferenced": true
 }

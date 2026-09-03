@@ -10,6 +10,7 @@ struct CommandRequest: Decodable {
 enum CommandName: String {
   case devices
   case authorize
+  case authorizationStatus
   case arm
   case begin
   case end
@@ -20,7 +21,14 @@ enum CommandName: String {
 struct ConnectionHandshake: Encodable {
   let token: String
   let processId: Int32
-  let protocolVersion = 1
+  let protocolVersion = 2
+}
+
+enum MicrophoneAuthorizationStatus: String, CaseIterable, Encodable {
+  case notDetermined
+  case authorized
+  case denied
+  case restricted
 }
 
 struct MicrophoneDeviceResponse: Encodable {
@@ -37,6 +45,11 @@ struct EmptyResponse: Encodable {
 struct DevicesResponse: Encodable {
   let ok = true
   let devices: [MicrophoneDeviceResponse]
+}
+
+struct AuthorizationResponse: Encodable {
+  let ok = true
+  let authorizationStatus: MicrophoneAuthorizationStatus
 }
 
 struct CaptureEndResponse: Encodable {

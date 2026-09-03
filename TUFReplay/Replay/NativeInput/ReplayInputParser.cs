@@ -101,8 +101,10 @@ public static class ReplayInputParser
     ulong nativeFlags = 0;
     if (
       fieldCount == 5
-      && (!int.TryParse(value[parts[3]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeCode)
-        || !ulong.TryParse(value[parts[4]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeFlags))
+      && (
+        !int.TryParse(value[parts[3]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeCode)
+        || !ulong.TryParse(value[parts[4]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeFlags)
+      )
     )
       return false;
 
@@ -130,8 +132,7 @@ public static class ReplayInputParser
     ulong nativeFlags = 0;
     if (
       fieldCount == 5
-      && (!Utf8Csv.TryParseInt32(line[parts[3]], out nativeCode)
-        || !TryParseUInt64(line[parts[4]], out nativeFlags))
+      && (!Utf8Csv.TryParseInt32(line[parts[3]], out nativeCode) || !TryParseUInt64(line[parts[4]], out nativeFlags))
     )
       return false;
 

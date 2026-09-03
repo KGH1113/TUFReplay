@@ -2,6 +2,7 @@ using System.Linq;
 using HarmonyLib;
 using TUFReplay.Calibration.Sessions;
 using TUFReplay.Composition;
+using TUFReplay.Microphone.Permissions;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
@@ -41,6 +42,7 @@ public static class FeatureRegistry
       MicrophoneCalibration.Enable();
       Recording.Enable();
       Replay.Enable();
+      MicrophonePermissionWarningCoordinator.Initialize();
       Ipc.Enable();
     }
     catch
@@ -53,6 +55,7 @@ public static class FeatureRegistry
   public static void Shutdown()
   {
     Ipc?.Disable();
+    MicrophonePermissionWarningCoordinator.Shutdown();
     Replay?.Disable();
     Recording?.Disable();
     MicrophoneCalibration?.Disable();

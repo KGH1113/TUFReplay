@@ -12,7 +12,7 @@ export function RunJudgmentStrip({ counts }: { counts?: JudgmentCounts | null })
           <span
             key={key}
             title={`${label}: ${value}`}
-            className="min-w-0 text-center font-heading text-[11px] font-semibold tabular-nums"
+            className="min-w-0 text-center font-heading text-xs font-semibold tabular-nums"
             style={{ color }}
           >
             <span className="sr-only">{label}: </span>

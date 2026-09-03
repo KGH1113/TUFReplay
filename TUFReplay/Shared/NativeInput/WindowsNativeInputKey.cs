@@ -1,46 +1,13 @@
-using SkyHook;
-
 namespace TUFReplay.Shared.NativeInput;
 
 internal static class WindowsNativeInputKey
 {
+  private const int RightShiftVirtualKey = 0xA1;
+  private const int RightShiftScanCode = 0x36;
+
   public static bool IsMouseButton(int virtualKey)
   {
     return virtualKey >= 0x01 && virtualKey <= 0x06;
-  }
-
-  public static int NormalizeCapturedVirtualKey(int virtualKey, KeyLabel label)
-  {
-    switch (virtualKey)
-    {
-      case 0x10: // VK_SHIFT
-        if (label == KeyLabel.LShift)
-          return 0xA0;
-        if (label == KeyLabel.RShift)
-          return 0xA1;
-        break;
-
-      case 0x11: // VK_CONTROL
-        if (label == KeyLabel.LControl)
-          return 0xA2;
-        if (label == KeyLabel.RControl)
-          return 0xA3;
-        break;
-
-      case 0x12: // VK_MENU
-        if (label == KeyLabel.LAlt)
-          return 0xA4;
-        if (label == KeyLabel.RAlt)
-          return 0xA5;
-        break;
-    }
-
-    return virtualKey;
-  }
-
-  public static bool IsExtended(int virtualKey, KeyLabel label)
-  {
-    return label == KeyLabel.KeypadEnter || IsExtended(virtualKey);
   }
 
   public static bool IsExtended(int virtualKey)
@@ -71,26 +38,37 @@ internal static class WindowsNativeInputKey
     }
   }
 
-  public static bool IsExtendedLabel(KeyLabel label)
+  public static bool NormalizeExtended(int virtualKey, int scanCode, bool reportedExtended)
+  {
+    // Right Shift has its own scan code, but it is not an E0 extended key.
+    // Some low-level hooks report LLKHF_EXTENDED for it; preserve that raw
+    // provenance separately, never translate it to KEYEVENTF_EXTENDEDKEY.
+    if (virtualKey == RightShiftVirtualKey || scanCode == RightShiftScanCode)
+      return false;
+    return reportedExtended;
+  }
+
+  public static bool IsExtendedLabel(LogicalKeyboardKey label)
   {
     switch (label)
     {
-      case KeyLabel.RControl:
-      case KeyLabel.RAlt:
-      case KeyLabel.Super:
-      case KeyLabel.PrintScreen:
-      case KeyLabel.Insert:
-      case KeyLabel.Delete:
-      case KeyLabel.Home:
-      case KeyLabel.End:
-      case KeyLabel.PageUp:
-      case KeyLabel.PageDown:
-      case KeyLabel.ArrowLeft:
-      case KeyLabel.ArrowRight:
-      case KeyLabel.ArrowUp:
-      case KeyLabel.ArrowDown:
-      case KeyLabel.KeypadSlash:
-      case KeyLabel.KeypadEnter:
+      case LogicalKeyboardKey.RControl:
+      case LogicalKeyboardKey.RAlt:
+      case LogicalKeyboardKey.Super:
+      case LogicalKeyboardKey.RSuper:
+      case LogicalKeyboardKey.PrintScreen:
+      case LogicalKeyboardKey.Insert:
+      case LogicalKeyboardKey.Delete:
+      case LogicalKeyboardKey.Home:
+      case LogicalKeyboardKey.End:
+      case LogicalKeyboardKey.PageUp:
+      case LogicalKeyboardKey.PageDown:
+      case LogicalKeyboardKey.ArrowLeft:
+      case LogicalKeyboardKey.ArrowRight:
+      case LogicalKeyboardKey.ArrowUp:
+      case LogicalKeyboardKey.ArrowDown:
+      case LogicalKeyboardKey.KeypadSlash:
+      case LogicalKeyboardKey.KeypadEnter:
         return true;
       default:
         return false;

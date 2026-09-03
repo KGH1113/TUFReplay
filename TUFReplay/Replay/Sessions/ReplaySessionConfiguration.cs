@@ -81,7 +81,7 @@ public static partial class ReplaySessionService
     IReplayMicrophonePlayer player = _activeContext?.MicrophonePlayer;
     if (player == null || !TryComputeReplayTimeUs(out long replayTimeUs, out _))
       return;
-    player.UpdateLatency(latencyMs, replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
+    player.UpdateLatency(latencyMs, CreatePlaybackSnapshot(replayTimeUs));
   }
 
   public static void UpdateActiveMicrophoneVolume(int volumeDb) =>

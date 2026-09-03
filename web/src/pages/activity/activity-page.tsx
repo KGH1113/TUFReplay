@@ -12,14 +12,14 @@ export function ActivityPage() {
 
   return (
     <>
-      <main className="h-screen overflow-hidden bg-background text-foreground">
-        <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)]">
+      <main className="h-screen overflow-hidden bg-muted/20 p-3 text-foreground">
+        <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)] gap-3">
           <DayRail
             days={viewModel.days}
             selectedDate={viewModel.selectedDay?.date ?? null}
             onSelectDate={actions.selectDate}
           />
-          <section className="flex min-h-0 min-w-0 flex-col border-l border-border">
+          <section className="flex min-h-0 min-w-0 flex-col gap-3">
             <DashboardHeader
               status={activity.status}
               onRetry={() => void actions.retry()}
@@ -33,24 +33,28 @@ export function ActivityPage() {
               onSelectLevelGroup={actions.selectLevel}
             />
             {activity.status === "incompatible" ? (
-              <ConnectionStatePanel
-                status={activity.status}
-                error={activity.error}
-                versionMismatch={activity.versionMismatch}
-                onRetry={() => void actions.retry()}
-              />
-            ) : !viewModel.selectedLevel ? (
-              activity.status !== "online" ? (
+              <div className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 shadow-2xl ring-1 ring-foreground/10">
                 <ConnectionStatePanel
                   status={activity.status}
                   error={activity.error}
                   versionMismatch={activity.versionMismatch}
                   onRetry={() => void actions.retry()}
                 />
+              </div>
+            ) : !viewModel.selectedLevel ? (
+              activity.status !== "online" ? (
+                <div className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 shadow-2xl ring-1 ring-foreground/10">
+                  <ConnectionStatePanel
+                    status={activity.status}
+                    error={activity.error}
+                    versionMismatch={activity.versionMismatch}
+                    onRetry={() => void actions.retry()}
+                  />
+                </div>
               ) : viewModel.selectedDay &&
                 !viewModel.selectedDay.hasOpenableLevels &&
                 viewModel.levelSessions.length > 0 ? (
-                <div className="grid flex-1 place-items-center px-6 text-center">
+                <div className="grid flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 px-6 text-center shadow-2xl ring-1 ring-foreground/10">
                   <div className="max-w-md">
                     <h2 className="font-heading text-lg font-semibold">
                       {viewModel.copy.unavailableTitle}
@@ -61,7 +65,7 @@ export function ActivityPage() {
                   </div>
                 </div>
               ) : (
-                <div className="grid flex-1 place-items-center text-sm text-muted-foreground">
+                <div className="grid flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 text-sm text-muted-foreground shadow-2xl ring-1 ring-foreground/10">
                   {viewModel.copy.empty}
                 </div>
               )

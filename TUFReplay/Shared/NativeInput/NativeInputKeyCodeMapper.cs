@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-using SkyHook;
 using TUFReplay.Replay.Models;
 
 namespace TUFReplay.Shared.NativeInput;
@@ -9,124 +8,314 @@ namespace TUFReplay.Shared.NativeInput;
 internal static class NativeInputKeyCodeMapper
 {
   public const string NativeKeySpace = "os-native-key-code";
-  public const string CorruptedNativeStateMigrationCapture = "skyhook-native-events";
-  public const string LegacyWindowsThreadStateCapture = "skyhook-events-high-resolution";
-  public const string PhysicalStateCapture = "skyhook-events-high-resolution-physical-state";
-
-  private static readonly Dictionary<int, KeyLabel> HidUsageLabels = CreateHidUsageLabels();
-  private static readonly object RepairMapLock = new object();
-  private static Dictionary<int, int> _reversibleMigratedNativeCodes;
-  private static HashSet<int> _ambiguousMigratedNativeCodes;
-
-  private static readonly Dictionary<KeyLabel, ushort> MacVirtualKeyCodes = new Dictionary<KeyLabel, ushort>
+  private static readonly Dictionary<LogicalKeyboardKey, ushort> MacVirtualKeyCodes = new Dictionary<
+    LogicalKeyboardKey,
+    ushort
+  >
   {
-    { KeyLabel.A, 0x00 },
-    { KeyLabel.S, 0x01 },
-    { KeyLabel.D, 0x02 },
-    { KeyLabel.F, 0x03 },
-    { KeyLabel.H, 0x04 },
-    { KeyLabel.G, 0x05 },
-    { KeyLabel.Z, 0x06 },
-    { KeyLabel.X, 0x07 },
-    { KeyLabel.C, 0x08 },
-    { KeyLabel.V, 0x09 },
-    { KeyLabel.B, 0x0B },
-    { KeyLabel.Q, 0x0C },
-    { KeyLabel.W, 0x0D },
-    { KeyLabel.E, 0x0E },
-    { KeyLabel.R, 0x0F },
-    { KeyLabel.Y, 0x10 },
-    { KeyLabel.T, 0x11 },
-    { KeyLabel.Alpha1, 0x12 },
-    { KeyLabel.Alpha2, 0x13 },
-    { KeyLabel.Alpha3, 0x14 },
-    { KeyLabel.Alpha4, 0x15 },
-    { KeyLabel.Alpha6, 0x16 },
-    { KeyLabel.Alpha5, 0x17 },
-    { KeyLabel.Equal, 0x18 },
-    { KeyLabel.Alpha9, 0x19 },
-    { KeyLabel.Alpha7, 0x1A },
-    { KeyLabel.Minus, 0x1B },
-    { KeyLabel.Alpha8, 0x1C },
-    { KeyLabel.Alpha0, 0x1D },
-    { KeyLabel.RightBrace, 0x1E },
-    { KeyLabel.O, 0x1F },
-    { KeyLabel.U, 0x20 },
-    { KeyLabel.LeftBrace, 0x21 },
-    { KeyLabel.I, 0x22 },
-    { KeyLabel.P, 0x23 },
-    { KeyLabel.Enter, 0x24 },
-    { KeyLabel.L, 0x25 },
-    { KeyLabel.J, 0x26 },
-    { KeyLabel.Apostrophe, 0x27 },
-    { KeyLabel.K, 0x28 },
-    { KeyLabel.Semicolon, 0x29 },
-    { KeyLabel.BackSlash, 0x2A },
-    { KeyLabel.Comma, 0x2B },
-    { KeyLabel.Slash, 0x2C },
-    { KeyLabel.N, 0x2D },
-    { KeyLabel.M, 0x2E },
-    { KeyLabel.Dot, 0x2F },
-    { KeyLabel.Tab, 0x30 },
-    { KeyLabel.Space, 0x31 },
-    { KeyLabel.Grave, 0x32 },
-    { KeyLabel.Backspace, 0x33 },
-    { KeyLabel.Escape, 0x35 },
-    { KeyLabel.Super, 0x37 },
-    { KeyLabel.LShift, 0x38 },
-    { KeyLabel.CapsLock, 0x39 },
-    { KeyLabel.LAlt, 0x3A },
-    { KeyLabel.LControl, 0x3B },
-    { KeyLabel.RShift, 0x3C },
-    { KeyLabel.RAlt, 0x3D },
-    { KeyLabel.RControl, 0x3E },
-    { KeyLabel.F17, 0x40 },
-    { KeyLabel.KeypadDot, 0x41 },
-    { KeyLabel.KeypadAsterisk, 0x43 },
-    { KeyLabel.KeypadPlus, 0x45 },
-    { KeyLabel.KeypadSlash, 0x4B },
-    { KeyLabel.KeypadEnter, 0x4C },
-    { KeyLabel.KeypadMinus, 0x4E },
-    { KeyLabel.F18, 0x4F },
-    { KeyLabel.F19, 0x50 },
-    { KeyLabel.Keypad0, 0x52 },
-    { KeyLabel.Keypad1, 0x53 },
-    { KeyLabel.Keypad2, 0x54 },
-    { KeyLabel.Keypad3, 0x55 },
-    { KeyLabel.Keypad4, 0x56 },
-    { KeyLabel.Keypad5, 0x57 },
-    { KeyLabel.Keypad6, 0x58 },
-    { KeyLabel.Keypad7, 0x59 },
-    { KeyLabel.F20, 0x5A },
-    { KeyLabel.Keypad8, 0x5B },
-    { KeyLabel.Keypad9, 0x5C },
-    { KeyLabel.F5, 0x60 },
-    { KeyLabel.F6, 0x61 },
-    { KeyLabel.F7, 0x62 },
-    { KeyLabel.F3, 0x63 },
-    { KeyLabel.F8, 0x64 },
-    { KeyLabel.F9, 0x65 },
-    { KeyLabel.F11, 0x67 },
-    { KeyLabel.F13, 0x69 },
-    { KeyLabel.F16, 0x6A },
-    { KeyLabel.F14, 0x6B },
-    { KeyLabel.F10, 0x6D },
-    { KeyLabel.F12, 0x6F },
-    { KeyLabel.F15, 0x71 },
-    { KeyLabel.Insert, 0x72 },
-    { KeyLabel.Home, 0x73 },
-    { KeyLabel.PageUp, 0x74 },
-    { KeyLabel.Delete, 0x75 },
-    { KeyLabel.End, 0x77 },
-    { KeyLabel.F2, 0x78 },
-    { KeyLabel.PageDown, 0x79 },
-    { KeyLabel.F1, 0x7A },
-    { KeyLabel.ArrowLeft, 0x7B },
-    { KeyLabel.ArrowRight, 0x7C },
-    { KeyLabel.ArrowDown, 0x7D },
-    { KeyLabel.ArrowUp, 0x7E },
+    { LogicalKeyboardKey.A, 0x00 },
+    { LogicalKeyboardKey.S, 0x01 },
+    { LogicalKeyboardKey.D, 0x02 },
+    { LogicalKeyboardKey.F, 0x03 },
+    { LogicalKeyboardKey.H, 0x04 },
+    { LogicalKeyboardKey.G, 0x05 },
+    { LogicalKeyboardKey.Z, 0x06 },
+    { LogicalKeyboardKey.X, 0x07 },
+    { LogicalKeyboardKey.C, 0x08 },
+    { LogicalKeyboardKey.V, 0x09 },
+    { LogicalKeyboardKey.B, 0x0B },
+    { LogicalKeyboardKey.Q, 0x0C },
+    { LogicalKeyboardKey.W, 0x0D },
+    { LogicalKeyboardKey.E, 0x0E },
+    { LogicalKeyboardKey.R, 0x0F },
+    { LogicalKeyboardKey.Y, 0x10 },
+    { LogicalKeyboardKey.T, 0x11 },
+    { LogicalKeyboardKey.Alpha1, 0x12 },
+    { LogicalKeyboardKey.Alpha2, 0x13 },
+    { LogicalKeyboardKey.Alpha3, 0x14 },
+    { LogicalKeyboardKey.Alpha4, 0x15 },
+    { LogicalKeyboardKey.Alpha6, 0x16 },
+    { LogicalKeyboardKey.Alpha5, 0x17 },
+    { LogicalKeyboardKey.Equal, 0x18 },
+    { LogicalKeyboardKey.Alpha9, 0x19 },
+    { LogicalKeyboardKey.Alpha7, 0x1A },
+    { LogicalKeyboardKey.Minus, 0x1B },
+    { LogicalKeyboardKey.Alpha8, 0x1C },
+    { LogicalKeyboardKey.Alpha0, 0x1D },
+    { LogicalKeyboardKey.RightBrace, 0x1E },
+    { LogicalKeyboardKey.O, 0x1F },
+    { LogicalKeyboardKey.U, 0x20 },
+    { LogicalKeyboardKey.LeftBrace, 0x21 },
+    { LogicalKeyboardKey.I, 0x22 },
+    { LogicalKeyboardKey.P, 0x23 },
+    { LogicalKeyboardKey.Enter, 0x24 },
+    { LogicalKeyboardKey.L, 0x25 },
+    { LogicalKeyboardKey.J, 0x26 },
+    { LogicalKeyboardKey.Apostrophe, 0x27 },
+    { LogicalKeyboardKey.K, 0x28 },
+    { LogicalKeyboardKey.Semicolon, 0x29 },
+    { LogicalKeyboardKey.BackSlash, 0x2A },
+    { LogicalKeyboardKey.Comma, 0x2B },
+    { LogicalKeyboardKey.Slash, 0x2C },
+    { LogicalKeyboardKey.N, 0x2D },
+    { LogicalKeyboardKey.M, 0x2E },
+    { LogicalKeyboardKey.Dot, 0x2F },
+    { LogicalKeyboardKey.Tab, 0x30 },
+    { LogicalKeyboardKey.Space, 0x31 },
+    { LogicalKeyboardKey.Grave, 0x32 },
+    { LogicalKeyboardKey.Backspace, 0x33 },
+    { LogicalKeyboardKey.Escape, 0x35 },
+    { LogicalKeyboardKey.RSuper, 0x36 },
+    { LogicalKeyboardKey.Super, 0x37 },
+    { LogicalKeyboardKey.LShift, 0x38 },
+    { LogicalKeyboardKey.CapsLock, 0x39 },
+    { LogicalKeyboardKey.LAlt, 0x3A },
+    { LogicalKeyboardKey.LControl, 0x3B },
+    { LogicalKeyboardKey.RShift, 0x3C },
+    { LogicalKeyboardKey.RAlt, 0x3D },
+    { LogicalKeyboardKey.RControl, 0x3E },
+    { LogicalKeyboardKey.F17, 0x40 },
+    { LogicalKeyboardKey.KeypadDot, 0x41 },
+    { LogicalKeyboardKey.KeypadAsterisk, 0x43 },
+    { LogicalKeyboardKey.KeypadPlus, 0x45 },
+    { LogicalKeyboardKey.KeypadSlash, 0x4B },
+    { LogicalKeyboardKey.KeypadEnter, 0x4C },
+    { LogicalKeyboardKey.KeypadMinus, 0x4E },
+    { LogicalKeyboardKey.F18, 0x4F },
+    { LogicalKeyboardKey.F19, 0x50 },
+    { LogicalKeyboardKey.Keypad0, 0x52 },
+    { LogicalKeyboardKey.Keypad1, 0x53 },
+    { LogicalKeyboardKey.Keypad2, 0x54 },
+    { LogicalKeyboardKey.Keypad3, 0x55 },
+    { LogicalKeyboardKey.Keypad4, 0x56 },
+    { LogicalKeyboardKey.Keypad5, 0x57 },
+    { LogicalKeyboardKey.Keypad6, 0x58 },
+    { LogicalKeyboardKey.Keypad7, 0x59 },
+    { LogicalKeyboardKey.F20, 0x5A },
+    { LogicalKeyboardKey.Keypad8, 0x5B },
+    { LogicalKeyboardKey.Keypad9, 0x5C },
+    { LogicalKeyboardKey.F5, 0x60 },
+    { LogicalKeyboardKey.F6, 0x61 },
+    { LogicalKeyboardKey.F7, 0x62 },
+    { LogicalKeyboardKey.F3, 0x63 },
+    { LogicalKeyboardKey.F8, 0x64 },
+    { LogicalKeyboardKey.F9, 0x65 },
+    { LogicalKeyboardKey.F11, 0x67 },
+    { LogicalKeyboardKey.F13, 0x69 },
+    { LogicalKeyboardKey.F16, 0x6A },
+    { LogicalKeyboardKey.F14, 0x6B },
+    { LogicalKeyboardKey.F10, 0x6D },
+    { LogicalKeyboardKey.F12, 0x6F },
+    { LogicalKeyboardKey.F15, 0x71 },
+    { LogicalKeyboardKey.Insert, 0x72 },
+    { LogicalKeyboardKey.Home, 0x73 },
+    { LogicalKeyboardKey.PageUp, 0x74 },
+    { LogicalKeyboardKey.Delete, 0x75 },
+    { LogicalKeyboardKey.End, 0x77 },
+    { LogicalKeyboardKey.F2, 0x78 },
+    { LogicalKeyboardKey.PageDown, 0x79 },
+    { LogicalKeyboardKey.F1, 0x7A },
+    { LogicalKeyboardKey.ArrowLeft, 0x7B },
+    { LogicalKeyboardKey.ArrowRight, 0x7C },
+    { LogicalKeyboardKey.ArrowDown, 0x7D },
+    { LogicalKeyboardKey.ArrowUp, 0x7E },
   };
-  private static readonly Dictionary<ushort, KeyLabel> MacVirtualKeyLabels = CreateReverseMap(MacVirtualKeyCodes);
+  private static readonly Dictionary<ushort, LogicalKeyboardKey> MacVirtualKeyLabels = CreateReverseMap(
+    MacVirtualKeyCodes
+  );
+
+  internal static bool TryGetLogicalKeyFromHidUsage(int usage, out LogicalKeyboardKey key)
+  {
+    if (usage >= 4 && usage <= 29)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.A + usage - 4);
+      return true;
+    }
+    if (usage >= 30 && usage <= 38)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.Alpha1 + usage - 30);
+      return true;
+    }
+    if (usage == 39)
+    {
+      key = LogicalKeyboardKey.Alpha0;
+      return true;
+    }
+    if (usage >= 58 && usage <= 69)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.F1 + usage - 58);
+      return true;
+    }
+    if (usage >= 89 && usage <= 97)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.Keypad1 + usage - 89);
+      return true;
+    }
+    if (usage >= 104 && usage <= 111)
+    {
+      key = (LogicalKeyboardKey)((int)LogicalKeyboardKey.F13 + usage - 104);
+      return true;
+    }
+
+    switch (usage)
+    {
+      case 40:
+        key = LogicalKeyboardKey.Enter;
+        return true;
+      case 41:
+        key = LogicalKeyboardKey.Escape;
+        return true;
+      case 42:
+        key = LogicalKeyboardKey.Backspace;
+        return true;
+      case 43:
+        key = LogicalKeyboardKey.Tab;
+        return true;
+      case 44:
+        key = LogicalKeyboardKey.Space;
+        return true;
+      case 45:
+        key = LogicalKeyboardKey.Minus;
+        return true;
+      case 46:
+        key = LogicalKeyboardKey.Equal;
+        return true;
+      case 47:
+        key = LogicalKeyboardKey.LeftBrace;
+        return true;
+      case 48:
+        key = LogicalKeyboardKey.RightBrace;
+        return true;
+      case 49:
+      case 50:
+      case 100:
+        key = LogicalKeyboardKey.BackSlash;
+        return true;
+      case 51:
+        key = LogicalKeyboardKey.Semicolon;
+        return true;
+      case 52:
+        key = LogicalKeyboardKey.Apostrophe;
+        return true;
+      case 53:
+        key = LogicalKeyboardKey.Grave;
+        return true;
+      case 54:
+        key = LogicalKeyboardKey.Comma;
+        return true;
+      case 55:
+        key = LogicalKeyboardKey.Dot;
+        return true;
+      case 56:
+        key = LogicalKeyboardKey.Slash;
+        return true;
+      case 57:
+        key = LogicalKeyboardKey.CapsLock;
+        return true;
+      case 70:
+        key = LogicalKeyboardKey.PrintScreen;
+        return true;
+      case 71:
+        key = LogicalKeyboardKey.ScrollLock;
+        return true;
+      case 72:
+        key = LogicalKeyboardKey.PauseBreak;
+        return true;
+      case 73:
+        key = LogicalKeyboardKey.Insert;
+        return true;
+      case 74:
+        key = LogicalKeyboardKey.Home;
+        return true;
+      case 75:
+        key = LogicalKeyboardKey.PageUp;
+        return true;
+      case 76:
+        key = LogicalKeyboardKey.Delete;
+        return true;
+      case 77:
+        key = LogicalKeyboardKey.End;
+        return true;
+      case 78:
+        key = LogicalKeyboardKey.PageDown;
+        return true;
+      case 79:
+        key = LogicalKeyboardKey.ArrowRight;
+        return true;
+      case 80:
+        key = LogicalKeyboardKey.ArrowLeft;
+        return true;
+      case 81:
+        key = LogicalKeyboardKey.ArrowDown;
+        return true;
+      case 82:
+        key = LogicalKeyboardKey.ArrowUp;
+        return true;
+      case 83:
+        key = LogicalKeyboardKey.NumLock;
+        return true;
+      case 84:
+        key = LogicalKeyboardKey.KeypadSlash;
+        return true;
+      case 85:
+        key = LogicalKeyboardKey.KeypadAsterisk;
+        return true;
+      case 86:
+        key = LogicalKeyboardKey.KeypadMinus;
+        return true;
+      case 87:
+        key = LogicalKeyboardKey.KeypadPlus;
+        return true;
+      case 88:
+        key = LogicalKeyboardKey.KeypadEnter;
+        return true;
+      case 98:
+        key = LogicalKeyboardKey.Keypad0;
+        return true;
+      case 99:
+        key = LogicalKeyboardKey.KeypadDot;
+        return true;
+      case 224:
+        key = LogicalKeyboardKey.LControl;
+        return true;
+      case 225:
+        key = LogicalKeyboardKey.LShift;
+        return true;
+      case 226:
+        key = LogicalKeyboardKey.LAlt;
+        return true;
+      case 227:
+        key = LogicalKeyboardKey.Super;
+        return true;
+      case 228:
+        key = LogicalKeyboardKey.RControl;
+        return true;
+      case 229:
+        key = LogicalKeyboardKey.RShift;
+        return true;
+      case 230:
+        key = LogicalKeyboardKey.RAlt;
+        return true;
+      case 231:
+        key = LogicalKeyboardKey.RSuper;
+        return true;
+      default:
+        key = LogicalKeyboardKey.Unknown;
+        return false;
+    }
+  }
+
+  internal static bool TryGetMacVirtualKeyFromHidUsage(int usage, out int virtualKey)
+  {
+    virtualKey = 0;
+    if (
+      !TryGetLogicalKeyFromHidUsage(usage, out LogicalKeyboardKey key)
+      || !MacVirtualKeyCodes.TryGetValue(key, out ushort mapped)
+    )
+      return false;
+    virtualKey = mapped;
+    return true;
+  }
 
   public static List<RecordedInput> NormalizeForPlayback(
     List<RecordedInput> inputs,
@@ -138,53 +327,13 @@ internal static class NativeInputKeyCodeMapper
     if (inputs == null)
       return new List<RecordedInput>();
 
-    if (string.Equals(meta?.inputKeySpace, NativeKeySpace, StringComparison.OrdinalIgnoreCase))
-    {
-      List<RecordedInput> normalized = inputs;
-      if (
-        meta.formatVersion == 3
-        && string.Equals(meta.inputCapture, CorruptedNativeStateMigrationCapture, StringComparison.OrdinalIgnoreCase)
-      )
-        normalized = RepairCorruptedNativeStateMigration(inputs, out dropped);
-      else if (ShouldRemoveLegacyWindowsInitialState(inputs, meta))
-        normalized = RemoveFirstTimestampGroup(inputs, out dropped);
-
-      string currentPlatform = CurrentPlatform();
-      if (
-        !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
-        && string.Equals(meta.inputFormat, RecordedRunPayload.NativeInputFormatV2, StringComparison.Ordinal)
-        && currentPlatform != "unsupported"
-        && !string.Equals(meta.inputNativePlatform, currentPlatform, StringComparison.OrdinalIgnoreCase)
-      )
-      {
-        List<RecordedInput> crossPlatformInputs = ConvertNativePlatform(
-          normalized,
-          meta.inputNativePlatform,
-          out int crossDropped
-        );
-        dropped += crossDropped;
-        return crossPlatformInputs;
-      }
-      return normalized;
-    }
-
-    List<RecordedInput> converted = new List<RecordedInput>(inputs.Count);
-    foreach (RecordedInput input in inputs)
-    {
-      KeyLabel label = (KeyLabel)input.Key;
-      if (!TryConvertKeyLabel(label, out int nativeKeyCode))
-      {
-        dropped++;
-        continue;
-      }
-
-      RecordInputFlags flags = input.Flags;
-      if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label))
-        flags |= RecordInputFlags.ExtendedKey;
-      converted.Add(new RecordedInput(input.TimeUs, nativeKeyCode, flags));
-    }
-
-    return converted;
+    string currentPlatform = CurrentPlatform();
+    if (
+      currentPlatform != "unsupported"
+      && !string.Equals(meta.inputNativePlatform, currentPlatform, StringComparison.OrdinalIgnoreCase)
+    )
+      return ConvertNativePlatform(inputs, meta.inputNativePlatform, out dropped);
+    return inputs;
   }
 
   private static List<RecordedInput> ConvertNativePlatform(
@@ -198,8 +347,8 @@ internal static class NativeInputKeyCodeMapper
     foreach (RecordedInput input in inputs)
     {
       if (
-        !TryGetSourceKeyLabel(sourcePlatform, input.Key, out KeyLabel label)
-        || !TryConvertKeyLabel(label, out int currentKey)
+        !TryGetSourceLogicalKey(sourcePlatform, input, out LogicalKeyboardKey label)
+        || !TryConvertLogicalKey(label, out int currentKey)
       )
       {
         dropped++;
@@ -214,118 +363,124 @@ internal static class NativeInputKeyCodeMapper
     return converted;
   }
 
-  private static bool TryGetSourceKeyLabel(string sourcePlatform, int nativeKey, out KeyLabel label)
+  private static bool TryGetSourceLogicalKey(string sourcePlatform, RecordedInput input, out LogicalKeyboardKey label)
   {
-    label = KeyLabel.Unknown;
+    label = LogicalKeyboardKey.Unknown;
+    int nativeKey = input.Key;
     if (nativeKey < 0 || nativeKey > ushort.MaxValue)
       return false;
     if (string.Equals(sourcePlatform, "macos", StringComparison.OrdinalIgnoreCase))
       return MacVirtualKeyLabels.TryGetValue((ushort)nativeKey, out label);
     if (!string.Equals(sourcePlatform, "windows", StringComparison.OrdinalIgnoreCase))
       return false;
+    if (nativeKey == 0x0D && input.ExtendedKey)
+    {
+      label = LogicalKeyboardKey.KeypadEnter;
+      return true;
+    }
     return TryGetWindowsKeyLabel(nativeKey, out label);
   }
 
-  private static bool TryGetWindowsKeyLabel(int key, out KeyLabel label)
+  private static bool TryGetWindowsKeyLabel(int key, out LogicalKeyboardKey label)
   {
     if (key >= 0x41 && key <= 0x5A)
     {
-      KeyLabel[] letters =
+      LogicalKeyboardKey[] letters =
       {
-        KeyLabel.A,
-        KeyLabel.B,
-        KeyLabel.C,
-        KeyLabel.D,
-        KeyLabel.E,
-        KeyLabel.F,
-        KeyLabel.G,
-        KeyLabel.H,
-        KeyLabel.I,
-        KeyLabel.J,
-        KeyLabel.K,
-        KeyLabel.L,
-        KeyLabel.M,
-        KeyLabel.N,
-        KeyLabel.O,
-        KeyLabel.P,
-        KeyLabel.Q,
-        KeyLabel.R,
-        KeyLabel.S,
-        KeyLabel.T,
-        KeyLabel.U,
-        KeyLabel.V,
-        KeyLabel.W,
-        KeyLabel.X,
-        KeyLabel.Y,
-        KeyLabel.Z,
+        LogicalKeyboardKey.A,
+        LogicalKeyboardKey.B,
+        LogicalKeyboardKey.C,
+        LogicalKeyboardKey.D,
+        LogicalKeyboardKey.E,
+        LogicalKeyboardKey.F,
+        LogicalKeyboardKey.G,
+        LogicalKeyboardKey.H,
+        LogicalKeyboardKey.I,
+        LogicalKeyboardKey.J,
+        LogicalKeyboardKey.K,
+        LogicalKeyboardKey.L,
+        LogicalKeyboardKey.M,
+        LogicalKeyboardKey.N,
+        LogicalKeyboardKey.O,
+        LogicalKeyboardKey.P,
+        LogicalKeyboardKey.Q,
+        LogicalKeyboardKey.R,
+        LogicalKeyboardKey.S,
+        LogicalKeyboardKey.T,
+        LogicalKeyboardKey.U,
+        LogicalKeyboardKey.V,
+        LogicalKeyboardKey.W,
+        LogicalKeyboardKey.X,
+        LogicalKeyboardKey.Y,
+        LogicalKeyboardKey.Z,
       };
       label = letters[key - 0x41];
       return true;
     }
     if (key >= 0x30 && key <= 0x39)
     {
-      KeyLabel[] digits =
+      LogicalKeyboardKey[] digits =
       {
-        KeyLabel.Alpha0,
-        KeyLabel.Alpha1,
-        KeyLabel.Alpha2,
-        KeyLabel.Alpha3,
-        KeyLabel.Alpha4,
-        KeyLabel.Alpha5,
-        KeyLabel.Alpha6,
-        KeyLabel.Alpha7,
-        KeyLabel.Alpha8,
-        KeyLabel.Alpha9,
+        LogicalKeyboardKey.Alpha0,
+        LogicalKeyboardKey.Alpha1,
+        LogicalKeyboardKey.Alpha2,
+        LogicalKeyboardKey.Alpha3,
+        LogicalKeyboardKey.Alpha4,
+        LogicalKeyboardKey.Alpha5,
+        LogicalKeyboardKey.Alpha6,
+        LogicalKeyboardKey.Alpha7,
+        LogicalKeyboardKey.Alpha8,
+        LogicalKeyboardKey.Alpha9,
       };
       label = digits[key - 0x30];
       return true;
     }
     if (key >= 0x70 && key <= 0x87)
     {
-      KeyLabel[] functionKeys =
+      LogicalKeyboardKey[] functionKeys =
       {
-        KeyLabel.F1,
-        KeyLabel.F2,
-        KeyLabel.F3,
-        KeyLabel.F4,
-        KeyLabel.F5,
-        KeyLabel.F6,
-        KeyLabel.F7,
-        KeyLabel.F8,
-        KeyLabel.F9,
-        KeyLabel.F10,
-        KeyLabel.F11,
-        KeyLabel.F12,
-        KeyLabel.F13,
-        KeyLabel.F14,
-        KeyLabel.F15,
-        KeyLabel.F16,
-        KeyLabel.F17,
-        KeyLabel.F18,
-        KeyLabel.F19,
-        KeyLabel.F20,
-        KeyLabel.F21,
-        KeyLabel.F22,
-        KeyLabel.F23,
-        KeyLabel.F24,
+        LogicalKeyboardKey.F1,
+        LogicalKeyboardKey.F2,
+        LogicalKeyboardKey.F3,
+        LogicalKeyboardKey.F4,
+        LogicalKeyboardKey.F5,
+        LogicalKeyboardKey.F6,
+        LogicalKeyboardKey.F7,
+        LogicalKeyboardKey.F8,
+        LogicalKeyboardKey.F9,
+        LogicalKeyboardKey.F10,
+        LogicalKeyboardKey.F11,
+        LogicalKeyboardKey.F12,
+        LogicalKeyboardKey.F13,
+        LogicalKeyboardKey.F14,
+        LogicalKeyboardKey.F15,
+        LogicalKeyboardKey.F16,
+        LogicalKeyboardKey.F17,
+        LogicalKeyboardKey.F18,
+        LogicalKeyboardKey.F19,
+        LogicalKeyboardKey.F20,
+        LogicalKeyboardKey.F21,
+        LogicalKeyboardKey.F22,
+        LogicalKeyboardKey.F23,
+        LogicalKeyboardKey.F24,
       };
       label = functionKeys[key - 0x70];
       return true;
     }
     if (key >= 0x60 && key <= 0x69)
     {
-      KeyLabel[] keypadDigits =
+      LogicalKeyboardKey[] keypadDigits =
       {
-        KeyLabel.Keypad0,
-        KeyLabel.Keypad1,
-        KeyLabel.Keypad2,
-        KeyLabel.Keypad3,
-        KeyLabel.Keypad4,
-        KeyLabel.Keypad5,
-        KeyLabel.Keypad6,
-        KeyLabel.Keypad7,
-        KeyLabel.Keypad8,
-        KeyLabel.Keypad9,
+        LogicalKeyboardKey.Keypad0,
+        LogicalKeyboardKey.Keypad1,
+        LogicalKeyboardKey.Keypad2,
+        LogicalKeyboardKey.Keypad3,
+        LogicalKeyboardKey.Keypad4,
+        LogicalKeyboardKey.Keypad5,
+        LogicalKeyboardKey.Keypad6,
+        LogicalKeyboardKey.Keypad7,
+        LogicalKeyboardKey.Keypad8,
+        LogicalKeyboardKey.Keypad9,
       };
       label = keypadDigits[key - 0x60];
       return true;
@@ -333,58 +488,148 @@ internal static class NativeInputKeyCodeMapper
 
     switch (key)
     {
-      case 0x08: label = KeyLabel.Backspace; return true;
-      case 0x09: label = KeyLabel.Tab; return true;
-      case 0x0D: label = KeyLabel.Enter; return true;
-      case 0x13: label = KeyLabel.PauseBreak; return true;
-      case 0x14: label = KeyLabel.CapsLock; return true;
-      case 0x1B: label = KeyLabel.Escape; return true;
-      case 0x20: label = KeyLabel.Space; return true;
-      case 0x21: label = KeyLabel.PageUp; return true;
-      case 0x22: label = KeyLabel.PageDown; return true;
-      case 0x23: label = KeyLabel.End; return true;
-      case 0x24: label = KeyLabel.Home; return true;
-      case 0x25: label = KeyLabel.ArrowLeft; return true;
-      case 0x26: label = KeyLabel.ArrowUp; return true;
-      case 0x27: label = KeyLabel.ArrowRight; return true;
-      case 0x28: label = KeyLabel.ArrowDown; return true;
-      case 0x2C: label = KeyLabel.PrintScreen; return true;
-      case 0x2D: label = KeyLabel.Insert; return true;
-      case 0x2E: label = KeyLabel.Delete; return true;
+      case 0x08:
+        label = LogicalKeyboardKey.Backspace;
+        return true;
+      case 0x09:
+        label = LogicalKeyboardKey.Tab;
+        return true;
+      case 0x0D:
+        label = LogicalKeyboardKey.Enter;
+        return true;
+      case 0x13:
+        label = LogicalKeyboardKey.PauseBreak;
+        return true;
+      case 0x14:
+        label = LogicalKeyboardKey.CapsLock;
+        return true;
+      case 0x1B:
+        label = LogicalKeyboardKey.Escape;
+        return true;
+      case 0x20:
+        label = LogicalKeyboardKey.Space;
+        return true;
+      case 0x21:
+        label = LogicalKeyboardKey.PageUp;
+        return true;
+      case 0x22:
+        label = LogicalKeyboardKey.PageDown;
+        return true;
+      case 0x23:
+        label = LogicalKeyboardKey.End;
+        return true;
+      case 0x24:
+        label = LogicalKeyboardKey.Home;
+        return true;
+      case 0x25:
+        label = LogicalKeyboardKey.ArrowLeft;
+        return true;
+      case 0x26:
+        label = LogicalKeyboardKey.ArrowUp;
+        return true;
+      case 0x27:
+        label = LogicalKeyboardKey.ArrowRight;
+        return true;
+      case 0x28:
+        label = LogicalKeyboardKey.ArrowDown;
+        return true;
+      case 0x2C:
+        label = LogicalKeyboardKey.PrintScreen;
+        return true;
+      case 0x2D:
+        label = LogicalKeyboardKey.Insert;
+        return true;
+      case 0x2E:
+        label = LogicalKeyboardKey.Delete;
+        return true;
       case 0x5B:
-      case 0x5C: label = KeyLabel.Super; return true;
-      case 0x6A: label = KeyLabel.KeypadAsterisk; return true;
-      case 0x6B: label = KeyLabel.KeypadPlus; return true;
-      case 0x6D: label = KeyLabel.KeypadMinus; return true;
-      case 0x6E: label = KeyLabel.KeypadDot; return true;
-      case 0x6F: label = KeyLabel.KeypadSlash; return true;
-      case 0x90: label = KeyLabel.NumLock; return true;
-      case 0x91: label = KeyLabel.ScrollLock; return true;
-      case 0xA0: label = KeyLabel.LShift; return true;
-      case 0xA1: label = KeyLabel.RShift; return true;
-      case 0xA2: label = KeyLabel.LControl; return true;
-      case 0xA3: label = KeyLabel.RControl; return true;
-      case 0xA4: label = KeyLabel.LAlt; return true;
-      case 0xA5: label = KeyLabel.RAlt; return true;
-      case 0xBA: label = KeyLabel.Semicolon; return true;
-      case 0xBB: label = KeyLabel.Equal; return true;
-      case 0xBC: label = KeyLabel.Comma; return true;
-      case 0xBD: label = KeyLabel.Minus; return true;
-      case 0xBE: label = KeyLabel.Dot; return true;
-      case 0xBF: label = KeyLabel.Slash; return true;
-      case 0xC0: label = KeyLabel.Grave; return true;
-      case 0xDB: label = KeyLabel.LeftBrace; return true;
-      case 0xDC: label = KeyLabel.BackSlash; return true;
-      case 0xDD: label = KeyLabel.RightBrace; return true;
-      case 0xDE: label = KeyLabel.Apostrophe; return true;
-      default: label = KeyLabel.Unknown; return false;
+        label = LogicalKeyboardKey.Super;
+        return true;
+      case 0x5C:
+        label = LogicalKeyboardKey.RSuper;
+        return true;
+      case 0x6A:
+        label = LogicalKeyboardKey.KeypadAsterisk;
+        return true;
+      case 0x6B:
+        label = LogicalKeyboardKey.KeypadPlus;
+        return true;
+      case 0x6D:
+        label = LogicalKeyboardKey.KeypadMinus;
+        return true;
+      case 0x6E:
+        label = LogicalKeyboardKey.KeypadDot;
+        return true;
+      case 0x6F:
+        label = LogicalKeyboardKey.KeypadSlash;
+        return true;
+      case 0x90:
+        label = LogicalKeyboardKey.NumLock;
+        return true;
+      case 0x91:
+        label = LogicalKeyboardKey.ScrollLock;
+        return true;
+      case 0xA0:
+        label = LogicalKeyboardKey.LShift;
+        return true;
+      case 0xA1:
+        label = LogicalKeyboardKey.RShift;
+        return true;
+      case 0xA2:
+        label = LogicalKeyboardKey.LControl;
+        return true;
+      case 0xA3:
+        label = LogicalKeyboardKey.RControl;
+        return true;
+      case 0xA4:
+        label = LogicalKeyboardKey.LAlt;
+        return true;
+      case 0xA5:
+        label = LogicalKeyboardKey.RAlt;
+        return true;
+      case 0xBA:
+        label = LogicalKeyboardKey.Semicolon;
+        return true;
+      case 0xBB:
+        label = LogicalKeyboardKey.Equal;
+        return true;
+      case 0xBC:
+        label = LogicalKeyboardKey.Comma;
+        return true;
+      case 0xBD:
+        label = LogicalKeyboardKey.Minus;
+        return true;
+      case 0xBE:
+        label = LogicalKeyboardKey.Dot;
+        return true;
+      case 0xBF:
+        label = LogicalKeyboardKey.Slash;
+        return true;
+      case 0xC0:
+        label = LogicalKeyboardKey.Grave;
+        return true;
+      case 0xDB:
+        label = LogicalKeyboardKey.LeftBrace;
+        return true;
+      case 0xDC:
+        label = LogicalKeyboardKey.BackSlash;
+        return true;
+      case 0xDD:
+        label = LogicalKeyboardKey.RightBrace;
+        return true;
+      case 0xDE:
+        label = LogicalKeyboardKey.Apostrophe;
+        return true;
+      default:
+        label = LogicalKeyboardKey.Unknown;
+        return false;
     }
   }
 
-  private static Dictionary<ushort, KeyLabel> CreateReverseMap(Dictionary<KeyLabel, ushort> source)
+  private static Dictionary<ushort, LogicalKeyboardKey> CreateReverseMap(Dictionary<LogicalKeyboardKey, ushort> source)
   {
-    Dictionary<ushort, KeyLabel> result = new Dictionary<ushort, KeyLabel>();
-    foreach (KeyValuePair<KeyLabel, ushort> pair in source)
+    Dictionary<ushort, LogicalKeyboardKey> result = new Dictionary<ushort, LogicalKeyboardKey>();
+    foreach (KeyValuePair<LogicalKeyboardKey, ushort> pair in source)
       result[pair.Value] = pair.Key;
     return result;
   }
@@ -398,100 +643,10 @@ internal static class NativeInputKeyCodeMapper
     return "unsupported";
   }
 
-  private static bool ShouldRemoveLegacyWindowsInitialState(List<RecordedInput> inputs, ReplayMetadata meta)
-  {
-    if (
-      inputs.Count < 2
-      || inputs[0].TimeUs >= 0
-      || !string.Equals(meta?.inputNativePlatform, "windows", StringComparison.OrdinalIgnoreCase)
-      || !string.Equals(meta.inputCapture, LegacyWindowsThreadStateCapture, StringComparison.OrdinalIgnoreCase)
-    )
-      return false;
-
-    long firstTimeUs = inputs[0].TimeUs;
-    int count = 0;
-    while (count < inputs.Count && inputs[count].TimeUs == firstTimeUs)
-    {
-      if ((inputs[count].Flags & RecordInputFlags.Down) == 0)
-        return false;
-      count++;
-    }
-
-    return count >= 2;
-  }
-
-  private static List<RecordedInput> RemoveFirstTimestampGroup(List<RecordedInput> inputs, out int dropped)
-  {
-    long firstTimeUs = inputs[0].TimeUs;
-    dropped = 0;
-    while (dropped < inputs.Count && inputs[dropped].TimeUs == firstTimeUs)
-      dropped++;
-
-    return inputs.GetRange(dropped, inputs.Count - dropped);
-  }
-
-  private static List<RecordedInput> RepairCorruptedNativeStateMigration(List<RecordedInput> inputs, out int dropped)
-  {
-    dropped = 0;
-    EnsureRepairMap();
-
-    List<RecordedInput> repaired = new List<RecordedInput>(inputs.Count);
-    foreach (RecordedInput input in inputs)
-    {
-      if (
-        _ambiguousMigratedNativeCodes.Contains(input.Key)
-        || !_reversibleMigratedNativeCodes.TryGetValue(input.Key, out int originalNativeKeyCode)
-      )
-      {
-        dropped++;
-        continue;
-      }
-
-      RecordInputFlags flags = input.Flags & ~RecordInputFlags.ExtendedKey;
-      if (
-        RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtended(originalNativeKeyCode)
-      )
-        flags |= RecordInputFlags.ExtendedKey;
-      repaired.Add(new RecordedInput(input.TimeUs, originalNativeKeyCode, flags));
-    }
-
-    return repaired;
-  }
-
-  private static void EnsureRepairMap()
-  {
-    lock (RepairMapLock)
-    {
-      if (_reversibleMigratedNativeCodes != null)
-        return;
-
-      Dictionary<int, int> reversible = new Dictionary<int, int>();
-      HashSet<int> ambiguous = new HashSet<int>();
-      foreach (KeyValuePair<int, KeyLabel> pair in HidUsageLabels)
-      {
-        if (!TryConvertKeyLabel(pair.Value, out int migratedNativeKeyCode))
-          continue;
-
-        if (reversible.TryGetValue(migratedNativeKeyCode, out int existing) && existing != pair.Key)
-        {
-          reversible.Remove(migratedNativeKeyCode);
-          ambiguous.Add(migratedNativeKeyCode);
-          continue;
-        }
-
-        if (!ambiguous.Contains(migratedNativeKeyCode))
-          reversible[migratedNativeKeyCode] = pair.Key;
-      }
-
-      _ambiguousMigratedNativeCodes = ambiguous;
-      _reversibleMigratedNativeCodes = reversible;
-    }
-  }
-
-  public static bool TryConvertKeyLabel(KeyLabel label, out int nativeKeyCode)
+  public static bool TryConvertLogicalKey(LogicalKeyboardKey label, out int nativeKeyCode)
   {
     nativeKeyCode = 0;
-    if (label == KeyLabel.Unknown)
+    if (label == LogicalKeyboardKey.Unknown)
       return false;
 
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
@@ -502,210 +657,28 @@ internal static class NativeInputKeyCodeMapper
         return true;
       }
 
-      try
-      {
-        ushort fallbackKeyCode = SkyHookKeyMapper.KeyLabelToNativeKeyCode(label);
-        if (fallbackKeyCode == 0)
-          return false;
-
-        nativeKeyCode = fallbackKeyCode;
-        return true;
-      }
-      catch
-      {
-        return false;
-      }
+      return false;
     }
 
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
     {
-      try
+      if (label == LogicalKeyboardKey.KeypadEnter)
       {
-        ushort virtualKey = SkyHookKeyMapper.KeyLabelToNativeKeyCode(label);
-        if (virtualKey == 0)
-          return false;
-
-        nativeKeyCode = virtualKey;
+        nativeKeyCode = 0x0D;
         return true;
       }
-      catch
+
+      for (int virtualKey = 1; virtualKey <= byte.MaxValue; virtualKey++)
       {
-        return false;
+        if (TryGetWindowsKeyLabel(virtualKey, out LogicalKeyboardKey candidate) && candidate == label)
+        {
+          nativeKeyCode = virtualKey;
+          return true;
+        }
       }
+      return false;
     }
 
     return false;
-  }
-
-  public static bool TryConvertSkyHookHidUsage(int hidUsage, out int nativeKeyCode)
-  {
-    return TryConvertSkyHookHidUsage(hidUsage, out nativeKeyCode, out _);
-  }
-
-  public static bool TryConvertSkyHookHidUsage(int hidUsage, out int nativeKeyCode, out bool extendedKey)
-  {
-    nativeKeyCode = 0;
-    extendedKey = false;
-    if (!HidUsageLabels.TryGetValue(hidUsage, out KeyLabel label) || !TryConvertKeyLabel(label, out nativeKeyCode))
-      return false;
-
-    extendedKey = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && WindowsNativeInputKey.IsExtendedLabel(label);
-    return true;
-  }
-
-  private static Dictionary<int, KeyLabel> CreateHidUsageLabels()
-  {
-    Dictionary<int, KeyLabel> labels = new Dictionary<int, KeyLabel>();
-
-    KeyLabel[] letters =
-    {
-      KeyLabel.A,
-      KeyLabel.B,
-      KeyLabel.C,
-      KeyLabel.D,
-      KeyLabel.E,
-      KeyLabel.F,
-      KeyLabel.G,
-      KeyLabel.H,
-      KeyLabel.I,
-      KeyLabel.J,
-      KeyLabel.K,
-      KeyLabel.L,
-      KeyLabel.M,
-      KeyLabel.N,
-      KeyLabel.O,
-      KeyLabel.P,
-      KeyLabel.Q,
-      KeyLabel.R,
-      KeyLabel.S,
-      KeyLabel.T,
-      KeyLabel.U,
-      KeyLabel.V,
-      KeyLabel.W,
-      KeyLabel.X,
-      KeyLabel.Y,
-      KeyLabel.Z,
-    };
-    for (int i = 0; i < letters.Length; i++)
-      labels[4 + i] = letters[i];
-
-    KeyLabel[] digits =
-    {
-      KeyLabel.Alpha1,
-      KeyLabel.Alpha2,
-      KeyLabel.Alpha3,
-      KeyLabel.Alpha4,
-      KeyLabel.Alpha5,
-      KeyLabel.Alpha6,
-      KeyLabel.Alpha7,
-      KeyLabel.Alpha8,
-      KeyLabel.Alpha9,
-      KeyLabel.Alpha0,
-    };
-    for (int i = 0; i < digits.Length; i++)
-      labels[30 + i] = digits[i];
-
-    labels[40] = KeyLabel.Enter;
-    labels[41] = KeyLabel.Escape;
-    labels[42] = KeyLabel.Backspace;
-    labels[43] = KeyLabel.Tab;
-    labels[44] = KeyLabel.Space;
-    labels[45] = KeyLabel.Minus;
-    labels[46] = KeyLabel.Equal;
-    labels[47] = KeyLabel.LeftBrace;
-    labels[48] = KeyLabel.RightBrace;
-    labels[49] = KeyLabel.BackSlash;
-    labels[50] = KeyLabel.BackSlash;
-    labels[51] = KeyLabel.Semicolon;
-    labels[52] = KeyLabel.Apostrophe;
-    labels[53] = KeyLabel.Grave;
-    labels[54] = KeyLabel.Comma;
-    labels[55] = KeyLabel.Dot;
-    labels[56] = KeyLabel.Slash;
-    labels[57] = KeyLabel.CapsLock;
-
-    KeyLabel[] functionKeys =
-    {
-      KeyLabel.F1,
-      KeyLabel.F2,
-      KeyLabel.F3,
-      KeyLabel.F4,
-      KeyLabel.F5,
-      KeyLabel.F6,
-      KeyLabel.F7,
-      KeyLabel.F8,
-      KeyLabel.F9,
-      KeyLabel.F10,
-      KeyLabel.F11,
-      KeyLabel.F12,
-    };
-    for (int i = 0; i < functionKeys.Length; i++)
-      labels[58 + i] = functionKeys[i];
-
-    labels[70] = KeyLabel.PrintScreen;
-    labels[71] = KeyLabel.ScrollLock;
-    labels[72] = KeyLabel.PauseBreak;
-    labels[73] = KeyLabel.Insert;
-    labels[74] = KeyLabel.Home;
-    labels[75] = KeyLabel.PageUp;
-    labels[76] = KeyLabel.Delete;
-    labels[77] = KeyLabel.End;
-    labels[78] = KeyLabel.PageDown;
-    labels[79] = KeyLabel.ArrowRight;
-    labels[80] = KeyLabel.ArrowLeft;
-    labels[81] = KeyLabel.ArrowDown;
-    labels[82] = KeyLabel.ArrowUp;
-    labels[83] = KeyLabel.NumLock;
-    labels[84] = KeyLabel.KeypadSlash;
-    labels[85] = KeyLabel.KeypadAsterisk;
-    labels[86] = KeyLabel.KeypadMinus;
-    labels[87] = KeyLabel.KeypadPlus;
-    labels[88] = KeyLabel.KeypadEnter;
-
-    KeyLabel[] keypadDigits =
-    {
-      KeyLabel.Keypad1,
-      KeyLabel.Keypad2,
-      KeyLabel.Keypad3,
-      KeyLabel.Keypad4,
-      KeyLabel.Keypad5,
-      KeyLabel.Keypad6,
-      KeyLabel.Keypad7,
-      KeyLabel.Keypad8,
-      KeyLabel.Keypad9,
-      KeyLabel.Keypad0,
-    };
-    for (int i = 0; i < keypadDigits.Length; i++)
-      labels[89 + i] = keypadDigits[i];
-    labels[99] = KeyLabel.KeypadDot;
-    labels[100] = KeyLabel.BackSlash;
-
-    KeyLabel[] extendedFunctionKeys =
-    {
-      KeyLabel.F13,
-      KeyLabel.F14,
-      KeyLabel.F15,
-      KeyLabel.F16,
-      KeyLabel.F17,
-      KeyLabel.F18,
-      KeyLabel.F19,
-      KeyLabel.F20,
-      KeyLabel.F21,
-      KeyLabel.F22,
-      KeyLabel.F23,
-      KeyLabel.F24,
-    };
-    for (int i = 0; i < extendedFunctionKeys.Length; i++)
-      labels[104 + i] = extendedFunctionKeys[i];
-
-    labels[224] = KeyLabel.LControl;
-    labels[225] = KeyLabel.LShift;
-    labels[226] = KeyLabel.LAlt;
-    labels[227] = KeyLabel.Super;
-    labels[228] = KeyLabel.RControl;
-    labels[229] = KeyLabel.RShift;
-    labels[230] = KeyLabel.RAlt;
-    labels[231] = KeyLabel.Super;
-    return labels;
   }
 }

@@ -86,6 +86,7 @@ public static partial class ReplayPlaybackCoordinator
       return;
 
     _returnRequested = true;
+    ClearEditorTransitionState();
     _returnTerminalState = terminalState;
     _returnNotBeforeFrame = Time.frameCount + 1;
     ReplaySessionService.ClearActiveContext();
@@ -102,7 +103,7 @@ public static partial class ReplayPlaybackCoordinator
     operation.CleanupPreparedMicrophone();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
     _returnRequested = false;
-    _waitingForEditor = false;
+    ClearEditorTransitionState();
     _forcedFail = false;
     _operation = null;
 
@@ -126,7 +127,29 @@ public static partial class ReplayPlaybackCoordinator
 
     if (scnEditor.instance != null && scnEditor.instance.playMode)
     {
-      scnEditor.instance.SwitchToEditMode();
+      if (!_editorTransitionRequested)
+      {
+        _editorTransitionRequested = true;
+        _editorTransitionStartedAt = Time.realtimeSinceStartupAsDouble;
+        ReplayEditorTransitionResult transition = ReplayEditorTransition.Request(scnEditor.instance);
+        if (transition.Recovered)
+        {
+          Main.Instance?.Log(
+            "[Replay/Lifecycle] Recovered replay return after an external Harmony exception. error="
+              + transition.Exception.Message
+          );
+        }
+        else if (transition.Failed)
+        {
+          if (transition.Exception != null)
+            Main.Instance?.LogException("Replay return editor transition", transition.Exception);
+          Fail("editor_transition_failed", "ADOFAI could not return to the editor because another patch failed.");
+        }
+      }
+      else if (EditorTransitionTimedOut())
+      {
+        Fail("editor_transition_timeout", "ADOFAI did not return to the editor within 10 seconds.");
+      }
       return;
     }
 
@@ -144,7 +167,7 @@ public static partial class ReplayPlaybackCoordinator
       terminalState == ReplayPlaybackStates.Cancelled ? "Replay cancelled." : "Replay finished."
     );
     _returnRequested = false;
-    _waitingForEditor = false;
+    ClearEditorTransitionState();
     _forcedFail = false;
     _operation = null;
   }
