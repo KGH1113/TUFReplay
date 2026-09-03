@@ -17,7 +17,7 @@ public class RecordedRunPayload
   public long? WonTimeUs;
   public long? TerminalTimeUs;
   public string InputTimeBase = ReplayInputTimeBases.Hybrid;
-  public string InputCapture = "skyhook-events-high-resolution-physical-state";
+  public string InputCapture = "unsupported";
   public int InputPendingMax;
   public long InputPendingMaxDurationUs;
   public long InputAnchorMaxDurationUs;
@@ -35,6 +35,11 @@ public class RecordedRunPayload
   public long InputResyncs;
   public long InputReadFailures;
   public int InputMaxQueueDepth;
+  public long InputNativeCallbacks;
+  public long InputNativeRepeatDropped;
+  public long InputNativeUnmapped;
+  public int InputNativeDevices;
+  public int InputNativeQueueDepth;
   public bool NoFailMode;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
@@ -84,6 +89,11 @@ public class RecordedRunPayload
       inputResyncs = InputResyncs,
       inputReadFailures = InputReadFailures,
       inputMaxQueueDepth = InputMaxQueueDepth,
+      inputNativeCallbacks = InputNativeCallbacks,
+      inputNativeRepeatDropped = InputNativeRepeatDropped,
+      inputNativeUnmapped = InputNativeUnmapped,
+      inputNativeDevices = InputNativeDevices,
+      inputNativeQueueDepth = InputNativeQueueDepth,
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = Inputs.Count,

@@ -130,7 +130,7 @@ export function RunActionsMenu({
                   <p className="text-xs font-medium">
                     {formatFileSize(run.microphoneRecordingBytes, locale)}
                   </p>
-                  <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  <p className="mt-0.5 text-xs text-muted-foreground">
                     {run.microphoneRecordingPermanent
                       ? microphoneT("recording.permanent")
                       : formatRemaining(run.microphoneRecordingExpiresAtUtc, microphoneT)}

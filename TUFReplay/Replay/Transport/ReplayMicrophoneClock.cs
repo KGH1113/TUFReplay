@@ -1,4 +1,5 @@
 using System;
+using TUFReplay.Replay.Playback;
 
 namespace TUFReplay.Replay.Transport;
 
@@ -44,4 +45,19 @@ public static class ReplayMicrophoneClock
       return frameCount;
     return Math.Max(0L, (long)frame);
   }
+
+  public static long ToFrame(
+    ReplayPlaybackSnapshot snapshot,
+    long captureStartOffsetUs,
+    int sampleRate,
+    long frameCount
+  ) =>
+    ToFrame(
+      snapshot.TimelineTimeUs,
+      snapshot.GameplayRate,
+      captureStartOffsetUs,
+      sampleRate,
+      frameCount,
+      snapshot.WonTimeUs
+    );
 }

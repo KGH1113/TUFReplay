@@ -20,11 +20,11 @@ export function DayRail({
     if (selectedDate) refs.current.get(selectedDate)?.scrollIntoView({ block: "nearest" });
   }, [selectedDate]);
   return (
-    <aside className="flex min-h-0 flex-col bg-muted/20">
-      <div className="border-b border-border px-3 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+    <aside className="glass-structural flex min-h-0 flex-col overflow-hidden rounded-2xl">
+      <div className="px-3 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         {t("days")}
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 space-y-1 overflow-y-auto p-1.5 pt-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {days.map((day) => (
           <button
             key={day.date}
@@ -34,8 +34,9 @@ export function DayRail({
             }}
             type="button"
             className={cn(
-              "block w-full border-b border-border px-3 py-3 text-left transition hover:bg-muted/50",
-              selectedDate === day.date && "bg-background shadow-[inset_3px_0_0_var(--primary)]",
+              "relative block w-full overflow-hidden rounded-xl px-2.5 py-3 text-left transition-[background-color,box-shadow] hover:bg-background/35",
+              selectedDate === day.date &&
+                "bg-background/70 shadow-[0_8px_20px_rgb(0_0_0/0.16)] before:pointer-events-none before:absolute before:inset-y-3 before:left-0 before:w-1 before:rounded-r-full before:bg-primary before:content-['']",
             )}
             onClick={() => onSelectDate(day.date)}
           >

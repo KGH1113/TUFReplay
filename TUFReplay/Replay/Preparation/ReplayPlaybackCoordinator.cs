@@ -23,6 +23,7 @@ namespace TUFReplay.Replay.Preparation;
 public static partial class ReplayPlaybackCoordinator
 {
   private const double LevelOpenTimeoutSeconds = 30d;
+  private const double EditorTransitionTimeoutSeconds = 10d;
   private static readonly object Gate = new object();
   private static readonly object CommandGate = new object();
 
@@ -30,6 +31,8 @@ public static partial class ReplayPlaybackCoordinator
   private static PendingReplay _operation;
   private static PendingReplay _preparingOperation;
   private static bool _waitingForEditor;
+  private static bool _editorTransitionRequested;
+  private static double _editorTransitionStartedAt;
   private static bool _returnRequested;
   private static string _returnTerminalState;
   private static int _returnNotBeforeFrame;
@@ -180,13 +183,17 @@ public static partial class ReplayPlaybackCoordinator
       ReplaySessionService.ClearActiveContext();
       operation?.CleanupPreparedMicrophone();
       if (scnEditor.instance != null && scnEditor.instance.playMode)
-        scnEditor.instance.SwitchToEditMode();
+      {
+        ReplayEditorTransitionResult transition = ReplayEditorTransition.Request(scnEditor.instance);
+        if (transition.Exception != null)
+          Main.Instance?.LogException("Replay editor transition during cancel", transition.Exception);
+      }
       if (operation != null)
         SetTerminal(operation, ReplayPlaybackStates.Cancelled, reason);
       else
         SetStatus(ReplayPlaybackStatus.Idle());
       _operation = null;
-      _waitingForEditor = false;
+      ClearEditorTransitionState();
       _returnRequested = false;
       _forcedFail = false;
     }
@@ -206,11 +213,21 @@ public static partial class ReplayPlaybackCoordinator
 
     if (_waitingForEditor)
     {
+      if (scnEditor.instance != null && !scnEditor.instance.playMode)
+      {
+        ClearEditorTransitionState();
+        PrepareLevel(operation);
+        return;
+      }
+
+      if (EditorTransitionTimedOut())
+      {
+        Fail("editor_transition_timeout", "ADOFAI did not return to the editor within 10 seconds.");
+        return;
+      }
+
       if (scnEditor.instance == null || scnEditor.instance.playMode)
         return;
-      _waitingForEditor = false;
-      PrepareLevel(operation);
-      return;
     }
 
     string state = GetStatus().State;
@@ -346,7 +363,7 @@ public static partial class ReplayPlaybackCoordinator
     ReplaySessionService.ClearActiveContext();
     operation.CleanupPreparedMicrophone();
     _returnRequested = false;
-    _waitingForEditor = false;
+    ClearEditorTransitionState();
     SetError(operation.OperationId, operation.Run.Id, errorCode, message);
     _operation = null;
   }
@@ -358,10 +375,53 @@ public static partial class ReplayPlaybackCoordinator
     ReplaySessionService.ClearActiveContext();
     _operation?.CleanupPreparedMicrophone();
     _operation = null;
-    _waitingForEditor = false;
+    ClearEditorTransitionState();
     _returnRequested = false;
     _forcedFail = false;
     SetStatus(ReplayPlaybackStatus.Idle());
+  }
+
+  private static bool BeginEditorTransition()
+  {
+    _waitingForEditor = true;
+    _editorTransitionRequested = true;
+    _editorTransitionStartedAt = Time.realtimeSinceStartupAsDouble;
+
+    ReplayEditorTransitionResult transition = ReplayEditorTransition.Request(scnEditor.instance);
+    if (transition.Recovered)
+    {
+      Main.Instance?.Log(
+        "[Replay/Lifecycle] Recovered editor transition after an external Harmony exception. error="
+          + transition.Exception.Message
+      );
+      return true;
+    }
+
+    if (!transition.Failed)
+      return true;
+
+    string message = "ADOFAI could not return to the editor because another patch failed.";
+    if (transition.Exception != null)
+      Main.Instance?.LogException("Replay editor transition", transition.Exception);
+    Fail("editor_transition_failed", message);
+    return false;
+  }
+
+  private static bool EditorTransitionTimedOut()
+  {
+    return _editorTransitionRequested
+      && ReplayEditorTransition.HasTimedOut(
+        _editorTransitionStartedAt,
+        Time.realtimeSinceStartupAsDouble,
+        EditorTransitionTimeoutSeconds
+      );
+  }
+
+  private static void ClearEditorTransitionState()
+  {
+    _waitingForEditor = false;
+    _editorTransitionRequested = false;
+    _editorTransitionStartedAt = 0d;
   }
 
   private static void SetOperationState(PendingReplay operation, string state, string message)

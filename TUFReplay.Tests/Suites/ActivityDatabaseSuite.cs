@@ -1,6 +1,5 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
-using SkyHook;
 using TUFReplay;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Migrations;
@@ -47,6 +46,7 @@ internal static class ActivityDatabaseSuite
     TestGameplayChartHashVersioning();
     TestGameplayHashIdentityUpgrade(root);
     TestGameplayHashV3Migration(root);
+    TestLegacyInputSchemaAdvancePreservesBlob(root);
     TestSchemaMigrationAndBlob(root);
     TestAppSessionTransientLockRecovery(root);
     TestBrokenRenamedForeignKeyRepair(root);
@@ -54,6 +54,24 @@ internal static class ActivityDatabaseSuite
     TestLogicalRunSessionFilter(root);
     TestLogicalLevelIdentity(root);
     TestQualifiedClearCounts(root);
+  }
+
+  private static void TestLegacyInputSchemaAdvancePreservesBlob(string root)
+  {
+    string path = Path.Combine(root, "legacy-input-schema.sqlite");
+    using var connection = new SqliteConnection("Data Source=" + path);
+    connection.Open();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      "CREATE TABLE runs(input_csv BLOB NOT NULL); INSERT INTO runs VALUES(X'010203FF'); PRAGMA user_version=6;";
+    command.ExecuteNonQuery();
+
+    ActivitySchema.AdvanceLegacyInputSchemaWithoutMutation(connection);
+    command.CommandText = "SELECT input_csv FROM runs";
+    byte[] preserved = (byte[])command.ExecuteScalar();
+    Assert(preserved.SequenceEqual(new byte[] { 1, 2, 3, 255 }), "Schema advance modified a legacy input blob.");
+    command.CommandText = "PRAGMA user_version";
+    Assert(Convert.ToInt32(command.ExecuteScalar()) == 7, "Legacy input schema version did not advance.");
   }
 
   private static void TestSchemaMigrationAndBlob(string root)

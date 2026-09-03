@@ -16,7 +16,6 @@ require_command shasum
 require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
-require_file "$HARMONY_DLL"
 require_file "$ADOFAI_IPC_DLL"
 require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
 require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"

@@ -412,10 +412,11 @@ public static partial class ReplaySessionService
     if (!TryComputeReplayTimeUs(out long replayTimeUs, out _))
       return;
 
-    _activeContext.NativeInputPlayer?.ResetTo(replayTimeUs, CurrentTimelineRate());
-    _activeContext.MicrophonePlayer?.ResetTo(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
-    _activeContext.HitContextPlayer?.ResetToAndRebuildJudgments(ADOBase.controller, skipPassedAngles: true);
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(replayTimeUs);
     ResetReplayHeldInputState();
+    _activeContext.NativeInputPlayer?.ResetTo(snapshot);
+    _activeContext.MicrophonePlayer?.ResetTo(snapshot);
+    _activeContext.HitContextPlayer?.ResetToAndRebuildJudgments(ADOBase.controller, skipPassedAngles: true);
     _playbackPauseSuspended = false;
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
     if (pauseAtPlayerControl)
@@ -442,9 +443,10 @@ public static partial class ReplaySessionService
     if (_activeContext == null || _playbackPauseSuspended)
       return;
 
-    _activeContext.NativeInputPlayer?.SkipTo(replayTimeUs);
-    _activeContext.MicrophonePlayer?.ResetTo(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
-    _activeContext.MicrophonePlayer?.Tick(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs(), paused: true);
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(replayTimeUs, paused: true);
+    _activeContext.NativeInputPlayer?.SkipTo(snapshot.TimelineTimeUs);
+    _activeContext.MicrophonePlayer?.ResetTo(snapshot);
+    _activeContext.MicrophonePlayer?.Tick(snapshot);
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
     _playbackPauseSuspended = true;
   }
@@ -455,9 +457,11 @@ public static partial class ReplaySessionService
       return;
 
     _playbackPauseSuspended = false;
-    _activeContext.NativeInputPlayer?.ResetTo(replayTimeUs, CurrentTimelineRate());
-    _activeContext.MicrophonePlayer?.ResetTo(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs());
-    _activeContext.MicrophonePlayer?.Tick(replayTimeUs, CurrentGameplayRate(), CurrentWonTimeUs(), paused: false);
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(replayTimeUs, paused: false);
+    ResetReplayHeldInputState();
+    _activeContext.NativeInputPlayer?.ResetTo(snapshot);
+    _activeContext.MicrophonePlayer?.ResetTo(snapshot);
+    _activeContext.MicrophonePlayer?.Tick(snapshot);
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
   }
 

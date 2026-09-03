@@ -68,6 +68,10 @@
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/UIRoundedPanelGraphic.cs"
       Link="Unity/ReplayTimeline/UIRoundedPanelGraphic.cs"
     />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/MicrophonePermissionWarningView.cs"
+      Link="Unity/Notifications/MicrophonePermissionWarningView.cs"
+    />
 
     <Reference Include="AdofaiIpc">
       <HintPath>$(AdofaiIpcDll)</HintPath>
@@ -77,10 +81,7 @@
       <HintPath>$(UnityModManagerDll)</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="0Harmony">
-      <HintPath>$(HarmonyDll)</HintPath>
-      <Private>false</Private>
-    </Reference>
+    <PackageReference Include="Lib.Harmony.Ref" Version="2.3.6" PrivateAssets="all" ExcludeAssets="runtime" />
     <Reference Include="Assembly-CSharp">
       <HintPath>$(AdofaiManaged)/Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
@@ -137,10 +138,6 @@
       <HintPath>$(AdofaiManaged)/RDTools.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="SkyHook.Unity">
-      <HintPath>$(AdofaiManaged)/SkyHook.Unity.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>
@@ -150,7 +147,7 @@
       <Private>false</Private>
     </Reference>
 
-    <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.6" />
+    <PackageReference Include="SQLitePCLRaw.provider.dynamic_cdecl" Version="2.1.12" />
     <PackageReference Include="Microsoft.Data.Sqlite.Core" Version="8.0.*" />
     <PackageReference Include="SourceGear.sqlite3" Version="3.50.4.1" />
   </ItemGroup>

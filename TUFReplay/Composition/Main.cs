@@ -1,11 +1,15 @@
 ﻿using System;
 using TUFReplay.Composition;
+using TUFReplay.Microphone.Permissions;
+using TUFReplay.Recording.Input;
+using TUFReplay.Replay.Levels;
+using TUFReplay.Replay.NativeInput;
+using TUFReplay.Replay.Preparation;
+using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
-using TUFReplay.Replay.Sessions;
-using TUFReplay.Replay.NativeInput;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -83,10 +87,7 @@ public sealed class Main
       SaveUpdateSettings(modEntry);
     }
 
-    _showReplayInputDiagnostics = GUILayout.Toggle(
-      _showReplayInputDiagnostics,
-      "Replay input diagnostics"
-    );
+    _showReplayInputDiagnostics = GUILayout.Toggle(_showReplayInputDiagnostics, "Replay input diagnostics");
     if (_showReplayInputDiagnostics)
     {
       if (ReplaySessionService.TryGetNativeInputStats(out ReplayNativeInputStats stats))
@@ -108,9 +109,7 @@ public sealed class Main
         GUILayout.Label(
           "Scheduled/emitted/failed: " + stats.Scheduled + "/" + stats.Emitted + "/" + stats.FailedEvents
         );
-        GUILayout.Label(
-          "Catch-up groups/events: " + stats.CatchUpGroups + "/" + stats.CatchUpEvents
-        );
+        GUILayout.Label("Catch-up groups/events: " + stats.CatchUpGroups + "/" + stats.CatchUpEvents);
         GUILayout.Label(
           "Partial retries / unsupported / waiter fallback: "
             + stats.PartialRetries
@@ -130,6 +129,11 @@ public sealed class Main
   private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)
   {
     ModBootstrap.UpdateRuntime();
+    UnityMainThread.DrainPending();
+    MicrophonePermissionWarningCoordinator.Tick();
+    ReplayLevelOpenService.Tick();
+    ReplayPlaybackCoordinator.Tick();
+    ReplaySessionService.TickStartup();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 
@@ -194,6 +198,7 @@ public sealed class Main
     try
     {
       FeatureRegistry.Initialize();
+      MacOsInputMonitoringAccess.InitializeAtGameStart();
       Application.focusChanged += ReplaySessionService.OnApplicationFocusChanged;
       _enabled = true;
       NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();

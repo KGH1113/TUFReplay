@@ -6,8 +6,6 @@ namespace TUFReplay.Microphone.Playback;
 
 internal sealed class Pcm16PrefetchBuffer : IDisposable
 {
-  private const int ReadWaitMilliseconds = 4;
-
   private readonly object _gate = new object();
   private readonly Stream _stream;
   private readonly long _dataOffset;
@@ -54,6 +52,38 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
     }
   }
 
+  public int Generation
+  {
+    get
+    {
+      lock (_gate)
+        return _generation;
+    }
+  }
+
+  public int BufferedBytes
+  {
+    get
+    {
+      lock (_gate)
+        return _bufferedBytes;
+    }
+  }
+
+  public int Capacity => _ring.Length;
+
+  public bool IsReady(int generation, int minimumBytes)
+  {
+    lock (_gate)
+    {
+      return !_disposed
+        && _failure == null
+        && generation == _generation
+        && !_seekPending
+        && _bufferedBytes >= Math.Max(0, minimumBytes);
+    }
+  }
+
   public int Read(byte[] destination, int offset, int count, int alignment)
   {
     if (destination == null)
@@ -64,7 +94,6 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
       throw new ArgumentOutOfRangeException(nameof(alignment));
 
     int total = 0;
-    int deadline = unchecked(Environment.TickCount + ReadWaitMilliseconds);
     lock (_gate)
     {
       while (total < count)
@@ -79,25 +108,19 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
           continue;
         }
 
-        if (_disposed || _failure != null || _endOfStream)
-          break;
-
-        int remainingWait = unchecked(deadline - Environment.TickCount);
-        if (remainingWait <= 0)
-          break;
-        Monitor.Wait(_gate, remainingWait);
+        break;
       }
     }
 
     return total;
   }
 
-  public void Seek(long byteOffset)
+  public int Seek(long byteOffset)
   {
     lock (_gate)
     {
       if (_disposed)
-        return;
+        return _generation;
 
       _generation++;
       _seekOffset = Math.Max(0L, Math.Min(byteOffset, _dataLength));
@@ -107,6 +130,24 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
       _writeIndex = 0;
       _bufferedBytes = 0;
       Monitor.PulseAll(_gate);
+      return _generation;
+    }
+  }
+
+  public bool TrySkip(int generation, int byteCount, int alignment)
+  {
+    if (byteCount < 0 || alignment <= 0 || byteCount % alignment != 0)
+      throw new ArgumentOutOfRangeException(nameof(byteCount));
+
+    lock (_gate)
+    {
+      if (_disposed || _failure != null || generation != _generation || _seekPending || byteCount > _bufferedBytes)
+        return false;
+
+      _readIndex = (_readIndex + byteCount) % _ring.Length;
+      _bufferedBytes -= byteCount;
+      Monitor.PulseAll(_gate);
+      return true;
     }
   }
 

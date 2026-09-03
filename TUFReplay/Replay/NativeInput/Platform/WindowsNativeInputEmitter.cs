@@ -91,7 +91,10 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     }
 
     uint emitted = SendInput((uint)count, _inputBuffer, InputSize);
-    return new NativeInputEmitResult((int)Math.Min(emitted, (uint)count), emitted == (uint)count ? 0 : Marshal.GetLastWin32Error());
+    return new NativeInputEmitResult(
+      (int)Math.Min(emitted, (uint)count),
+      emitted == (uint)count ? 0 : Marshal.GetLastWin32Error()
+    );
   }
 
   private void EnsureCapacity(int count)
@@ -134,7 +137,8 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     if (emission.NativeCode > 0 && emission.NativeCode <= ushort.MaxValue)
     {
       flags |= KeyEventScanCode;
-      if (emission.ExtendedKey || (emission.NativeFlags & LowLevelExtendedFlag) != 0)
+      bool reportedExtended = emission.ExtendedKey || (emission.NativeFlags & LowLevelExtendedFlag) != 0;
+      if (WindowsNativeInputKey.NormalizeExtended(virtualKey, emission.NativeCode, reportedExtended))
         flags |= KeyEventExtendedKey;
       return new KeyboardInput { ScanCode = (ushort)emission.NativeCode, Flags = flags };
     }
@@ -142,14 +146,16 @@ public sealed class WindowsNativeInputEmitter : INativeInputEmitter
     uint mappedScanCode = MapVirtualKeyW(virtualKey, MapVirtualKeyToScanCodeEx);
     if (mappedScanCode == 0)
     {
-      if (emission.ExtendedKey || WindowsNativeInputKey.IsExtended(virtualKey))
+      bool reportedExtended = emission.ExtendedKey || WindowsNativeInputKey.IsExtended(virtualKey);
+      if (WindowsNativeInputKey.NormalizeExtended(virtualKey, -1, reportedExtended))
         flags |= KeyEventExtendedKey;
       return new KeyboardInput { VirtualKey = virtualKey, Flags = flags };
     }
 
     bool mappedExtended = (mappedScanCode & 0xFF00u) == 0xE000u;
     flags |= KeyEventScanCode;
-    if (emission.ExtendedKey || mappedExtended || WindowsNativeInputKey.IsExtended(virtualKey))
+    bool fallbackExtended = emission.ExtendedKey || mappedExtended || WindowsNativeInputKey.IsExtended(virtualKey);
+    if (WindowsNativeInputKey.NormalizeExtended(virtualKey, (int)(mappedScanCode & 0xFFu), fallbackExtended))
       flags |= KeyEventExtendedKey;
 
     return new KeyboardInput { ScanCode = (ushort)(mappedScanCode & 0xFFu), Flags = flags };

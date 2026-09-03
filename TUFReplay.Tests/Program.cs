@@ -9,6 +9,7 @@ internal static class Program
     try
     {
       NativeSqliteLoader.Initialize();
+      MicrophonePermissionWarningSuite.RunAll();
       MicrophoneCalibrationSuite.RunAll(root);
       ActivityDatabaseSuite.RunAll(root);
       ReplayNativeInputSuite.RunAll();

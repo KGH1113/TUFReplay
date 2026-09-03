@@ -3,6 +3,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using TMPro;
+using TUFReplay.Unity.Notifications;
 using TUFReplay.Unity.ReplayTimeline;
 using UnityEditor;
 using UnityEngine;
@@ -14,6 +15,7 @@ namespace TUFReplay.Unity.Editor
   {
     private const string PreviewPrefabPath = "Assets/Prefabs/ReplayTimeline.prefab";
     private const string RuntimePrefabPath = "Assets/Prefabs/ReplayTimelineRuntime.prefab";
+    private const string WarningPrefabPath = "Assets/Prefabs/MicrophonePermissionWarningRuntime.prefab";
     private const string TimelineFontPath = "Assets/Fonts/MAPLESTORY_OTF_BOLD.OTF";
     private const string TimelineTmpFontPath = "Assets/Fonts/MAPLESTORY_OTF_BOLD Dynamic SDF.asset";
     private const string BundleName = "tufreplay_ui.bundle";
@@ -24,12 +26,13 @@ namespace TUFReplay.Unity.Editor
       ReplayTimelinePrototypeBuilder.Rebuild();
       BuildRuntimePrefab();
       ValidateRuntimePrefab();
+      ValidatePermissionWarningPrefab();
 
       BuildBundle(BuildTarget.StandaloneOSX, "mac");
       BuildBundle(BuildTarget.StandaloneWindows64, "win");
       BuildBundle(BuildTarget.StandaloneLinux64, "linux");
       AssetDatabase.Refresh();
-      Debug.Log("[TUFReplay.Unity] Built and validated macOS, Windows, and Linux replay timeline bundles.");
+      Debug.Log("[TUFReplay.Unity] Built and validated macOS, Windows, and Linux runtime UI bundles.");
     }
 
     private static void BuildRuntimePrefab()
@@ -160,6 +163,60 @@ namespace TUFReplay.Unity.Editor
         "judgment filter count"
       );
       ValidateRuntimeInstantiation(prefab);
+    }
+
+    private static void ValidatePermissionWarningPrefab()
+    {
+      string[] dependencies = AssetDatabase.GetDependencies(WarningPrefabPath, true);
+      string forbidden = dependencies.FirstOrDefault(path =>
+        path.StartsWith("Assets/Art/ADOFAI/", StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith("MicrophonePermissionWarningPreviewDriver.cs", StringComparison.OrdinalIgnoreCase)
+      );
+      if (forbidden != null)
+        throw new InvalidOperationException(
+          "Runtime microphone permission warning contains a forbidden dependency: " + forbidden
+        );
+      if (!dependencies.Contains(TimelineFontPath, StringComparer.OrdinalIgnoreCase))
+        throw new InvalidOperationException(
+          "Runtime microphone permission warning does not contain the MapleStory font."
+        );
+      if (!dependencies.Contains(TimelineTmpFontPath, StringComparer.OrdinalIgnoreCase))
+        throw new InvalidOperationException(
+          "Runtime microphone permission warning does not contain the MapleStory TMP font."
+        );
+
+      GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WarningPrefabPath);
+      if (prefab == null)
+        throw new InvalidOperationException("Runtime microphone permission warning prefab is missing.");
+      if (prefab.activeSelf)
+        throw new InvalidOperationException("Runtime microphone permission warning must be inactive by default.");
+
+      MicrophonePermissionWarningView view = prefab.GetComponent<MicrophonePermissionWarningView>();
+      if (view == null || !view.IsConfigured)
+        throw new InvalidOperationException("Runtime microphone permission warning view is not configured.");
+      if (prefab.GetComponent<CanvasGroup>() == null)
+        throw new InvalidOperationException("Runtime microphone permission warning has no CanvasGroup.");
+      if (prefab.GetComponent<UIRoundedPanelGraphic>() == null)
+        throw new InvalidOperationException("Runtime microphone permission warning has no rounded panel graphic.");
+      if (prefab.GetComponentInChildren<MicrophonePermissionWarningPreviewDriver>(true) != null)
+        throw new InvalidOperationException("Runtime microphone permission warning contains its preview driver.");
+
+      RectTransform root = prefab.transform as RectTransform;
+      ValidateRect(root, "microphone permission warning", new Vector2(600f, 154f), new Vector2(-24f, 112f));
+      ValidateTextFont(root?.Find("TitleText")?.GetComponent<TMP_Text>(), "microphone permission warning title");
+      ValidateTextFont(root?.Find("MessageText")?.GetComponent<TMP_Text>(), "microphone permission warning message");
+
+      Button dismissButton = root?.Find("DismissButton")?.GetComponent<Button>();
+      if (dismissButton == null || dismissButton.GetComponentInChildren<UICloseGraphic>(true) == null)
+        throw new InvalidOperationException("Runtime microphone permission warning dismiss button is invalid.");
+
+      Image progressFill = root?.Find("ProgressTrack/ProgressFill")?.GetComponent<Image>();
+      if (
+        progressFill == null
+        || progressFill.type != Image.Type.Filled
+        || progressFill.fillMethod != Image.FillMethod.Horizontal
+      )
+        throw new InvalidOperationException("Runtime microphone permission warning progress fill is invalid.");
     }
 
     private static RectTransform FindRect(Transform root, string name)
@@ -331,7 +388,11 @@ namespace TUFReplay.Unity.Editor
       Directory.CreateDirectory(intermediate);
       Directory.CreateDirectory(destinationFolder);
 
-      var build = new AssetBundleBuild { assetBundleName = BundleName, assetNames = new[] { RuntimePrefabPath } };
+      var build = new AssetBundleBuild
+      {
+        assetBundleName = BundleName,
+        assetNames = new[] { RuntimePrefabPath, WarningPrefabPath },
+      };
       AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(
         intermediate,
         new[] { build },
