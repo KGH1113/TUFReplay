@@ -21,12 +21,20 @@ public static class Database
     string dir = Path.Combine(Main.Instance.InstallPath, "Data");
     Directory.CreateDirectory(dir);
     DbPath = Path.Combine(dir, "tufreplay.sqlite");
+    string migratingPath = Path.Combine(dir, "tufreplay.0.2.migrating.sqlite");
+    string backupPath = Path.Combine(dir, "tufreplay.pre-0.2.sqlite");
     string microphonePath = Path.Combine(dir, "tufreplay.microphones.sqlite");
 
     MicrophoneDatabase.Initialize(microphonePath);
-    LegacyActivityDatabaseReset.EnsureCurrent(DbPath, message => Main.Instance?.Log(message));
+    LegacyActivityDatabaseTransition.EnsureCurrent(
+      DbPath,
+      migratingPath,
+      backupPath,
+      message => Main.Instance?.Log(message)
+    );
     using (SqliteConnection connection = OpenConnection())
       DatabaseSchema.Ensure(connection);
+    MicrophoneRecordingRepository.ImportEmbeddedLegacyRecordings(backupPath);
     MicrophoneRecordingRepository.DeleteOrphans();
   }
 

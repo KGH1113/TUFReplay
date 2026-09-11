@@ -13,6 +13,7 @@ internal static class ActivityDatabaseSuite
   internal static void RunAll(string root)
   {
     TestFreshSchemaAndAtomicArtifact(root);
+    TestLegacyV15Import(root);
     TestLegacyDatabaseReset(root);
     TestUnsupportedDatabasesArePreserved(root);
   }
@@ -62,17 +63,47 @@ internal static class ActivityDatabaseSuite
     Assert(!RunRepository.Exists("atomic-failure"), "Failed artifact insert left its activity run behind.");
   }
 
+  private static void TestLegacyV15Import(string root)
+  {
+    string directory = Path.Combine(root, "v15-import");
+    Directory.CreateDirectory(directory);
+    string main = Path.Combine(directory, "tufreplay.sqlite");
+    string migrating = Path.Combine(directory, "tufreplay.0.2.migrating.sqlite");
+    string backup = Path.Combine(directory, "tufreplay.pre-0.2.sqlite");
+    CreateLegacyV15Database(main);
+    string warning = null;
+
+    LegacyActivityDatabaseTransition.EnsureCurrent(main, migrating, backup, message => warning = message);
+
+    Assert(IsCurrentDatabase(main), "Schema v15 was not imported into the current database.");
+    Assert(File.Exists(backup) && ReadUserVersion(backup) == 15, "Schema v15 source backup was not preserved.");
+    Assert(CountRows(main, "runs") == 1, "Schema v15 activity run was not imported.");
+    Assert(warning == null, "Schema v15 import emitted a destructive-reset warning.");
+    using SqliteConnection connection = OpenUnpooled(main);
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT replay_unavailable_reason FROM runs WHERE id='legacy-run'";
+    Assert(
+      string.Equals(Convert.ToString(command.ExecuteScalar()), ReplayUnavailableReasons.LegacyEngine),
+      "Schema v15 replay was not marked as legacy."
+    );
+  }
+
   private static void TestLegacyDatabaseReset(string root)
   {
     string directory = Path.Combine(root, "legacy-reset");
     Directory.CreateDirectory(directory);
-    for (int version = 0; version <= LegacyActivityDatabaseReset.MaximumDiscardedVersion; version++)
+    for (int version = 0; version <= LegacyActivityDatabaseTransition.MaximumDiscardedVersion; version++)
     {
       string path = Path.Combine(directory, "v" + version + ".sqlite");
       CreateLegacyV15Database(path, version);
       string warning = null;
 
-      LegacyActivityDatabaseReset.EnsureCurrent(path, message => warning = message);
+      LegacyActivityDatabaseTransition.EnsureCurrent(
+        path,
+        path + ".migrating",
+        path + ".backup",
+        message => warning = message
+      );
 
       Assert(IsCurrentDatabase(path), "Legacy schema v" + version + " was not replaced with the current schema.");
       Assert(CountRows(path, "runs") == 0, "Legacy schema v" + version + " retained activity runs.");
@@ -88,7 +119,12 @@ internal static class ActivityDatabaseSuite
     string unsupported = Path.Combine(root, "unsupported-v16.sqlite");
     CreateLegacyV15Database(unsupported, 16);
     AssertThrows<InvalidOperationException>(
-      () => LegacyActivityDatabaseReset.EnsureCurrent(unsupported),
+      () =>
+        LegacyActivityDatabaseTransition.EnsureCurrent(
+          unsupported,
+          unsupported + ".migrating",
+          unsupported + ".backup"
+        ),
       "Unsupported v16 database was silently initialized."
     );
     Assert(ReadUserVersion(unsupported) == 16, "Unsupported database was modified.");
@@ -98,7 +134,7 @@ internal static class ActivityDatabaseSuite
     byte[] corruptBytes = { 1, 3, 3, 7, 9 };
     File.WriteAllBytes(corrupt, corruptBytes);
     AssertThrows<SqliteException>(
-      () => LegacyActivityDatabaseReset.EnsureCurrent(corrupt),
+      () => LegacyActivityDatabaseTransition.EnsureCurrent(corrupt, corrupt + ".migrating", corrupt + ".backup"),
       "Corrupt database was silently initialized."
     );
     Assert(File.ReadAllBytes(corrupt).SequenceEqual(corruptBytes), "Corrupt source database was overwritten.");
