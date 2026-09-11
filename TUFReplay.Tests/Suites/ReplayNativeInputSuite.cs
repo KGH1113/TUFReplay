@@ -377,7 +377,8 @@ internal static class ReplayNativeInputSuite
         3,
         RunJudgmentSystem.ModernCompetitive,
         out ReplayTimelineJudgmentKind perfectMinus
-      ) && perfectMinus == ReplayTimelineJudgmentKind.PerfectMinus,
+      )
+        && perfectMinus == ReplayTimelineJudgmentKind.PerfectMinus,
       "Competitive PerfectMinus was not preserved."
     );
     Assert(
@@ -385,7 +386,8 @@ internal static class ReplayNativeInputSuite
         4,
         RunJudgmentSystem.ModernCompetitive,
         out ReplayTimelineJudgmentKind xPerfect
-      ) && xPerfect == ReplayTimelineJudgmentKind.XPerfect,
+      )
+        && xPerfect == ReplayTimelineJudgmentKind.XPerfect,
       "Competitive XPerfect was not preserved."
     );
     Assert(
@@ -393,7 +395,8 @@ internal static class ReplayNativeInputSuite
         5,
         RunJudgmentSystem.ModernCompetitive,
         out ReplayTimelineJudgmentKind perfectPlus
-      ) && perfectPlus == ReplayTimelineJudgmentKind.PerfectPlus,
+      )
+        && perfectPlus == ReplayTimelineJudgmentKind.PerfectPlus,
       "Competitive PerfectPlus was not preserved."
     );
   }

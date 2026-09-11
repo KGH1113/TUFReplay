@@ -71,6 +71,8 @@ export const appSessionDtoSchema = z
   })
   .passthrough();
 
+export const legacyReplayStatusDtoSchema = z.object({ HasLegacyReplays: z.boolean() }).strict();
+
 export const activityRunDtoSchema = z
   .object({
     Id: z.string(),

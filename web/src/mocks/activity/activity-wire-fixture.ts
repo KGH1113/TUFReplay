@@ -45,6 +45,10 @@ export interface ActivityAppSession {
   LevelSessions: ActivityLevelSessionOverview[];
 }
 
+export interface ActivityLegacyReplayStatus {
+  HasLegacyReplays: boolean;
+}
+
 export interface ActivityRun {
   Id: string;
   LevelSessionId: string;

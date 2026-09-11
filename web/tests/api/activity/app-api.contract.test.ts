@@ -91,6 +91,22 @@ describe("layered AppApi contract", () => {
     ]);
   });
 
+  test("loads and validates the legacy replay status", async () => {
+    const calls: Call[] = [];
+    const api = createActivityApi(
+      clientsWith((method, params) => {
+        calls.push({ method, params });
+        return { HasLegacyReplays: true };
+      }),
+    );
+
+    expect(await api.getLegacyReplayStatus()).toEqual({ hasLegacyReplays: true });
+    expect(calls).toEqual([{ method: "activity.legacy-replay-status.get", params: {} }]);
+
+    const malformed = createActivityApi(clientsWith(() => ({ HasLegacyReplays: "yes" })));
+    expect(malformed.getLegacyReplayStatus()).rejects.toMatchObject({ kind: "validation" });
+  });
+
   test("rejects missing fields and invalid enum-like wire data at the API boundary", async () => {
     const api = createActivityApi(
       clientsWith(() => [{ ...validAppSession(), RecorderUtcOffsetMinutes: "540" }]),

@@ -36,6 +36,7 @@ internal static class ActivityDatabaseSuite
       InsertParents(connection);
     }
 
+    Assert(!RunRepository.HasLegacyReplay(), "An empty database reported a legacy replay.");
     RunRepository.Save(CreateRun("run", 0, CreateArtifact()));
     StoredReplayRun stored = RunRepository.GetReplayRun("run");
     Assert(stored != null, "Saved replay run was not found.");
@@ -56,6 +57,21 @@ internal static class ActivityDatabaseSuite
         && activityRun.JudgmentCounts.PerfectPlus == 3,
       "Competitive judgment counts did not round-trip."
     );
+    Assert(!RunRepository.HasLegacyReplay(), "A current replay artifact was treated as legacy.");
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText =
+        @"INSERT INTO runs(
+  id,level_session_id,run_index,started_at_utc,result,input_count,hit_context_count,replay_unavailable_reason
+) VALUES('empty-legacy','level-session',2,'2026-01-01T00:00:00Z','quit',0,0,'legacy_engine')";
+      command.ExecuteNonQuery();
+      Assert(!RunRepository.HasLegacyReplay(), "An empty run was treated as a legacy replay.");
+      command.CommandText = "UPDATE runs SET hit_context_count=1 WHERE id='empty-legacy'";
+      command.ExecuteNonQuery();
+    }
+    Assert(RunRepository.HasLegacyReplay(), "A legacy replay was not detected.");
 
     RunRecord invalid = CreateRun("atomic-failure", 1, CreateArtifact());
     invalid.ReplayArtifact.EngineId = null;

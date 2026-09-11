@@ -5,6 +5,7 @@ import { createMockApi } from "@/mocks/create-mock-api";
 describe("activity mock", () => {
   test("serves the three downloaded TUF levels with charts and runs", async () => {
     const api = createMockApi();
+    expect(await api.activity.getLegacyReplayStatus()).toEqual({ hasLegacyReplays: true });
     const sessions = await api.activity.listAllAppSessions();
     const levels = sessions.flatMap((session) => session.levelSessions);
 

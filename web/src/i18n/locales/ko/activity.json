@@ -56,6 +56,12 @@
     ]
   },
   "empty": "아직 기록된 활동이 없습니다.",
+  "legacyReplayNotice": {
+    "label": "리플레이 호환성",
+    "title": "이전 엔진 리플레이가 있어요",
+    "description": "이전 엔진으로 만든 리플레이는 현재 버전에서 재생할 수 없습니다. 새 엔진은 키 입력을 더 정확하고 안정적으로 기록하도록 바뀌었습니다.",
+    "confirm": "확인"
+  },
   "errors": {
     "load": "TUFReplay 활동을 불러오지 못했습니다",
     "connect": "TUFReplay에 연결하지 못했습니다",

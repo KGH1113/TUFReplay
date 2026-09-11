@@ -497,11 +497,10 @@ public class RecordingSession
         TooEarly = AdofaiRuntimeCompatibility.ReadHitCount(hits, "TooEarly"),
         Early = AdofaiRuntimeCompatibility.ReadHitCount(hits, "VeryEarly"),
         EarlyPerfect = AdofaiRuntimeCompatibility.ReadHitCount(hits, "EarlyPerfect"),
-        Perfect = judgmentSystem == RunJudgmentSystem.Legacy
-          ? AdofaiRuntimeCompatibility.ReadHitCount(hits, "Perfect") + auto
-          : judgmentSystem == RunJudgmentSystem.ModernClassic
-            ? perfectMinus + xPerfect + perfectPlus + auto
-            : 0,
+        Perfect =
+          judgmentSystem == RunJudgmentSystem.Legacy ? AdofaiRuntimeCompatibility.ReadHitCount(hits, "Perfect") + auto
+          : judgmentSystem == RunJudgmentSystem.ModernClassic ? perfectMinus + xPerfect + perfectPlus + auto
+          : 0,
         PerfectMinus = judgmentSystem == RunJudgmentSystem.ModernCompetitive ? perfectMinus : 0,
         XPerfect = judgmentSystem == RunJudgmentSystem.ModernCompetitive ? xPerfect + auto : 0,
         PerfectPlus = judgmentSystem == RunJudgmentSystem.ModernCompetitive ? perfectPlus : 0,
