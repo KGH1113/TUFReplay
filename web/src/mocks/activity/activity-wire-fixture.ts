@@ -61,6 +61,7 @@ export interface ActivityRun {
   EffectivePitch: number | null;
   XAccuracy: number | null;
   JudgmentDifficulty: JudgmentDifficulty | null;
+  JudgmentSystem: JudgmentSystem;
   JudgmentCounts: ActivityJudgmentCounts;
   InputCount: number;
   HitContextCount: number;
@@ -100,6 +101,7 @@ export interface MicrophoneRecordingKeepResult {
 }
 
 export type JudgmentDifficulty = "Lenient" | "Normal" | "Strict";
+export type JudgmentSystem = "Legacy" | "ModernClassic" | "ModernCompetitive";
 
 export interface ActivityJudgmentCounts {
   Overload: number;
@@ -107,6 +109,9 @@ export interface ActivityJudgmentCounts {
   Early: number;
   EarlyPerfect: number;
   Perfect: number;
+  PerfectMinus: number;
+  XPerfect: number;
+  PerfectPlus: number;
   LatePerfect: number;
   Late: number;
   TooLate: number;

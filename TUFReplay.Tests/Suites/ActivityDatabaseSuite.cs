@@ -45,6 +45,17 @@ internal static class ActivityDatabaseSuite
     Assert(stored.HitContextCsv.SequenceEqual(new byte[] { 4, 5 }), "Replay hit payload changed.");
     Assert(stored.MetaJson == "{\"v\":1}", "Replay metadata changed.");
     Assert(RunRepository.Get("run")?.ReplayPlayable == true, "Current replay artifact was not marked playable.");
+    RunRecord activityRun = RunRepository.Get("run");
+    Assert(
+      activityRun?.JudgmentSystem == RunJudgmentSystem.ModernCompetitive,
+      "Run judgment system did not round-trip."
+    );
+    Assert(
+      activityRun.JudgmentCounts.PerfectMinus == 1
+        && activityRun.JudgmentCounts.XPerfect == 2
+        && activityRun.JudgmentCounts.PerfectPlus == 3,
+      "Competitive judgment counts did not round-trip."
+    );
 
     RunRecord invalid = CreateRun("atomic-failure", 1, CreateArtifact());
     invalid.ReplayArtifact.EngineId = null;
@@ -226,6 +237,13 @@ internal static class ActivityDatabaseSuite
       Result = "cleared",
       NoFailMode = true,
       JudgmentDifficulty = RunJudgmentDifficulty.Normal,
+      JudgmentSystem = RunJudgmentSystem.ModernCompetitive,
+      JudgmentCounts = new JudgmentCounts
+      {
+        PerfectMinus = 1,
+        XPerfect = 2,
+        PerfectPlus = 3,
+      },
       InputCount = artifact.InputCount,
       HitContextCount = artifact.HitContextCount,
       ReplayArtifact = artifact,

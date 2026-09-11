@@ -106,7 +106,7 @@ export const RunCard = memo(function RunCard({
         className="block w-full rounded-b-md p-3 pt-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <RunCardContent run={run} timeZone={timeZone} />
-        <RunJudgmentStrip counts={run.judgmentCounts} />
+        <RunJudgmentStrip counts={run.judgmentCounts} judgmentSystem={run.judgmentSystem} />
       </button>
     </div>
   );

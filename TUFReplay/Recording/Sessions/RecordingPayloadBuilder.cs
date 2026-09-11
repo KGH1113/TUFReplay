@@ -13,6 +13,7 @@ public static class RecordingPayloadBuilder
     run.EffectivePitch = data.EffectivePitch;
     run.XAccuracy = data.XAccuracy;
     run.JudgmentDifficulty = data.JudgmentDifficulty;
+    run.JudgmentSystem = data.JudgmentSystem;
     run.JudgmentCounts = data.JudgmentCounts ?? new JudgmentCounts();
     run.GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone();
     run.GameplayHashVersion = data.GameplayHashVersion;

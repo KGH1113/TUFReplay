@@ -11,6 +11,7 @@ public class ReplayMetadata
   public int? levelPitchPercent;
   public float? pitchSpeedMultiplier;
   public float? effectivePitch;
+  public string judgmentSystem;
   public string pitchSource;
   public string inputTimeBase;
   public string inputFormat;
