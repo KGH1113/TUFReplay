@@ -137,6 +137,8 @@ public sealed class ActivityRunDto
   public int? MicrophoneChannels;
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
+  public bool ReplayPlayable;
+  public string ReplayUnavailableReason;
 
   public static ActivityRunDto From(RunRecord r) =>
     new ActivityRunDto
@@ -172,6 +174,8 @@ public sealed class ActivityRunDto
       MicrophoneChannels = r.MicrophoneChannels,
       MicrophoneRecordingPermanent = r.MicrophoneRecordingPermanent,
       MicrophoneRecordingExpiresAtUtc = r.MicrophoneRecordingExpiresAtUtc,
+      ReplayPlayable = r.ReplayPlayable,
+      ReplayUnavailableReason = r.ReplayUnavailableReason,
     };
 }
 

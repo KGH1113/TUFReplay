@@ -15,6 +15,9 @@ public sealed class StoredReplayRun
   public byte[] InputCsv;
   public byte[] HitContextCsv;
   public string MetaJson;
+  public string EngineId;
+  public int FormatVersion;
+  public string ReplayUnavailableReason;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
   public RunJudgmentDifficulty? JudgmentDifficulty;

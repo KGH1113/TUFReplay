@@ -74,6 +74,14 @@ export interface ActivityRun {
   MicrophoneChannels: number | null;
   MicrophoneRecordingPermanent: boolean;
   MicrophoneRecordingExpiresAtUtc: string | null;
+  ReplayPlayable: boolean;
+  ReplayUnavailableReason:
+    | "legacy_engine"
+    | "capture_incomplete"
+    | "unsupported_engine"
+    | "unsupported_format"
+    | "payload_missing"
+    | null;
 }
 
 export interface MicrophoneRecordingDeleteResult {

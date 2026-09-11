@@ -78,57 +78,7 @@ public sealed class ReplayHitContextPlayer
 
   internal static HitMargin ResolveHitMargin(scrController controller, ReplayHitContext context)
   {
-    if (context.ResolvedHitMargin.HasValue)
-      return (HitMargin)context.ResolvedHitMargin.Value;
-
-    scrFloor floor = null;
-    List<scrFloor> floors = ADOBase.lm?.listFloors;
-    if (floors != null && context.CurrentFloorID >= 0 && context.CurrentFloorID < floors.Count)
-    {
-      floor = floors[context.CurrentFloorID];
-    }
-
-    scrConductor conductor = ADOBase.conductor;
-    float baseBpm = conductor != null ? conductor.bpm : 100f;
-    float speed = floor != null ? floor.speed : 1f;
-    float pitch = conductor?.song != null ? conductor.song.pitch : 1f;
-    double marginScale = floor?.nextfloor != null ? floor.nextfloor.marginScale : 1d;
-
-    HitMargin hitMargin = scrMisc.GetHitMargin(
-      (float)context.CurrAngle,
-      0f,
-      isCW: true,
-      baseBpm * speed,
-      pitch,
-      marginScale
-    );
-
-    bool forcedSuccess =
-      context.NoFailHit
-      || context.MidspinInfiniteMargin
-      || ((context.IsAuto || context.NextFloorAuto) && !RDC.useOldAuto);
-    if (
-      !scrMisc.IsValidHit(hitMargin)
-      && !forcedSuccess
-      && ReplayLegacyJudgmentMath.BecomesFailOverload(
-        context.OverloadCounter,
-        GCS.d_drumcontroller,
-        GCS.hitMarginLimit == HitMarginLimit.PurePerfectOnly,
-        controller != null && controller.noFail
-      )
-    )
-    {
-      return HitMargin.FailOverload;
-    }
-
-    if (context.NoFailHit)
-      hitMargin = HitMargin.FailMiss;
-    if (context.MidspinInfiniteMargin || ((context.IsAuto || context.NextFloorAuto) && !RDC.useOldAuto))
-      hitMargin = HitMargin.Perfect;
-    if (context.NextFloorAuto)
-      hitMargin = HitMargin.Auto;
-
-    return hitMargin;
+    return (HitMargin)context.ResolvedHitMargin;
   }
 
   public ReplayHitContext? PeekNext()

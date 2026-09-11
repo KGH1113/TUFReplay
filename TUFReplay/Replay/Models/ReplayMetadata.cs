@@ -2,7 +2,7 @@ namespace TUFReplay.Replay.Models;
 
 public class ReplayMetadata
 {
-  public int formatVersion;
+  public int metadataVersion;
   public int? tufLevelId;
   public double? gameplayStartSongPosition;
   public long? wonTimeUs;

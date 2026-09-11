@@ -29,17 +29,7 @@ public partial class RecordingFeature
     if (levelPath == null)
       return false;
 
-    if (
-      _activity.OpenLevel(
-        levelPath,
-        Session.TufLevelId,
-        levelTileCount,
-        _gameplayHash,
-        _gameplayHashVersion,
-        _legacyGameplayHash,
-        _legacyGameplayHashVersion
-      )
-    )
+    if (_activity.OpenLevel(levelPath, Session.TufLevelId, levelTileCount, _gameplayHash, _gameplayHashVersion))
       return true;
 
     Main.Instance.Log("[Recording] Activity database is busy; recording will retry when gameplay starts.");

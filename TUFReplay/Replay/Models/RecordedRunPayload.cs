@@ -57,7 +57,7 @@ public class RecordedRunPayload
   {
     var meta = new
     {
-      formatVersion = 3,
+      metadataVersion = 1,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,
@@ -180,5 +180,36 @@ public class RecordedRunPayload
     }
 
     return Encoding.UTF8.GetBytes(builder.ToString());
+  }
+
+  public bool TryCreateArtifact(string runId, out ReplayArtifact artifact)
+  {
+    artifact = null;
+    long previousInputTimeUs = 0L;
+    for (int i = 0; i < Inputs.Count; i++)
+    {
+      RecordedInput input = Inputs[i];
+      if (i > 0 && input.TimeUs < previousInputTimeUs)
+        return false;
+      previousInputTimeUs = input.TimeUs;
+    }
+
+    for (int i = 0; i < HitContexts.Count; i++)
+    {
+      RecordedHitContext hit = HitContexts[i];
+      if (!hit.ResolvedHitMargin.HasValue || !hit.TimeUs.HasValue || hit.TimeUs.Value < 0L)
+        return false;
+    }
+
+    artifact = new ReplayArtifact
+    {
+      RunId = runId,
+      InputCount = Inputs.Count,
+      HitContextCount = HitContexts.Count,
+      InputCsv = ToInputCsvBytes(),
+      HitContextCsv = ToHitContextCsvBytes(),
+      MetadataJson = ToActivityMetaJson(),
+    };
+    return true;
   }
 }

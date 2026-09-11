@@ -164,8 +164,10 @@ export function createActivityWireFixture(): ActivityWireFixture {
       Ok: true,
       Mod: "TUFReplay",
       ModVersion: "mock",
-      ProtocolVersion: 6,
+      ProtocolVersion: 7,
       ServerVersion: 1,
+      ReplayEngineId: "tufreplay.replay.v2",
+      ReplayFormatVersion: 1,
     }),
     listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
     listAllAppSessions: async (onPage) => {
@@ -474,6 +476,8 @@ function createRun(
     MicrophoneChannels: hasMicrophoneRecording ? 1 : null,
     MicrophoneRecordingPermanent: false,
     MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
+    ReplayPlayable: true,
+    ReplayUnavailableReason: null,
   };
 }
 

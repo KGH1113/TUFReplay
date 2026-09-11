@@ -7,6 +7,8 @@ export const healthDtoSchema = z
     ModVersion: z.string(),
     ProtocolVersion: z.number().int(),
     ServerVersion: z.number().int(),
+    ReplayEngineId: z.string(),
+    ReplayFormatVersion: z.number().int(),
   })
   .passthrough();
 

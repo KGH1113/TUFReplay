@@ -29,17 +29,7 @@ public static class LevelFileAccessValidator
       return Error("level_file_missing", MissingMessage, out errorCode, out errorMessage);
     }
 
-    int hashVersion = session.GameplayHashVersion ?? GameplayChartHash.Version;
-    if (
-      !GameplayChartHash.TryLoadCustomLevel(
-        canonicalPath,
-        hashVersion,
-        out levelText,
-        out _,
-        out byte[] actualHash,
-        out _
-      )
-    )
+    if (!GameplayChartHash.TryLoadCustomLevel(canonicalPath, out levelText, out _, out byte[] actualHash, out _))
     {
       return Error("level_file_invalid", InvalidMessage, out errorCode, out errorMessage);
     }
@@ -47,12 +37,17 @@ public static class LevelFileAccessValidator
     if (session.GameplayHash == null)
     {
       session.GameplayHash = actualHash;
-      session.GameplayHashVersion = hashVersion;
-      session.LevelId = LevelRepository.UpdateGameplayHashIfMissing(session.LevelId, actualHash, hashVersion);
+      session.GameplayHashVersion = GameplayChartHash.Version;
+      session.LevelId = LevelRepository.UpdateGameplayHashIfMissing(
+        session.LevelId,
+        actualHash,
+        GameplayChartHash.Version
+      );
       return true;
     }
 
-    return GameplayChartHash.Equals(session.GameplayHash, actualHash)
+    return GameplayChartHash.IsSupported(session.GameplayHashVersion, session.GameplayHash)
+        && GameplayChartHash.Equals(session.GameplayHash, actualHash)
       || Error("level_gameplay_modified", ModifiedMessage, out errorCode, out errorMessage);
   }
 

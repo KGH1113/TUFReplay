@@ -81,6 +81,8 @@ const run = (id: string, start: number, last: number, result = "failed"): Activi
   microphoneChannels: null,
   microphoneRecordingPermanent: false,
   microphoneRecordingExpiresAtUtc: null,
+  replayPlayable: true,
+  replayUnavailableReason: null,
 });
 
 describe("activity data", () => {

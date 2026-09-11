@@ -1,5 +1,3 @@
-using System;
-
 namespace TUFReplay.Replay.Timeline;
 
 internal enum ReplayTimelineJudgmentKind
@@ -70,46 +68,5 @@ internal static class ReplayTimelineJudgmentMath
         kind = default;
         return false;
     }
-  }
-
-  internal static bool TryEstimateLegacyTimeUs(
-    double targetSongTime,
-    double gameplayStartSongPosition,
-    double currAngle,
-    double bpm,
-    double speed,
-    double pitch,
-    long durationTimeUs,
-    out long timeUs
-  )
-  {
-    timeUs = 0L;
-    if (
-      !IsFinite(targetSongTime)
-      || !IsFinite(gameplayStartSongPosition)
-      || !IsFinite(currAngle)
-      || !IsFinite(bpm)
-      || !IsFinite(speed)
-      || !IsFinite(pitch)
-      || bpm <= 0d
-      || speed <= 0d
-      || pitch <= 0d
-      || durationTimeUs < 0L
-    )
-      return false;
-
-    double crotchet = 60d / (bpm * speed);
-    double angleOffset = currAngle * crotchet / (Math.PI * pitch);
-    double estimatedTimeUs = (targetSongTime + angleOffset - gameplayStartSongPosition) * 1_000_000d;
-    if (!IsFinite(estimatedTimeUs) || estimatedTimeUs <= long.MinValue || estimatedTimeUs >= long.MaxValue)
-      return false;
-
-    timeUs = Math.Max(0L, Math.Min((long)estimatedTimeUs, durationTimeUs));
-    return true;
-  }
-
-  private static bool IsFinite(double value)
-  {
-    return !double.IsNaN(value) && !double.IsInfinity(value);
   }
 }
