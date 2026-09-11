@@ -168,6 +168,8 @@ export function createActivityWireFixture(): ActivityWireFixture {
       ModVersion: "mock",
       ProtocolVersion: 7,
       ServerVersion: 1,
+      ReplayEngineId: "tufreplay.replay.v2",
+      ReplayFormatVersion: 1,
     }),
     getLegacyReplayStatus: async () => ({ HasLegacyReplays: true }),
     listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
@@ -452,12 +454,16 @@ function createRun(
     EffectivePitch: 1,
     XAccuracy: cleared ? 1 : Math.max(0, 0.985 - index * 0.011),
     JudgmentDifficulty: (["Strict", "Normal", "Lenient"] as const)[index % 3],
+    JudgmentSystem: "ModernClassic",
     JudgmentCounts: {
       Overload: cleared ? 0 : index % 2,
       TooEarly: index,
       Early: index + 1,
       EarlyPerfect: 3 + index,
       Perfect: Math.max(1, lastTile - startTile - 8),
+      PerfectMinus: 0,
+      XPerfect: 0,
+      PerfectPlus: 0,
       LatePerfect: 2 + index,
       Late: index,
       TooLate: cleared ? 0 : index % 3,
@@ -478,6 +484,8 @@ function createRun(
     MicrophoneRecordingPermanent: false,
     MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
     SubmissionRunId: null,
+    ReplayPlayable: true,
+    ReplayUnavailableReason: null,
   };
 }
 

@@ -24,14 +24,13 @@ public class RunRecord
   public float? EffectivePitch;
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
+  public RunJudgmentSystem JudgmentSystem;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
 
   public int InputCount;
   public int HitContextCount;
-  public byte[] InputCsv;
-  public byte[] HitContextCsv;
   public long InputCsvBytes;
   public long HitContextCsvBytes;
   public long MicrophoneRecordingBytes;
@@ -41,5 +40,7 @@ public class RunRecord
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
   public string SubmissionRunId;
-  public string MetaJson;
+  public bool ReplayPlayable;
+  public string ReplayUnavailableReason;
+  public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;
 }

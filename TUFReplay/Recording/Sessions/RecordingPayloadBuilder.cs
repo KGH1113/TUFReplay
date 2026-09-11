@@ -13,15 +13,19 @@ public static class RecordingPayloadBuilder
     run.EffectivePitch = data.EffectivePitch;
     run.XAccuracy = data.XAccuracy;
     run.JudgmentDifficulty = data.JudgmentDifficulty;
+    run.JudgmentSystem = data.JudgmentSystem;
     run.JudgmentCounts = data.JudgmentCounts ?? new JudgmentCounts();
     run.GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone();
     run.GameplayHashVersion = data.GameplayHashVersion;
     run.InputCount = data.Inputs.Count;
     run.HitContextCount = data.HitContexts.Count;
-    run.InputCsv = data.ToInputCsvBytes();
-    run.HitContextCsv = data.ToHitContextCsvBytes();
     run.SubmissionRunId = data.SubmissionRunId;
-    run.MetaJson = data.ToActivityMetaJson();
+    run.ReplayArtifact = null;
+    run.ReplayUnavailableReason = null;
+    if (!data.TryCreateArtifact(run.Id, out ReplayArtifact artifact))
+      run.ReplayUnavailableReason = ReplayUnavailableReasons.CaptureIncomplete;
+    else
+      run.ReplayArtifact = artifact;
     return run;
   }
 }

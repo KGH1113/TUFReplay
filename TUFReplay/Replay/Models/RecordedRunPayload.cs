@@ -50,6 +50,7 @@ public class RecordedRunPayload
   public int? SubmissionHoldBehavior;
   public string SubmissionRunId;
   public string GameVersion;
+  public RunJudgmentSystem JudgmentSystem;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
@@ -57,12 +58,16 @@ public class RecordedRunPayload
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
 
-  public string ToActivityMetaJson(int? inputCount = null, int? hitContextCount = null,
-    long? terminalTimeUs = null, string endedAtUtc = null)
+  public string ToActivityMetaJson(
+    int? inputCount = null,
+    int? hitContextCount = null,
+    long? terminalTimeUs = null,
+    string endedAtUtc = null
+  )
   {
     var meta = new
     {
-      formatVersion = 3,
+      metadataVersion = 1,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = endedAtUtc ?? EndedAtUtc,
@@ -78,6 +83,7 @@ public class RecordedRunPayload
       levelPitchPercent = LevelPitchPercent,
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,
+      judgmentSystem = JudgmentSystem.ToString(),
       pitchSource = PitchSource,
       inputFormat = NativeInputFormatV2,
       inputTimeBase = InputTimeBase,
@@ -108,7 +114,9 @@ public class RecordedRunPayload
       inputNativePlatform = NativeInputPlatformName(),
       inputCount = inputCount ?? Inputs.Count,
       gameplayHashVersion = GameplayHashVersion,
-      gameplayHashHex = GameplayHash == null ? null : System.BitConverter.ToString(GameplayHash).Replace("-", "").ToLowerInvariant(),
+      gameplayHashHex = GameplayHash == null
+        ? null
+        : System.BitConverter.ToString(GameplayHash).Replace("-", "").ToLowerInvariant(),
       hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection-resolvedHitMargin-timeUs",
       hitContextCount = hitContextCount ?? HitContexts.Count,
       micRecord = false,
@@ -192,5 +200,36 @@ public class RecordedRunPayload
     }
 
     return Encoding.UTF8.GetBytes(builder.ToString());
+  }
+
+  public bool TryCreateArtifact(string runId, out ReplayArtifact artifact)
+  {
+    artifact = null;
+    long previousInputTimeUs = 0L;
+    for (int i = 0; i < Inputs.Count; i++)
+    {
+      RecordedInput input = Inputs[i];
+      if (i > 0 && input.TimeUs < previousInputTimeUs)
+        return false;
+      previousInputTimeUs = input.TimeUs;
+    }
+
+    for (int i = 0; i < HitContexts.Count; i++)
+    {
+      RecordedHitContext hit = HitContexts[i];
+      if (!hit.ResolvedHitMargin.HasValue || !hit.TimeUs.HasValue || hit.TimeUs.Value < 0L)
+        return false;
+    }
+
+    artifact = new ReplayArtifact
+    {
+      RunId = runId,
+      InputCount = Inputs.Count,
+      HitContextCount = HitContexts.Count,
+      InputCsv = ToInputCsvBytes(),
+      HitContextCsv = ToHitContextCsvBytes(),
+      MetadataJson = ToActivityMetaJson(),
+    };
+    return true;
   }
 }

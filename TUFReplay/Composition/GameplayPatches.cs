@@ -3,21 +3,25 @@ using HarmonyLib;
 using MonsterLove.StateMachine;
 using TUFReplay.Recording.Patches;
 using TUFReplay.Replay.Patches;
+using TUFReplay.Shared.Compatibility;
 
 namespace TUFReplay.Composition;
 
 [HarmonyPatch]
-public static class GameplayPatches
+public static class ScrPlayerHitPatch
 {
-  [HarmonyPatch(typeof(scrPlayer), "Hit", new[] { typeof(bool) })]
+  [HarmonyTargetMethod]
+  private static System.Reflection.MethodBase TargetMethod() => AdofaiRuntimeCompatibility.ResolvePlayerHitMethod();
+
   [HarmonyPrefix]
-  private static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
+  private static bool OnScrPlayerHitPrefix(scrPlayer __instance, object[] __args, ref bool __result)
   {
     try
     {
       if (!ReplayInputPatches.OnScrPlayerHitPrefix(ref __result))
         return false;
 
+      bool isAuto = __args.Length > 0 && __args[__args.Length - 1] is bool value && value;
       return RecordingPatches.OnScrPlayerHitPrefix(__instance, isAuto, ref __result);
     }
     catch (Exception exception)
@@ -27,7 +31,6 @@ public static class GameplayPatches
     }
   }
 
-  [HarmonyPatch(typeof(scrPlayer), "Hit", new[] { typeof(bool) })]
   [HarmonyPostfix]
   private static void OnScrPlayerHitPostfix(scrPlayer __instance)
   {
@@ -40,7 +43,11 @@ public static class GameplayPatches
       Main.Instance?.LogException(nameof(OnScrPlayerHitPostfix), exception);
     }
   }
+}
 
+[HarmonyPatch]
+public static class GameplayStatePatch
+{
   [HarmonyPatch(typeof(StateBehaviour), "ChangeState", new[] { typeof(Enum) })]
   [HarmonyPostfix]
   private static void OnChangeStatePostfix(Enum newState)

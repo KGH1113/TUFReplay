@@ -6,6 +6,8 @@ export interface Health {
   modVersion: string;
   protocolVersion: number;
   serverVersion: number;
+  replayEngineId: string;
+  replayFormatVersion: number;
 }
 
 export function mapHealth(dto: HealthDto): Health {
@@ -15,5 +17,7 @@ export function mapHealth(dto: HealthDto): Health {
     modVersion: dto.ModVersion,
     protocolVersion: dto.ProtocolVersion,
     serverVersion: dto.ServerVersion,
+    replayEngineId: dto.ReplayEngineId,
+    replayFormatVersion: dto.ReplayFormatVersion,
   };
 }

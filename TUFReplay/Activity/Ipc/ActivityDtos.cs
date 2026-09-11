@@ -125,6 +125,7 @@ public sealed class ActivityRunDto
   public float? EffectivePitch;
   public float? XAccuracy;
   public string JudgmentDifficulty;
+  public string JudgmentSystem;
   public JudgmentCountsDto JudgmentCounts;
   public int InputCount;
   public int HitContextCount;
@@ -138,6 +139,8 @@ public sealed class ActivityRunDto
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
   public string SubmissionRunId;
+  public bool ReplayPlayable;
+  public string ReplayUnavailableReason;
 
   public static ActivityRunDto From(RunRecord r) =>
     new ActivityRunDto
@@ -158,6 +161,7 @@ public sealed class ActivityRunDto
       EffectivePitch = r.EffectivePitch,
       XAccuracy = r.XAccuracy,
       JudgmentDifficulty = r.JudgmentDifficulty?.ToString(),
+      JudgmentSystem = r.JudgmentSystem.ToString(),
       JudgmentCounts = JudgmentCountsDto.From(r.JudgmentCounts),
       InputCount = r.InputCount,
       HitContextCount = r.HitContextCount,
@@ -174,6 +178,8 @@ public sealed class ActivityRunDto
       MicrophoneRecordingPermanent = r.MicrophoneRecordingPermanent,
       MicrophoneRecordingExpiresAtUtc = r.MicrophoneRecordingExpiresAtUtc,
       SubmissionRunId = r.SubmissionRunId,
+      ReplayPlayable = r.ReplayPlayable,
+      ReplayUnavailableReason = r.ReplayUnavailableReason,
     };
 }
 
@@ -184,6 +190,9 @@ public sealed class JudgmentCountsDto
   public int Early;
   public int EarlyPerfect;
   public int Perfect;
+  public int PerfectMinus;
+  public int XPerfect;
+  public int PerfectPlus;
   public int LatePerfect;
   public int Late;
   public int TooLate;
@@ -199,6 +208,9 @@ public sealed class JudgmentCountsDto
       Early = counts.Early,
       EarlyPerfect = counts.EarlyPerfect,
       Perfect = counts.Perfect,
+      PerfectMinus = counts.PerfectMinus,
+      XPerfect = counts.XPerfect,
+      PerfectPlus = counts.PerfectPlus,
       LatePerfect = counts.LatePerfect,
       Late = counts.Late,
       TooLate = counts.TooLate,

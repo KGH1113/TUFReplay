@@ -40,9 +40,6 @@ public static class MicrophoneDatabase
       throw new InvalidOperationException(
         "TUFReplay microphone database schema is newer than this mod supports. version=" + current
       );
-    if (current == SchemaVersion)
-      return;
-
     using SqliteCommand command = connection.CreateCommand();
     command.CommandText =
       @"PRAGMA journal_mode=WAL;
@@ -60,6 +57,10 @@ CREATE TABLE IF NOT EXISTS microphone_recordings (
   expires_at_utc TEXT
 );
 CREATE INDEX IF NOT EXISTS microphone_recordings_expiry ON microphone_recordings(is_permanent,expires_at_utc);
+CREATE TABLE IF NOT EXISTS microphone_legacy_imports (
+  source_path TEXT PRIMARY KEY,
+  completed_at_utc TEXT NOT NULL
+);
 PRAGMA user_version = 1;";
     command.ExecuteNonQuery();
   }

@@ -2,11 +2,21 @@ import { useTranslation } from "react-i18next";
 import type { JudgmentCounts } from "@/models/activity/activity-model";
 import { judgmentDisplayItems } from "@/models/activity/judgment-display";
 
-export function RunJudgmentStrip({ counts }: { counts?: JudgmentCounts | null }) {
+export function RunJudgmentStrip({
+  counts,
+  judgmentSystem,
+}: {
+  counts?: JudgmentCounts | null;
+  judgmentSystem?: "Legacy" | "ModernClassic" | "ModernCompetitive";
+}) {
   const { t } = useTranslation("activity");
+  const items = judgmentDisplayItems(counts, judgmentSystem);
   return (
-    <div className="mt-2.5 grid grid-cols-[repeat(9,minmax(0,1fr))] border-t border-border/70 pt-2">
-      {judgmentDisplayItems(counts).map(({ key, color, value }) => {
+    <div
+      className="mt-2.5 grid border-t border-border/70 pt-2"
+      style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}
+    >
+      {items.map(({ key, color, value }) => {
         const label = t(`judgments.${key}`);
         return (
           <span

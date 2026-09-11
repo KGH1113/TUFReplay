@@ -44,6 +44,7 @@ internal static class ReplayNativeInputSuite
   {
     TestReplayInputStableOrder();
     TestReplayCsvParserCompatibility();
+    TestCaptureIncompleteArtifactPolicy();
     TestNativeInputCsvRoundTrip();
     TestInputTimelineMath();
     TestReplayLatenessHistogram();
@@ -51,8 +52,6 @@ internal static class ReplayNativeInputSuite
     TestReplayTimelineTimeMath();
     TestReplayTimelineTopGlowPolicy();
     TestReplayTimelineJudgmentMapping();
-    TestReplayTimelineLegacyJudgmentTimeMath();
-    TestLegacyJudgmentOverloadMath();
     TestHitContextPlaybackPositionComparison();
     TestReplayNoFailPolicy();
     TestNativeInputUmmWindowInterlock();
@@ -81,42 +80,53 @@ internal static class ReplayNativeInputSuite
 
   private static void TestReplayInputStableOrder()
   {
-    byte[] csv = System.Text.Encoding.UTF8.GetBytes("100,9,3\n100,8,3\n100,9,2\n99,7,3\n");
+    byte[] csv = System.Text.Encoding.UTF8.GetBytes("-100,9,3,30,0\n100,8,3,31,0\n100,9,2,30,0\n");
     List<RecordedInput> inputs = ReplayInputParser.Parse(csv, out long maxTimeUs);
 
-    Assert(inputs.Count == 4, "Replay input parser dropped valid events.");
+    Assert(inputs.Count == 3, "Replay input parser dropped valid v2 events.");
     Assert(maxTimeUs == 100, "Replay input parser did not report the maximum timestamp.");
-    Assert(inputs[0].Key == 7, "Replay input parser did not sort timestamps.");
-    Assert(inputs[1].Key == 9 && inputs[2].Key == 8 && inputs[3].Key == 9, "Same-time input order changed.");
+    Assert(inputs[0].TimeUs == -100 && inputs[1].Key == 8 && inputs[2].Key == 9, "Input order changed.");
+    AssertThrowsInvalidData(
+      () => ReplayInputParser.Parse(System.Text.Encoding.UTF8.GetBytes("100,9,3,30,0\n99,8,3,31,0\n")),
+      "Replay input parser accepted a timestamp regression."
+    );
   }
 
   private static void TestReplayCsvParserCompatibility()
   {
-    byte[] inputCsv = System.Text.Encoding.UTF8.GetBytes("\r\n 200 , 11 , 3 \r\ninvalid\n100,7,2\r\n200,12,1\n");
+    byte[] inputCsv = System.Text.Encoding.UTF8.GetBytes("100,7,3,30,0\r\n200,8,2,31,1\n");
     List<RecordedInput> inputs = ReplayInputParser.Parse(inputCsv);
 
-    Assert(inputs.Count == 3, "Replay input parser did not ignore malformed or empty lines.");
-    Assert(inputs[0].TimeUs == 100 && inputs[0].Key == 7, "Replay input parser changed legacy sorting.");
-    Assert(inputs[1].Key == 11 && inputs[2].Key == 12, "Replay input parser changed stable tie ordering.");
-
-    byte[] hitCsv = System.Text.Encoding.UTF8.GetBytes(
-      "\n1,90.5,1.25,1,False,TRUE,-2.5,3E2,0,true,-4\r\nmalformed\r\n"
+    Assert(inputs.Count == 2, "Replay input parser did not parse the v2 rows.");
+    Assert(inputs[0].TimeUs == 100 && inputs[1].NativeCode == 31, "Replay input parser changed v2 fields.");
+    AssertThrowsInvalidData(
+      () => ReplayInputParser.Parse(System.Text.Encoding.UTF8.GetBytes("100,7,3\n")),
+      "Three-column input was accepted."
     );
+    AssertThrowsInvalidData(
+      () => ReplayInputParser.Parse(System.Text.Encoding.UTF8.GetBytes("100,7,3,30,0\nmalformed\n")),
+      "Partially malformed input payload was accepted."
+    );
+
+    byte[] hitCsv = System.Text.Encoding.UTF8.GetBytes("1,90.5,1.25,1,False,TRUE,-2.5,3E2,0,true,-4,4,12345\r\n");
     List<ReplayHitContext> contexts = ReplayHitContextParser.Parse(hitCsv);
 
-    Assert(contexts.Count == 1, "Replay hit context parser did not ignore malformed or empty lines.");
+    Assert(contexts.Count == 1, "Replay hit context parser did not parse the v2 row.");
     ReplayHitContext context = contexts[0];
     Assert(context.CurrentFloorID == 1 && context.CurrAngle == 90.5, "Replay hit context numbers changed.");
     Assert(context.OverloadCounter == 1.25f && context.TargetExitAngle == 300, "Replay float parsing changed.");
     Assert(context.NoFailHit && !context.IsAuto && context.NextFloorAuto, "Replay boolean parsing changed.");
     Assert(!context.MidspinInfiniteMargin && context.RDCAuto, "Replay boolean flag parsing changed.");
     Assert(context.CurFreeRoamSection == -4, "Replay signed integer parsing changed.");
-    Assert(!context.ResolvedHitMargin.HasValue, "Legacy replay unexpectedly gained a resolved hit margin.");
-
-    byte[] resolvedHitCsv = System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4\n");
-    ReplayHitContext resolvedContext = ReplayHitContextParser.Parse(resolvedHitCsv)[0];
-    Assert(resolvedContext.ResolvedHitMargin == 4, "Resolved hit margin was not preserved by the replay parser.");
-    Assert(!resolvedContext.TimeUs.HasValue, "A 12-column replay unexpectedly gained a judgment timestamp.");
+    Assert(context.ResolvedHitMargin == 4 && context.TimeUs == 12_345L, "Stored judgment fields changed.");
+    AssertThrowsInvalidData(
+      () => ReplayHitContextParser.Parse(System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0\n")),
+      "Eleven-column hit context was accepted."
+    );
+    AssertThrowsInvalidData(
+      () => ReplayHitContextParser.Parse(System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4\n")),
+      "Twelve-column hit context was accepted."
+    );
 
     var payload = new RecordedRunPayload();
     payload.HitContexts.Add(
@@ -137,7 +147,31 @@ internal static class ReplayNativeInputSuite
     Assert(timedContext.TimeUs == 1_234_567L, "13-column judgment timestamp round-trip failed.");
 
     byte[] malformedTimedCsv = System.Text.Encoding.UTF8.GetBytes("2,0,0,0,0,0,1,2,0,0,0,4,not-a-time\n");
-    Assert(ReplayHitContextParser.Parse(malformedTimedCsv).Count == 0, "Malformed 13-column timestamp was accepted.");
+    AssertThrowsInvalidData(
+      () => ReplayHitContextParser.Parse(malformedTimedCsv),
+      "Malformed 13-column timestamp was accepted."
+    );
+  }
+
+  private static void TestCaptureIncompleteArtifactPolicy()
+  {
+    var run = new RunRecord { Id = "capture" };
+    var payload = new RecordedRunPayload();
+    payload.HitContexts.Add(new RecordedHitContext { ResolvedHitMargin = 3 });
+
+    RecordingPayloadBuilder.Apply(run, payload);
+    Assert(run.ReplayArtifact == null, "Incomplete capture created a replay artifact.");
+    Assert(
+      run.ReplayUnavailableReason == ReplayUnavailableReasons.CaptureIncomplete,
+      "Incomplete capture did not preserve its activity reason."
+    );
+
+    RecordedHitContext completeHit = payload.HitContexts[0];
+    completeHit.TimeUs = 123L;
+    payload.HitContexts[0] = completeHit;
+    RecordingPayloadBuilder.Apply(run, payload);
+    Assert(run.ReplayArtifact != null, "Complete v2 capture did not create a replay artifact.");
+    Assert(run.ReplayUnavailableReason == null, "Completed capture retained a stale failure reason.");
   }
 
   private static void TestNativeInputCsvRoundTrip()
@@ -155,8 +189,7 @@ internal static class ReplayNativeInputSuite
     Assert(parsed[1].NativeFlags == 0x91 && !parsed[1].Down, "Key-up native provenance was not preserved.");
 
     byte[] malformed = System.Text.Encoding.UTF8.GetBytes("1,65,3,30,not-a-flag\n2,66,3,31,1\n");
-    parsed = ReplayInputParser.Parse(malformed);
-    Assert(parsed.Count == 1 && parsed[0].Key == 66, "Malformed native metadata was accepted or hid valid rows.");
+    AssertThrowsInvalidData(() => ReplayInputParser.Parse(malformed), "Malformed native metadata was accepted.");
   }
 
   private static void TestInputTimelineMath()
@@ -242,35 +275,6 @@ internal static class ReplayNativeInputSuite
     );
   }
 
-  private static void TestLegacyJudgmentOverloadMath()
-  {
-    Assert(
-      !ReplayLegacyJudgmentMath.BecomesFailOverload(0.5f, drumController: false, purePerfectOnly: false, noFail: false),
-      "An overload counter of exactly one was treated as FailOverload."
-    );
-    Assert(
-      ReplayLegacyJudgmentMath.BecomesFailOverload(
-        0.5001f,
-        drumController: false,
-        purePerfectOnly: false,
-        noFail: false
-      ),
-      "A Too Early hit crossing the overload threshold was not promoted to FailOverload."
-    );
-    Assert(
-      !ReplayLegacyJudgmentMath.BecomesFailOverload(0.7f, drumController: true, purePerfectOnly: false, noFail: false),
-      "Drum-controller overload damage did not use ADOFAI's reduced amount."
-    );
-    Assert(
-      !ReplayLegacyJudgmentMath.BecomesFailOverload(0.9f, drumController: false, purePerfectOnly: true, noFail: false),
-      "Pure Perfect mode incorrectly replaced Too Early with FailOverload."
-    );
-    Assert(
-      ReplayLegacyJudgmentMath.BecomesFailOverload(0.9f, drumController: false, purePerfectOnly: true, noFail: true),
-      "No-fail Pure Perfect mode did not preserve ADOFAI's FailOverload promotion."
-    );
-  }
-
   private static void TestReplayTimelineTimeMath()
   {
     var cleared = new ActiveReplayContext
@@ -332,93 +336,65 @@ internal static class ReplayNativeInputSuite
   {
     var expected = new (int Margin, ReplayTimelineJudgmentKind Kind)[]
     {
-      (9, ReplayTimelineJudgmentKind.Overload),
+      (11, ReplayTimelineJudgmentKind.Overload),
       (0, ReplayTimelineJudgmentKind.TooEarly),
       (1, ReplayTimelineJudgmentKind.Early),
       (2, ReplayTimelineJudgmentKind.EarlyPerfect),
       (3, ReplayTimelineJudgmentKind.Perfect),
-      (10, ReplayTimelineJudgmentKind.Perfect),
-      (4, ReplayTimelineJudgmentKind.LatePerfect),
-      (5, ReplayTimelineJudgmentKind.Late),
-      (6, ReplayTimelineJudgmentKind.TooLate),
-      (8, ReplayTimelineJudgmentKind.Miss),
+      (4, ReplayTimelineJudgmentKind.Perfect),
+      (5, ReplayTimelineJudgmentKind.Perfect),
+      (12, ReplayTimelineJudgmentKind.Perfect),
+      (6, ReplayTimelineJudgmentKind.LatePerfect),
+      (7, ReplayTimelineJudgmentKind.Late),
+      (8, ReplayTimelineJudgmentKind.TooLate),
+      (10, ReplayTimelineJudgmentKind.Miss),
     };
 
     foreach ((int margin, ReplayTimelineJudgmentKind expectedKind) in expected)
     {
       Assert(
-        ReplayTimelineJudgmentMath.TryMapHitMarginValue(margin, out ReplayTimelineJudgmentKind actualKind)
+        ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+          margin,
+          RunJudgmentSystem.ModernClassic,
+          out ReplayTimelineJudgmentKind actualKind
+        )
           && actualKind == expectedKind,
         "Replay timeline judgment mapping changed for " + margin + "."
       );
     }
 
     Assert(
-      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(7, out _),
+      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(9, RunJudgmentSystem.ModernClassic, out _),
       "Multipress was included in timeline judgments."
     );
     Assert(
-      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(11, out _),
+      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(13, RunJudgmentSystem.ModernClassic, out _),
       "OverPress was included in timeline judgments."
     );
-  }
 
-  private static void TestReplayTimelineLegacyJudgmentTimeMath()
-  {
     Assert(
-      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
-        10d,
-        0d,
-        Math.PI,
-        60d,
-        1d,
-        1d,
-        20_000_000L,
-        out long lateTimeUs
-      )
-        && lateTimeUs == 11_000_000L,
-      "Positive legacy judgment angle did not produce the expected late offset."
+      ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+        3,
+        RunJudgmentSystem.ModernCompetitive,
+        out ReplayTimelineJudgmentKind perfectMinus
+      ) && perfectMinus == ReplayTimelineJudgmentKind.PerfectMinus,
+      "Competitive PerfectMinus was not preserved."
     );
     Assert(
-      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
-        10d,
-        0d,
-        -Math.PI,
-        60d,
-        1d,
-        1d,
-        20_000_000L,
-        out long earlyTimeUs
-      )
-        && earlyTimeUs == 9_000_000L,
-      "Negative legacy judgment angle did not produce the expected early offset."
+      ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+        4,
+        RunJudgmentSystem.ModernCompetitive,
+        out ReplayTimelineJudgmentKind xPerfect
+      ) && xPerfect == ReplayTimelineJudgmentKind.XPerfect,
+      "Competitive XPerfect was not preserved."
     );
     Assert(
-      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
-        10d,
-        0d,
-        Math.PI,
-        120d,
-        2d,
-        2d,
-        20_000_000L,
-        out long scaledTimeUs
-      )
-        && scaledTimeUs == 10_125_000L,
-      "Legacy judgment timing did not apply BPM, floor speed, and pitch."
-    );
-    Assert(
-      ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(30d, 0d, 0d, 60d, 1d, 1d, 20_000_000L, out long clampedTimeUs)
-        && clampedTimeUs == 20_000_000L,
-      "Legacy judgment timestamp did not clamp to replay duration."
-    );
-    Assert(
-      !ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(double.NaN, 0d, 0d, 60d, 1d, 1d, 20_000_000L, out _),
-      "Invalid legacy judgment metadata was accepted."
-    );
-    Assert(
-      !ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(10d, 0d, 0d, 60d, 1d, 0d, 20_000_000L, out _),
-      "Invalid legacy judgment pitch was accepted."
+      ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+        5,
+        RunJudgmentSystem.ModernCompetitive,
+        out ReplayTimelineJudgmentKind perfectPlus
+      ) && perfectPlus == ReplayTimelineJudgmentKind.PerfectPlus,
+      "Competitive PerfectPlus was not preserved."
     );
   }
 
@@ -590,7 +566,7 @@ internal static class ReplayNativeInputSuite
     int sourceA = currentIsMac ? 0x41 : 0x00;
     var meta = new ReplayMetadata
     {
-      formatVersion = 3,
+      metadataVersion = 1,
       inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
       inputNativePlatform = sourcePlatform,
       inputFormat = RecordedRunPayload.NativeInputFormatV2,
@@ -652,43 +628,59 @@ internal static class ReplayNativeInputSuite
 
   private static void TestReplayInputFormatGate()
   {
-    var current = new ReplayMetadata
+    var current = new StoredReplayRun
     {
-      formatVersion = 3,
-      inputFormat = RecordedRunPayload.NativeInputFormatV2,
-      inputTimeBase = ReplayInputTimeBases.Hybrid,
-      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
-      inputNativePlatform = "windows",
-      inputCapture = "windows-wh-keyboard-ll",
+      EngineId = ReplayFormat.EngineId,
+      FormatVersion = ReplayFormat.FormatVersion,
+      InputCsv = Array.Empty<byte>(),
+      HitContextCsv = Array.Empty<byte>(),
+      MetaJson = "{}",
     };
     Assert(
-      ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current),
-      "Current five-column native input was rejected."
+      ReplayPlaybackCoordinator.ValidateReplayArtifact(current, out _, out _),
+      "Current replay artifact was rejected."
     );
 
-    var legacy = new ReplayMetadata
+    current.ReplayUnavailableReason = ReplayUnavailableReasons.LegacyEngine;
+    Assert(
+      !ReplayPlaybackCoordinator.ValidateReplayArtifact(current, out string legacyCode, out _)
+        && legacyCode == ReplayUnavailableReasons.LegacyEngine,
+      "Imported legacy run was accepted."
+    );
+    current.ReplayUnavailableReason = null;
+    current.EngineId = "other.engine";
+    Assert(
+      !ReplayPlaybackCoordinator.ValidateReplayArtifact(current, out string engineCode, out _)
+        && engineCode == ReplayUnavailableReasons.UnsupportedEngine,
+      "Unsupported engine was accepted."
+    );
+    current.EngineId = ReplayFormat.EngineId;
+    current.FormatVersion = ReplayFormat.FormatVersion + 1;
+    Assert(
+      !ReplayPlaybackCoordinator.ValidateReplayArtifact(current, out string formatCode, out _)
+        && formatCode == ReplayUnavailableReasons.UnsupportedFormat,
+      "Unsupported replay format was accepted."
+    );
+    current.FormatVersion = ReplayFormat.FormatVersion;
+    current.InputCsv = null;
+    Assert(
+      !ReplayPlaybackCoordinator.ValidateReplayArtifact(current, out string missingCode, out _)
+        && missingCode == ReplayUnavailableReasons.PayloadMissing,
+      "Missing replay payload was accepted."
+    );
+  }
+
+  private static void AssertThrowsInvalidData(Action action, string message)
+  {
+    try
     {
-      formatVersion = 2,
-      inputFormat = "csv-conductor-timeus-key-flags-v1",
-      inputTimeBase = ReplayInputTimeBases.Hybrid,
-      inputKeySpace = NativeInputKeyCodeMapper.NativeKeySpace,
-      inputNativePlatform = "windows",
-    };
-    Assert(
-      !ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(legacy),
-      "Legacy format was accepted without migration."
-    );
-    current.inputCapture = "skyhook-native-events";
-    Assert(
-      !ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current),
-      "Legacy capture source was accepted without migration."
-    );
-    current.inputCapture = "windows-wh-keyboard-ll";
-    current.inputNativePlatform = null;
-    Assert(
-      !ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(current),
-      "Missing native platform metadata was accepted."
-    );
+      action();
+    }
+    catch (System.IO.InvalidDataException)
+    {
+      return;
+    }
+    throw new InvalidOperationException(message);
   }
 
   private static void TestUnsupportedCaptureHasNoPollingFallback()

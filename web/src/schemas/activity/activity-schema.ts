@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const judgmentDifficultySchema = z.enum(["Lenient", "Normal", "Strict"]);
+export const judgmentSystemSchema = z.enum(["Legacy", "ModernClassic", "ModernCompetitive"]);
 
 export const judgmentCountsDtoSchema = z.object({
   Overload: z.number().int(),
@@ -8,6 +9,9 @@ export const judgmentCountsDtoSchema = z.object({
   Early: z.number().int(),
   EarlyPerfect: z.number().int(),
   Perfect: z.number().int(),
+  PerfectMinus: z.number().int(),
+  XPerfect: z.number().int(),
+  PerfectPlus: z.number().int(),
   LatePerfect: z.number().int(),
   Late: z.number().int(),
   TooLate: z.number().int(),
@@ -86,6 +90,7 @@ export const activityRunDtoSchema = z
     EffectivePitch: z.number().nullable(),
     XAccuracy: z.number().nullable(),
     JudgmentDifficulty: judgmentDifficultySchema.nullable(),
+    JudgmentSystem: judgmentSystemSchema,
     JudgmentCounts: judgmentCountsDtoSchema,
     InputCount: z.number().int(),
     HitContextCount: z.number().int(),
@@ -100,6 +105,16 @@ export const activityRunDtoSchema = z
     MicrophoneRecordingPermanent: z.boolean(),
     MicrophoneRecordingExpiresAtUtc: z.string().nullable(),
     SubmissionRunId: z.uuid().nullable().default(null),
+    ReplayPlayable: z.boolean(),
+    ReplayUnavailableReason: z
+      .enum([
+        "legacy_engine",
+        "capture_incomplete",
+        "unsupported_engine",
+        "unsupported_format",
+        "payload_missing",
+      ])
+      .nullable(),
   })
   .passthrough();
 

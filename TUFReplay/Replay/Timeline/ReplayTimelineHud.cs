@@ -279,6 +279,9 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       case ReplayTimelineJudgmentKind.EarlyPerfect:
         return ReplayJudgmentKind.EarlyPerfect;
       case ReplayTimelineJudgmentKind.Perfect:
+      case ReplayTimelineJudgmentKind.PerfectMinus:
+      case ReplayTimelineJudgmentKind.XPerfect:
+      case ReplayTimelineJudgmentKind.PerfectPlus:
         return ReplayJudgmentKind.Perfect;
       case ReplayTimelineJudgmentKind.LatePerfect:
         return ReplayJudgmentKind.LatePerfect;

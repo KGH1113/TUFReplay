@@ -14,58 +14,6 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
 
   public void WriteChartKind(bool legacy) => _payload.WriteByte(legacy ? (byte)0 : (byte)1);
 
-  public void WriteGameplaySettingsV2(
-    int levelVersion,
-    string songFilename,
-    float bpm,
-    int volume,
-    int offset,
-    int pitch,
-    byte hitsound,
-    int hitsoundVolume,
-    bool separateCountdownTime,
-    int countdownTicks,
-    float speedTrialAim,
-    bool legacySpriteTiles
-  )
-  {
-    WriteInt(levelVersion);
-    WriteString(songFilename);
-    WriteFloat(bpm);
-    WriteInt(volume);
-    WriteInt(offset);
-    WriteInt(pitch);
-    _payload.WriteByte(hitsound);
-    WriteInt(hitsoundVolume);
-    _payload.WriteByte(separateCountdownTime ? (byte)1 : (byte)0);
-    WriteInt(countdownTicks);
-    WriteFloat(speedTrialAim);
-    _payload.WriteByte(legacySpriteTiles ? (byte)1 : (byte)0);
-  }
-
-  public void WriteGameplaySettingsV3(
-    int levelVersion,
-    string songFilename,
-    float bpm,
-    int volume,
-    int offset,
-    bool separateCountdownTime,
-    int countdownTicks,
-    float speedTrialAim,
-    bool legacySpriteTiles
-  )
-  {
-    WriteInt(levelVersion);
-    WriteString(songFilename);
-    WriteFloat(bpm);
-    WriteInt(volume);
-    WriteInt(offset);
-    _payload.WriteByte(separateCountdownTime ? (byte)1 : (byte)0);
-    WriteInt(countdownTicks);
-    WriteFloat(speedTrialAim);
-    _payload.WriteByte(legacySpriteTiles ? (byte)1 : (byte)0);
-  }
-
   public void WriteGameplaySettingsV4(
     string songFilename,
     float bpm,
@@ -154,13 +102,6 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
   }
 
   public void WriteKillPlayer(int floor) => WriteEventHeader(floor, 8);
-
-  public byte[] ComputeMd5Hash()
-  {
-    _payload.Position = 0;
-    using MD5 md5 = MD5.Create();
-    return md5.ComputeHash(_payload);
-  }
 
   public byte[] ComputeSha256Hash()
   {

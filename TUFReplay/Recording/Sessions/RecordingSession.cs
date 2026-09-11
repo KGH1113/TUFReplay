@@ -4,7 +4,7 @@ using System.Diagnostics;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
-
+using TUFReplay.Shared.Compatibility;
 using static TUFReplay.Recording.Telemetry.RecordingRuntimeTelemetry;
 
 namespace TUFReplay.Recording.Sessions;
@@ -12,7 +12,6 @@ namespace TUFReplay.Recording.Sessions;
 public partial class RecordingSession
 {
   private readonly object _lock = new object();
-
 
   public bool IsRecording { get; private set; }
   public bool IsCapturingInput { get; private set; }
@@ -56,6 +55,7 @@ public partial class RecordingSession
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),
+        JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
         GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
         GameplayHashVersion = gameplayHashVersion,
       };
@@ -251,5 +251,6 @@ public partial class RecordingSession
   }
 
   public static int GetLevelTileCount() => TUFReplay.Recording.Telemetry.RecordingRuntimeTelemetry.GetLevelTileCount();
+
   public static int GetCurrentTile() => TUFReplay.Recording.Telemetry.RecordingRuntimeTelemetry.GetCurrentTile();
 }

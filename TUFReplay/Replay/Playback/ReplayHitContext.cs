@@ -13,8 +13,8 @@ public readonly struct ReplayHitContext
   public readonly bool MidspinInfiniteMargin;
   public readonly bool RDCAuto;
   public readonly int CurFreeRoamSection;
-  public readonly int? ResolvedHitMargin;
-  public readonly long? TimeUs;
+  public readonly int ResolvedHitMargin;
+  public readonly long TimeUs;
 
   public ReplayHitContext(
     int currentFloorID,
@@ -28,8 +28,8 @@ public readonly struct ReplayHitContext
     bool midspinInfiniteMargin,
     bool rdcAuto,
     int curFreeRoamSection,
-    int? resolvedHitMargin = null,
-    long? timeUs = null
+    int resolvedHitMargin,
+    long timeUs
   )
   {
     CurrentFloorID = currentFloorID;
