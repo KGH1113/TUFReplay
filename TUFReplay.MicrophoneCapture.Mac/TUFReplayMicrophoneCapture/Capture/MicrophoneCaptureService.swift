@@ -60,8 +60,39 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     }
   }
 
-  func authorize() throws {
-    try ensurePermission()
+  func authorizationStatus() throws -> MicrophoneAuthorizationStatus {
+    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    case .notDetermined:
+      return .notDetermined
+    case .authorized:
+      return .authorized
+    case .denied:
+      return .denied
+    case .restricted:
+      return .restricted
+    @unknown default:
+      throw CaptureError.message("Microphone authorization status is unknown.")
+    }
+  }
+
+  func authorize() throws -> MicrophoneAuthorizationStatus {
+    let currentStatus = try authorizationStatus()
+    guard currentStatus == .notDetermined else { return currentStatus }
+
+    let semaphore = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+      NSApplication.shared.activate(ignoringOtherApps: true)
+      AVCaptureDevice.requestAccess(for: .audio) { _ in
+        semaphore.signal()
+        DispatchQueue.main.async {
+          NSApplication.shared.hide(nil)
+        }
+      }
+    }
+    guard semaphore.wait(timeout: .now() + 120) == .success else {
+      throw CaptureError.message("Microphone permission request timed out.")
+    }
+    return try authorizationStatus()
   }
 
   func arm(deviceId: String?) throws {
@@ -212,34 +243,15 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   }
 
   private func ensurePermission() throws {
-    switch AVCaptureDevice.authorizationStatus(for: .audio) {
+    switch try authorize() {
     case .authorized:
       return
-    case .notDetermined:
-      let semaphore = DispatchSemaphore(value: 0)
-      var granted = false
-      DispatchQueue.main.async {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        AVCaptureDevice.requestAccess(for: .audio) { value in
-          granted = value
-          semaphore.signal()
-          DispatchQueue.main.async {
-            NSApplication.shared.hide(nil)
-          }
-        }
-      }
-      guard semaphore.wait(timeout: .now() + 120) == .success else {
-        throw CaptureError.message("Microphone permission request timed out.")
-      }
-      if !granted {
-        throw CaptureError.message("Microphone permission request was denied by the user.")
-      }
     case .denied:
       throw CaptureError.message("Microphone authorization status is denied.")
     case .restricted:
       throw CaptureError.message("Microphone authorization status is restricted.")
-    @unknown default:
-      throw CaptureError.message("Microphone authorization status is unknown.")
+    case .notDetermined:
+      throw CaptureError.message("Microphone authorization status is still undetermined.")
     }
   }
 

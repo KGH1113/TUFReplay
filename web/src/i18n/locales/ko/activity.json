@@ -8,6 +8,14 @@
     "clears_one": "클리어",
     "clears_other": "클리어"
   },
+  "levels": {
+    "hiddenRuns_one": "레벨이 수정되기 전에 기록된 플레이 1개가 숨겨졌습니다.",
+    "hiddenRuns_other": "레벨이 수정되기 전에 기록된 플레이 {{count}}개가 숨겨졌습니다.",
+    "unavailableRuns_one": "이 레벨은 수정되어 이 날짜에 기록된 플레이 1개를 열 수 없습니다.",
+    "unavailableRuns_other": "이 레벨은 수정되어 이 날짜에 기록된 플레이 {{count}}개를 열 수 없습니다.",
+    "unavailableTitle": "플레이를 열 수 없습니다",
+    "unavailableBody": "이 날짜에 플레이한 레벨이 이후 수정되어 해당 플레이 기록을 더 이상 열 수 없습니다."
+  },
   "connection": {
     "connectingTitle": "TUFReplay에 연결 중…",
     "connectingDescription": "로컬 얼불춤 연결을 확인하고 있습니다.",
@@ -31,7 +39,7 @@
     "clientUpdateDescription": "AdofaiIPC보다 브라우저에 캐시된 웹 클라이언트가 오래됐습니다.",
     "clientUpdateGuide": "새로고침 방법",
     "clientUpdateSteps": [
-      "페이지를 새로고침해 최신 웹 번들을 불러오세요.",
+      "페이지를 새로고침해 최신 웹사이트를 불러오세요.",
       "계속 표시되면 이 사이트의 캐시를 지운 뒤 다시 여세요."
     ],
     "connectGuide": "연결 방법",
@@ -48,6 +56,12 @@
     ]
   },
   "empty": "아직 기록된 활동이 없습니다.",
+  "legacyReplayNotice": {
+    "label": "리플레이 호환성",
+    "title": "이전 엔진 리플레이가 있어요",
+    "description": "이전 엔진으로 만든 리플레이는 현재 버전에서 재생할 수 없습니다. 새 엔진은 키 입력을 더 정확하고 안정적으로 기록하도록 바뀌었습니다.",
+    "confirm": "확인"
+  },
   "errors": {
     "load": "TUFReplay 활동을 불러오지 못했습니다",
     "connect": "TUFReplay에 연결하지 못했습니다",
@@ -75,7 +89,9 @@
     "levelNumber": "레벨 #{{levelId}}",
     "tufDatabase": "TUF 데이터베이스",
     "localArtist": "로컬 · {{artist}}",
-    "tufArtist": "#{{levelId}} · {{artist}}",
+    "tufLevelLink": "TUF #{{levelId}}",
+    "openTufLevel": "TUF 레벨 페이지 열기",
+    "openTufLevelLabel": "TUF 레벨 #{{levelId}} 페이지 열기 (새 탭)",
     "chartBy": "{{creator}} 제작"
   },
   "sort": {
@@ -110,6 +126,13 @@
     "playing": "재생 중",
     "playReplay": "리플레이 재생",
     "playReplayForRun": "플레이 {{runIndex}} 리플레이 재생",
+    "replayUnavailable": {
+      "legacy_engine": "이 플레이는 이전 리플레이 엔진으로 녹화되었습니다.",
+      "capture_incomplete": "이 플레이의 리플레이 녹화가 완전하지 않습니다.",
+      "unsupported_engine": "지원하지 않는 리플레이 엔진으로 녹화되었습니다.",
+      "unsupported_format": "지원하지 않는 리플레이 형식입니다.",
+      "payload_missing": "이 플레이의 리플레이 데이터가 없습니다."
+    },
     "sortBy": "정렬 기준",
     "ascending": "오름차순 정렬",
     "descending": "내림차순 정렬"
@@ -120,6 +143,9 @@
     "Early": "빠름",
     "EarlyPerfect": "약간빠름",
     "Perfect": "정확",
+    "PerfectMinus": "정확−",
+    "XPerfect": "X-정확",
+    "PerfectPlus": "정확+",
     "LatePerfect": "약간느림",
     "Late": "느림",
     "TooLate": "매우느림",

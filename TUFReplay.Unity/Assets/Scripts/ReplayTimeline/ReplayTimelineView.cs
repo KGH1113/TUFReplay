@@ -1,4 +1,5 @@
 using System;
+using System.Globalization;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Events;
@@ -271,7 +272,7 @@ namespace TUFReplay.Unity.ReplayTimeline
       long totalSeconds = Math.Max(0L, (long)Math.Floor(seconds));
       long minutes = totalSeconds / 60L;
       long remainder = totalSeconds % 60L;
-      return $"{minutes:00}:{remainder:00}";
+      return string.Format(CultureInfo.CurrentCulture, "{0:00}:{1:00}", minutes, remainder);
     }
   }
 }

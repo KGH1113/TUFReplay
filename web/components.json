@@ -13,9 +13,9 @@
   "iconLibrary": "hugeicons",
   "rtl": false,
   "aliases": {
-    "components": "@/activity/components",
-    "utils": "@/ui/ui-class.utils",
-    "ui": "@/ui",
+    "components": "@/components",
+    "utils": "@/shared/lib/cn",
+    "ui": "@/shared/ui",
     "lib": "@/shared/lib",
     "hooks": "@/shared/hooks"
   },

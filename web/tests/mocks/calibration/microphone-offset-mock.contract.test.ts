@@ -1,0 +1,25 @@
+import { describe, expect, test } from "bun:test";
+
+import { mockMicrophoneOffsetCalibration } from "@/mocks/calibration/microphone-offset-fixture";
+
+describe("microphone offset calibration mock", () => {
+  test("contains normalized deterministic waveforms for the same timeline", () => {
+    const mock = mockMicrophoneOffsetCalibration;
+    expect(mock.durationMs).toBe(6_000);
+    expect(mock.gameWaveform.length).toBe(mock.microphoneWaveform.length);
+    expect(mock.songWaveform.length).toBe(mock.microphoneWaveform.length);
+    expect(mock.gameWaveform.length).toBeGreaterThan(100);
+    for (const sample of [...mock.gameWaveform, ...mock.songWaveform, ...mock.microphoneWaveform]) {
+      expect(Number.isFinite(sample)).toBe(true);
+      expect(sample).toBeGreaterThanOrEqual(0);
+      expect(sample).toBeLessThanOrEqual(1);
+    }
+  });
+
+  test("represents positive latency as microphone transients arriving late", () => {
+    const mock = mockMicrophoneOffsetCalibration;
+    expect(mock.microphoneEventsMs).toEqual(
+      mock.gameEventsMs.map((eventMs) => eventMs + mock.suggestedOffsetMs),
+    );
+  });
+});

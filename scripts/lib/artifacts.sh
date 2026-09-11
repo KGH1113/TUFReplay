@@ -115,6 +115,19 @@ copy_mac_helper() {
   cp -R "$TUFREPLAY_MAC_HELPER_APP" "$target/"
 }
 
+copy_mac_native_input() {
+  local destination="$1"
+  local requirement="${2:-required}"
+
+  if [ "$requirement" = "required" ]; then
+    require_file "$TUFREPLAY_MAC_INPUT_LIBRARY"
+  elif [ ! -f "$TUFREPLAY_MAC_INPUT_LIBRARY" ]; then
+    return 0
+  fi
+
+  cp "$TUFREPLAY_MAC_INPUT_LIBRARY" "$destination/libTUFReplayInput.dylib"
+}
+
 copy_debug_symbols() {
   local destination="$1"
 

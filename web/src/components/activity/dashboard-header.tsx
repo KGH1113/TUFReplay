@@ -1,0 +1,58 @@
+import { useTranslation } from "react-i18next";
+import { LanguageMenu } from "@/components/activity/language-menu";
+import { MicrophoneControls } from "@/components/microphone/microphone-controls";
+import type { ConnectionStatus } from "@/models/activity/activity-model";
+import { cn } from "@/shared/lib/cn";
+import { Button } from "@/shared/ui/button";
+
+export function DashboardHeader({
+  status,
+  onRetry,
+  mockEnabled,
+}: {
+  status: ConnectionStatus;
+  onRetry: () => void;
+  mockEnabled: boolean;
+}) {
+  const { t } = useTranslation("common");
+  return (
+    <header className="glass-toolbar flex min-h-14 items-center justify-between gap-3 rounded-2xl px-4 py-2">
+      <h1 className="font-heading text-2xl font-semibold tracking-tight">{t("appName")}</h1>
+      <div className="flex items-center gap-2">
+        <MicrophoneControls connectionStatus={status} mockEnabled={mockEnabled} />
+        <span
+          role="status"
+          className={cn(
+            "inline-flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium",
+            status === "online" && "border-primary/25 bg-primary/8 text-primary",
+            status === "connecting" && "border-border bg-muted/40 text-muted-foreground",
+            status === "error" && "border-amber-400/25 bg-amber-400/8 text-amber-300",
+            status === "incompatible" && "border-amber-400/25 bg-amber-400/8 text-amber-300",
+          )}
+        >
+          <span
+            className={cn(
+              "size-1.5 rounded-full bg-current",
+              status === "connecting" && "animate-pulse",
+            )}
+          />
+          {t(
+            status === "online"
+              ? "status.online"
+              : status === "connecting"
+                ? "status.connecting"
+                : status === "incompatible"
+                  ? "status.updateRequired"
+                  : "status.offline",
+          )}
+        </span>
+        {status === "error" || status === "incompatible" ? (
+          <Button size="sm" variant="ghost" onClick={onRetry}>
+            {t("actions.retryConnection")}
+          </Button>
+        ) : null}
+        <LanguageMenu />
+      </div>
+    </header>
+  );
+}
