@@ -336,34 +336,65 @@ internal static class ReplayNativeInputSuite
   {
     var expected = new (int Margin, ReplayTimelineJudgmentKind Kind)[]
     {
-      (9, ReplayTimelineJudgmentKind.Overload),
+      (11, ReplayTimelineJudgmentKind.Overload),
       (0, ReplayTimelineJudgmentKind.TooEarly),
       (1, ReplayTimelineJudgmentKind.Early),
       (2, ReplayTimelineJudgmentKind.EarlyPerfect),
       (3, ReplayTimelineJudgmentKind.Perfect),
-      (10, ReplayTimelineJudgmentKind.Perfect),
-      (4, ReplayTimelineJudgmentKind.LatePerfect),
-      (5, ReplayTimelineJudgmentKind.Late),
-      (6, ReplayTimelineJudgmentKind.TooLate),
-      (8, ReplayTimelineJudgmentKind.Miss),
+      (4, ReplayTimelineJudgmentKind.Perfect),
+      (5, ReplayTimelineJudgmentKind.Perfect),
+      (12, ReplayTimelineJudgmentKind.Perfect),
+      (6, ReplayTimelineJudgmentKind.LatePerfect),
+      (7, ReplayTimelineJudgmentKind.Late),
+      (8, ReplayTimelineJudgmentKind.TooLate),
+      (10, ReplayTimelineJudgmentKind.Miss),
     };
 
     foreach ((int margin, ReplayTimelineJudgmentKind expectedKind) in expected)
     {
       Assert(
-        ReplayTimelineJudgmentMath.TryMapHitMarginValue(margin, out ReplayTimelineJudgmentKind actualKind)
+        ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+          margin,
+          RunJudgmentSystem.ModernClassic,
+          out ReplayTimelineJudgmentKind actualKind
+        )
           && actualKind == expectedKind,
         "Replay timeline judgment mapping changed for " + margin + "."
       );
     }
 
     Assert(
-      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(7, out _),
+      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(9, RunJudgmentSystem.ModernClassic, out _),
       "Multipress was included in timeline judgments."
     );
     Assert(
-      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(11, out _),
+      !ReplayTimelineJudgmentMath.TryMapHitMarginValue(13, RunJudgmentSystem.ModernClassic, out _),
       "OverPress was included in timeline judgments."
+    );
+
+    Assert(
+      ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+        3,
+        RunJudgmentSystem.ModernCompetitive,
+        out ReplayTimelineJudgmentKind perfectMinus
+      ) && perfectMinus == ReplayTimelineJudgmentKind.PerfectMinus,
+      "Competitive PerfectMinus was not preserved."
+    );
+    Assert(
+      ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+        4,
+        RunJudgmentSystem.ModernCompetitive,
+        out ReplayTimelineJudgmentKind xPerfect
+      ) && xPerfect == ReplayTimelineJudgmentKind.XPerfect,
+      "Competitive XPerfect was not preserved."
+    );
+    Assert(
+      ReplayTimelineJudgmentMath.TryMapHitMarginValue(
+        5,
+        RunJudgmentSystem.ModernCompetitive,
+        out ReplayTimelineJudgmentKind perfectPlus
+      ) && perfectPlus == ReplayTimelineJudgmentKind.PerfectPlus,
+      "Competitive PerfectPlus was not preserved."
     );
   }
 

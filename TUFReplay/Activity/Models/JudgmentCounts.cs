@@ -14,6 +14,9 @@ public sealed class JudgmentCounts
   public int Early;
   public int EarlyPerfect;
   public int Perfect;
+  public int PerfectMinus;
+  public int XPerfect;
+  public int PerfectPlus;
   public int LatePerfect;
   public int Late;
   public int TooLate;

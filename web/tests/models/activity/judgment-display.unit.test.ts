@@ -38,4 +38,26 @@ describe("judgment display", () => {
         ?.value,
     ).toBe(0);
   });
+
+  test("keeps signed perfect judgments separate in competitive mode", () => {
+    const items = judgmentDisplayItems(
+      { Perfect: 99, PerfectMinus: 1, XPerfect: 2, PerfectPlus: 3 },
+      "ModernCompetitive",
+    );
+
+    expect(items.map(({ key }) => key)).toEqual([
+      "Overload",
+      "TooEarly",
+      "Early",
+      "EarlyPerfect",
+      "PerfectMinus",
+      "XPerfect",
+      "PerfectPlus",
+      "LatePerfect",
+      "Late",
+      "TooLate",
+      "Miss",
+    ]);
+    expect(items.slice(4, 7).map(({ value }) => value)).toEqual([1, 2, 3]);
+  });
 });

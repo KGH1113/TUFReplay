@@ -121,6 +121,7 @@ export function mapActivityRun(dto: ActivityRunDto) {
     effectivePitch: dto.EffectivePitch,
     xAccuracy: dto.XAccuracy,
     judgmentDifficulty: dto.JudgmentDifficulty,
+    judgmentSystem: dto.JudgmentSystem,
     judgmentCounts: dto.JudgmentCounts,
     inputCount: dto.InputCount,
     hitContextCount: dto.HitContextCount,

@@ -4,6 +4,7 @@ using System.Diagnostics;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
+using TUFReplay.Shared.Compatibility;
 
 namespace TUFReplay.Recording.Sessions;
 
@@ -59,6 +60,7 @@ public class RecordingSession
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),
+        JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
         GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
         GameplayHashVersion = gameplayHashVersion,
       };
@@ -483,17 +485,30 @@ public class RecordingSession
       if (hits == null)
         return;
 
+      RunJudgmentSystem judgmentSystem = data.JudgmentSystem;
+      int auto = AdofaiRuntimeCompatibility.ReadHitCount(hits, "Auto");
+      int perfectMinus = AdofaiRuntimeCompatibility.ReadHitCount(hits, "PerfectMinus");
+      int xPerfect = AdofaiRuntimeCompatibility.ReadHitCount(hits, "XPerfect");
+      int perfectPlus = AdofaiRuntimeCompatibility.ReadHitCount(hits, "PerfectPlus");
+
       data.JudgmentCounts = new JudgmentCounts
       {
-        Overload = ReadHitCount(hits, HitMargin.FailOverload),
-        TooEarly = ReadHitCount(hits, HitMargin.TooEarly),
-        Early = ReadHitCount(hits, HitMargin.VeryEarly),
-        EarlyPerfect = ReadHitCount(hits, HitMargin.EarlyPerfect),
-        Perfect = ReadHitCount(hits, HitMargin.Perfect) + ReadHitCount(hits, HitMargin.Auto),
-        LatePerfect = ReadHitCount(hits, HitMargin.LatePerfect),
-        Late = ReadHitCount(hits, HitMargin.VeryLate),
-        TooLate = ReadHitCount(hits, HitMargin.TooLate),
-        Miss = ReadHitCount(hits, HitMargin.FailMiss),
+        Overload = AdofaiRuntimeCompatibility.ReadHitCount(hits, "FailOverload"),
+        TooEarly = AdofaiRuntimeCompatibility.ReadHitCount(hits, "TooEarly"),
+        Early = AdofaiRuntimeCompatibility.ReadHitCount(hits, "VeryEarly"),
+        EarlyPerfect = AdofaiRuntimeCompatibility.ReadHitCount(hits, "EarlyPerfect"),
+        Perfect = judgmentSystem == RunJudgmentSystem.Legacy
+          ? AdofaiRuntimeCompatibility.ReadHitCount(hits, "Perfect") + auto
+          : judgmentSystem == RunJudgmentSystem.ModernClassic
+            ? perfectMinus + xPerfect + perfectPlus + auto
+            : 0,
+        PerfectMinus = judgmentSystem == RunJudgmentSystem.ModernCompetitive ? perfectMinus : 0,
+        XPerfect = judgmentSystem == RunJudgmentSystem.ModernCompetitive ? xPerfect + auto : 0,
+        PerfectPlus = judgmentSystem == RunJudgmentSystem.ModernCompetitive ? perfectPlus : 0,
+        LatePerfect = AdofaiRuntimeCompatibility.ReadHitCount(hits, "LatePerfect"),
+        Late = AdofaiRuntimeCompatibility.ReadHitCount(hits, "VeryLate"),
+        TooLate = AdofaiRuntimeCompatibility.ReadHitCount(hits, "TooLate"),
+        Miss = AdofaiRuntimeCompatibility.ReadHitCount(hits, "FailMiss"),
       };
     }
     catch
@@ -515,12 +530,6 @@ public class RecordingSession
     {
       return null;
     }
-  }
-
-  private static int ReadHitCount(int[] hits, HitMargin margin)
-  {
-    int index = (int)margin;
-    return index >= 0 && index < hits.Length ? Math.Max(0, hits[index]) : 0;
   }
 
   private void ObserveInputAnchorLocked(

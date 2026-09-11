@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Shared.Compatibility;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Sessions;
@@ -57,7 +58,13 @@ public static partial class ReplaySessionService
     {
       ReplayHitContext hitContext = hitContexts[i];
       HitMargin hitMargin = ReplayHitContextPlayer.ResolveHitMargin(ADOBase.controller, hitContext);
-      if (!ReplayTimelineJudgmentMath.TryMapHitMargin(hitMargin, out ReplayTimelineJudgmentKind kind))
+      if (
+        !ReplayTimelineJudgmentMath.TryMapHitMargin(
+          hitMargin,
+          AdofaiRuntimeCompatibility.ParseJudgmentSystem(context.Meta?.judgmentSystem),
+          out ReplayTimelineJudgmentKind kind
+        )
+      )
         continue;
 
       long timeUs = Math.Max(0L, Math.Min(hitContext.TimeUs, durationTimeUs));

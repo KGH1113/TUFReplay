@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Transport;
+using TUFReplay.Shared.Compatibility;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Playback;
@@ -266,38 +267,11 @@ public sealed class ReplayHitContextPlayer
       scrFloor hitFloor = hitPlanet.currfloor;
       if (hitFloor.holdLength > -1 && hitFloor.holdRenderer != null)
         hitFloor.holdRenderer.Hit();
-      player.planetarySystem.chosenPlanet = player.planetarySystem.chosenPlanet.SwitchChosen();
+      player.planetarySystem.chosenPlanet = AdofaiRuntimeCompatibility.SwitchChosen(
+        player.planetarySystem.chosenPlanet
+      );
       bool result = hitPlanet != player.planetarySystem.chosenPlanet;
-
-      if (
-        ADOBase.controller.errorMeter
-        && ADOBase.controller.gameworld
-        && Persistence.hitErrorMeterSize != ErrorMeterSize.Off
-      )
-      {
-        float angleDiff = (float)(hitPlanet.cachedAngle - hitPlanet.targetExitAngle);
-        if (hitPlanet.currfloor.isCCW)
-        {
-          angleDiff *= -1f;
-        }
-
-        if (!player.midspinInfiniteMargin)
-        {
-          if ((player.auto || nextFloorAuto) && !RDC.useOldAuto)
-          {
-            ADOBase.controller.errorMeter.AddHit(0f, 1f, player.planetarySystem.chosenPlanet, hitFloor);
-          }
-          else
-          {
-            ADOBase.controller.errorMeter.AddHit(
-              angleDiff,
-              (float)player.currFloor.marginScale,
-              player.planetarySystem.chosenPlanet,
-              hitFloor
-            );
-          }
-        }
-      }
+      AdofaiRuntimeCompatibility.UpdateErrorMeter(controller, hitFloor, player, hitPlanet, nextFloorAuto);
 
       if (ADOBase.playerIsOnIntroScene)
       {

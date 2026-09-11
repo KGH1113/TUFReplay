@@ -20,14 +20,16 @@ public static class RunRepository
     q.CommandText =
       @"INSERT INTO runs(
 id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,result,no_fail_mode,
-gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
+gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,judgment_system,
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
+judgment_perfect_minus,judgment_x_perfect,judgment_perfect_plus,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
 input_count,hit_context_count,replay_unavailable_reason
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
-@song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,
+@song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,@judgmentSystem,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
+@judgmentPerfectMinus,@judgmentXPerfect,@judgmentPerfectPlus,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
 @inputs,@hits,@replayUnavailableReason
 )";
@@ -48,11 +50,15 @@ input_count,hit_context_count,replay_unavailable_reason
       "@judgmentDifficulty",
       DbValue.From(r.JudgmentDifficulty.HasValue ? (int?)r.JudgmentDifficulty.Value : null)
     );
+    q.Parameters.AddWithValue("@judgmentSystem", (int)r.JudgmentSystem);
     q.Parameters.AddWithValue("@judgmentOverload", judgments.Overload);
     q.Parameters.AddWithValue("@judgmentTooEarly", judgments.TooEarly);
     q.Parameters.AddWithValue("@judgmentEarly", judgments.Early);
     q.Parameters.AddWithValue("@judgmentEarlyPerfect", judgments.EarlyPerfect);
     q.Parameters.AddWithValue("@judgmentPerfect", judgments.Perfect);
+    q.Parameters.AddWithValue("@judgmentPerfectMinus", judgments.PerfectMinus);
+    q.Parameters.AddWithValue("@judgmentXPerfect", judgments.XPerfect);
+    q.Parameters.AddWithValue("@judgmentPerfectPlus", judgments.PerfectPlus);
     q.Parameters.AddWithValue("@judgmentLatePerfect", judgments.LatePerfect);
     q.Parameters.AddWithValue("@judgmentLate", judgments.Late);
     q.Parameters.AddWithValue("@judgmentTooLate", judgments.TooLate);
@@ -303,8 +309,9 @@ LIMIT 1";
     @"SELECT
 r.id,l.app_session_id,r.level_session_id,g.tuf_level_id,r.run_index,r.started_at_utc,r.ended_at_utc,
 g.level_tile_count,r.start_tile,r.last_tile,r.result,r.no_fail_mode,r.gameplay_start_song_position,
-r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,
+r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,r.judgment_system,
 r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfect,r.judgment_perfect,
+r.judgment_perfect_minus,r.judgment_x_perfect,r.judgment_perfect_plus,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 g.gameplay_hash,g.gameplay_hash_version,
 r.input_count,r.hit_context_count,coalesce(length(a.input_csv),0),coalesce(length(a.hit_context_csv),0),
@@ -334,36 +341,40 @@ LEFT JOIN replay_artifacts a ON a.run_id=r.id";
       EffectivePitch = DbValue.NullableFloat(r, 14),
       XAccuracy = DbValue.NullableFloat(r, 15),
       JudgmentDifficulty = ReadDifficulty(r, 16),
+      JudgmentSystem = (RunJudgmentSystem)r.GetInt32(17),
       JudgmentCounts = new JudgmentCounts
       {
-        Overload = r.GetInt32(17),
-        TooEarly = r.GetInt32(18),
-        Early = r.GetInt32(19),
-        EarlyPerfect = r.GetInt32(20),
-        Perfect = r.GetInt32(21),
-        LatePerfect = r.GetInt32(22),
-        Late = r.GetInt32(23),
-        TooLate = r.GetInt32(24),
-        Miss = r.GetInt32(25),
+        Overload = r.GetInt32(18),
+        TooEarly = r.GetInt32(19),
+        Early = r.GetInt32(20),
+        EarlyPerfect = r.GetInt32(21),
+        Perfect = r.GetInt32(22),
+        PerfectMinus = r.GetInt32(23),
+        XPerfect = r.GetInt32(24),
+        PerfectPlus = r.GetInt32(25),
+        LatePerfect = r.GetInt32(26),
+        Late = r.GetInt32(27),
+        TooLate = r.GetInt32(28),
+        Miss = r.GetInt32(29),
       },
-      GameplayHash = r.IsDBNull(26) ? null : (byte[])r.GetValue(26),
-      GameplayHashVersion = DbValue.NullableInt(r, 27),
-      InputCount = r.GetInt32(28),
-      HitContextCount = r.GetInt32(29),
-      InputCsvBytes = r.GetInt64(30),
-      HitContextCsvBytes = r.GetInt64(31),
+      GameplayHash = r.IsDBNull(30) ? null : (byte[])r.GetValue(30),
+      GameplayHashVersion = DbValue.NullableInt(r, 31),
+      InputCount = r.GetInt32(32),
+      HitContextCount = r.GetInt32(33),
+      InputCsvBytes = r.GetInt64(34),
+      HitContextCsvBytes = r.GetInt64(35),
       ReplayUnavailableReason = ResolveReplayUnavailableReason(
-        DbValue.NullableString(r, 32),
-        !r.IsDBNull(33),
-        DbValue.NullableString(r, 34),
-        r.IsDBNull(35) ? 0 : r.GetInt32(35)
+        DbValue.NullableString(r, 36),
+        !r.IsDBNull(37),
+        DbValue.NullableString(r, 38),
+        r.IsDBNull(39) ? 0 : r.GetInt32(39)
       ),
       ReplayPlayable =
-        string.IsNullOrWhiteSpace(DbValue.NullableString(r, 32))
-        && !r.IsDBNull(33)
-        && string.Equals(DbValue.NullableString(r, 34), ReplayFormat.EngineId, System.StringComparison.Ordinal)
-        && !r.IsDBNull(35)
-        && r.GetInt32(35) == ReplayFormat.FormatVersion,
+        string.IsNullOrWhiteSpace(DbValue.NullableString(r, 36))
+        && !r.IsDBNull(37)
+        && string.Equals(DbValue.NullableString(r, 38), ReplayFormat.EngineId, System.StringComparison.Ordinal)
+        && !r.IsDBNull(39)
+        && r.GetInt32(39) == ReplayFormat.FormatVersion,
     };
 
   private static string ResolveReplayUnavailableReason(
