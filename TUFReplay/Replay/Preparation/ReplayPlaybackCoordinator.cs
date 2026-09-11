@@ -137,6 +137,8 @@ public static partial class ReplayPlaybackCoordinator
       {
         if (run == null)
           throw new InvalidDataException("The calibration replay is unavailable.");
+        if (!ValidateReplayArtifact(run, out _, out string validationMessage))
+          throw new InvalidDataException(validationMessage);
         ReplayMetadata meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
         if (meta?.gameplayStartSongPosition == null)
           throw new InvalidDataException("The calibration replay timing metadata is missing.");

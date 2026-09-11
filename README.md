@@ -33,21 +33,21 @@ TUF auto-submitted passes now have a TUFReplay embed implementation in the TUF f
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
-The project preserves low-level play data and, for new recordings, the resolved margin of each accepted hit. The resolved margin lets timeline scrubbing rebuild ADOFAI's canonical judgment tracker exactly, while older recordings remain playable by deriving margins from their existing hit contexts. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
+Replay engine v2 preserves OS-native input, the resolved margin of every accepted hit, and its recorded timeline timestamp. Replays from the previous Skyhook-based engine remain visible as activity history after upgrading but are not playable. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
 ## Features
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, saving activity runs only after native input is captured.
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
-- Stores each run's judgment difficulty and compact per-judgment counts for activity inspection.
+- Stores each run's judgment difficulty and judgment system. Legacy and non-competitive runs keep the classic Perfect bucket, while modern competitive runs preserve Perfect−, X-Perfect, and Perfect+ separately.
 - Stores lean activity records, replay payloads, immutable level revisions, and recorder timezone context in SQLite. Level files themselves are never copied into the database; visits point to a shared level row containing its source, local path, and gameplay hash.
 - Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
 - Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash.
 - Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels open with path editing locked and continue directly into replay from the run's recorded start tile.
-- Stores a versioned gameplay hash so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. New records use SHA-256 hash v4, which treats the `.adofai` format version, run pitch, and hit-sound selection and volume as playback or serialization details rather than chart identity. On startup, verified v1-v3 rows are migrated and merged into v4; missing, changed, or unverifiable level files leave the original rows intact.
+- Stores SHA-256 gameplay hash v4 so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. Imported activity resolves its current hash lazily when the original level file is still available.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
 - Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved.
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
@@ -122,7 +122,7 @@ The build script:
 - Installs DLLs, native libraries, helpers, and assets under `Runtime/versions/<version>` while keeping settings and `Data/` at the mod root.
 - Copies the bundled microphone calibration chart, `calibration_old.ogg`, and its precomputed waveform into `Assets/calibration`; packaging fails if any calibration asset is missing.
 - On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
-- Runs the C# WAV, schema migration, incremental BLOB, and cascade tests on macOS.
+- Runs the C# WAV, schema-generation/reset, incremental BLOB, and replay-contract tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
 The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFReplay starts. A missing AdofaiIpc installation is downloaded and verified once per process. Disabled, outdated, install-failure, and load-failure states stop the TUFReplay core and are shown in the shared AdofaiIpc dependency dialog without changing the user's UMM setting. The TUFReplay update engine verifies the complete ZIP and stages its bundled bootstrap as `Trial`; that bootstrap is used on the next game launch. If the matching TUFReplay runtime fails to initialize, its bootstrap trial is discarded while the current runtime remains active.
@@ -164,7 +164,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. Beta.9 automatically installs the fixed dependency entrypoint for existing users, pauses TUFReplay for that session, and asks the user to reinstall only AdofaiIPC 0.3.0 before restarting the game. Later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Beta.10 adds the in-game replay timeline HUD with judgment markers, transport controls, scrubbing, and a draggable panel, and improves microphone timing calibration and replay synchronization. Beta.11 adds the automatic submission pipeline and a one-time web notice for replays recorded by the previous engine. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Version 0.2.0-beta.1 introduces replay engine `tufreplay.replay.v2`, payload format 1, the automatic submission pipeline, and a one-time web notice for records from the previous engine. The new activity database uses application ID `0x54554652` and schema version 1, while gameplay identity uses hash v4. Schema v15 activity and microphone records are imported while the source is preserved as `tufreplay.pre-0.2.sqlite`; replay payloads recorded by the previous engine are intentionally not imported. Schema v14 and earlier databases log a warning and are replaced with a fresh current database. App SemVer, activity schema, replay engine, replay payload, and gameplay hash versions are independent compatibility boundaries.
 
 ## Web Development
 
@@ -311,8 +311,10 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.1.0-beta.10",
-  "ProtocolVersion": 6,
+  "ModVersion": "0.2.0-beta.1",
+  "ProtocolVersion": 7,
+  "ReplayEngineId": "tufreplay.replay.v2",
+  "ReplayFormatVersion": 1,
   "ServerVersion": 1
 }
 ```

@@ -1,4 +1,3 @@
-using System;
 using Microsoft.Data.Sqlite;
 
 namespace TUFReplay.Activity.Migrations;
@@ -56,41 +55,37 @@ CREATE TABLE runs (
   effective_pitch REAL,
   x_accuracy REAL,
   judgment_difficulty INTEGER,
+  judgment_system INTEGER NOT NULL DEFAULT 0 CHECK(judgment_system IN (0,1,2)),
   judgment_overload INTEGER NOT NULL DEFAULT 0,
   judgment_too_early INTEGER NOT NULL DEFAULT 0,
   judgment_early INTEGER NOT NULL DEFAULT 0,
   judgment_early_perfect INTEGER NOT NULL DEFAULT 0,
   judgment_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_perfect_minus INTEGER NOT NULL DEFAULT 0,
+  judgment_x_perfect INTEGER NOT NULL DEFAULT 0,
+  judgment_perfect_plus INTEGER NOT NULL DEFAULT 0,
   judgment_late_perfect INTEGER NOT NULL DEFAULT 0,
   judgment_late INTEGER NOT NULL DEFAULT 0,
   judgment_too_late INTEGER NOT NULL DEFAULT 0,
   judgment_miss INTEGER NOT NULL DEFAULT 0,
   input_count INTEGER NOT NULL DEFAULT 0,
   hit_context_count INTEGER NOT NULL DEFAULT 0,
-  input_csv BLOB NOT NULL DEFAULT X'',
-  hit_context_csv BLOB NOT NULL DEFAULT X'',
   submission_run_id TEXT,
-  meta_json TEXT NOT NULL DEFAULT '{}',
-  UNIQUE(level_session_id, run_index)
+  replay_unavailable_reason TEXT,
+  UNIQUE(level_session_id, run_index),
+  CHECK(replay_unavailable_reason IS NULL OR replay_unavailable_reason IN (
+    'legacy_engine','capture_incomplete','unsupported_engine','unsupported_format','payload_missing'
+  ))
 );
-CREATE TABLE microphone_recordings (
+CREATE TABLE replay_artifacts (
   run_id TEXT PRIMARY KEY REFERENCES runs(id) ON DELETE CASCADE,
-  audio_wav BLOB NOT NULL,
-  format TEXT NOT NULL,
-  sample_rate INTEGER NOT NULL,
-  channels INTEGER NOT NULL,
-  frame_count INTEGER NOT NULL,
-  device_id TEXT,
-  capture_start_offset_us INTEGER NOT NULL DEFAULT 0,
-  is_permanent INTEGER NOT NULL DEFAULT 0,
-  expires_at_utc TEXT
-);
-CREATE TABLE gameplay_hash_migration_attempts (
-  level_id TEXT PRIMARY KEY REFERENCES levels(id) ON DELETE CASCADE,
-  file_size INTEGER,
-  file_modified_utc_ticks INTEGER,
-  result TEXT NOT NULL,
-  attempted_at_utc TEXT NOT NULL
+  engine_id TEXT NOT NULL,
+  format_version INTEGER NOT NULL,
+  input_count INTEGER NOT NULL,
+  hit_context_count INTEGER NOT NULL,
+  input_csv BLOB NOT NULL,
+  hit_context_csv BLOB NOT NULL,
+  metadata_json TEXT NOT NULL
 );
 CREATE INDEX idx_app_sessions_page ON app_sessions(started_at_utc DESC,id);
 CREATE INDEX idx_level_sessions_app ON level_sessions(app_session_id,opened_at_utc,id);
@@ -98,7 +93,8 @@ CREATE INDEX idx_level_sessions_level ON level_sessions(level_id,opened_at_utc,i
 CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
 CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
 CREATE UNIQUE INDEX idx_runs_submission_run_id ON runs(submission_run_id) WHERE submission_run_id IS NOT NULL;
-PRAGMA user_version = 16;";
+PRAGMA application_id = 1414874706;
+PRAGMA user_version = 1;";
     command.ExecuteNonQuery();
   }
 }

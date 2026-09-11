@@ -11,6 +11,7 @@ using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Timing;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
+using TUFReplay.Replay.Preparation;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
 using UnityEngine;
@@ -138,12 +139,19 @@ public sealed class MicrophoneCalibrationFeature
       return;
     }
 
-    ReplayMetadata metadata = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
+    StoredReplayRun storedRun = ToStoredReplayRun(run);
+    if (!ReplayPlaybackCoordinator.ValidateReplayArtifact(storedRun, out _, out string validationMessage))
+    {
+      OnRunDiscarded(recording, validationMessage);
+      return;
+    }
+
+    ReplayMetadata metadata = JsonConvert.DeserializeObject<ReplayMetadata>(storedRun.MetaJson);
     double durationMs = Math.Max(1d, (metadata?.terminalTimeUs ?? 0L) / 1000d);
-    _preview.SetSource(ToStoredReplayRun(run), recording);
+    _preview.SetSource(storedRun, recording);
     _state.Update(MicrophoneCalibrationStates.Processing, "Building calibration waveforms.");
     string operationId = GetStatus().OperationId;
-    byte[] inputCsv = run.InputCsv;
+    byte[] inputCsv = storedRun.InputCsv;
     ThreadPool.QueueUserWorkItem(_ => BuildWaveforms(operationId, recording, inputCsv, durationMs));
   }
 
@@ -266,9 +274,11 @@ public sealed class MicrophoneCalibrationFeature
       StartTile = run.StartTile,
       LastTile = run.LastTile,
       Result = run.Result,
-      InputCsv = run.InputCsv,
-      HitContextCsv = run.HitContextCsv,
-      MetaJson = run.MetaJson,
+      InputCsv = run.ReplayArtifact?.InputCsv,
+      HitContextCsv = run.ReplayArtifact?.HitContextCsv,
+      MetaJson = run.ReplayArtifact?.MetadataJson,
+      EngineId = run.ReplayArtifact?.EngineId,
+      FormatVersion = run.ReplayArtifact?.FormatVersion ?? 0,
       GameplayHash = run.GameplayHash,
       GameplayHashVersion = run.GameplayHashVersion,
       JudgmentDifficulty = run.JudgmentDifficulty,

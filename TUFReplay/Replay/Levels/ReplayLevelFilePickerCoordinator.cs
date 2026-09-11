@@ -53,6 +53,8 @@ public static class ReplayLevelFilePickerCoordinator
     StoredReplayRun run = RunRepository.GetReplayRun(runId);
     if (run == null)
       return Error(runId, "run_not_found", "The recorded run was not found.");
+    if (!ReplayPlaybackCoordinator.ValidateReplayArtifact(run, out string code, out string message))
+      return Error(runId, code, message);
 
     PickOperation operation;
     lock (Gate)
@@ -253,11 +255,9 @@ public static class ReplayLevelFilePickerCoordinator
     if (!TryResolveReferenceHash(run, out byte[] referenceHash, out string errorCode, out string errorMessage))
       return Error(run.Id, errorCode, errorMessage);
 
-    int hashVersion = run.GameplayHashVersion ?? GameplayChartHash.Version;
     if (
       !GameplayChartHash.TryLoadCustomLevel(
         canonicalPath,
-        hashVersion,
         out ADOFAI.LevelData selectedLevelData,
         out byte[] selectedHash,
         out string hashError
@@ -267,10 +267,6 @@ public static class ReplayLevelFilePickerCoordinator
 
     if (
       !GameplayChartHash.Equals(referenceHash, selectedHash)
-      && !(
-        run.GameplayHashVersion == 3
-        && GameplayChartHash.MatchesVersion3IgnoringLevelVersion(referenceHash, selectedLevelData)
-      )
       && !ReplayLevelHashValidator.MatchesVerifiedOriginalSemantics(run, referenceHash, selectedLevelData)
     )
     {

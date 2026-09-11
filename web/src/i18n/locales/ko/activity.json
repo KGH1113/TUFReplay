@@ -125,6 +125,13 @@
     "playing": "재생 중",
     "playReplay": "리플레이 재생",
     "playReplayForRun": "플레이 {{runIndex}} 리플레이 재생",
+    "replayUnavailable": {
+      "legacy_engine": "이 플레이는 이전 리플레이 엔진으로 녹화되었습니다.",
+      "capture_incomplete": "이 플레이의 리플레이 녹화가 완전하지 않습니다.",
+      "unsupported_engine": "지원하지 않는 리플레이 엔진으로 녹화되었습니다.",
+      "unsupported_format": "지원하지 않는 리플레이 형식입니다.",
+      "payload_missing": "이 플레이의 리플레이 데이터가 없습니다."
+    },
     "sortBy": "정렬 기준",
     "ascending": "오름차순 정렬",
     "descending": "내림차순 정렬"
@@ -135,6 +142,9 @@
     "Early": "빠름",
     "EarlyPerfect": "약간빠름",
     "Perfect": "정확",
+    "PerfectMinus": "정확−",
+    "XPerfect": "X-정확",
+    "PerfectPlus": "정확+",
     "LatePerfect": "약간느림",
     "Late": "느림",
     "TooLate": "매우느림",

@@ -65,6 +65,7 @@ export interface ActivityRun {
   EffectivePitch: number | null;
   XAccuracy: number | null;
   JudgmentDifficulty: JudgmentDifficulty | null;
+  JudgmentSystem: JudgmentSystem;
   JudgmentCounts: ActivityJudgmentCounts;
   InputCount: number;
   HitContextCount: number;
@@ -79,6 +80,14 @@ export interface ActivityRun {
   MicrophoneRecordingPermanent: boolean;
   MicrophoneRecordingExpiresAtUtc: string | null;
   SubmissionRunId: string | null;
+  ReplayPlayable: boolean;
+  ReplayUnavailableReason:
+    | "legacy_engine"
+    | "capture_incomplete"
+    | "unsupported_engine"
+    | "unsupported_format"
+    | "payload_missing"
+    | null;
 }
 
 export interface MicrophoneRecordingDeleteResult {
@@ -97,6 +106,7 @@ export interface MicrophoneRecordingKeepResult {
 }
 
 export type JudgmentDifficulty = "Lenient" | "Normal" | "Strict";
+export type JudgmentSystem = "Legacy" | "ModernClassic" | "ModernCompetitive";
 
 export interface ActivityJudgmentCounts {
   Overload: number;
@@ -104,6 +114,9 @@ export interface ActivityJudgmentCounts {
   Early: number;
   EarlyPerfect: number;
   Perfect: number;
+  PerfectMinus: number;
+  XPerfect: number;
+  PerfectPlus: number;
   LatePerfect: number;
   Late: number;
   TooLate: number;

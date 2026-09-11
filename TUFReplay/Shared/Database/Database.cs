@@ -1,6 +1,7 @@
 using System.IO;
 using System.Threading;
 using Microsoft.Data.Sqlite;
+using TUFReplay.Activity.Migrations;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Shared.Database;
 
@@ -20,22 +21,20 @@ public static class Database
     string dir = Path.Combine(Main.Instance.InstallPath, "Data");
     Directory.CreateDirectory(dir);
     DbPath = Path.Combine(dir, "tufreplay.sqlite");
+    string migratingPath = Path.Combine(dir, "tufreplay.0.2.migrating.sqlite");
+    string backupPath = Path.Combine(dir, "tufreplay.pre-0.2.sqlite");
+    string microphonePath = Path.Combine(dir, "tufreplay.microphones.sqlite");
 
+    MicrophoneDatabase.Initialize(microphonePath);
+    LegacyActivityDatabaseTransition.EnsureCurrent(
+      DbPath,
+      migratingPath,
+      backupPath,
+      message => Main.Instance?.Log(message)
+    );
     using (SqliteConnection connection = OpenConnection())
       DatabaseSchema.Ensure(connection);
-    MicrophoneDatabase.Initialize(Path.Combine(dir, "tufreplay.microphones.sqlite"));
-    int migrated = MicrophoneRecordingRepository.MigrateLegacyRecordings();
-    if (migrated > 0)
-    {
-      try
-      {
-        MicrophoneRecordingRepository.ReclaimLegacyStorage();
-      }
-      catch (SqliteException exception)
-      {
-        Main.Instance?.Log("[Microphone] Legacy database compaction was deferred. error=" + exception.Message);
-      }
-    }
+    MicrophoneRecordingRepository.ImportEmbeddedLegacyRecordings(backupPath);
     MicrophoneRecordingRepository.DeleteOrphans();
   }
 

@@ -143,12 +143,19 @@ WHERE run_id IN ("
     }
   }
 
-  public static int MigrateLegacyRecordings()
+  public static int ImportEmbeddedLegacyRecordings(string legacyActivityPath)
   {
-    int migrated = 0;
-    while (TryReadLegacyRecording(out LegacyRecording legacy))
+    if (string.IsNullOrWhiteSpace(legacyActivityPath) || !File.Exists(legacyActivityPath))
+      return 0;
+    string sourceKey = Path.GetFullPath(legacyActivityPath);
+    if (LegacyImportCompleted(sourceKey))
+      return 0;
+
+    List<LegacyRecording> recordings = ReadEmbeddedLegacyRecordings(legacyActivityPath);
+    int imported = 0;
+    foreach (LegacyRecording legacy in recordings)
     {
-      using SqliteConnection sourceConnection = DatabaseStore.OpenConnection();
+      using SqliteConnection sourceConnection = OpenDatabase(legacyActivityPath);
       using SqliteConnection destinationConnection = AudioDatabase.OpenConnection();
       using SqliteTransaction destinationTransaction = destinationConnection.BeginTransaction();
       long destinationRowId;
@@ -156,10 +163,9 @@ WHERE run_id IN ("
       {
         insert.Transaction = destinationTransaction;
         insert.CommandText =
-          @"INSERT OR REPLACE INTO microphone_recordings(
+          @"INSERT OR IGNORE INTO microphone_recordings(
 run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,is_permanent,expires_at_utc
-) VALUES(@run,zeroblob(@length),@format,@rate,@channels,@frames,@device,@offset,@permanent,@expires);
-SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
+) VALUES(@run,zeroblob(@length),@format,@rate,@channels,@frames,@device,@offset,@permanent,@expires);";
         insert.Parameters.AddWithValue("@run", legacy.RunId);
         insert.Parameters.AddWithValue("@length", legacy.ByteLength);
         insert.Parameters.AddWithValue("@format", legacy.Format);
@@ -170,7 +176,18 @@ SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
         insert.Parameters.AddWithValue("@offset", legacy.CaptureStartOffsetUs);
         insert.Parameters.AddWithValue("@permanent", legacy.IsPermanent ? 1 : 0);
         insert.Parameters.AddWithValue("@expires", (object)legacy.ExpiresAtUtc ?? DBNull.Value);
-        destinationRowId = Convert.ToInt64(insert.ExecuteScalar());
+        if (insert.ExecuteNonQuery() == 0)
+        {
+          destinationTransaction.Rollback();
+          continue;
+        }
+      }
+      using (SqliteCommand select = destinationConnection.CreateCommand())
+      {
+        select.Transaction = destinationTransaction;
+        select.CommandText = "SELECT rowid FROM microphone_recordings WHERE run_id=@run";
+        select.Parameters.AddWithValue("@run", legacy.RunId);
+        destinationRowId = Convert.ToInt64(select.ExecuteScalar());
       }
 
       long copied;
@@ -186,25 +203,12 @@ SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
       )
         copied = CopyBlob(source, destination);
       if (copied != legacy.ByteLength)
-        throw new InvalidDataException("The migrated microphone BLOB length is invalid.");
+        throw new InvalidDataException("The imported microphone BLOB length is invalid.");
       destinationTransaction.Commit();
-
-      using SqliteCommand delete = sourceConnection.CreateCommand();
-      delete.CommandText = "DELETE FROM microphone_recordings WHERE rowid=@rowid AND run_id=@run";
-      delete.Parameters.AddWithValue("@rowid", legacy.RowId);
-      delete.Parameters.AddWithValue("@run", legacy.RunId);
-      delete.ExecuteNonQuery();
-      migrated++;
+      imported++;
     }
-    return migrated;
-  }
-
-  public static void ReclaimLegacyStorage()
-  {
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
-    using SqliteCommand command = connection.CreateCommand();
-    command.CommandText = "VACUUM";
-    command.ExecuteNonQuery();
+    MarkLegacyImportCompleted(sourceKey);
+    return imported;
   }
 
   public static int DeleteOrphans()
@@ -371,18 +375,15 @@ LIMIT 1";
       File.Delete(path);
   }
 
-  private static bool TryReadLegacyRecording(out LegacyRecording recording)
+  private static List<LegacyRecording> ReadEmbeddedLegacyRecordings(string path)
   {
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
+    using SqliteConnection connection = OpenDatabase(path);
     using (SqliteCommand exists = connection.CreateCommand())
     {
       exists.CommandText =
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='microphone_recordings')";
       if (Convert.ToInt32(exists.ExecuteScalar()) == 0)
-      {
-        recording = null;
-        return false;
-      }
+        return new List<LegacyRecording>();
     }
 
     using SqliteCommand command = connection.CreateCommand();
@@ -390,29 +391,63 @@ LIMIT 1";
       @"SELECT rowid,run_id,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,
 is_permanent,expires_at_utc,length(audio_wav)
 FROM microphone_recordings
-ORDER BY rowid
-LIMIT 1";
+ORDER BY rowid";
+    var recordings = new List<LegacyRecording>();
     using SqliteDataReader reader = command.ExecuteReader();
-    if (!reader.Read())
+    while (reader.Read())
     {
-      recording = null;
-      return false;
+      recordings.Add(
+        new LegacyRecording
+        {
+          RowId = reader.GetInt64(0),
+          RunId = reader.GetString(1),
+          Format = reader.GetString(2),
+          SampleRate = reader.GetInt32(3),
+          Channels = reader.GetInt32(4),
+          FrameCount = reader.GetInt64(5),
+          DeviceId = reader.IsDBNull(6) ? null : reader.GetString(6),
+          CaptureStartOffsetUs = reader.GetInt64(7),
+          IsPermanent = reader.GetInt32(8) != 0,
+          ExpiresAtUtc = reader.IsDBNull(9) ? null : reader.GetString(9),
+          ByteLength = reader.GetInt64(10),
+        }
+      );
     }
-    recording = new LegacyRecording
-    {
-      RowId = reader.GetInt64(0),
-      RunId = reader.GetString(1),
-      Format = reader.GetString(2),
-      SampleRate = reader.GetInt32(3),
-      Channels = reader.GetInt32(4),
-      FrameCount = reader.GetInt64(5),
-      DeviceId = reader.IsDBNull(6) ? null : reader.GetString(6),
-      CaptureStartOffsetUs = reader.GetInt64(7),
-      IsPermanent = reader.GetInt32(8) != 0,
-      ExpiresAtUtc = reader.IsDBNull(9) ? null : reader.GetString(9),
-      ByteLength = reader.GetInt64(10),
-    };
-    return true;
+    return recordings;
+  }
+
+  private static SqliteConnection OpenDatabase(string path)
+  {
+    // Legacy activity databases use WAL mode. After the main database is moved to its
+    // preserved backup path, SQLite may need to create fresh -wal/-shm sidecars before
+    // it can read the otherwise clean database. A read-only open fails with SQLITE_CANTOPEN
+    // in that state, so allow the open and then prohibit SQL writes on the connection.
+    var connection = new SqliteConnection("Data Source=" + path + ";Mode=ReadWrite;Default Timeout=5;Pooling=False");
+    connection.Open();
+    using SqliteCommand queryOnly = connection.CreateCommand();
+    queryOnly.CommandText = "PRAGMA query_only=ON";
+    queryOnly.ExecuteNonQuery();
+    return connection;
+  }
+
+  private static bool LegacyImportCompleted(string sourcePath)
+  {
+    using SqliteConnection connection = AudioDatabase.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT 1 FROM microphone_legacy_imports WHERE source_path=@path LIMIT 1";
+    command.Parameters.AddWithValue("@path", sourcePath);
+    return command.ExecuteScalar() != null;
+  }
+
+  private static void MarkLegacyImportCompleted(string sourcePath)
+  {
+    using SqliteConnection connection = AudioDatabase.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      "INSERT OR IGNORE INTO microphone_legacy_imports(source_path,completed_at_utc) VALUES(@path,@completed)";
+    command.Parameters.AddWithValue("@path", sourcePath);
+    command.Parameters.AddWithValue("@completed", DateTime.UtcNow.ToString("O"));
+    command.ExecuteNonQuery();
   }
 
   private static long CopyBlob(Stream source, Stream destination)

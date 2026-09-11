@@ -17,6 +17,7 @@ import { RunNoFailIcon } from "@/components/activity/run-no-fail-icon";
 import { formatTimeWithOffsetParts } from "@/models/activity/activity-date";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { translatedDomainError } from "@/models/activity/localized-error";
+import { replayButtonState } from "@/models/activity/replay-button-state";
 import { formatXAccuracy } from "@/models/activity/x-accuracy";
 import type { ReplayStatus } from "@/models/replay/replay-model";
 import { cn } from "@/shared/lib/cn";
@@ -105,7 +106,7 @@ export const RunCard = memo(function RunCard({
         className="block w-full rounded-b-md p-3 pt-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
       >
         <RunCardContent run={run} timeZone={timeZone} />
-        <RunJudgmentStrip counts={run.judgmentCounts} />
+        <RunJudgmentStrip counts={run.judgmentCounts} judgmentSystem={run.judgmentSystem} />
       </button>
     </div>
   );
@@ -232,7 +233,12 @@ function RunReplayButton({
 }) {
   const { t: activityT } = useTranslation("activity");
   const { t: replayT } = useTranslation("replay");
-  const message = describeReplay(run.id, status, pendingRunId, error, errorRunId, replayT);
+  const unavailableMessage = run.replayUnavailableReason
+    ? activityT(`run.replayUnavailable.${run.replayUnavailableReason}`)
+    : null;
+  const buttonState = replayButtonState(run, disabled, pendingRunId !== null);
+  const message =
+    unavailableMessage ?? describeReplay(run.id, status, pendingRunId, error, errorRunId, replayT);
   const statusMatches = status.runId === run.id;
   const starting =
     pendingRunId === run.id ||
@@ -261,30 +267,35 @@ function RunReplayButton({
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button
-          type="button"
-          aria-label={label}
-          aria-disabled={disabled || pendingRunId !== null}
-          disabled={disabled}
-          onClick={() => !disabled && pendingRunId === null && onPlay(run)}
-          className={cn(
-            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-xs font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:cursor-wait aria-disabled:opacity-45",
-            "min-w-16",
-            (starting || playing) && "border-primary/70 bg-primary/25",
-            playing && "bg-primary text-primary-foreground shadow-sm shadow-primary/20",
-            failureVisible &&
-              "border-destructive/50 bg-destructive/10 text-destructive shadow-none hover:border-destructive/70 hover:bg-destructive/15",
-          )}
-        >
-          <HugeiconsIcon
-            aria-hidden="true"
-            icon={starting ? Loading03Icon : PlayIcon}
-            className={cn("size-4", starting && "animate-spin")}
-            fill={starting ? "none" : "currentColor"}
-            strokeWidth={starting ? 2.2 : 0}
-          />
-          <span>{playing ? activityT("run.playing") : activityT("run.play")}</span>
-        </button>
+        <span className="inline-flex" tabIndex={buttonState.tooltipTabIndex}>
+          {buttonState.permanentlyUnavailable ? <span className="sr-only">{label}</span> : null}
+          <button
+            type="button"
+            aria-label={label}
+            aria-disabled={buttonState.ariaDisabled}
+            disabled={buttonState.disabled}
+            onClick={() => !buttonState.ariaDisabled && onPlay(run)}
+            className={cn(
+              "inline-flex h-8 min-w-16 items-center justify-center gap-1.5 rounded-md border border-primary/40 bg-primary/15 px-2 font-heading text-xs font-semibold tracking-wide text-primary shadow-[inset_0_1px_0_rgb(255_255_255/0.05)] transition-[color,background-color,border-color,box-shadow,transform,opacity] hover:border-primary/70 hover:bg-primary/25 hover:shadow-sm hover:shadow-primary/10 active:translate-y-px focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background aria-disabled:opacity-45",
+              buttonState.cursor === "not-allowed" && "disabled:cursor-not-allowed",
+              buttonState.cursor === "default" && "disabled:cursor-default",
+              buttonState.cursor === "wait" && "cursor-wait",
+              (starting || playing) && "border-primary/70 bg-primary/25",
+              playing && "bg-primary text-primary-foreground shadow-sm shadow-primary/20",
+              failureVisible &&
+                "border-destructive/50 bg-destructive/10 text-destructive shadow-none hover:border-destructive/70 hover:bg-destructive/15",
+            )}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={starting ? Loading03Icon : PlayIcon}
+              className={cn("size-4", starting && "animate-spin")}
+              fill={starting ? "none" : "currentColor"}
+              strokeWidth={starting ? 2.2 : 0}
+            />
+            <span>{playing ? activityT("run.playing") : activityT("run.play")}</span>
+          </button>
+        </span>
       </TooltipTrigger>
       <TooltipContent side="top" align="end">
         {message || activityT("run.playReplay")}

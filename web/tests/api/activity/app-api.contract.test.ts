@@ -30,18 +30,22 @@ describe("layered AppApi contract", () => {
       clientsWith(() => ({
         Ok: true,
         Mod: "TUFReplay",
-        ModVersion: "0.1.0",
+        ModVersion: "0.2.0-beta.1",
         ProtocolVersion: SUPPORTED_PROTOCOL_VERSION,
         ServerVersion: 1,
+        ReplayEngineId: "tufreplay.replay.v2",
+        ReplayFormatVersion: 1,
       })),
     );
 
     expect(await api.get()).toEqual({
       ok: true,
       mod: "TUFReplay",
-      modVersion: "0.1.0",
+      modVersion: "0.2.0-beta.1",
       protocolVersion: SUPPORTED_PROTOCOL_VERSION,
       serverVersion: 1,
+      replayEngineId: "tufreplay.replay.v2",
+      replayFormatVersion: 1,
     });
   });
 
@@ -53,6 +57,8 @@ describe("layered AppApi contract", () => {
         ModVersion: "0.2.0",
         ProtocolVersion: SUPPORTED_PROTOCOL_VERSION + 1,
         ServerVersion: 1,
+        ReplayEngineId: "tufreplay.replay.v2",
+        ReplayFormatVersion: 1,
       })),
     );
     const malformed = createHealthApi(clientsWith(() => ({ ProtocolVersion: "6" })));

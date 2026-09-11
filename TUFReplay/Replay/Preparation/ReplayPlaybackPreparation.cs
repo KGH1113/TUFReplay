@@ -108,6 +108,8 @@ public static partial class ReplayPlaybackCoordinator
     StoredReplayRun run = RunRepository.GetReplayRun(runId);
     if (run == null)
       return Error("run_not_found", "The recorded run was not found.", out errorCode, out errorMessage);
+    if (!ValidateReplayArtifact(run, out errorCode, out errorMessage))
+      return false;
 
     string playbackLevelPath = LevelPathIdentity.Canonicalize(
       string.IsNullOrWhiteSpace(requestedLevelPath) ? run.LevelPath : requestedLevelPath
@@ -125,29 +127,27 @@ public static partial class ReplayPlaybackCoordinator
       return Error("metadata_invalid", "Replay metadata could not be parsed.", out errorCode, out errorMessage);
     }
 
-    if (!HasCurrentNativeInputFormat(meta))
-      return Error(
-        "input_migration_required",
-        "This replay uses a legacy input format and must be migrated before playback.",
-        out errorCode,
-        out errorMessage
-      );
     if (!meta.gameplayStartSongPosition.HasValue)
       return Error("metadata_invalid", "Replay gameplay timing metadata is missing.", out errorCode, out errorMessage);
     if (!ValidateNativePlatform(meta, run.InputCsv, out errorCode, out errorMessage))
       return false;
 
-    List<RecordedInput> parsedInputs = ReplayInputParser.Parse(run.InputCsv);
-    List<RecordedInput> inputs = NativeInputKeyCodeMapper.NormalizeForPlayback(parsedInputs, meta, out int dropped);
-    List<ReplayHitContext> hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
-    if (
-      (run.InputCsv?.Length > 0 && parsedInputs.Count == 0) || (run.HitContextCsv?.Length > 0 && hitContexts.Count == 0)
-    )
+    List<RecordedInput> parsedInputs;
+    List<ReplayHitContext> hitContexts;
+    try
+    {
+      parsedInputs = ReplayInputParser.Parse(run.InputCsv);
+      hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
+    }
+    catch (InvalidDataException)
+    {
       return Error("payload_invalid", "Replay payload data is malformed.", out errorCode, out errorMessage);
+    }
+    List<RecordedInput> inputs = NativeInputKeyCodeMapper.NormalizeForPlayback(parsedInputs, meta, out int dropped);
     if (inputs.Count == 0 && hitContexts.Count == 0)
       return Error("payload_empty", "This run has no replay data.", out errorCode, out errorMessage);
     if (dropped > 0)
-      Main.Instance?.Log("[Replay] Dropped legacy input keys during normalization. count=" + dropped);
+      Main.Instance?.Log("[Replay] Dropped unmappable cross-platform input keys. count=" + dropped);
 
     if (run.StartTile < 0)
       return Error("start_tile_invalid", "The recorded start tile is invalid.", out errorCode, out errorMessage);
@@ -160,17 +160,39 @@ public static partial class ReplayPlaybackCoordinator
     return true;
   }
 
-  internal static bool HasCurrentNativeInputFormat(ReplayMetadata meta)
+  internal static bool ValidateReplayArtifact(StoredReplayRun run, out string errorCode, out string errorMessage)
   {
-    return meta != null
-      && meta.formatVersion == 3
-      && string.Equals(meta.inputFormat, RecordedRunPayload.NativeInputFormatV2, StringComparison.Ordinal)
-      && string.Equals(meta.inputTimeBase, ReplayInputTimeBases.Hybrid, StringComparison.Ordinal)
-      && string.Equals(meta.inputKeySpace, NativeInputKeyCodeMapper.NativeKeySpace, StringComparison.OrdinalIgnoreCase)
-      && !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
-      && !string.IsNullOrWhiteSpace(meta.inputCapture)
-      && meta.inputCapture.IndexOf("skyhook", StringComparison.OrdinalIgnoreCase) < 0
-      && meta.inputCapture.IndexOf("polling", StringComparison.OrdinalIgnoreCase) < 0;
+    errorCode = null;
+    errorMessage = null;
+    if (!string.IsNullOrWhiteSpace(run?.ReplayUnavailableReason))
+      return Error(
+        run.ReplayUnavailableReason,
+        "This run does not contain a playable replay for the current engine.",
+        out errorCode,
+        out errorMessage
+      );
+    if (run?.InputCsv == null || run.HitContextCsv == null || run.MetaJson == null)
+      return Error(
+        ReplayUnavailableReasons.PayloadMissing,
+        "Replay payload data is missing.",
+        out errorCode,
+        out errorMessage
+      );
+    if (!string.Equals(run.EngineId, ReplayFormat.EngineId, StringComparison.Ordinal))
+      return Error(
+        ReplayUnavailableReasons.UnsupportedEngine,
+        "This replay uses an unsupported engine.",
+        out errorCode,
+        out errorMessage
+      );
+    if (run.FormatVersion != ReplayFormat.FormatVersion)
+      return Error(
+        ReplayUnavailableReasons.UnsupportedFormat,
+        "This replay uses an unsupported format.",
+        out errorCode,
+        out errorMessage
+      );
+    return true;
   }
 
   private static void BeginOnMainThread(PendingReplay operation)
@@ -374,25 +396,19 @@ public static partial class ReplayPlaybackCoordinator
     errorMessage = null;
     if (inputCsv == null || inputCsv.Length == 0)
       return true;
-    if (!string.Equals(meta.inputKeySpace, NativeInputKeyCodeMapper.NativeKeySpace, StringComparison.OrdinalIgnoreCase))
-      return true;
+    if (
+      meta == null
+      || !string.Equals(meta.inputKeySpace, NativeInputKeyCodeMapper.NativeKeySpace, StringComparison.OrdinalIgnoreCase)
+      || string.IsNullOrWhiteSpace(meta.inputNativePlatform)
+      || string.IsNullOrWhiteSpace(meta.inputCapture)
+    )
+      return Error("metadata_invalid", "Replay native input metadata is missing.", out errorCode, out errorMessage);
 
     string current = CurrentPlatform();
     if (current == "unsupported")
       return Error(
         "native_input_unsupported",
         "Native replay input is not supported on this platform.",
-        out errorCode,
-        out errorMessage
-      );
-    if (
-      !string.IsNullOrWhiteSpace(meta.inputNativePlatform)
-      && !string.Equals(meta.inputNativePlatform, current, StringComparison.OrdinalIgnoreCase)
-      && !string.Equals(meta.inputFormat, RecordedRunPayload.NativeInputFormatV2, StringComparison.Ordinal)
-    )
-      return Error(
-        "native_platform_mismatch",
-        "This legacy replay was recorded on a different operating system.",
         out errorCode,
         out errorMessage
       );

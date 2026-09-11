@@ -27,8 +27,6 @@ public partial class RecordingFeature
   private RunRecord _currentRun;
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
-  private byte[] _legacyGameplayHash;
-  private int? _legacyGameplayHashVersion;
   private bool _microphoneCaptureStarted;
   private double? _microphoneCaptureStartedAt;
   private long _microphoneTimelineCorrectionUs;
@@ -286,17 +284,10 @@ public partial class RecordingFeature
   {
     _gameplayHash = null;
     _gameplayHashVersion = null;
-    _legacyGameplayHash = null;
-    _legacyGameplayHashVersion = null;
     if (GameplayChartHash.TryComputeCurrent(out byte[] hash, out string error))
     {
       _gameplayHash = hash;
       _gameplayHashVersion = GameplayChartHash.Version;
-      if (GameplayChartHash.TryComputeCurrent(2, out byte[] legacyHash, out _))
-      {
-        _legacyGameplayHash = legacyHash;
-        _legacyGameplayHashVersion = 2;
-      }
       return;
     }
 
