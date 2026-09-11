@@ -43,6 +43,12 @@ namespace TUFReplay.Unity.ReplayTimeline
     private Toggle[] categoryToggles;
 
     [SerializeField]
+    private CanvasGroup[] categoryVisuals;
+
+    [SerializeField]
+    private TMP_Text[] categoryCountLabels;
+
+    [SerializeField]
     private ReplayJudgmentKind[] categories;
 
     [SerializeField]
@@ -50,6 +56,7 @@ namespace TUFReplay.Unity.ReplayTimeline
 
     private bool interactionsBound;
     private bool isOpen;
+    private readonly int[] markerCounts = new int[9];
 
     public void Configure(
       RectTransform root,
@@ -62,6 +69,8 @@ namespace TUFReplay.Unity.ReplayTimeline
       TMP_Text selectedCountLabel,
       RectTransform dropdownChevron,
       Toggle[] toggles,
+      CanvasGroup[] optionVisuals,
+      TMP_Text[] optionCountLabels,
       ReplayJudgmentKind[] judgmentCategories,
       UIJudgmentMarkerGraphic markers
     )
@@ -78,14 +87,19 @@ namespace TUFReplay.Unity.ReplayTimeline
         buttonLabel.text = "Judgements";
       chevron = dropdownChevron;
       categoryToggles = toggles;
+      categoryVisuals = optionVisuals;
+      categoryCountLabels = optionCountLabels;
       categories = judgmentCategories;
       markerGraphic = markers;
+      RefreshMarkerCounts(null);
       ResetSelection();
     }
 
     public void SetMarkers(ReplayJudgmentMarker[] markers)
     {
       markerGraphic?.SetMarkers(markers);
+      RefreshMarkerCounts(markers);
+      RefreshFilter();
     }
 
     public void ResetSelection()
@@ -201,11 +215,17 @@ namespace TUFReplay.Unity.ReplayTimeline
 
       // Keep the popup attached to the trigger instead of to the movable panel's old left edge.
       float x = buttonTopRight.x - size.x * 0.5f;
-      float y = openBelow
-        ? buttonBottomLeft.y - PanelGap - size.y * 0.5f
-        : buttonTopLeft.y + PanelGap + size.y * 0.5f;
-      x = Mathf.Clamp(x, canvasBounds.xMin + ScreenMargin + size.x * 0.5f, canvasBounds.xMax - ScreenMargin - size.x * 0.5f);
-      y = Mathf.Clamp(y, canvasBounds.yMin + ScreenMargin + size.y * 0.5f, canvasBounds.yMax - ScreenMargin - size.y * 0.5f);
+      float y = openBelow ? buttonBottomLeft.y - PanelGap - size.y * 0.5f : buttonTopLeft.y + PanelGap + size.y * 0.5f;
+      x = Mathf.Clamp(
+        x,
+        canvasBounds.xMin + ScreenMargin + size.x * 0.5f,
+        canvasBounds.xMax - ScreenMargin - size.x * 0.5f
+      );
+      y = Mathf.Clamp(
+        y,
+        canvasBounds.yMin + ScreenMargin + size.y * 0.5f,
+        canvasBounds.yMax - ScreenMargin - size.y * 0.5f
+      );
       popup.anchoredPosition = new Vector2(x, y);
     }
 
@@ -221,7 +241,7 @@ namespace TUFReplay.Unity.ReplayTimeline
       int length = Mathf.Min(categoryToggles?.Length ?? 0, categories?.Length ?? 0);
       for (int index = 0; index < length; index++)
       {
-        if (categoryToggles[index] == null || !categoryToggles[index].isOn)
+        if (categoryToggles[index] == null || !categoryToggles[index].interactable || !categoryToggles[index].isOn)
           continue;
         count++;
         mask |= 1 << (int)categories[index];
@@ -229,6 +249,42 @@ namespace TUFReplay.Unity.ReplayTimeline
       if (markerGraphic != null)
         markerGraphic.VisibleMask = mask;
       UpdateButtonCount(count);
+    }
+
+    private void RefreshMarkerCounts(ReplayJudgmentMarker[] markers)
+    {
+      for (int index = 0; index < markerCounts.Length; index++)
+        markerCounts[index] = 0;
+
+      if (markers != null)
+      {
+        for (int index = 0; index < markers.Length; index++)
+        {
+          int judgmentIndex = (int)markers[index].judgment;
+          if (judgmentIndex >= 0 && judgmentIndex < markerCounts.Length)
+            markerCounts[judgmentIndex]++;
+        }
+      }
+
+      int length = Mathf.Min(categoryToggles?.Length ?? 0, categories?.Length ?? 0);
+      for (int index = 0; index < length; index++)
+      {
+        int judgmentIndex = (int)categories[index];
+        int markerCount = judgmentIndex >= 0 && judgmentIndex < markerCounts.Length ? markerCounts[judgmentIndex] : 0;
+        bool isAvailable = markerCount > 0;
+
+        Toggle toggle = categoryToggles[index];
+        if (toggle != null)
+        {
+          if (!isAvailable)
+            toggle.SetIsOnWithoutNotify(false);
+          toggle.interactable = isAvailable;
+        }
+        if (categoryVisuals != null && index < categoryVisuals.Length && categoryVisuals[index] != null)
+          categoryVisuals[index].alpha = isAvailable ? 1f : 0.38f;
+        if (categoryCountLabels != null && index < categoryCountLabels.Length && categoryCountLabels[index] != null)
+          categoryCountLabels[index].text = markerCount.ToString();
+      }
     }
 
     private void UpdateButtonCount(int count)

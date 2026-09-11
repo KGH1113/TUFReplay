@@ -24,6 +24,34 @@ enum MicrophoneCaptureSelfTest {
       throw CaptureError.message("JSON command protocol validation failed.")
     }
 
+    let authorizeCommand = try JSONDecoder().decode(
+      CommandRequest.self,
+      from: Data(#"{"command":"authorize"}"#.utf8)
+    )
+    guard authorizeCommand.command == CommandName.authorize.rawValue else {
+      throw CaptureError.message("Authorization request command validation failed.")
+    }
+
+    let authorizationCommand = try JSONDecoder().decode(
+      CommandRequest.self,
+      from: Data(#"{"command":"authorizationStatus"}"#.utf8)
+    )
+    guard authorizationCommand.command == CommandName.authorizationStatus.rawValue else {
+      throw CaptureError.message("Authorization status command validation failed.")
+    }
+
+    for status in MicrophoneAuthorizationStatus.allCases {
+      let encoded = try JsonLineCodec.encode(AuthorizationResponse(authorizationStatus: status))
+      guard
+        let data = encoded.data(using: .utf8),
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+        object["ok"] as? Bool == true,
+        object["authorizationStatus"] as? String == status.rawValue
+      else {
+        throw CaptureError.message("Authorization response encoding failed for \(status.rawValue).")
+      }
+    }
+
     try SocketTransportSelfTest.run()
 
     let path = FileManager.default.temporaryDirectory

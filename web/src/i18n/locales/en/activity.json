@@ -8,6 +8,14 @@
     "clears_one": "clear",
     "clears_other": "clears"
   },
+  "levels": {
+    "hiddenRuns_one": "1 run recorded before the level was edited is hidden.",
+    "hiddenRuns_other": "{{count}} runs recorded before the level was edited are hidden.",
+    "unavailableRuns_one": "This level was edited, so 1 run recorded on this day cannot be opened.",
+    "unavailableRuns_other": "This level was edited, so {{count}} runs recorded on this day cannot be opened.",
+    "unavailableTitle": "Runs unavailable",
+    "unavailableBody": "The levels played on this day were edited later, so these runs can no longer be opened."
+  },
   "connection": {
     "connectingTitle": "Connecting to TUFReplay…",
     "connectingDescription": "Checking the local ADOFAI connection.",
@@ -48,6 +56,12 @@
     ]
   },
   "empty": "No recorded activity yet.",
+  "legacyReplayNotice": {
+    "label": "Replay compatibility",
+    "title": "Older replay engine data found",
+    "description": "Replays made with the older engine cannot be played in this version. The new engine records key input more accurately and reliably.",
+    "confirm": "OK"
+  },
   "errors": {
     "load": "Could not load TUFReplay activity",
     "connect": "Could not connect to TUFReplay",
@@ -75,7 +89,9 @@
     "levelNumber": "Level #{{levelId}}",
     "tufDatabase": "TUF database",
     "localArtist": "Local · {{artist}}",
-    "tufArtist": "#{{levelId}} · {{artist}}",
+    "tufLevelLink": "TUF #{{levelId}}",
+    "openTufLevel": "Open TUF level page",
+    "openTufLevelLabel": "Open TUF level #{{levelId}} in a new tab",
     "chartBy": "Chart by {{creator}}"
   },
   "sort": {
@@ -110,6 +126,13 @@
     "playing": "Playing",
     "playReplay": "Play replay",
     "playReplayForRun": "Play replay for run {{runIndex}}",
+    "replayUnavailable": {
+      "legacy_engine": "This run was recorded with the previous replay engine.",
+      "capture_incomplete": "Replay capture was incomplete for this run.",
+      "unsupported_engine": "This run uses an unsupported replay engine.",
+      "unsupported_format": "This run uses an unsupported replay format.",
+      "payload_missing": "Replay data is missing for this run."
+    },
     "sortBy": "Sort by",
     "ascending": "Sort ascending",
     "descending": "Sort descending"
@@ -120,6 +143,9 @@
     "Early": "Early",
     "EarlyPerfect": "Early Perfect",
     "Perfect": "Perfect",
+    "PerfectMinus": "Perfect−",
+    "XPerfect": "X-Perfect",
+    "PerfectPlus": "Perfect+",
     "LatePerfect": "Late Perfect",
     "Late": "Late",
     "TooLate": "Too Late",

@@ -44,8 +44,9 @@ final class JsonLineCommandServer {
     case .devices:
       try transport.write(DevicesResponse(devices: service.devices()))
     case .authorize:
-      try service.authorize()
-      try transport.write(EmptyResponse())
+      try transport.write(AuthorizationResponse(authorizationStatus: try service.authorize()))
+    case .authorizationStatus:
+      try transport.write(AuthorizationResponse(authorizationStatus: try service.authorizationStatus()))
     case .arm:
       try service.arm(deviceId: request.deviceId)
       try transport.write(EmptyResponse())

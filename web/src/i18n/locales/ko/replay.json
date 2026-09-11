@@ -36,7 +36,7 @@
   },
   "errors": {
     "run_not_found": "선택한 플레이를 찾을 수 없습니다.",
-    "level_gameplay_modified": "선택한 레벨의 플레이 구성이 기록된 플레이와 일치하지 않습니다.",
+    "level_gameplay_modified": "이 플레이가 기록된 후 선택한 레벨이 수정되었을 수 있습니다.",
     "level_file_invalid": "선택한 레벨 파일이 올바르지 않습니다.",
     "calibration_operation_stale": "마이크 보정 작업이 더 이상 활성 상태가 아닙니다."
   }

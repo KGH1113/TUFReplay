@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using TMPro;
+using TUFReplay.Unity.Notifications;
 using TUFReplay.Unity.ReplayTimeline;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -28,6 +29,8 @@ namespace TUFReplay.Unity.Editor
     private static readonly Color AccentLight = Html("#BBF451");
     private static readonly Color AccentDeep = Html("#5EA500");
     private static readonly Color DarkIcon = Html("#35530E");
+    private static readonly Color WarningAccent = Html("#F2B84B");
+    private static readonly Color WarningAccentSoft = Html("#F2B84B24");
 
     [MenuItem("Tools/TUFReplay/Rebuild Replay Timeline Prototype")]
     public static void Rebuild()
@@ -77,6 +80,8 @@ namespace TUFReplay.Unity.Editor
         .GetComponent<ReplayTimelinePreviewDriver>()
         .Configure(connectedRoot.GetComponent<ReplayTimelineView>());
 
+      BuildMicrophonePermissionWarningPreview(canvas.transform, timelineFont);
+
       foreach (Graphic graphic in connectedRoot.GetComponentsInChildren<Graphic>(true))
         graphic.SetAllDirty();
       Canvas.ForceUpdateCanvases();
@@ -85,6 +90,175 @@ namespace TUFReplay.Unity.Editor
       AssetDatabase.SaveAssets();
       Selection.activeGameObject = null;
       Debug.Log("[TUFReplay.Unity] Rebuilt the TUFHelperLite-style linear replay timeline prototype.");
+    }
+
+    private static void BuildMicrophonePermissionWarningPreview(Transform parent, TMP_FontAsset font)
+    {
+      const string PrefabPath = PrefabFolder + "/MicrophonePermissionWarningRuntime.prefab";
+      AssetDatabase.DeleteAsset(PrefabPath);
+
+      GameObject warningRoot = BuildMicrophonePermissionWarning(parent, font);
+      warningRoot.SetActive(false);
+      PrefabUtility.SaveAsPrefabAsset(warningRoot, PrefabPath);
+      UnityEngine.Object.DestroyImmediate(warningRoot);
+
+      GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
+      if (prefab == null)
+        throw new InvalidOperationException("Microphone permission warning prefab could not be created.");
+
+      GameObject preview = PrefabUtility.InstantiatePrefab(prefab, parent) as GameObject;
+      if (preview == null)
+        throw new InvalidOperationException("Microphone permission warning preview could not be instantiated.");
+
+      preview.name = "MicrophonePermissionWarningPreview";
+      preview.SetActive(true);
+      preview.GetComponent<CanvasGroup>().alpha = 1f;
+      preview.transform.Find("ProgressTrack/ProgressFill").GetComponent<Image>().fillAmount = 1f;
+
+      GameObject previewDriver = new GameObject(
+        "MicrophonePermissionWarningPreviewDriver",
+        typeof(MicrophonePermissionWarningPreviewDriver)
+      );
+      previewDriver.transform.SetParent(parent, false);
+      previewDriver
+        .GetComponent<MicrophonePermissionWarningPreviewDriver>()
+        .Configure(preview.GetComponent<MicrophonePermissionWarningView>());
+    }
+
+    private static GameObject BuildMicrophonePermissionWarning(Transform parent, TMP_FontAsset font)
+    {
+      GameObject root = CreateUIObject("MicrophonePermissionWarningRuntime", parent);
+      RectTransform rootRect = root.GetComponent<RectTransform>();
+      rootRect.anchorMin = rootRect.anchorMax = new Vector2(1f, 0f);
+      rootRect.pivot = new Vector2(1f, 0f);
+      rootRect.anchoredPosition = new Vector2(-24f, 112f);
+      rootRect.sizeDelta = new Vector2(600f, 154f);
+
+      CanvasGroup canvasGroup = root.AddComponent<CanvasGroup>();
+      canvasGroup.alpha = 0f;
+      canvasGroup.interactable = false;
+      canvasGroup.blocksRaycasts = false;
+
+      GameObject ambientShadowObject = CreateUIObject("AmbientShadow", root.transform);
+      RectTransform ambientShadowRect = ambientShadowObject.GetComponent<RectTransform>();
+      SetCenteredRect(ambientShadowRect, new Vector2(0f, -6f), new Vector2(608f, 162f));
+      UIRoundedPanelGraphic ambientShadow = ambientShadowObject.AddComponent<UIRoundedPanelGraphic>();
+      ambientShadow.Configure(new Color(0f, 0f, 0f, 0.24f), Color.clear, 0f, 22f);
+      ambientShadow.raycastTarget = false;
+
+      UIRoundedPanelGraphic panel = root.AddComponent<UIRoundedPanelGraphic>();
+      panel.Configure(PanelFill, Html("#FFFFFF20"), 1f, 20f);
+      panel.raycastTarget = true;
+
+      GameObject warningBadge = CreateUIObject("WarningBadge", root.transform);
+      RectTransform warningBadgeRect = warningBadge.GetComponent<RectTransform>();
+      warningBadgeRect.anchorMin = warningBadgeRect.anchorMax = warningBadgeRect.pivot = new Vector2(0f, 1f);
+      warningBadgeRect.anchoredPosition = new Vector2(22f, -20f);
+      warningBadgeRect.sizeDelta = new Vector2(32f, 32f);
+      UIRoundedPanelGraphic warningBadgeGraphic = warningBadge.AddComponent<UIRoundedPanelGraphic>();
+      warningBadgeGraphic.Configure(WarningAccentSoft, Html("#F2B84B55"), 1f, 10f);
+      warningBadgeGraphic.raycastTarget = false;
+
+      TextMeshProUGUI warningGlyph = BuildText(
+        "Glyph",
+        warningBadge.transform,
+        "!",
+        19f,
+        WarningAccent,
+        font,
+        TextAlignmentOptions.Center
+      );
+      RectTransform warningGlyphRect = warningGlyph.rectTransform;
+      warningGlyphRect.anchorMin = Vector2.zero;
+      warningGlyphRect.anchorMax = Vector2.one;
+      warningGlyphRect.offsetMin = Vector2.zero;
+      warningGlyphRect.offsetMax = new Vector2(0f, 1f);
+
+      TextMeshProUGUI title = BuildText(
+        "TitleText",
+        root.transform,
+        MicrophonePermissionWarningView.DefaultTitle,
+        22f,
+        WarmWhite,
+        font,
+        TextAlignmentOptions.MidlineLeft
+      );
+      RectTransform titleRect = title.rectTransform;
+      titleRect.anchorMin = titleRect.anchorMax = titleRect.pivot = new Vector2(0f, 1f);
+      titleRect.anchoredPosition = new Vector2(66f, -20f);
+      titleRect.sizeDelta = new Vector2(470f, 32f);
+
+      TextMeshProUGUI message = BuildText(
+        "MessageText",
+        root.transform,
+        MicrophonePermissionWarningView.DefaultMessage,
+        16f,
+        MutedText,
+        font,
+        TextAlignmentOptions.TopLeft
+      );
+      RectTransform messageRect = message.rectTransform;
+      messageRect.anchorMin = messageRect.anchorMax = messageRect.pivot = new Vector2(0f, 1f);
+      messageRect.anchoredPosition = new Vector2(22f, -63f);
+      messageRect.sizeDelta = new Vector2(556f, 64f);
+      message.textWrappingMode = TextWrappingModes.Normal;
+      message.overflowMode = TextOverflowModes.Ellipsis;
+
+      GameObject dismissObject = CreateUIObject("DismissButton", root.transform);
+      RectTransform dismissRect = dismissObject.GetComponent<RectTransform>();
+      dismissRect.anchorMin = dismissRect.anchorMax = dismissRect.pivot = new Vector2(1f, 1f);
+      dismissRect.anchoredPosition = new Vector2(-10f, -10f);
+      dismissRect.sizeDelta = new Vector2(36f, 36f);
+      UIRoundedPanelGraphic dismissBackground = dismissObject.AddComponent<UIRoundedPanelGraphic>();
+      dismissBackground.Configure(Color.white, Color.clear, 0f, 11f);
+      dismissBackground.raycastTarget = true;
+      Button dismissButton = dismissObject.AddComponent<Button>();
+      dismissButton.targetGraphic = dismissBackground;
+      dismissButton.navigation = new Navigation { mode = Navigation.Mode.None };
+      ColorBlock dismissColors = dismissButton.colors;
+      dismissColors.normalColor = new Color(1f, 1f, 1f, 0.035f);
+      dismissColors.highlightedColor = new Color(1f, 1f, 1f, 0.10f);
+      dismissColors.pressedColor = new Color(1f, 1f, 1f, 0.16f);
+      dismissColors.selectedColor = dismissColors.normalColor;
+      dismissColors.disabledColor = new Color(1f, 1f, 1f, 0.02f);
+      dismissColors.colorMultiplier = 1f;
+      dismissColors.fadeDuration = 0.08f;
+      dismissButton.colors = dismissColors;
+
+      GameObject closeIconObject = CreateUIObject("Icon", dismissObject.transform);
+      RectTransform closeIconRect = closeIconObject.GetComponent<RectTransform>();
+      SetCenteredRect(closeIconRect, Vector2.zero, new Vector2(14f, 14f));
+      UICloseGraphic closeIcon = closeIconObject.AddComponent<UICloseGraphic>();
+      closeIcon.Configure(new Color32(168, 172, 182, 235), 1.8f, 4f);
+
+      GameObject progressTrackObject = CreateUIObject("ProgressTrack", root.transform);
+      RectTransform progressTrackRect = progressTrackObject.GetComponent<RectTransform>();
+      progressTrackRect.anchorMin = new Vector2(0f, 0f);
+      progressTrackRect.anchorMax = new Vector2(1f, 0f);
+      progressTrackRect.pivot = new Vector2(0.5f, 0f);
+      progressTrackRect.anchoredPosition = new Vector2(0f, 11f);
+      progressTrackRect.sizeDelta = new Vector2(-36f, 3f);
+      Image progressTrack = progressTrackObject.AddComponent<Image>();
+      progressTrack.color = new Color(1f, 1f, 1f, 0.075f);
+      progressTrack.raycastTarget = false;
+
+      GameObject progressFillObject = CreateUIObject("ProgressFill", progressTrackObject.transform);
+      RectTransform progressFillRect = progressFillObject.GetComponent<RectTransform>();
+      progressFillRect.anchorMin = Vector2.zero;
+      progressFillRect.anchorMax = Vector2.one;
+      progressFillRect.offsetMin = Vector2.zero;
+      progressFillRect.offsetMax = Vector2.zero;
+      Image progressFill = progressFillObject.AddComponent<Image>();
+      progressFill.color = WarningAccent;
+      progressFill.type = Image.Type.Filled;
+      progressFill.fillMethod = Image.FillMethod.Horizontal;
+      progressFill.fillOrigin = 0;
+      progressFill.fillAmount = 1f;
+      progressFill.raycastTarget = false;
+
+      MicrophonePermissionWarningView view = root.AddComponent<MicrophonePermissionWarningView>();
+      view.ConfigureReferences(canvasGroup, title, message, progressFill, dismissButton);
+      return root;
     }
 
     private static GameObject BuildTimeline(Transform parent, GameObject playButtonPrefab, TMP_FontAsset timelineFont)
@@ -392,7 +566,7 @@ namespace TUFReplay.Unity.Editor
 
       GameObject popupObject = CreateUIObject("JudgmentDropdown", parent);
       RectTransform popupRect = popupObject.GetComponent<RectTransform>();
-      SetCenteredRect(popupRect, Vector2.zero, new Vector2(272f, 196f));
+      SetCenteredRect(popupRect, Vector2.zero, new Vector2(432f, 140f));
 
       GameObject shadowObject = CreateUIObject("Shadow", popupObject.transform);
       RectTransform shadowRect = shadowObject.GetComponent<RectTransform>();
@@ -423,40 +597,50 @@ namespace TUFReplay.Unity.Editor
         font,
         TextAlignmentOptions.Left
       );
-      SetCenteredRect(popupTitle.rectTransform, new Vector2(-1f, 78f), new Vector2(236f, 18f));
+      SetCenteredRect(popupTitle.rectTransform, new Vector2(0f, 55f), new Vector2(396f, 18f));
 
       ReplayJudgmentKind[] categories =
       {
-        ReplayJudgmentKind.Overload,
-        ReplayJudgmentKind.TooEarly,
-        ReplayJudgmentKind.Early,
         ReplayJudgmentKind.EarlyPerfect,
         ReplayJudgmentKind.Perfect,
         ReplayJudgmentKind.LatePerfect,
+        ReplayJudgmentKind.TooEarly,
+        ReplayJudgmentKind.Early,
         ReplayJudgmentKind.Late,
-        ReplayJudgmentKind.TooLate,
         ReplayJudgmentKind.Miss,
+        ReplayJudgmentKind.Overload,
       };
       string[] labels =
       {
-        "Overload",
-        "Too Early",
-        "Early",
-        "Early Perfect",
-        "Perfect",
-        "Late Perfect",
-        "Late",
-        "Too Late",
-        "Miss",
+        "Early Perfect:",
+        "Perfect:",
+        "Late Perfect:",
+        "Too Early:",
+        "Early:",
+        "Late:",
+        "Miss:",
+        "Overload:",
+      };
+      Vector2[] optionPositions =
+      {
+        new Vector2(-142f, 24f),
+        new Vector2(0f, 24f),
+        new Vector2(142f, 24f),
+        new Vector2(-118f, -6f),
+        new Vector2(0f, -6f),
+        new Vector2(118f, -6f),
+        new Vector2(-64f, -36f),
+        new Vector2(64f, -36f),
       };
       Toggle[] toggles = new Toggle[categories.Length];
+      CanvasGroup[] optionVisuals = new CanvasGroup[categories.Length];
+      TMP_Text[] optionCountLabels = new TMP_Text[categories.Length];
       for (int index = 0; index < categories.Length; index++)
       {
         GameObject rowObject = CreateUIObject("Option_" + categories[index], popupObject.transform);
         RectTransform rowRect = rowObject.GetComponent<RectTransform>();
-        int column = index / 5;
-        int row = index % 5;
-        SetCenteredRect(rowRect, new Vector2(column == 0 ? -64f : 64f, 48f - row * 29f), new Vector2(120f, 26f));
+        SetCenteredRect(rowRect, optionPositions[index], new Vector2(132f, 26f));
+        CanvasGroup optionVisual = rowObject.AddComponent<CanvasGroup>();
 
         Image rowHitArea = rowObject.AddComponent<Image>();
         rowHitArea.color = Color.clear;
@@ -468,7 +652,6 @@ namespace TUFReplay.Unity.Editor
 
         GameObject boxObject = CreateUIObject("Checkbox", rowObject.transform);
         RectTransform boxRect = boxObject.GetComponent<RectTransform>();
-        SetCenteredRect(boxRect, new Vector2(-49f, 0f), new Vector2(16f, 16f));
         UIRoundedPanelGraphic box = boxObject.AddComponent<UIRoundedPanelGraphic>();
         box.Configure(Html("#FFFFFF08"), Html("#FFFFFF2E"), 1f, 8f);
         box.raycastTarget = true;
@@ -489,10 +672,32 @@ namespace TUFReplay.Unity.Editor
           font,
           TextAlignmentOptions.Left
         );
-        label.rectTransform.anchorMin = new Vector2(0f, 0f);
-        label.rectTransform.anchorMax = new Vector2(1f, 1f);
-        label.rectTransform.offsetMin = new Vector2(24f, 0f);
-        label.rectTransform.offsetMax = Vector2.zero;
+        label.ForceMeshUpdate();
+        float labelWidth = Mathf.Ceil(label.preferredWidth);
+
+        TextMeshProUGUI count = BuildText(
+          "Count",
+          rowObject.transform,
+          "0",
+          11f,
+          ReplayJudgmentPalette.GetColor(categories[index]),
+          font,
+          TextAlignmentOptions.Left
+        );
+        const float countWidth = 14f;
+        float contentWidth = 16f + 7f + labelWidth + 5f + countWidth;
+        float contentLeft = contentWidth * -0.5f;
+        SetCenteredRect(boxRect, new Vector2(contentLeft + 8f, 0f), new Vector2(16f, 16f));
+        SetCenteredRect(
+          label.rectTransform,
+          new Vector2(contentLeft + 23f + labelWidth * 0.5f, 0f),
+          new Vector2(labelWidth, 20f)
+        );
+        SetCenteredRect(
+          count.rectTransform,
+          new Vector2(contentLeft + 28f + labelWidth + countWidth * 0.5f, 0f),
+          new Vector2(countWidth, 20f)
+        );
 
         toggle.targetGraphic = rowHitArea;
         toggle.graphic = selected;
@@ -505,6 +710,8 @@ namespace TUFReplay.Unity.Editor
         toggleColors.fadeDuration = 0.1f;
         toggle.colors = toggleColors;
         toggles[index] = toggle;
+        optionVisuals[index] = optionVisual;
+        optionCountLabels[index] = count;
       }
 
       UIJudgmentFilterDropdown controller = parent.gameObject.AddComponent<UIJudgmentFilterDropdown>();
@@ -519,6 +726,8 @@ namespace TUFReplay.Unity.Editor
         judgmentButton.transform.Find("CountBadge/Count").GetComponent<TMP_Text>(),
         judgmentButton.transform.Find("Chevron") as RectTransform,
         toggles,
+        optionVisuals,
+        optionCountLabels,
         categories,
         markerGraphic
       );
