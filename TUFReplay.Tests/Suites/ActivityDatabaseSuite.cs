@@ -71,6 +71,15 @@ internal static class ActivityDatabaseSuite
     string migrating = Path.Combine(directory, "tufreplay.0.2.migrating.sqlite");
     string backup = Path.Combine(directory, "tufreplay.pre-0.2.sqlite");
     CreateLegacyV15Database(main);
+    using (SqliteConnection walConnection = OpenUnpooled(main))
+    using (SqliteCommand walCommand = walConnection.CreateCommand())
+    {
+      walCommand.CommandText = "PRAGMA journal_mode=WAL";
+      Assert(
+        string.Equals(Convert.ToString(walCommand.ExecuteScalar()), "wal"),
+        "Legacy test database did not enter WAL mode."
+      );
+    }
     string warning = null;
 
     LegacyActivityDatabaseTransition.EnsureCurrent(main, migrating, backup, message => warning = message);
@@ -85,6 +94,16 @@ internal static class ActivityDatabaseSuite
     Assert(
       string.Equals(Convert.ToString(command.ExecuteScalar()), ReplayUnavailableReasons.LegacyEngine),
       "Schema v15 replay was not marked as legacy."
+    );
+
+    SetDatabasePath(main);
+    Assert(
+      MicrophoneRecordingRepository.ImportEmbeddedLegacyRecordings(backup) == 1,
+      "Embedded microphone recording was not imported from a WAL-mode v15 backup."
+    );
+    Assert(
+      CountRows(MicrophoneDatabase.DbPath, "microphone_recordings") == 1,
+      "Imported microphone recording was not stored in the dedicated database."
     );
   }
 

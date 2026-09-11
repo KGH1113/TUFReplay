@@ -418,8 +418,15 @@ ORDER BY rowid";
 
   private static SqliteConnection OpenDatabase(string path)
   {
-    var connection = new SqliteConnection("Data Source=" + path + ";Mode=ReadOnly;Default Timeout=5;Pooling=False");
+    // Legacy activity databases use WAL mode. After the main database is moved to its
+    // preserved backup path, SQLite may need to create fresh -wal/-shm sidecars before
+    // it can read the otherwise clean database. A read-only open fails with SQLITE_CANTOPEN
+    // in that state, so allow the open and then prohibit SQL writes on the connection.
+    var connection = new SqliteConnection("Data Source=" + path + ";Mode=ReadWrite;Default Timeout=5;Pooling=False");
     connection.Open();
+    using SqliteCommand queryOnly = connection.CreateCommand();
+    queryOnly.CommandText = "PRAGMA query_only=ON";
+    queryOnly.ExecuteNonQuery();
     return connection;
   }
 
