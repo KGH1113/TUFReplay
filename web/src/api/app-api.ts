@@ -6,6 +6,7 @@ import type { ReplayApi } from "@/api/replay/replay-api";
 import type { RunApi } from "@/api/run/run-api";
 
 export interface AppApi {
+  submission: import("@/api/submission/submission-api").SubmissionApi;
   health: HealthApi;
   activity: ActivityApi;
   run: RunApi;

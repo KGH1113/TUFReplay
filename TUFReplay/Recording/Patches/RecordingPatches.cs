@@ -291,7 +291,10 @@ public static class RecordingPatches
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
     if (__instance != null && __instance.paused)
+    {
+      if (!session.Data.WonTimeUs.HasValue) session.AbortEvidence("pause_not_allowed");
       RecordInputTracker.DrainCapturedTransitions(session);
+    }
     session.BreakInputTimeline(__instance != null && __instance.paused ? "pause" : "resume");
     RecordInputTracker.SetCaptureWindowActive(
       __instance != null && !__instance.paused && IsNativeInputCaptureAllowed()

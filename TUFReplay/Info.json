@@ -2,7 +2,7 @@
   "Id": "TUFReplay",
   "DisplayName": "TUFReplay",
   "Author": "impl",
-  "Version": "0.1.0-beta.10",
+  "Version": "0.1.0-beta.11",
   "AssemblyName": "AdofaiIpc.DependencyShim.dll",
   "EntryMethod": "AdofaiIpc.DependencyShim.DependencyShim.Load",
   "LoadAfter": ["AdofaiIpc"]

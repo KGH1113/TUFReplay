@@ -9,9 +9,15 @@ server:
   binding: localhost
   host: http://localhost
   identifier: tuf-replay-server
+  middlewares:
+    cors:
+      enable: true
+      allow_origins: ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:5176", "http://127.0.0.1:5176", '<%= get_env(name="SUBMISSION_WEB_ORIGIN", default="https://tufreplay.impl1113.dev") %>']
+      allow_headers: ["Content-Type", "Authorization"]
+      allow_methods: ["GET", "POST", "DELETE", "OPTIONS"]
 
 workers:
-  mode: BackgroundAsync
+  mode: BackgroundQueue
 
 queue:
   kind: Postgres

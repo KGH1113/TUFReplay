@@ -3,3 +3,4 @@
 pub use super::level_revision_charts::Entity as LevelRevisionCharts;
 pub use super::level_revisions::Entity as LevelRevisions;
 pub use super::run_sessions::Entity as RunSessions;
+pub use super::run_submission_records::Entity as RunSubmissionRecords;

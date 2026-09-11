@@ -69,6 +69,7 @@ CREATE TABLE runs (
   hit_context_count INTEGER NOT NULL DEFAULT 0,
   input_csv BLOB NOT NULL DEFAULT X'',
   hit_context_csv BLOB NOT NULL DEFAULT X'',
+  submission_run_id TEXT,
   meta_json TEXT NOT NULL DEFAULT '{}',
   UNIQUE(level_session_id, run_index)
 );
@@ -96,7 +97,8 @@ CREATE INDEX idx_level_sessions_app ON level_sessions(app_session_id,opened_at_u
 CREATE INDEX idx_level_sessions_level ON level_sessions(level_id,opened_at_utc,id);
 CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
 CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
-PRAGMA user_version = 15;";
+CREATE UNIQUE INDEX idx_runs_submission_run_id ON runs(submission_run_id) WHERE submission_run_id IS NOT NULL;
+PRAGMA user_version = 16;";
     command.ExecuteNonQuery();
   }
 }

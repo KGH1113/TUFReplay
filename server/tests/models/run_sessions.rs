@@ -2,14 +2,13 @@ use chrono::{Duration, Utc};
 use loco_rs::testing::prelude::*;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, DatabaseConnection};
 use serial_test::serial;
-use tuf_replay_server::{
-    app::App,
-    models::{
-        level_revision_charts::{self, NewLevelRevisionChart},
-        level_revisions,
-        run_sessions::{Model, NewRunSession, RunStatus},
-    },
-};
+use tuf_replay_server::app::App;
+use tuf_replay_server::models::level_revision_charts;
+use tuf_replay_server::models::level_revision_charts::NewLevelRevisionChart;
+use tuf_replay_server::models::level_revisions;
+use tuf_replay_server::models::run_sessions::Model;
+use tuf_replay_server::models::run_sessions::NewRunSession;
+use tuf_replay_server::models::run_sessions::RunStatus;
 use uuid::Uuid;
 
 async fn canonical_level(db: &DatabaseConnection, tuf_level_id: i64) -> (i64, i64) {
@@ -47,8 +46,10 @@ fn new_run(tuf_level_id: i64, revision_id: i64, chart_id: i64) -> NewRunSession 
         client_game_version: "2.8.1".to_owned(),
         client_mod_version: "0.1.0".to_owned(),
         tuf_level_id,
-        level_revision_id: revision_id,
-        level_revision_chart_id: chart_id,
+        level_revision_id: Some(revision_id),
+        level_revision_chart_id: Some(chart_id),
+        client_tuf_file_id: "fixture".into(),
+        client_level_relative_path: "level.adofai".into(),
         upload_token_hash: vec![3; 32],
         lease_expires_at: (Utc::now() + Duration::seconds(45)).fixed_offset(),
         hard_expires_at: (Utc::now() + Duration::hours(6)).fixed_offset(),

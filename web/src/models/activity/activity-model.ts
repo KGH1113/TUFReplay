@@ -134,6 +134,7 @@ export function mapActivityRun(dto: ActivityRunDto) {
     microphoneChannels: dto.MicrophoneChannels,
     microphoneRecordingPermanent: dto.MicrophoneRecordingPermanent,
     microphoneRecordingExpiresAtUtc: dto.MicrophoneRecordingExpiresAtUtc,
+    submissionRunId: dto.SubmissionRunId,
   };
 }
 

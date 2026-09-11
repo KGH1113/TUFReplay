@@ -45,6 +45,10 @@ export interface ActivityAppSession {
   LevelSessions: ActivityLevelSessionOverview[];
 }
 
+export interface ActivityLegacyReplayStatus {
+  HasLegacyReplays: boolean;
+}
+
 export interface ActivityRun {
   Id: string;
   LevelSessionId: string;
@@ -74,6 +78,7 @@ export interface ActivityRun {
   MicrophoneChannels: number | null;
   MicrophoneRecordingPermanent: boolean;
   MicrophoneRecordingExpiresAtUtc: string | null;
+  SubmissionRunId: string | null;
 }
 
 export interface MicrophoneRecordingDeleteResult {

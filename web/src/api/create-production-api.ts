@@ -5,6 +5,7 @@ import { createHealthApi } from "@/api/health/create-health-api";
 import { createMicrophoneApi } from "@/api/microphone/create-microphone-api";
 import { createReplayApi } from "@/api/replay/create-replay-api";
 import { createRunApi } from "@/api/run/create-run-api";
+import { createSubmissionApi } from "@/api/submission/create-submission-api";
 import { getAdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 
 let apiPromise: Promise<AppApi> | null = null;
@@ -12,6 +13,7 @@ let apiPromise: Promise<AppApi> | null = null;
 export function getProductionApi(): Promise<AppApi> {
   apiPromise ??= getAdofaiIpcClients()
     .then((clients) => ({
+      submission: createSubmissionApi(clients),
       health: createHealthApi(clients),
       activity: createActivityApi(clients),
       run: createRunApi(clients),

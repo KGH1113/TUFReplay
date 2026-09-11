@@ -48,6 +48,7 @@ internal static class ActivityDatabaseSuite
     TestGameplayHashV3Migration(root);
     TestLegacyInputSchemaAdvancePreservesBlob(root);
     TestSchemaMigrationAndBlob(root);
+    TestLegacyReplayDetection(root);
     TestAppSessionTransientLockRecovery(root);
     TestBrokenRenamedForeignKeyRepair(root);
     TestRunDeletionHierarchy(root);
@@ -93,6 +94,10 @@ internal static class ActivityDatabaseSuite
       "Replay run did not preserve its judgment difficulty."
     );
     Assert(replayRun.NoFailMode, "Replay run did not preserve its No-Fail mode.");
+    Assert(
+      RunRepository.Get("run")?.SubmissionRunId == "68727984-2424-4a6d-a72b-919044143454",
+      "Activity run did not preserve its linked submission run."
+    );
 
     LogicalLevelOverview logicalLevel = ActivityRepository.GetLogicalLevelOverview("logical");
     Assert(logicalLevel != null, "Logical level overview was not available from the current schema.");
@@ -265,6 +270,62 @@ run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start
 
     TestLegacyLevelMigration(root, 11);
     TestLegacyLevelMigration(root, 12);
+  }
+
+  private static void TestLegacyReplayDetection(string root)
+  {
+    string path = Path.Combine(root, "legacy-replay-detection.sqlite");
+    SetDatabasePath(path);
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand command = connection.CreateCommand();
+      command.CommandText =
+        @"INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes)
+VALUES('legacy-app','2026-01-01',0);
+INSERT INTO levels(id,identity_key,source_kind,adofai_path,first_seen_at_utc,last_seen_at_utc)
+VALUES('legacy-level','legacy-detection',0,'legacy.adofai','2026-01-01','2026-01-01');
+INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc)
+VALUES('legacy-session','legacy-level','legacy-app','2026-01-01');";
+      command.ExecuteNonQuery();
+
+      Assert(!RunRepository.HasLegacyReplay(), "An empty database reported a legacy replay.");
+
+      command.CommandText =
+        @"INSERT INTO runs(
+  id,level_session_id,run_index,started_at_utc,start_tile,result,input_count,hit_context_count,meta_json
+) VALUES('empty-run','legacy-session',0,'2026-01-01',0,'quit',0,0,'{broken');";
+      command.ExecuteNonQuery();
+      Assert(!RunRepository.HasLegacyReplay(), "An empty run was treated as a replay.");
+
+      string currentMetadata = new RecordedRunPayload { InputCapture = "test-native-capture" }.ToActivityMetaJson();
+      command.CommandText =
+        @"INSERT INTO runs(
+  id,level_session_id,run_index,started_at_utc,start_tile,result,input_count,hit_context_count,meta_json
+) VALUES('format-run','legacy-session',1,'2026-01-01',0,'quit',1,0,@meta);";
+      command.Parameters.AddWithValue("@meta", currentMetadata);
+      command.ExecuteNonQuery();
+      Assert(!RunRepository.HasLegacyReplay(), "A current native-input replay was treated as legacy.");
+
+      command.CommandText = "UPDATE runs SET meta_json='{\"formatVersion\":2}' WHERE id='format-run'";
+      command.Parameters.Clear();
+      command.ExecuteNonQuery();
+      Assert(RunRepository.HasLegacyReplay(), "A format-version 2 replay was not treated as legacy.");
+
+      string oldCaptureMetadata = new RecordedRunPayload
+      {
+        InputCapture = "skyhook-native-events",
+      }.ToActivityMetaJson();
+      command.CommandText = "UPDATE runs SET meta_json=@meta WHERE id='format-run'";
+      command.Parameters.AddWithValue("@meta", oldCaptureMetadata);
+      command.ExecuteNonQuery();
+      Assert(RunRepository.HasLegacyReplay(), "An old capture-engine replay was not treated as legacy.");
+
+      command.CommandText = "UPDATE runs SET meta_json='{broken' WHERE id='format-run'";
+      command.Parameters.Clear();
+      command.ExecuteNonQuery();
+      Assert(RunRepository.HasLegacyReplay(), "Malformed replay metadata was not treated as legacy.");
+    }
   }
 
   private static void TestGameplayChartHashVersioning()
@@ -986,7 +1047,11 @@ VALUES
 INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01',0);
 INSERT INTO levels(id,identity_key,source_kind,adofai_path,first_seen_at_utc,last_seen_at_utc) VALUES('logical','test',0,'test.adofai','2026-01-01','2026-01-01');
 INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc) VALUES('level','logical','app','2026-01-01');
-INSERT INTO runs(id,level_session_id,run_index,started_at_utc,start_tile,result,judgment_difficulty,no_fail_mode) VALUES('run','level',0,'2026-01-01',0,'cleared',1,1);";
+INSERT INTO runs(
+  id,level_session_id,run_index,started_at_utc,start_tile,result,judgment_difficulty,no_fail_mode,submission_run_id
+) VALUES(
+  'run','level',0,'2026-01-01',0,'cleared',1,1,'68727984-2424-4a6d-a72b-919044143454'
+);";
     command.ExecuteNonQuery();
   }
 

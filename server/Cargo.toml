@@ -12,10 +12,14 @@ default-run = "tuf_replay_server-cli"
 [workspace.dependencies]
 loco-rs = { version = "1.1" }
 
+[features]
+e2e = []
+
 [dependencies]
 loco-rs = { workspace = true , features = ["worker"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1" }
+json5 = "0.4"
 tokio = { version = "1.45", default-features = false, features = ["fs", "io-util", "rt-multi-thread", "sync", "time"] }
 async-trait = { version = "0.1" }
 axum = { version = "0.8", features = ["ws"] }
@@ -43,6 +47,7 @@ tempfile = "3.27.0"
 bytes = "1.12.1"
 unicode-normalization = "0.1.25"
 tokio-util = { version = "0.7.19", features = ["io"] }
+futures-util = "0.3"
 
 [[bin]]
 name = "tuf_replay_server-cli"
@@ -51,7 +56,6 @@ required-features = []
 
 [dev-dependencies]
 loco-rs = { workspace = true, features = ["testing"] }
-futures-util = "0.3"
 tokio-tungstenite = "0.29"
 serial_test = { version = "3.1.1" }
 rstest = { version = "0.25" }

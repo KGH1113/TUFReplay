@@ -133,6 +133,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
         );
       hud._microphonePermissionWarningView = microphonePermissionWarningView;
       hud._microphonePermissionWarningView.ResetImmediate();
+      TUFReplay.Shared.Notifications.AssetBundleToast.Initialize(microphonePermissionWarningPrefab, canvasObject.transform);
       _instance = hud;
     }
     catch (Exception exception)

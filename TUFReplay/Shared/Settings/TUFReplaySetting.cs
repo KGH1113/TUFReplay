@@ -14,6 +14,11 @@ public sealed class TUFReplaySetting
   public const int MaxMicrophoneVolumeDb = 30;
 
   public bool AutoRecord { get; set; } = true;
+  public bool AutoSubmissionDisabled { get; set; }
+  public string AutoSubmissionOAuthClientId { get; set; } = "";
+  public string AutoSubmissionServerUrl { get; set; } = "";
+  public string AutoSubmissionTufApiUrl { get; set; } = "https://api.tuforums.com";
+  public string AutoSubmissionOAuthRedirectUri { get; set; } = "https://tufreplay.impl1113.dev/oauth/callback";
   public bool MicrophoneEnabled { get; set; } = true;
   public string MicrophoneDeviceId { get; set; }
   public int MicrophoneOffsetMs { get; set; }

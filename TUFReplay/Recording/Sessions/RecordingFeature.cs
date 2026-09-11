@@ -63,6 +63,7 @@ public partial class RecordingFeature
       return;
     }
     Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
+    FeatureRegistry.Submission?.Clear(Session);
   }
 
   public void OnRunFailed()
@@ -71,6 +72,7 @@ public partial class RecordingFeature
       return;
 
     _failed = true;
+    FeatureRegistry.Submission?.Abort(Session, "run_failed");
     Session.MarkTerminal();
     Session.StopInputCapture("failed");
     if (_calibrationRun)
@@ -242,6 +244,7 @@ public partial class RecordingFeature
     CaptureGameplayHash();
     RecordingPatches.ResetHitContextState();
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
+    FeatureRegistry.Submission?.SetLevel(levelPath, tufLevelId);
     if (Session.IsRecording)
       FeatureRegistry.MicrophoneRecording?.ArmForLevel();
     Main.Instance.Log("[Recording] " + logMessage + ". tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
@@ -254,7 +257,10 @@ public partial class RecordingFeature
     if (!Session.IsRecording)
       return false;
     if (!_runSaved)
+    {
+      FeatureRegistry.Submission?.Begin(Session);
       return true;
+    }
 
     int? tufLevelId = Session.TufLevelId;
     ResetRunState();
@@ -267,6 +273,7 @@ public partial class RecordingFeature
     );
 
     Main.Instance.Log("[Recording] Prepared retry run. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
+    FeatureRegistry.Submission?.Begin(Session);
     return Session.IsRecording;
   }
 
@@ -298,6 +305,7 @@ public partial class RecordingFeature
 
   public void StopSession()
   {
+    FeatureRegistry.Submission?.FinalizeClear(Session);
     if (_calibrationRun)
     {
       EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));

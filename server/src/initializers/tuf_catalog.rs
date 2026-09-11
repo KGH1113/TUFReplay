@@ -4,17 +4,9 @@ use loco_rs::{
     doctor::{Check, CheckStatus},
     Error, Result,
 };
-use serde::Deserialize;
 
-use crate::models::{
-    level_revisions::{TufCatalogRuntime, TufCatalogSettings},
-    run_ingest::RunIngestStore,
-};
-
-#[derive(Debug, Deserialize)]
-struct Settings {
-    auto_submission: TufCatalogSettings,
-}
+use crate::services::tuf::catalog::TufCatalogRuntime;
+use crate::services::tuf::catalog::TufCatalogSettings;
 
 pub struct TufCatalogInitializer;
 
@@ -25,11 +17,7 @@ impl Initializer for TufCatalogInitializer {
     }
 
     async fn before_run(&self, ctx: &AppContext) -> Result<()> {
-        let ingest = ctx
-            .shared_store
-            .get::<RunIngestStore>()
-            .ok_or_else(|| Error::Message("run ingest store must initialize first".to_owned()))?;
-        let runtime = TufCatalogRuntime::new(load_settings(ctx)?, ingest)
+        let runtime = TufCatalogRuntime::new(load_settings(ctx)?)
             .map_err(|error| Error::Message(format!("cannot initialize TUF catalog: {error}")))?;
         ctx.shared_store.insert(runtime);
         Ok(())
@@ -59,12 +47,5 @@ impl Initializer for TufCatalogInitializer {
 }
 
 fn load_settings(ctx: &AppContext) -> Result<TufCatalogSettings> {
-    let value = ctx
-        .config
-        .settings
-        .clone()
-        .ok_or_else(|| Error::Message("settings.auto_submission is required".to_owned()))?;
-    let settings: Settings = serde_json::from_value(value)
-        .map_err(|error| Error::Message(format!("invalid catalog settings: {error}")))?;
-    Ok(settings.auto_submission)
+    Ok(crate::settings::Settings::get(ctx)?.auto_submission.catalog)
 }

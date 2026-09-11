@@ -1,7 +1,9 @@
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
 import { DashboardHeader } from "@/components/activity/dashboard-header";
+import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
 import { ReplayLevelChoiceDialog } from "@/components/replay/replay-level-choice-dialog";
 import { useActivityPageViewModel } from "@/hooks/activity/use-activity-page-view-model";
+import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice";
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { DayRail } from "@/sections/activity/day-rail";
 import { LevelStrip } from "@/sections/activity/level-strip";
@@ -9,6 +11,7 @@ import { LevelStrip } from "@/sections/activity/level-strip";
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
   const { activity, replay, actions } = viewModel;
+  const legacyReplayNotice = useLegacyReplayNotice(activity.status);
 
   return (
     <>
@@ -107,6 +110,10 @@ export function ActivityPage() {
         onPlay={replay.play}
         onChooseAnother={replay.pickLevelFile}
         onResetPicker={replay.clearLevelFilePicker}
+      />
+      <LegacyReplayNoticeDialog
+        open={legacyReplayNotice.open}
+        onConfirm={legacyReplayNotice.confirm}
       />
     </>
   );

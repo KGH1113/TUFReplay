@@ -20,6 +20,7 @@ public static class RecordingPayloadBuilder
     run.HitContextCount = data.HitContexts.Count;
     run.InputCsv = data.ToInputCsvBytes();
     run.HitContextCsv = data.ToHitContextCsvBytes();
+    run.SubmissionRunId = data.SubmissionRunId;
     run.MetaJson = data.ToActivityMetaJson();
     return run;
   }

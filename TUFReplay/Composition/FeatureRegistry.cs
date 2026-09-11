@@ -18,6 +18,7 @@ public static class FeatureRegistry
   public static TUFReplayIpcFeature Ipc { get; private set; }
   public static RecordingFeature Recording { get; private set; }
   public static ReplayFeature Replay { get; private set; }
+  public static TUFReplay.Submission.Sessions.SubmissionFeature Submission { get; private set; }
   public static MicrophoneRecordingFeature MicrophoneRecording { get; private set; }
   public static MicrophoneCalibrationFeature MicrophoneCalibration { get; private set; }
 
@@ -28,6 +29,7 @@ public static class FeatureRegistry
 
     Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
+    Submission = new TUFReplay.Submission.Sessions.SubmissionFeature();
     Replay = new ReplayFeature();
     MicrophoneRecording = new MicrophoneRecordingFeature();
     MicrophoneCalibration = new MicrophoneCalibrationFeature();
@@ -42,6 +44,7 @@ public static class FeatureRegistry
       MicrophoneCalibration.Enable();
       Recording.Enable();
       Replay.Enable();
+      TUFReplay.Submission.Debug.SubmissionDebugHud.Initialize();
       MicrophonePermissionWarningCoordinator.Initialize();
       Ipc.Enable();
     }
@@ -55,6 +58,9 @@ public static class FeatureRegistry
   public static void Shutdown()
   {
     Ipc?.Disable();
+    TUFReplay.Submission.Debug.SubmissionDebugHud.Shutdown();
+    Submission?.Dispose();
+    Submission = null;
     MicrophonePermissionWarningCoordinator.Shutdown();
     Replay?.Disable();
     Recording?.Disable();

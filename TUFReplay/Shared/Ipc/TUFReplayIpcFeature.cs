@@ -35,7 +35,17 @@ public sealed class TUFReplayIpcFeature
     );
 
     ipc.Register("health.get", HealthIpcHandlers.Get);
+    ipc.Register("submission.oauth.begin", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.BeginLogin);
+    ipc.Register("submission.oauth.complete", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.CompleteLogin);
+    ipc.Register("submission.account.disconnect", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Disconnect);
+    ipc.Register("submission.runs.list", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.List);
+    ipc.Register("submission.run.get", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Get);
+    ipc.Register("submission.run.submit", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Submit);
+    ipc.Register("submission.run.remove", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Remove);
+    ipc.RegisterMainThread("submission.disabled.set", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.SetDisabled);
+    ipc.RegisterMainThread("submission.status.get", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Status);
     ipc.Register("activity.app-sessions.list", ActivityIpcHandlers.ListAppSessions);
+    ipc.Register("activity.legacy-replay-status.get", ActivityIpcHandlers.GetLegacyReplayStatus);
     ipc.Register("activity.level-session.get", ActivityIpcHandlers.GetLevelSession);
     ipc.Register("activity.level-session.runs.list", ActivityIpcHandlers.ListRuns);
     ipc.Register("activity.level-session.chart.get", ActivityIpcHandlers.GetChart);
