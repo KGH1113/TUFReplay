@@ -56,6 +56,11 @@
     ]
   },
   "empty": "No recorded activity yet.",
+  "legacyReplayNotice": {
+    "title": "Older replay engine data found",
+    "description": "Replays made with the older engine cannot be played in this version. The new engine records key input more accurately and reliably.",
+    "confirm": "OK"
+  },
   "errors": {
     "load": "Could not load TUFReplay activity",
     "connect": "Could not connect to TUFReplay",

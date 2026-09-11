@@ -4,7 +4,7 @@ import { healthDtoSchema } from "@/schemas/health/health-schema";
 import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 import { ApiError } from "@/shared/errors/api-error";
 
-export const SUPPORTED_PROTOCOL_VERSION = 6;
+export const SUPPORTED_PROTOCOL_VERSION = 7;
 
 export function createHealthApi(clients: AdofaiIpcClients): HealthApi {
   return {

@@ -11,8 +11,10 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSubmissionRun } from "@/hooks/submission/use-submission";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
+import { canSubmit } from "@/models/submission/submission-model";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import {
@@ -26,7 +28,7 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-type PendingAction = "keep" | "delete-recording" | "delete-run" | null;
+type PendingAction = "keep" | "delete-recording" | "submit" | "delete-run" | null;
 
 export function RunActionsMenu({
   run,
@@ -46,6 +48,7 @@ export function RunActionsMenu({
   const { t } = useTranslation("replay");
   const { t: activityT } = useTranslation("activity");
   const { t: microphoneT, i18n } = useTranslation("microphone");
+  const { t: submissionT } = useTranslation("submission");
   const locale = i18n.resolvedLanguage ?? "en";
   const [menuOpen, setMenuOpen] = useState(false);
   const [recordingDialogOpen, setRecordingDialogOpen] = useState(false);
@@ -54,6 +57,16 @@ export function RunActionsMenu({
   const [menuError, setMenuError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const busy = pendingAction !== null;
+  const submission = useSubmissionRun(
+    run.submissionRunId,
+    menuOpen && !disabled && run.submissionRunId !== null,
+  );
+  const submitted =
+    submission.run.data?.status === "submitted" || submission.run.data?.external_pass_id != null;
+  const submissionReady =
+    submission.status.data?.connected === true &&
+    submission.run.data !== undefined &&
+    canSubmit(submission.run.data);
 
   const keepRecording = async () => {
     if (disabled || busy) return;
@@ -93,6 +106,20 @@ export function RunActionsMenu({
       setRunDialogOpen(false);
     } catch (cause) {
       setDialogError(cause instanceof Error ? cause.message : t("run.deleteFailed"));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const submitRun = async () => {
+    if (disabled || busy || !submissionReady) return;
+    setPendingAction("submit");
+    setMenuError("");
+    try {
+      await submission.submit.mutateAsync();
+      setMenuOpen(false);
+    } catch {
+      setMenuError(submissionT("requestFailed"));
     } finally {
       setPendingAction(null);
     }
@@ -179,11 +206,29 @@ export function RunActionsMenu({
             </DropdownMenuItem>
           )}
           <DropdownMenuSeparator />
-          <DropdownMenuItem disabled>
+          <DropdownMenuItem
+            disabled={disabled || busy || submitted || !submissionReady}
+            onSelect={(event) => {
+              event.preventDefault();
+              void submitRun();
+            }}
+          >
             <span aria-hidden="true" className="size-4" />
-            <HugeiconsIcon aria-hidden="true" icon={Upload04Icon} className="size-4" />
-            {t("run.submit")}
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={pendingAction === "submit" ? Loading03Icon : Upload04Icon}
+              className={pendingAction === "submit" ? "size-4 animate-spin" : "size-4"}
+            />
+            {submitted ? submissionT("phase.submitted") : t("run.submit")}
           </DropdownMenuItem>
+          {menuError ? (
+            <p
+              aria-live="polite"
+              className="max-w-56 whitespace-normal px-2 py-1 text-xs text-destructive"
+            >
+              {menuError}
+            </p>
+          ) : null}
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"

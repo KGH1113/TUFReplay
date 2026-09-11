@@ -1,6 +1,7 @@
 import type {
   ActivityAppSession,
   ActivityChart,
+  ActivityLegacyReplayStatus,
   ActivityLevelSessionOverview,
   ActivityLogicalLevelOverview,
   ActivityRun,
@@ -34,6 +35,7 @@ interface ActivityWireFixture {
     ServerVersion: number;
   }>;
   listAppSessions(offset: number, limit: number): Promise<ActivityAppSession[]>;
+  getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   getLogicalLevel(id: string): Promise<ActivityLogicalLevelOverview>;
@@ -164,9 +166,10 @@ export function createActivityWireFixture(): ActivityWireFixture {
       Ok: true,
       Mod: "TUFReplay",
       ModVersion: "mock",
-      ProtocolVersion: 6,
+      ProtocolVersion: 7,
       ServerVersion: 1,
     }),
+    getLegacyReplayStatus: async () => ({ HasLegacyReplays: true }),
     listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
     listAllAppSessions: async (onPage) => {
       onPage?.(appSessions);
@@ -474,6 +477,7 @@ function createRun(
     MicrophoneChannels: hasMicrophoneRecording ? 1 : null,
     MicrophoneRecordingPermanent: false,
     MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
+    SubmissionRunId: null,
   };
 }
 

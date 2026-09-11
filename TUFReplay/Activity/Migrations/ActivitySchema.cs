@@ -5,7 +5,7 @@ namespace TUFReplay.Activity.Migrations;
 
 public static partial class ActivitySchema
 {
-  public const int Version = 15;
+  public const int Version = 16;
 
   public static void Ensure(SqliteConnection connection)
   {
@@ -149,6 +149,17 @@ PRAGMA user_version = 15;"
       );
       version = 15;
     }
+    if (version == 15)
+    {
+      if (!ColumnExists(connection, "runs", "submission_run_id"))
+        Migrate(connection, "ALTER TABLE runs ADD COLUMN submission_run_id TEXT;");
+      Migrate(
+        connection,
+        @"CREATE UNIQUE INDEX IF NOT EXISTS idx_runs_submission_run_id ON runs(submission_run_id) WHERE submission_run_id IS NOT NULL;
+PRAGMA user_version = 16;"
+      );
+      version = 16;
+    }
 
     if (version != 0 && version != Version)
       throw new InvalidOperationException("Unsupported TUFReplay database schema. version=" + version);
@@ -178,6 +189,17 @@ PRAGMA user_version = 15;"
       }
     }
 
+    return false;
+  }
+
+  private static bool ColumnExists(SqliteConnection connection, string table, string column)
+  {
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "PRAGMA table_info(" + table + ");";
+    using SqliteDataReader reader = command.ExecuteReader();
+    while (reader.Read())
+      if (string.Equals(reader.GetString(1), column, StringComparison.OrdinalIgnoreCase))
+        return true;
     return false;
   }
 

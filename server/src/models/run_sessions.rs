@@ -52,29 +52,52 @@ pub struct NewRunSession {
     pub client_game_version: String,
     pub client_mod_version: String,
     pub tuf_level_id: i64,
-    pub level_revision_id: i64,
-    pub level_revision_chart_id: i64,
+    pub level_revision_id: Option<i64>,
+    pub level_revision_chart_id: Option<i64>,
+    pub client_tuf_file_id: String,
+    pub client_level_relative_path: String,
     pub upload_token_hash: Vec<u8>,
     pub lease_expires_at: DateTime<FixedOffset>,
     pub hard_expires_at: DateTime<FixedOffset>,
 }
 
 impl Model {
-    pub async fn create(db: &DatabaseConnection, params: NewRunSession) -> ModelResult<Self> {
+    pub async fn create(db: &impl ConnectionTrait, params: NewRunSession) -> ModelResult<Self> {
         params.validate()?;
-        let revision = level_revisions::Entity::find_by_id(params.level_revision_id)
-            .one(db)
-            .await?
-            .ok_or(ModelError::EntityNotFound)?;
-        let chart = level_revision_charts::Entity::find_by_id(params.level_revision_chart_id)
-            .one(db)
-            .await?
-            .ok_or(ModelError::EntityNotFound)?;
-        if revision.tuf_level_id != params.tuf_level_id || chart.level_revision_id != revision.id {
+        let (file_id, chart_path) = if let (Some(revision_id), Some(chart_id)) =
+            (params.level_revision_id, params.level_revision_chart_id)
+        {
+            let revision = level_revisions::Entity::find_by_id(revision_id)
+                .one(db)
+                .await?
+                .ok_or(ModelError::EntityNotFound)?;
+            let chart = level_revision_charts::Entity::find_by_id(chart_id)
+                .one(db)
+                .await?
+                .ok_or(ModelError::EntityNotFound)?;
+            if revision.tuf_level_id != params.tuf_level_id
+                || chart.level_revision_id != revision.id
+            {
+                return Err(ModelError::Message(
+                    "run level, revision, and chart do not belong together".to_owned(),
+                ));
+            }
+            (revision.tuf_file_id, chart.relative_path)
+        } else if params.level_revision_id.is_none() && params.level_revision_chart_id.is_none() {
+            if params.client_tuf_file_id.is_empty() || params.client_tuf_file_id.len() > 512 {
+                return Err(ModelError::Message("invalid client file identity".into()));
+            }
+            (
+                params.client_tuf_file_id,
+                level_revision_charts::normalize_relative_chart_path(
+                    &params.client_level_relative_path,
+                )?,
+            )
+        } else {
             return Err(ModelError::Message(
-                "run level, revision, and chart do not belong together".to_owned(),
+                "incomplete legacy chart reference".into(),
             ));
-        }
+        };
 
         Ok(ActiveModel {
             pid: Set(params.pid),
@@ -85,6 +108,8 @@ impl Model {
             tuf_level_id: Set(params.tuf_level_id),
             level_revision_id: Set(params.level_revision_id),
             level_revision_chart_id: Set(params.level_revision_chart_id),
+            client_tuf_file_id: Set(file_id),
+            client_level_relative_path: Set(chart_path),
             upload_token_hash: Set(params.upload_token_hash),
             lease_expires_at: Set(params.lease_expires_at),
             hard_expires_at: Set(params.hard_expires_at),

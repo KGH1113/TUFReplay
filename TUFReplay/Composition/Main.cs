@@ -30,6 +30,7 @@ public sealed class Main
   private readonly string _updateSettingsPath;
   private bool _enabled;
   private static bool _showReplayInputDiagnostics;
+  private static bool _showSubmissionDebugHud = true;
 
   private Main(UnityModManager.ModEntry modEntry)
   {
@@ -124,12 +125,20 @@ public sealed class Main
         GUILayout.Label("No active replay.");
       }
     }
+
+    bool showSubmissionDebugHud = GUILayout.Toggle(_showSubmissionDebugHud, "Auto submission debug HUD");
+    if (showSubmissionDebugHud != _showSubmissionDebugHud)
+    {
+      _showSubmissionDebugHud = showSubmissionDebugHud;
+      TUFReplay.Submission.Debug.SubmissionDebugHud.SetVisible(showSubmissionDebugHud);
+    }
   }
 
   private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)
   {
     ModBootstrap.UpdateRuntime();
     UnityMainThread.DrainPending();
+    FeatureRegistry.Submission?.Tick();
     MicrophonePermissionWarningCoordinator.Tick();
     ReplayLevelOpenService.Tick();
     ReplayPlaybackCoordinator.Tick();

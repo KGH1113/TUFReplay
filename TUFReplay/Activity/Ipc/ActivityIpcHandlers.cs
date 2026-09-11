@@ -31,6 +31,9 @@ public static class ActivityIpcHandlers
     return output;
   }
 
+  public static object GetLegacyReplayStatus(IpcRequest request) =>
+    new ActivityLegacyReplayStatusDto { HasLegacyReplays = RunRepository.HasLegacyReplay() };
+
   public static object GetLevelSession(IpcRequest request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))

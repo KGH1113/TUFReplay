@@ -1,6 +1,7 @@
 import type { AppApi } from "@/api/app-api";
 import { createActivityWireFixture } from "@/mocks/activity/activity-api-fixture";
 import { createReplayApiMock } from "@/mocks/replay/replay-api-mock";
+import { createSubmissionApiMock } from "@/mocks/submission/submission-api-mock";
 import {
   mapActivityChart,
   mapActivityRun,
@@ -32,12 +33,17 @@ import {
 export function createMockApi(): AppApi {
   const fixture = createActivityWireFixture();
   return {
+    submission: createSubmissionApiMock(),
     health: {
       async get() {
         return mapHealth(healthDtoSchema.parse(await fixture.health()));
       },
     },
     activity: {
+      async getLegacyReplayStatus() {
+        const status = await fixture.getLegacyReplayStatus();
+        return { hasLegacyReplays: status.HasLegacyReplays };
+      },
       async listAppSessions(offset, limit) {
         return (await fixture.listAppSessions(offset, limit)).map((item) =>
           mapAppSession(appSessionDtoSchema.parse(item)),

@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json;
 using TUFReplay.Activity.Models;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Replay.Models;
+using TUFReplay.Replay.Preparation;
 using TUFReplay.Shared.Database;
 using DatabaseStore = TUFReplay.Shared.Database.Database;
 
@@ -21,13 +23,13 @@ id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,r
 gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
-input_count,hit_context_count,input_csv,hit_context_csv,meta_json
+input_count,hit_context_count,input_csv,hit_context_csv,submission_run_id,meta_json
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
 @song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
-@inputs,@hits,@inputCsv,@hitCsv,@meta
+@inputs,@hits,@inputCsv,@hitCsv,@submissionRunId,@meta
 )";
     q.Parameters.AddWithValue("@id", r.Id);
     q.Parameters.AddWithValue("@level", r.LevelSessionId);
@@ -59,6 +61,7 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.Parameters.AddWithValue("@hits", r.HitContextCount);
     q.Parameters.AddWithValue("@inputCsv", r.InputCsv ?? new byte[0]);
     q.Parameters.AddWithValue("@hitCsv", r.HitContextCsv ?? new byte[0]);
+    q.Parameters.AddWithValue("@submissionRunId", DbValue.From(r.SubmissionRunId));
     q.Parameters.AddWithValue("@meta", r.MetaJson ?? "{}");
     q.ExecuteNonQuery();
   }
@@ -82,6 +85,30 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.CommandText = "SELECT 1 FROM runs WHERE id=@id LIMIT 1";
     q.Parameters.AddWithValue("@id", runId);
     return q.ExecuteScalar() != null;
+  }
+
+  public static bool HasLegacyReplay()
+  {
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "SELECT meta_json FROM runs WHERE input_count > 0 OR hit_context_count > 0";
+    using SqliteDataReader reader = q.ExecuteReader();
+    while (reader.Read())
+    {
+      ReplayMetadata metadata;
+      try
+      {
+        metadata = JsonConvert.DeserializeObject<ReplayMetadata>(reader.GetString(0));
+      }
+      catch
+      {
+        return true;
+      }
+
+      if (!ReplayPlaybackCoordinator.HasCurrentNativeInputFormat(metadata))
+        return true;
+    }
+    return false;
   }
 
   public static RunRecord Get(string runId)
@@ -282,7 +309,7 @@ r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,
 r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfect,r.judgment_perfect,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 g.gameplay_hash,g.gameplay_hash_version,
-r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json
+r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.submission_run_id,r.meta_json
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 JOIN levels g ON g.id=l.level_id";
@@ -325,7 +352,8 @@ JOIN levels g ON g.id=l.level_id";
       HitContextCount = r.GetInt32(29),
       InputCsvBytes = r.GetInt64(30),
       HitContextCsvBytes = r.GetInt64(31),
-      MetaJson = r.GetString(32),
+      SubmissionRunId = DbValue.NullableString(r, 32),
+      MetaJson = r.GetString(33),
     };
 
   private static RunJudgmentDifficulty? ReadDifficulty(SqliteDataReader reader, int index)

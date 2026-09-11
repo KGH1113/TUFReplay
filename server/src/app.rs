@@ -1,20 +1,23 @@
 use async_trait::async_trait;
+use loco_rs::prelude::BackgroundWorker;
 use loco_rs::{
     app::{AppContext, Hooks, Initializer},
-    bgworker::{self, Queue},
-    boot::{create_context, run_app, BootResult, StartMode},
+    bgworker::Queue,
+    boot::{create_app, BootResult, StartMode},
     config::Config,
     controller::AppRoutes,
-    db,
     environment::Environment,
     storage::{self, Storage},
     task::Tasks,
     Error, Result,
 };
 use migration::Migrator;
-use std::{path::Path, sync::Arc};
+use std::path::Path;
 
-use crate::{controllers, initializers, models};
+use crate::controllers;
+use crate::initializers;
+use crate::models;
+use crate::tasks;
 
 pub struct App;
 
@@ -39,46 +42,75 @@ impl Hooks for App {
         environment: &Environment,
         config: Config,
     ) -> Result<BootResult> {
-        let mut ctx = create_context::<Self>(environment, config).await?;
-        let driver = if matches!(environment, Environment::Test) {
+        create_app::<Self, Migrator>(mode, environment, config).await
+    }
+
+    async fn after_context(ctx: AppContext) -> Result<AppContext> {
+        if ctx.environment.to_string() == "e2e" {
+            #[cfg(not(feature = "e2e"))]
+            return Err(Error::Message("E2E requires the e2e Cargo feature".into()));
+            #[cfg(feature = "e2e")]
+            crate::e2e::check_context(&ctx)?;
+        }
+        let settings = crate::settings::Settings::parse(&ctx.config)?;
+        ctx.shared_store.insert(settings.clone());
+        if let Ok(tokens) = crate::services::auth::internal::InternalTokens::from_env() {
+            ctx.shared_store.insert(tokens);
+        }
+        let driver = if matches!(ctx.environment, Environment::Test) {
             storage::drivers::mem::new()
         } else {
-            let root = artifact_root(&ctx.config)?;
+            let root = settings.auto_submission.catalog.artifact_root;
             std::fs::create_dir_all(&root).map_err(|error| {
                 Error::Message(format!("cannot create artifact root {root}: {error}"))
             })?;
             storage::drivers::local::new_with_prefix(&root)?
         };
-        ctx.storage = Arc::new(Storage::single(driver));
-        db::converge::<Self, Migrator>(&ctx, &ctx.config.database).await?;
-        if let (Some(queue), Some(config)) = (&ctx.queue_provider, &ctx.config.queue) {
-            bgworker::converge(queue, config).await?;
-        }
-        run_app::<Self>(&mode, ctx).await
+        Ok(ctx
+            .into_builder()
+            .storage(Storage::single(driver).into())
+            .build())
     }
 
     async fn initializers(_ctx: &AppContext) -> Result<Vec<Box<dyn Initializer>>> {
         Ok(vec![
             Box::new(initializers::run_ingest::RunIngestInitializer),
             Box::new(initializers::tuf_catalog::TufCatalogInitializer),
+            Box::new(initializers::submission::SubmissionInitializer),
             // inject-above (do not remove)
         ])
     }
 
     fn routes(ctx: &AppContext) -> AppRoutes {
-        let routes = AppRoutes::with_default_routes();
-        if ingest_routes_enabled(&ctx.environment) {
-            routes.add_route(controllers::run_sessions::routes())
+        let routes = AppRoutes::with_default_routes().add_route(controllers::replays::routes());
+        if ingest_routes_enabled(&ctx.environment)
+            || ctx
+                .shared_store
+                .get::<crate::services::auth::internal::InternalTokens>()
+                .is_some()
+        {
+            routes
+                .add_route(controllers::run_sessions::routes())
+                .add_route(controllers::level_changes::routes())
+                .add_route(controllers::level_changes::internal_routes())
         } else {
             routes
         }
     }
 
-    async fn connect_workers(_ctx: &AppContext, _queue: &Queue) -> Result<()> {
+    async fn connect_workers(ctx: &AppContext, queue: &Queue) -> Result<()> {
+        queue
+            .register(crate::workers::submission::Worker::build(ctx))
+            .await?;
+        queue
+            .register(crate::workers::evidence_persistence::Worker::build(ctx))
+            .await?;
         Ok(())
     }
 
-    fn register_tasks(_tasks: &mut Tasks) {
+    fn register_tasks(tasks: &mut Tasks) {
+        tasks.register(tasks::reconcile_submissions::ReconcileSubmissions);
+        tasks.register(tasks::cleanup_evidence::CleanupEvidence);
         // tasks-inject (do not remove)
     }
 
@@ -92,20 +124,6 @@ impl Hooks for App {
     async fn seed(_ctx: &AppContext, _base: &Path) -> Result<()> {
         Ok(())
     }
-}
-
-fn artifact_root(config: &Config) -> Result<String> {
-    config
-        .settings
-        .as_ref()
-        .and_then(|settings| settings.get("auto_submission"))
-        .and_then(|settings| settings.get("artifact_root"))
-        .and_then(serde_json::Value::as_str)
-        .filter(|root| !root.trim().is_empty())
-        .map(str::to_owned)
-        .ok_or_else(|| {
-            Error::Message("settings.auto_submission.artifact_root is required".to_owned())
-        })
 }
 
 fn ingest_routes_enabled(environment: &Environment) -> bool {

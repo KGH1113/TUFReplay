@@ -29,6 +29,8 @@
 
 ## Overview
 
+TUF auto-submitted passes now have a TUFReplay embed implementation in the TUF frontend and web-adofai checkouts. See the [implementation, local setup and verification status](docs/tuf-replay-embed-implementation-2026-09-10.md). Browser/game E2E remains user-run.
+
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
 The project preserves low-level play data and, for new recordings, the resolved margin of each accepted hit. The resolved margin lets timeline scrubbing rebuild ADOFAI's canonical judgment tracker exactly, while older recordings remain playable by deriving margins from their existing hit contexts. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
@@ -53,9 +55,10 @@ The project preserves low-level play data and, for new recordings, the resolved 
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
-- Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
-- Provides the project foundation for replay playback and TUF clear submission.
+- Identifies TUFHelperLite-downloaded levels and optionally streams P/G auto-submission evidence through an authenticated account connection.
+- Provides replay playback and the auto-submission capture, upload, review UI, and registration pipeline. The gameplay simulator is not implemented; real submissions remain blocked at `validator_unavailable`. See [implementation status and setup](docs/auto-submission-status.md).
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
+- Shows a one-time browser notice when saved runs use the previous replay engine and cannot be played by the current engine.
 - Groups revisions of the same TUF level or local level path into one web activity card. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
 - Counts a run as a clear only when it starts at tile zero, reaches the clear terminal state, and does not use No-Fail mode.
 
@@ -94,6 +97,7 @@ Reflection consumers should cache the resolved type and property getter, query t
 - `TUFReplay.UpdateTests/`: updater test suite linked into the main C# test harness.
 - `TUFReplay.Unity/`: Unity 6.3 project for the replay timeline prefab, Canvas graphics, shader, and platform AssetBundle builder.
 - `web/`: Bun/Vite companion web UI, managed as a workspace package.
+- `tools/auto-submission-e2e/`: standalone local web lab that uploads recorded clears to the real Rust server. TUF is mocked by default; `E2E_TUF_TARGET=local` registers real passes on the dedicated local TUF backend. See [E2E setup and usage](tools/auto-submission-e2e/README.md).
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone permission and capture.
 - `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
 - `scripts/workflows/`, `scripts/tasks/`, `scripts/lib/`: workflow orchestration, independently runnable tasks, and shared shell utilities.
@@ -160,7 +164,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. Beta.9 automatically installs the fixed dependency entrypoint for existing users, pauses TUFReplay for that session, and asks the user to reinstall only AdofaiIPC 0.3.0 before restarting the game. Later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Beta.10 adds the in-game replay timeline HUD with judgment markers, transport controls, scrubbing, and a draggable panel, and improves microphone timing calibration and replay synchronization. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Beta.3 is the first full-runtime updater baseline. Beta.9 automatically installs the fixed dependency entrypoint for existing users, pauses TUFReplay for that session, and asks the user to reinstall only AdofaiIPC 0.3.0 before restarting the game. Later releases update both the runtime and versioned dependency bootstrap in place. Beta.7 accepts direct updates from Beta.5 and safely retries transient SQLite locks during the first activity-session write after migration. Beta.8 reduces long-session GC and web UI overhead, bounds activity polling, moves microphone finalization and replay audio file I/O off latency-sensitive paths, and migrates verified legacy gameplay hashes. Beta.10 adds the in-game replay timeline HUD with judgment markers, transport controls, scrubbing, and a draggable panel, and improves microphone timing calibration and replay synchronization. Beta.11 adds the automatic submission pipeline and a one-time web notice for replays recorded by the previous engine. Current builds use gameplay hash v4 so equivalent charts saved with different `.adofai` format versions remain compatible.
 
 ## Web Development
 

@@ -18,7 +18,9 @@ services:
 
   redis-ingest:
     image: redis:8-alpine
-    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory-policy", "noeviction"]
+    command: ["redis-server", "--save", "", "--appendonly", "yes", "--appendfsync", "always", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - tuf-replay-redis:/data
     ports:
       - "127.0.0.1:${REDIS_INGEST_PORT:-6379}:6379"
     healthcheck:
@@ -39,3 +41,4 @@ services:
 
 volumes:
   tuf-replay-postgres:
+  tuf-replay-redis:

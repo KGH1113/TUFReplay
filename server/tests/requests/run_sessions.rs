@@ -20,15 +20,16 @@ use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
 };
-use tuf_replay_server::{
-    app::App,
-    models::{
-        level_revision_charts::{self, NewLevelRevisionChart},
-        level_revisions::{self, TufCatalogRuntime, TufCatalogSettings},
-        run_ingest::RunIngestStore,
-        run_sessions::{Model, NewRunSession, RunStatus},
-    },
-};
+use tuf_replay_server::app::App;
+use tuf_replay_server::models::level_revision_charts;
+use tuf_replay_server::models::level_revision_charts::NewLevelRevisionChart;
+use tuf_replay_server::models::level_revisions;
+use tuf_replay_server::models::run_sessions::Model;
+use tuf_replay_server::models::run_sessions::NewRunSession;
+use tuf_replay_server::models::run_sessions::RunStatus;
+use tuf_replay_server::services::ingest::RunIngestStore;
+use tuf_replay_server::services::tuf::catalog::TufCatalogRuntime;
+use tuf_replay_server::services::tuf::catalog::TufCatalogSettings;
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 
@@ -88,6 +89,7 @@ async fn start_mock_catalog() -> (String, Arc<AtomicUsize>, tokio::task::JoinHan
                 async move {
                     Json(serde_json::json!({
                         "id": 42,
+                        "difficulty": {"type":"PGU","name":"G1"},
                         "fileId": "file-42",
                         "dlLink": download_url,
                         "updatedAt": "2026-09-03T00:00:00Z"
@@ -116,26 +118,30 @@ async fn start_mock_catalog() -> (String, Arc<AtomicUsize>, tokio::task::JoinHan
 
 #[tokio::test]
 #[serial]
-async fn issues_only_latest_canonical_run_sessions() {
-    request::<App, _, _>(|request, ctx| async move {
+async fn issuance_does_not_download_or_pin_official_chart_originals() {
+    request::<App, _, _>(|mut request, ctx| async move {
         let (base_url, downloads, mock) = start_mock_catalog().await;
+        let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string());
+        request.add_header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {ticket}")
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+        );
         let ingest = ctx
             .shared_store
             .get::<RunIngestStore>()
             .expect("ingest store");
         ctx.shared_store.insert(
-            TufCatalogRuntime::new(
-                TufCatalogSettings {
-                    tuf_api_base_url: base_url,
-                    artifact_root: "unused-in-memory".to_owned(),
-                    artifact_max_download_bytes: 1024 * 1024,
-                    artifact_max_extracted_bytes: 1024 * 1024,
-                    artifact_max_files: 20,
-                    artifact_hydration_timeout_seconds: 10,
-                    artifact_max_concurrent_hydrations: 2,
-                },
-                ingest.clone(),
-            )
+            TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_api_base_url: base_url,
+                artifact_root: "unused-in-memory".to_owned(),
+                artifact_max_download_bytes: 1024 * 1024,
+                artifact_max_extracted_bytes: 1024 * 1024,
+                artifact_max_files: 20,
+                artifact_hydration_timeout_seconds: 10,
+                artifact_max_concurrent_hydrations: 2,
+            })
             .expect("catalog runtime"),
         );
 
@@ -151,44 +157,37 @@ async fn issues_only_latest_canonical_run_sessions() {
             body["websocket_url"],
             format!("/api/v1/runs/{run_id}/stream")
         );
+        assert_eq!(body["lease_duration_ms"], 45_000);
         let run = Model::find_by_pid(&ctx.db, run_id)
             .await
             .expect("stored run");
         assert_eq!(run.tuf_level_id, 42);
         assert!(run.lease_expires_at < run.hard_expires_at);
         assert_eq!(run.client_game_version, "2.8.1");
+        assert_eq!(run.level_revision_id, None);
+        assert_eq!(run.level_revision_chart_id, None);
+        assert_eq!(run.client_level_relative_path, "level.adofai");
         ingest.discard(run_id).await.expect("Redis cleanup");
 
         let mut outdated = valid_request();
         outdated["client_tuf_file_id"] = "file-41".into();
         let response = request.post("/api/v1/runs").json(&outdated).await;
-        assert_eq!(response.status_code(), 409);
-        assert_eq!(
-            response.json::<serde_json::Value>()["code"],
-            "level_revision_outdated"
-        );
+        assert_eq!(response.status_code(), 201);
 
         let mut mismatch = valid_request();
         mismatch["client_installed_payload_hash_hex"] = "00".repeat(32).into();
         let response = request.post("/api/v1/runs").json(&mismatch).await;
-        assert_eq!(response.status_code(), 409);
-        assert_eq!(
-            response.json::<serde_json::Value>()["code"],
-            "level_installation_mismatch"
-        );
+        assert_eq!(response.status_code(), 201);
 
         let mut unknown_chart = valid_request();
         unknown_chart["client_level_relative_path"] = "other.adofai".into();
         let response = request.post("/api/v1/runs").json(&unknown_chart).await;
-        assert_eq!(response.status_code(), 422);
-        assert_eq!(
-            response.json::<serde_json::Value>()["code"],
-            "chart_not_found"
-        );
+        // The claim is checked against actual official bytes only on submit.
+        assert_eq!(response.status_code(), 201);
         assert_eq!(
             downloads.load(Ordering::SeqCst),
-            1,
-            "cached revision must not redownload"
+            0,
+            "pre-play issuance must never download an archive"
         );
 
         let mut old_contract = valid_request();
@@ -206,7 +205,7 @@ async fn issues_only_latest_canonical_run_sessions() {
     .await;
 }
 
-async fn canonical_level(db: &DatabaseConnection) -> (i64, i64) {
+pub(crate) async fn canonical_level(db: &DatabaseConnection) -> (i64, i64) {
     let revision = level_revisions::ActiveModel {
         tuf_level_id: Set(42),
         tuf_file_id: Set(Uuid::new_v4().to_string()),
@@ -245,6 +244,8 @@ async fn websocket_reconnects_from_authoritative_ack_and_seals() {
         .expect("ingest store");
     let (revision_id, chart_id) = canonical_level(&ctx.db).await;
     let run_id = Uuid::new_v4();
+    let owner = Uuid::new_v4().to_string();
+    crate::support::authenticate(&ctx, &owner);
     let upload_token = URL_SAFE_NO_PAD.encode([7_u8; 32]);
     let token_hash = Sha256::digest(upload_token.as_bytes());
     let token_hash_hex = hex::encode(token_hash);
@@ -259,8 +260,10 @@ async fn websocket_reconnects_from_authoritative_ack_and_seals() {
             client_game_version: "2.8.1".to_owned(),
             client_mod_version: "0.1.0".to_owned(),
             tuf_level_id: 42,
-            level_revision_id: revision_id,
-            level_revision_chart_id: chart_id,
+            level_revision_id: Some(revision_id),
+            level_revision_chart_id: Some(chart_id),
+            client_tuf_file_id: "fixture".into(),
+            client_level_relative_path: "level.adofai".into(),
             upload_token_hash: token_hash.to_vec(),
             lease_expires_at: (now + Duration::seconds(45)).fixed_offset(),
             hard_expires_at: hard_expires_at.fixed_offset(),
@@ -268,6 +271,15 @@ async fn websocket_reconnects_from_authoritative_ack_and_seals() {
     )
     .await
     .expect("create PostgreSQL session");
+    let run = Model::find_by_pid(&ctx.db, run_id).await.unwrap();
+    tuf_replay_server::models::run_submission_records::Entity::create_authorized(
+        &ctx.db,
+        run.id,
+        &owner,
+        Some(crate::support::GRANT),
+    )
+    .await
+    .unwrap();
     store
         .create_session(run_id, &token_hash_hex, hard_expires_at.timestamp())
         .await
@@ -342,8 +354,8 @@ async fn websocket_reconnects_from_authoritative_ack_and_seals() {
         .expect("sealed run");
     assert_eq!(model.status, RunStatus::Sealed.as_str());
     assert!(model.sealed_at.is_some());
-    assert_eq!(model.level_revision_id, revision_id);
-    assert_eq!(model.level_revision_chart_id, chart_id);
+    assert_eq!(model.level_revision_id, Some(revision_id));
+    assert_eq!(model.level_revision_chart_id, Some(chart_id));
 
     store.discard(run_id).await.expect("cleanup Redis");
     server.abort();

@@ -137,6 +137,7 @@ public sealed class ActivityRunDto
   public int? MicrophoneChannels;
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
+  public string SubmissionRunId;
 
   public static ActivityRunDto From(RunRecord r) =>
     new ActivityRunDto
@@ -172,6 +173,7 @@ public sealed class ActivityRunDto
       MicrophoneChannels = r.MicrophoneChannels,
       MicrophoneRecordingPermanent = r.MicrophoneRecordingPermanent,
       MicrophoneRecordingExpiresAtUtc = r.MicrophoneRecordingExpiresAtUtc,
+      SubmissionRunId = r.SubmissionRunId,
     };
 }
 
@@ -216,4 +218,9 @@ public sealed class ActivityRunDeleteResultDto
 {
   public string RunId;
   public bool Deleted;
+}
+
+public sealed class ActivityLegacyReplayStatusDto
+{
+  public bool HasLegacyReplays;
 }

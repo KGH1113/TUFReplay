@@ -67,6 +67,8 @@ export const appSessionDtoSchema = z
   })
   .passthrough();
 
+export const legacyReplayStatusDtoSchema = z.object({ HasLegacyReplays: z.boolean() });
+
 export const activityRunDtoSchema = z
   .object({
     Id: z.string(),
@@ -97,6 +99,7 @@ export const activityRunDtoSchema = z
     MicrophoneChannels: z.number().int().nullable(),
     MicrophoneRecordingPermanent: z.boolean(),
     MicrophoneRecordingExpiresAtUtc: z.string().nullable(),
+    SubmissionRunId: z.uuid().nullable().default(null),
   })
   .passthrough();
 

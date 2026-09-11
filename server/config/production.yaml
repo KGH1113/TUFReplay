@@ -9,9 +9,15 @@ server:
   binding: <%= get_env(name="BINDING", default="0.0.0.0") %>
   host: <%= get_env(name="HOST") %>
   identifier: tuf-replay-server
+  middlewares:
+    cors:
+      enable: true
+      allow_origins: ['<%= get_env(name="SUBMISSION_WEB_ORIGIN", default="https://tufreplay.impl1113.dev") %>', '<%= get_env(name="TUF_WEB_ORIGIN") %>']
+      allow_headers: ["Content-Type", "Authorization"]
+      allow_methods: ["GET", "POST", "DELETE", "OPTIONS"]
 
 workers:
-  mode: BackgroundAsync
+  mode: BackgroundQueue
 
 queue:
   kind: Postgres

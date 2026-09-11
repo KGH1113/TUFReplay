@@ -1,0 +1,49 @@
+logger:
+  enable: true
+  pretty_backtrace: false
+  level: info
+  format: compact
+server:
+  port: 5151
+  binding: 127.0.0.1
+  host: http://127.0.0.1
+  identifier: tuf-replay-e2e
+  middlewares:
+    cors:
+      enable: true
+      allow_origins: ["http://localhost:5176", "http://127.0.0.1:5176"]
+      allow_headers: ["Content-Type", "Authorization"]
+      allow_methods: ["GET", "POST", "DELETE", "OPTIONS"]
+workers:
+  mode: BackgroundQueue
+queue:
+  kind: Postgres
+  uri: <%= get_env(name="E2E_DATABASE_URL", default="postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_e2e") %>
+  dangerously_flush: false
+database:
+  uri: <%= get_env(name="E2E_DATABASE_URL", default="postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_e2e") %>
+  enable_logging: false
+  connect_timeout: 500
+  idle_timeout: 500
+  min_connections: 1
+  max_connections: 5
+  auto_migrate: true
+  dangerously_truncate: false
+  dangerously_recreate: false
+settings:
+  auto_submission:
+    redis_url: <%= get_env(name="E2E_REDIS_URL", default="redis://127.0.0.1:6379/14") %>
+    redis_key_prefix: "e2e:"
+    active_ttl_seconds: 45
+    sealed_ttl_seconds: 86400
+    hard_duration_seconds: 21600
+    max_chunk_bytes: 65536
+    max_session_bytes: 134217728
+    heartbeat_interval_ms: 10000
+    tuf_api_base_url: http://127.0.0.1:5152
+    artifact_root: ../tools/auto-submission-e2e/.data/storage
+    artifact_max_download_bytes: 536870912
+    artifact_max_extracted_bytes: 2147483648
+    artifact_max_files: 20000
+    artifact_hydration_timeout_seconds: 30
+    artifact_max_concurrent_hydrations: 2

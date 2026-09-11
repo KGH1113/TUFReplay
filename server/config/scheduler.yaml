@@ -1,0 +1,10 @@
+output: silent
+jobs:
+  reconcile_submissions:
+    run: reconcile_submissions
+    schedule: "every 5 seconds"
+    run_on_start: true
+  cleanup_evidence:
+    run: cleanup_evidence
+    schedule: "every 1 minute"
+    run_on_start: true

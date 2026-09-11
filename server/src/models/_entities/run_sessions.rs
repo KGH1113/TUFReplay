@@ -22,8 +22,12 @@ pub struct Model {
     pub lease_expires_at: DateTimeWithTimeZone,
     pub hard_expires_at: DateTimeWithTimeZone,
     pub sealed_at: Option<DateTimeWithTimeZone>,
-    pub level_revision_id: i64,
-    pub level_revision_chart_id: i64,
+    pub level_revision_id: Option<i64>,
+    pub level_revision_chart_id: Option<i64>,
+    #[sea_orm(column_type = "Text")]
+    pub client_tuf_file_id: String,
+    #[sea_orm(column_type = "Text")]
+    pub client_level_relative_path: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
@@ -44,6 +48,8 @@ pub enum Relation {
         on_delete = "Restrict"
     )]
     LevelRevisions,
+    #[sea_orm(has_one = "super::run_submission_records::Entity")]
+    RunSubmissionRecords,
 }
 
 impl Related<super::level_revision_charts::Entity> for Entity {
@@ -55,5 +61,11 @@ impl Related<super::level_revision_charts::Entity> for Entity {
 impl Related<super::level_revisions::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::LevelRevisions.def()
+    }
+}
+
+impl Related<super::run_submission_records::Entity> for Entity {
+    fn to() -> RelationDef {
+        Relation::RunSubmissionRecords.def()
     }
 }

@@ -46,6 +46,10 @@ public class RecordedRunPayload
   public float? EffectivePitch;
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
+  public int? SubmissionKeyCount;
+  public int? SubmissionHoldBehavior;
+  public string SubmissionRunId;
+  public string GameVersion;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
@@ -53,18 +57,24 @@ public class RecordedRunPayload
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
 
-  public string ToActivityMetaJson()
+  public string ToActivityMetaJson(int? inputCount = null, int? hitContextCount = null,
+    long? terminalTimeUs = null, string endedAtUtc = null)
   {
     var meta = new
     {
       formatVersion = 3,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
-      endedAtUtc = EndedAtUtc,
+      endedAtUtc = endedAtUtc ?? EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,
       wonTimeUs = WonTimeUs,
-      terminalTimeUs = TerminalTimeUs,
+      terminalTimeUs = terminalTimeUs ?? TerminalTimeUs,
       noFailMode = NoFailMode,
+      judgmentDifficulty = (int?)JudgmentDifficulty,
+      keyCount = SubmissionKeyCount,
+      holdBehavior = SubmissionHoldBehavior,
+      submissionRunId = SubmissionRunId,
+      gameVersion = GameVersion,
       levelPitchPercent = LevelPitchPercent,
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,
@@ -96,9 +106,11 @@ public class RecordedRunPayload
       inputNativeQueueDepth = InputNativeQueueDepth,
       inputKeySpace = "os-native-key-code",
       inputNativePlatform = NativeInputPlatformName(),
-      inputCount = Inputs.Count,
+      inputCount = inputCount ?? Inputs.Count,
+      gameplayHashVersion = GameplayHashVersion,
+      gameplayHashHex = GameplayHash == null ? null : System.BitConverter.ToString(GameplayHash).Replace("-", "").ToLowerInvariant(),
       hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection-resolvedHitMargin-timeUs",
-      hitContextCount = HitContexts.Count,
+      hitContextCount = hitContextCount ?? HitContexts.Count,
       micRecord = false,
     };
 

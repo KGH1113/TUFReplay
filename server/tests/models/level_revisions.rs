@@ -2,10 +2,9 @@ use chrono::Utc;
 use loco_rs::testing::prelude::*;
 use sea_orm::{ActiveModelTrait, ActiveValue::Set, EntityTrait};
 use serial_test::serial;
-use tuf_replay_server::{
-    app::App,
-    models::level_revisions::{ActiveModel, Entity},
-};
+use tuf_replay_server::app::App;
+use tuf_replay_server::models::level_revisions::ActiveModel;
+use tuf_replay_server::models::level_revisions::Entity;
 
 #[tokio::test]
 #[serial]
