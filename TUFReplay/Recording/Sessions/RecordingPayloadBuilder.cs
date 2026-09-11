@@ -18,9 +18,12 @@ public static class RecordingPayloadBuilder
     run.GameplayHashVersion = data.GameplayHashVersion;
     run.InputCount = data.Inputs.Count;
     run.HitContextCount = data.HitContexts.Count;
-    run.InputCsv = data.ToInputCsvBytes();
-    run.HitContextCsv = data.ToHitContextCsvBytes();
-    run.MetaJson = data.ToActivityMetaJson();
+    run.ReplayArtifact = null;
+    run.ReplayUnavailableReason = null;
+    if (!data.TryCreateArtifact(run.Id, out ReplayArtifact artifact))
+      run.ReplayUnavailableReason = ReplayUnavailableReasons.CaptureIncomplete;
+    else
+      run.ReplayArtifact = artifact;
     return run;
   }
 }

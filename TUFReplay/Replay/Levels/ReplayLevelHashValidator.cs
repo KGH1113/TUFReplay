@@ -56,8 +56,7 @@ public static class ReplayLevelHashValidator
     errorMessage = null;
     if (!ValidateStoredHash(run, out errorCode, out errorMessage))
       return false;
-    int hashVersion = run.GameplayHashVersion ?? GameplayChartHash.Version;
-    if (!GameplayChartHash.TryCompute(levelData, hashVersion, out byte[] actualHash, out string hashError))
+    if (!GameplayChartHash.TryCompute(levelData, out byte[] actualHash, out string hashError))
       return Error("level_file_invalid", hashError, out errorCode, out errorMessage);
 
     if (run.GameplayHash == null)
@@ -81,10 +80,6 @@ public static class ReplayLevelHashValidator
     }
 
     return GameplayChartHash.Equals(run.GameplayHash, actualHash)
-      || (
-        run.GameplayHashVersion == 3
-        && GameplayChartHash.MatchesVersion3IgnoringLevelVersion(run.GameplayHash, levelData)
-      )
       || MatchesVerifiedOriginalSemantics(run, run.GameplayHash, levelData)
       || Error("level_gameplay_modified", LevelFileAccessValidator.ModifiedMessage, out errorCode, out errorMessage);
   }
@@ -99,11 +94,9 @@ public static class ReplayLevelHashValidator
     if (originalPath == null || referenceHash == null || candidateLevelData == null)
       return false;
 
-    int hashVersion = run.GameplayHashVersion ?? GameplayChartHash.Version;
     if (
       !GameplayChartHash.TryLoadCustomLevel(
         originalPath,
-        hashVersion,
         out LevelData originalLevelData,
         out byte[] originalHash,
         out _

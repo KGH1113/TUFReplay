@@ -38,4 +38,14 @@ describe("i18n behavior", () => {
   test("falls back to English for an unsupported language", () => {
     expect(i18n.getFixedT("ja", "common")("actions.save")).toBe("Save");
   });
+
+  test("explains permanently unavailable replays in English and Korean", () => {
+    const english = i18n.getFixedT("en", "activity");
+    const korean = i18n.getFixedT("ko", "activity");
+
+    expect(english("run.replayUnavailable.legacy_engine")).toContain("previous replay engine");
+    expect(english("run.replayUnavailable.capture_incomplete")).toContain("incomplete");
+    expect(korean("run.replayUnavailable.legacy_engine")).toContain("이전 리플레이 엔진");
+    expect(korean("run.replayUnavailable.capture_incomplete")).toContain("완전하지 않습니다");
+  });
 });

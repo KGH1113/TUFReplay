@@ -14,20 +14,22 @@ public static class RunRepository
   {
     JudgmentCounts judgments = r.JudgmentCounts ?? new JudgmentCounts();
     using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteTransaction transaction = c.BeginTransaction();
     using SqliteCommand q = c.CreateCommand();
+    q.Transaction = transaction;
     q.CommandText =
       @"INSERT INTO runs(
 id,level_session_id,run_index,started_at_utc,ended_at_utc,start_tile,last_tile,result,no_fail_mode,
 gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judgment_difficulty,
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
-input_count,hit_context_count,input_csv,hit_context_csv,meta_json
+input_count,hit_context_count,replay_unavailable_reason
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
 @song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
-@inputs,@hits,@inputCsv,@hitCsv,@meta
+@inputs,@hits,@replayUnavailableReason
 )";
     q.Parameters.AddWithValue("@id", r.Id);
     q.Parameters.AddWithValue("@level", r.LevelSessionId);
@@ -57,10 +59,28 @@ input_count,hit_context_count,input_csv,hit_context_csv,meta_json
     q.Parameters.AddWithValue("@judgmentMiss", judgments.Miss);
     q.Parameters.AddWithValue("@inputs", r.InputCount);
     q.Parameters.AddWithValue("@hits", r.HitContextCount);
-    q.Parameters.AddWithValue("@inputCsv", r.InputCsv ?? new byte[0]);
-    q.Parameters.AddWithValue("@hitCsv", r.HitContextCsv ?? new byte[0]);
-    q.Parameters.AddWithValue("@meta", r.MetaJson ?? "{}");
+    q.Parameters.AddWithValue("@replayUnavailableReason", DbValue.From(r.ReplayUnavailableReason));
     q.ExecuteNonQuery();
+
+    ReplayArtifact artifact = r.ReplayArtifact;
+    if (artifact != null)
+    {
+      q.Parameters.Clear();
+      q.CommandText =
+        @"INSERT INTO replay_artifacts(
+run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_context_csv,metadata_json
+) VALUES(@run,@engine,@format,@inputs,@hits,@inputCsv,@hitCsv,@metadata)";
+      q.Parameters.AddWithValue("@run", r.Id);
+      q.Parameters.AddWithValue("@engine", artifact.EngineId);
+      q.Parameters.AddWithValue("@format", artifact.FormatVersion);
+      q.Parameters.AddWithValue("@inputs", artifact.InputCount);
+      q.Parameters.AddWithValue("@hits", artifact.HitContextCount);
+      q.Parameters.AddWithValue("@inputCsv", artifact.InputCsv ?? new byte[0]);
+      q.Parameters.AddWithValue("@hitCsv", artifact.HitContextCsv ?? new byte[0]);
+      q.Parameters.AddWithValue("@metadata", artifact.MetadataJson ?? "{}");
+      q.ExecuteNonQuery();
+    }
+    transaction.Commit();
   }
 
   public static int GetNextRunIndex(string id)
@@ -229,11 +249,13 @@ WHERE id=@app
     q.CommandText =
       @"
 SELECT r.id,r.level_session_id,g.tuf_level_id,g.adofai_path,g.level_tile_count,
-       r.start_tile,r.last_tile,r.result,r.input_csv,r.hit_context_csv,r.meta_json,
-       g.gameplay_hash,g.gameplay_hash_version,r.judgment_difficulty,r.no_fail_mode
+       r.start_tile,r.last_tile,r.result,a.input_csv,a.hit_context_csv,a.metadata_json,
+       g.gameplay_hash,g.gameplay_hash_version,r.judgment_difficulty,r.no_fail_mode,
+       a.engine_id,a.format_version,r.replay_unavailable_reason
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 JOIN levels g ON g.id=l.level_id
+LEFT JOIN replay_artifacts a ON a.run_id=r.id
 WHERE r.id=@id
 LIMIT 1";
     q.Parameters.AddWithValue("@id", runId);
@@ -251,13 +273,16 @@ LIMIT 1";
       StartTile = r.GetInt32(5),
       LastTile = DbValue.NullableInt(r, 6),
       Result = r.GetString(7),
-      InputCsv = (byte[])r.GetValue(8),
-      HitContextCsv = (byte[])r.GetValue(9),
-      MetaJson = r.GetString(10),
+      InputCsv = r.IsDBNull(8) ? null : (byte[])r.GetValue(8),
+      HitContextCsv = r.IsDBNull(9) ? null : (byte[])r.GetValue(9),
+      MetaJson = DbValue.NullableString(r, 10),
       GameplayHash = r.IsDBNull(11) ? null : (byte[])r.GetValue(11),
       GameplayHashVersion = DbValue.NullableInt(r, 12),
       JudgmentDifficulty = ReadDifficulty(r, 13),
       NoFailMode = r.GetInt32(14) != 0,
+      EngineId = DbValue.NullableString(r, 15),
+      FormatVersion = r.IsDBNull(16) ? 0 : r.GetInt32(16),
+      ReplayUnavailableReason = DbValue.NullableString(r, 17),
     };
   }
 
@@ -282,10 +307,12 @@ r.level_pitch_percent,r.effective_pitch,r.x_accuracy,r.judgment_difficulty,
 r.judgment_overload,r.judgment_too_early,r.judgment_early,r.judgment_early_perfect,r.judgment_perfect,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 g.gameplay_hash,g.gameplay_hash_version,
-r.input_count,r.hit_context_count,length(r.input_csv),length(r.hit_context_csv),r.meta_json
+r.input_count,r.hit_context_count,coalesce(length(a.input_csv),0),coalesce(length(a.hit_context_csv),0),
+r.replay_unavailable_reason,a.run_id,a.engine_id,a.format_version
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
-JOIN levels g ON g.id=l.level_id";
+JOIN levels g ON g.id=l.level_id
+LEFT JOIN replay_artifacts a ON a.run_id=r.id";
 
   private static RunRecord Read(SqliteDataReader r) =>
     new RunRecord
@@ -325,8 +352,35 @@ JOIN levels g ON g.id=l.level_id";
       HitContextCount = r.GetInt32(29),
       InputCsvBytes = r.GetInt64(30),
       HitContextCsvBytes = r.GetInt64(31),
-      MetaJson = r.GetString(32),
+      ReplayUnavailableReason = ResolveReplayUnavailableReason(
+        DbValue.NullableString(r, 32),
+        !r.IsDBNull(33),
+        DbValue.NullableString(r, 34),
+        r.IsDBNull(35) ? 0 : r.GetInt32(35)
+      ),
+      ReplayPlayable =
+        string.IsNullOrWhiteSpace(DbValue.NullableString(r, 32))
+        && !r.IsDBNull(33)
+        && string.Equals(DbValue.NullableString(r, 34), ReplayFormat.EngineId, System.StringComparison.Ordinal)
+        && !r.IsDBNull(35)
+        && r.GetInt32(35) == ReplayFormat.FormatVersion,
     };
+
+  private static string ResolveReplayUnavailableReason(
+    string storedReason,
+    bool hasArtifact,
+    string engineId,
+    int formatVersion
+  )
+  {
+    if (!string.IsNullOrWhiteSpace(storedReason))
+      return storedReason;
+    if (!hasArtifact)
+      return ReplayUnavailableReasons.PayloadMissing;
+    if (!string.Equals(engineId, ReplayFormat.EngineId, System.StringComparison.Ordinal))
+      return ReplayUnavailableReasons.UnsupportedEngine;
+    return formatVersion == ReplayFormat.FormatVersion ? null : ReplayUnavailableReasons.UnsupportedFormat;
+  }
 
   private static RunJudgmentDifficulty? ReadDifficulty(SqliteDataReader reader, int index)
   {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Playback;
 
@@ -21,57 +22,23 @@ public static class ReplayInputParser
 
     ReadOnlySpan<byte> payload = inputCsv;
     List<RecordedInput> events = new List<RecordedInput>(Utf8Csv.CountNonEmptyLines(payload));
-    bool requiresSort = false;
     long previousTimeUs = 0;
     int offset = 0;
 
     while (Utf8Csv.TryReadNonEmptyLine(payload, ref offset, out ReadOnlySpan<byte> line))
     {
       if (!TryParseLine(line, out RecordedInput input))
-        continue;
+        throw new InvalidDataException("Replay input payload contains a malformed row.");
 
       if (events.Count > 0 && input.TimeUs < previousTimeUs)
-        requiresSort = true;
+        throw new InvalidDataException("Replay input timestamps must be monotonic.");
       previousTimeUs = input.TimeUs;
       if (input.TimeUs > maxTimeUs)
         maxTimeUs = input.TimeUs;
       events.Add(input);
     }
 
-    if (requiresSort)
-      SortLegacyPayload(events);
-
     return events;
-  }
-
-  private static void SortLegacyPayload(List<RecordedInput> events)
-  {
-    List<ParsedInput> parsed = new List<ParsedInput>(events.Count);
-    for (int i = 0; i < events.Count; i++)
-      parsed.Add(new ParsedInput(events[i], i));
-
-    parsed.Sort(
-      (a, b) =>
-      {
-        int timeOrder = a.Input.TimeUs.CompareTo(b.Input.TimeUs);
-        return timeOrder != 0 ? timeOrder : a.Sequence.CompareTo(b.Sequence);
-      }
-    );
-
-    for (int i = 0; i < parsed.Count; i++)
-      events[i] = parsed[i].Input;
-  }
-
-  private readonly struct ParsedInput
-  {
-    public readonly RecordedInput Input;
-    public readonly int Sequence;
-
-    public ParsedInput(RecordedInput input, int sequence)
-    {
-      Input = input;
-      Sequence = sequence;
-    }
   }
 
   public static bool TryParseLine(string line, out RecordedInput input)
@@ -82,7 +49,7 @@ public static class ReplayInputParser
       return false;
     ReadOnlySpan<char> value = line.AsSpan();
     int fieldCount = CountFields(value);
-    if (fieldCount != 3 && fieldCount != 5)
+    if (fieldCount != 5)
       return false;
     Span<Range> parts = stackalloc Range[fieldCount];
     if (!Utf8Csv.TrySplit(value, parts))
@@ -97,14 +64,9 @@ public static class ReplayInputParser
     if (!ushort.TryParse(value[parts[2]], NumberStyles.Integer, CultureInfo.InvariantCulture, out ushort rawFlags))
       return false;
 
-    int nativeCode = -1;
-    ulong nativeFlags = 0;
     if (
-      fieldCount == 5
-      && (
-        !int.TryParse(value[parts[3]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeCode)
-        || !ulong.TryParse(value[parts[4]], NumberStyles.Integer, CultureInfo.InvariantCulture, out nativeFlags)
-      )
+      !int.TryParse(value[parts[3]], NumberStyles.Integer, CultureInfo.InvariantCulture, out int nativeCode)
+      || !ulong.TryParse(value[parts[4]], NumberStyles.Integer, CultureInfo.InvariantCulture, out ulong nativeFlags)
     )
       return false;
 
@@ -116,7 +78,7 @@ public static class ReplayInputParser
   {
     input = default;
     int fieldCount = CountFields(line);
-    if (fieldCount != 3 && fieldCount != 5)
+    if (fieldCount != 5)
       return false;
     Span<Range> parts = stackalloc Range[fieldCount];
     if (!Utf8Csv.TrySplit(line, parts))
@@ -128,11 +90,9 @@ public static class ReplayInputParser
     if (!Utf8Csv.TryParseUInt16(line[parts[2]], out ushort rawFlags))
       return false;
 
-    int nativeCode = -1;
-    ulong nativeFlags = 0;
     if (
-      fieldCount == 5
-      && (!Utf8Csv.TryParseInt32(line[parts[3]], out nativeCode) || !TryParseUInt64(line[parts[4]], out nativeFlags))
+      !Utf8Csv.TryParseInt32(line[parts[3]], out int nativeCode)
+      || !TryParseUInt64(line[parts[4]], out ulong nativeFlags)
     )
       return false;
 

@@ -134,6 +134,8 @@ export function mapActivityRun(dto: ActivityRunDto) {
     microphoneChannels: dto.MicrophoneChannels,
     microphoneRecordingPermanent: dto.MicrophoneRecordingPermanent,
     microphoneRecordingExpiresAtUtc: dto.MicrophoneRecordingExpiresAtUtc,
+    replayPlayable: dto.ReplayPlayable,
+    replayUnavailableReason: dto.ReplayUnavailableReason,
   };
 }
 

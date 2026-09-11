@@ -243,7 +243,6 @@ public static partial class ReplaySessionService
       && GameplayChartHash.IsSupported(_activeContext.GameplayHashVersion, _activeContext.GameplayHash)
       && GameplayChartHash.TryCompute(
         ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData,
-        _activeContext.GameplayHashVersion,
         out byte[] currentHash,
         out _
       )

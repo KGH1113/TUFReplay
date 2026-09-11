@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace TUFReplay.Replay.Playback;
 
@@ -16,10 +17,9 @@ public static class ReplayHitContextParser
 
     while (Utf8Csv.TryReadNonEmptyLine(payload, ref offset, out ReadOnlySpan<byte> line))
     {
-      if (TryParseLine(line, out ReplayHitContext context))
-      {
-        contexts.Add(context);
-      }
+      if (!TryParseLine(line, out ReplayHitContext context))
+        throw new InvalidDataException("Replay hit payload contains a malformed row.");
+      contexts.Add(context);
     }
 
     return contexts;
@@ -29,16 +29,8 @@ public static class ReplayHitContextParser
   {
     context = default;
 
-    Span<Range> timedParts = stackalloc Range[13];
-    Span<Range> resolvedParts = stackalloc Range[12];
-    Span<Range> legacyParts = stackalloc Range[11];
-    bool hasTimeUs = Utf8Csv.TrySplit(line, timedParts);
-    bool hasResolvedHitMargin = hasTimeUs || Utf8Csv.TrySplit(line, resolvedParts);
-    Span<Range> parts =
-      hasTimeUs ? timedParts
-      : hasResolvedHitMargin ? resolvedParts
-      : legacyParts;
-    if (!hasResolvedHitMargin && !Utf8Csv.TrySplit(line, legacyParts))
+    Span<Range> parts = stackalloc Range[13];
+    if (!Utf8Csv.TrySplit(line, parts))
       return false;
 
     if (!Utf8Csv.TryParseInt32(line[parts[0]], out int currentFloorID))
@@ -64,21 +56,10 @@ public static class ReplayHitContextParser
     if (!Utf8Csv.TryParseInt32(line[parts[10]], out int curFreeRoamSection))
       return false;
 
-    int? resolvedHitMargin = null;
-    if (hasResolvedHitMargin)
-    {
-      if (!Utf8Csv.TryParseInt32(line[parts[11]], out int hitMarginValue))
-        return false;
-      resolvedHitMargin = hitMarginValue;
-    }
-
-    long? timeUs = null;
-    if (hasTimeUs)
-    {
-      if (!Utf8Csv.TryParseInt64(line[parts[12]], out long parsedTimeUs))
-        return false;
-      timeUs = parsedTimeUs;
-    }
+    if (!Utf8Csv.TryParseInt32(line[parts[11]], out int resolvedHitMargin))
+      return false;
+    if (!Utf8Csv.TryParseInt64(line[parts[12]], out long timeUs) || timeUs < 0L)
+      return false;
 
     context = new ReplayHitContext(
       currentFloorID,

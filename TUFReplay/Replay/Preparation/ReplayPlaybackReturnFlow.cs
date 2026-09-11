@@ -52,15 +52,7 @@ public static partial class ReplayPlaybackCoordinator
     operation.ValidatedLevelData = editor.levelData;
     operation.ValidatedLevelPath = currentPath;
     operation.LoadedLevelValidationPassed = passed;
-    if (
-      passed
-      && GameplayChartHash.TryCompute(
-        editor.levelData,
-        operation.Run.GameplayHashVersion.Value,
-        out byte[] loadedGameplayHash,
-        out _
-      )
-    )
+    if (passed && GameplayChartHash.TryCompute(editor.levelData, out byte[] loadedGameplayHash, out _))
     {
       operation.ValidatedLoadedGameplayHash = loadedGameplayHash;
       operation.ValidatedLoadedGameplayHashVersion = operation.Run.GameplayHashVersion.Value;

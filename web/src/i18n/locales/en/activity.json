@@ -120,6 +120,13 @@
     "playing": "Playing",
     "playReplay": "Play replay",
     "playReplayForRun": "Play replay for run {{runIndex}}",
+    "replayUnavailable": {
+      "legacy_engine": "This run was recorded with the previous replay engine.",
+      "capture_incomplete": "Replay capture was incomplete for this run.",
+      "unsupported_engine": "This run uses an unsupported replay engine.",
+      "unsupported_format": "This run uses an unsupported replay format.",
+      "payload_missing": "Replay data is missing for this run."
+    },
     "sortBy": "Sort by",
     "ascending": "Sort ascending",
     "descending": "Sort descending"

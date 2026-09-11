@@ -53,10 +53,6 @@ public static partial class ReplaySessionService
 
     long durationTimeUs = TimelineDurationTimeUs(context);
     List<ReplayTimelineJudgmentSnapshot> resolved = new List<ReplayTimelineJudgmentSnapshot>(hitContexts.Count);
-    List<scrFloor> floors = ADOBase.lm?.listFloors;
-    scrConductor conductor = ADOBase.conductor;
-    double? gameplayStartSongPosition = context.Meta?.gameplayStartSongPosition;
-
     for (int i = 0; i < hitContexts.Count; i++)
     {
       ReplayHitContext hitContext = hitContexts[i];
@@ -64,34 +60,7 @@ public static partial class ReplaySessionService
       if (!ReplayTimelineJudgmentMath.TryMapHitMargin(hitMargin, out ReplayTimelineJudgmentKind kind))
         continue;
 
-      long timeUs;
-      if (hitContext.TimeUs.HasValue)
-      {
-        timeUs = Math.Max(0L, Math.Min(hitContext.TimeUs.Value, durationTimeUs));
-      }
-      else
-      {
-        if (
-          floors == null
-          || hitContext.CurrentFloorID < 0
-          || hitContext.CurrentFloorID >= floors.Count
-          || floors[hitContext.CurrentFloorID]?.nextfloor == null
-          || conductor == null
-          || conductor.song == null
-          || !gameplayStartSongPosition.HasValue
-          || !ReplayTimelineJudgmentMath.TryEstimateLegacyTimeUs(
-            floors[hitContext.CurrentFloorID].nextfloor.entryTime,
-            gameplayStartSongPosition.Value,
-            hitContext.CurrAngle,
-            conductor.bpm,
-            floors[hitContext.CurrentFloorID].speed,
-            conductor.song.pitch,
-            durationTimeUs,
-            out timeUs
-          )
-        )
-          continue;
-      }
+      long timeUs = Math.Max(0L, Math.Min(hitContext.TimeUs, durationTimeUs));
 
       resolved.Add(new ReplayTimelineJudgmentSnapshot(timeUs, kind));
     }

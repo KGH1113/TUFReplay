@@ -97,6 +97,16 @@ export const activityRunDtoSchema = z
     MicrophoneChannels: z.number().int().nullable(),
     MicrophoneRecordingPermanent: z.boolean(),
     MicrophoneRecordingExpiresAtUtc: z.string().nullable(),
+    ReplayPlayable: z.boolean(),
+    ReplayUnavailableReason: z
+      .enum([
+        "legacy_engine",
+        "capture_incomplete",
+        "unsupported_engine",
+        "unsupported_format",
+        "payload_missing",
+      ])
+      .nullable(),
   })
   .passthrough();
 

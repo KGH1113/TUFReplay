@@ -12,32 +12,12 @@ public static class LevelRepository
 {
   public static string ResolveOrCreate(LevelRecord level)
   {
-    return ResolveOrCreate(level, null, null);
-  }
-
-  public static string ResolveOrCreate(LevelRecord level, byte[] legacyGameplayHash, int? legacyGameplayHashVersion)
-  {
     if (level == null)
       throw new ArgumentNullException(nameof(level));
 
     using SqliteConnection connection = DatabaseStore.OpenConnection();
     using SqliteTransaction transaction = connection.BeginTransaction();
-    string legacyLevelId = null;
-    if (
-      legacyGameplayHashVersion != level.GameplayHashVersion
-      && GameplayChartHash.IsSupported(legacyGameplayHashVersion, legacyGameplayHash)
-    )
-      legacyLevelId = FindByIdentity(
-        connection,
-        transaction,
-        BuildIdentityKey(level, legacyGameplayHash, legacyGameplayHashVersion)
-      );
     string id = ResolveOrCreate(connection, transaction, level);
-    if (!string.IsNullOrWhiteSpace(legacyLevelId) && legacyLevelId != id)
-    {
-      RepointSessions(connection, transaction, legacyLevelId, id);
-      DeleteIfOrphaned(connection, transaction, legacyLevelId);
-    }
     transaction.Commit();
     return id;
   }
@@ -124,33 +104,6 @@ ON CONFLICT(identity_key) DO UPDATE SET
     DeleteIfOrphaned(connection, transaction, levelId);
     transaction.Commit();
     return resolvedId;
-  }
-
-  public static void MergeLegacyIdentity(string levelId, byte[] legacyGameplayHash, int? legacyGameplayHashVersion)
-  {
-    if (
-      string.IsNullOrWhiteSpace(levelId)
-      || !GameplayChartHash.IsSupported(legacyGameplayHashVersion, legacyGameplayHash)
-    )
-      return;
-
-    using SqliteConnection connection = DatabaseStore.OpenConnection();
-    using SqliteTransaction transaction = connection.BeginTransaction();
-    LevelRecord level = Get(connection, transaction, levelId);
-    if (level == null || level.GameplayHashVersion == legacyGameplayHashVersion)
-      return;
-
-    string legacyLevelId = FindByIdentity(
-      connection,
-      transaction,
-      BuildIdentityKey(level, legacyGameplayHash, legacyGameplayHashVersion)
-    );
-    if (!string.IsNullOrWhiteSpace(legacyLevelId) && legacyLevelId != levelId)
-    {
-      RepointSessions(connection, transaction, legacyLevelId, levelId);
-      DeleteIfOrphaned(connection, transaction, legacyLevelId);
-    }
-    transaction.Commit();
   }
 
   public static void UpdateMetadata(string levelId, LevelMetadataSnapshot metadata, LevelMetadataState state)
@@ -277,11 +230,6 @@ FROM levels WHERE id=@id LIMIT 1";
 
   private static string BuildIdentityKey(LevelRecord level)
   {
-    return BuildIdentityKey(level, level.GameplayHash, level.GameplayHashVersion);
-  }
-
-  private static string BuildIdentityKey(LevelRecord level, byte[] gameplayHash, int? gameplayHashVersion)
-  {
     string canonicalPath =
       LevelPathIdentity.Canonicalize(level.LevelPath, requireExists: false) ?? level.LevelPath ?? string.Empty;
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -289,18 +237,9 @@ FROM levels WHERE id=@id LIMIT 1";
     string source = level.SourceKind == LevelSourceKind.Tuf ? "tuf:" + level.TufLevelId : "local";
     string pathIdentity =
       level.SourceKind == LevelSourceKind.Tuf ? string.Empty : canonicalPath.Length + ":" + canonicalPath + ":";
-    string hash = GameplayChartHash.IsSupported(gameplayHashVersion, gameplayHash)
-      ? gameplayHashVersion.Value + ":" + Convert.ToBase64String(gameplayHash)
+    string hash = GameplayChartHash.IsSupported(level.GameplayHashVersion, level.GameplayHash)
+      ? level.GameplayHashVersion.Value + ":" + Convert.ToBase64String(level.GameplayHash)
       : "unknown:" + (level.Id ?? Guid.NewGuid().ToString("N"));
     return source + ":" + pathIdentity + hash;
-  }
-
-  private static string FindByIdentity(SqliteConnection connection, SqliteTransaction transaction, string identityKey)
-  {
-    using SqliteCommand command = connection.CreateCommand();
-    command.Transaction = transaction;
-    command.CommandText = "SELECT id FROM levels WHERE identity_key=@identity LIMIT 1";
-    command.Parameters.AddWithValue("@identity", identityKey);
-    return Convert.ToString(command.ExecuteScalar());
   }
 }
