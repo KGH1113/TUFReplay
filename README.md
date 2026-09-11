@@ -118,7 +118,7 @@ The build script:
 - Installs DLLs, native libraries, helpers, and assets under `Runtime/versions/<version>` while keeping settings and `Data/` at the mod root.
 - Copies the bundled microphone calibration chart, `calibration_old.ogg`, and its precomputed waveform into `Assets/calibration`; packaging fails if any calibration asset is missing.
 - On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with its own microphone usage description.
-- Runs the C# WAV, schema-generation/import, incremental BLOB, and replay-contract tests on macOS.
+- Runs the C# WAV, schema-generation/reset, incremental BLOB, and replay-contract tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
 The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFReplay starts. A missing AdofaiIpc installation is downloaded and verified once per process. Disabled, outdated, install-failure, and load-failure states stop the TUFReplay core and are shown in the shared AdofaiIpc dependency dialog without changing the user's UMM setting. The TUFReplay update engine verifies the complete ZIP and stages its bundled bootstrap as `Trial`; that bootstrap is used on the next game launch. If the matching TUFReplay runtime fails to initialize, its bootstrap trial is discarded while the current runtime remains active.
@@ -160,7 +160,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Version 0.2.0-beta.1 introduces replay engine `tufreplay.replay.v2` and payload format 1. The new activity database uses application ID `0x54554652` and schema version 1, while gameplay identity uses hash v4. It imports schema-v15 activity and microphone records, preserves the old activity database as `tufreplay.pre-0.2.sqlite`, and intentionally does not import replay payloads recorded by the previous engine. App SemVer, activity schema, replay engine, replay payload, and gameplay hash versions are independent compatibility boundaries.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Version 0.2.0-beta.1 introduces replay engine `tufreplay.replay.v2` and payload format 1. The new activity database uses application ID `0x54554652` and schema version 1, while gameplay identity uses hash v4. Opening a legacy activity database with schema version 15 or earlier logs a warning, deletes that database, and creates a fresh current database; replay payloads recorded by the previous engine are not imported. App SemVer, activity schema, replay engine, replay payload, and gameplay hash versions are independent compatibility boundaries.
 
 ## Web Development
 
