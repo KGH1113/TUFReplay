@@ -51,4 +51,16 @@ describe("i18n behavior", () => {
     expect(korean("run.replayUnavailable.legacy_engine")).toContain("이전 리플레이 엔진");
     expect(korean("run.replayUnavailable.capture_incomplete")).toContain("완전하지 않습니다");
   });
+
+  test("keeps the legacy replay notice aligned in English and Korean", () => {
+    const english = i18n.getFixedT("en", "activity");
+    const korean = i18n.getFixedT("ko", "activity");
+
+    expect(english("legacyReplayNotice.label")).toBe("Replay compatibility");
+    expect(english("legacyReplayNotice.title")).toContain("replay engine");
+    expect(english("legacyReplayNotice.confirm")).toBe("OK");
+    expect(korean("legacyReplayNotice.title")).toBe("이전 엔진 리플레이가 있어요");
+    expect(korean("legacyReplayNotice.label")).toBe("리플레이 호환성");
+    expect(korean("legacyReplayNotice.confirm")).toBe("확인");
+  });
 });

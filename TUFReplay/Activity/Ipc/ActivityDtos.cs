@@ -229,3 +229,8 @@ public sealed class ActivityRunDeleteResultDto
   public string RunId;
   public bool Deleted;
 }
+
+public sealed class ActivityLegacyReplayStatusDto
+{
+  public bool HasLegacyReplays;
+}

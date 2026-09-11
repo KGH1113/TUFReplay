@@ -1,6 +1,7 @@
 import type {
   ActivityAppSession,
   ActivityChart,
+  ActivityLegacyReplayStatus,
   ActivityLevelSessionOverview,
   ActivityLogicalLevelOverview,
   ActivityRun,
@@ -33,6 +34,7 @@ interface ActivityWireFixture {
     ProtocolVersion: number;
     ServerVersion: number;
   }>;
+  getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAppSessions(offset: number, limit: number): Promise<ActivityAppSession[]>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
@@ -169,6 +171,7 @@ export function createActivityWireFixture(): ActivityWireFixture {
       ReplayEngineId: "tufreplay.replay.v2",
       ReplayFormatVersion: 1,
     }),
+    getLegacyReplayStatus: async () => ({ HasLegacyReplays: true }),
     listAppSessions: async (offset, limit) => appSessions.slice(offset, offset + limit),
     listAllAppSessions: async (onPage) => {
       onPage?.(appSessions);

@@ -36,6 +36,7 @@ public sealed class TUFReplayIpcFeature
 
     ipc.Register("health.get", HealthIpcHandlers.Get);
     ipc.Register("activity.app-sessions.list", ActivityIpcHandlers.ListAppSessions);
+    ipc.Register("activity.legacy-replay-status.get", ActivityIpcHandlers.GetLegacyReplayStatus);
     ipc.Register("activity.level-session.get", ActivityIpcHandlers.GetLevelSession);
     ipc.Register("activity.level-session.runs.list", ActivityIpcHandlers.ListRuns);
     ipc.Register("activity.level-session.chart.get", ActivityIpcHandlers.GetChart);

@@ -110,6 +110,16 @@ run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_cont
     return q.ExecuteScalar() != null;
   }
 
+  public static bool HasLegacyReplay()
+  {
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText =
+      "SELECT 1 FROM runs WHERE replay_unavailable_reason=@reason AND (input_count > 0 OR hit_context_count > 0) LIMIT 1";
+    q.Parameters.AddWithValue("@reason", ReplayUnavailableReasons.LegacyEngine);
+    return q.ExecuteScalar() != null;
+  }
+
   public static RunRecord Get(string runId)
   {
     if (string.IsNullOrWhiteSpace(runId))

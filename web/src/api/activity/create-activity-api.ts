@@ -10,6 +10,7 @@ import {
   activityChartDtoSchema,
   activityRunDtoSchema,
   appSessionDtoSchema,
+  legacyReplayStatusDtoSchema,
   logicalLevelDtoSchema,
 } from "@/schemas/activity/activity-schema";
 import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
@@ -28,6 +29,15 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
   };
 
   return {
+    async getLegacyReplayStatus() {
+      const status = await callAdofaiIpc(
+        clients.namespace,
+        "activity.legacy-replay-status.get",
+        {},
+        legacyReplayStatusDtoSchema,
+      );
+      return { hasLegacyReplays: status.HasLegacyReplays };
+    },
     listAppSessions,
     listAllAppSessions: (onPage) => loadAllPages(listAppSessions, onPage),
     async getLogicalLevel(id) {

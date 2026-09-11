@@ -103,19 +103,22 @@ internal static class ReplayTimelineJudgmentMath
         kind = ReplayTimelineJudgmentKind.Perfect;
         return true;
       case 3:
-        kind = judgmentSystem == RunJudgmentSystem.ModernCompetitive
-          ? ReplayTimelineJudgmentKind.PerfectMinus
-          : ReplayTimelineJudgmentKind.Perfect;
+        kind =
+          judgmentSystem == RunJudgmentSystem.ModernCompetitive
+            ? ReplayTimelineJudgmentKind.PerfectMinus
+            : ReplayTimelineJudgmentKind.Perfect;
         return true;
       case 4:
-        kind = judgmentSystem == RunJudgmentSystem.ModernCompetitive
-          ? ReplayTimelineJudgmentKind.XPerfect
-          : ReplayTimelineJudgmentKind.Perfect;
+        kind =
+          judgmentSystem == RunJudgmentSystem.ModernCompetitive
+            ? ReplayTimelineJudgmentKind.XPerfect
+            : ReplayTimelineJudgmentKind.Perfect;
         return true;
       case 5:
-        kind = judgmentSystem == RunJudgmentSystem.ModernCompetitive
-          ? ReplayTimelineJudgmentKind.PerfectPlus
-          : ReplayTimelineJudgmentKind.Perfect;
+        kind =
+          judgmentSystem == RunJudgmentSystem.ModernCompetitive
+            ? ReplayTimelineJudgmentKind.PerfectPlus
+            : ReplayTimelineJudgmentKind.Perfect;
         return true;
       case 6:
         kind = ReplayTimelineJudgmentKind.LatePerfect;
