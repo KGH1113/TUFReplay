@@ -13,9 +13,8 @@ internal static class ActivityDatabaseSuite
   internal static void RunAll(string root)
   {
     TestFreshSchemaAndAtomicArtifact(root);
-    TestLegacyV15Import(root);
-    TestUnsupportedAndFailedImportsPreserveSource(root);
-    TestInterruptedReplacementRecovery(root);
+    TestLegacyDatabaseReset(root);
+    TestUnsupportedDatabasesArePreserved(root);
   }
 
   private static void TestFreshSchemaAndAtomicArtifact(string root)
@@ -63,166 +62,46 @@ internal static class ActivityDatabaseSuite
     Assert(!RunRepository.Exists("atomic-failure"), "Failed artifact insert left its activity run behind.");
   }
 
-  private static void TestLegacyV15Import(string root)
+  private static void TestLegacyDatabaseReset(string root)
   {
-    string directory = Path.Combine(root, "v15-import");
+    string directory = Path.Combine(root, "legacy-reset");
     Directory.CreateDirectory(directory);
-    string main = Path.Combine(directory, "tufreplay.sqlite");
-    string migrating = Path.Combine(directory, "tufreplay.0.2.migrating.sqlite");
-    string backup = Path.Combine(directory, "tufreplay.pre-0.2.sqlite");
-    CreateLegacyV15Database(main);
-    SetDatabasePath(main);
-
-    LegacyActivityV15Importer.EnsureCurrent(main, migrating, backup);
-    Assert(File.Exists(main) && File.Exists(backup), "Successful import did not retain both current DB and backup.");
-    Assert(!File.Exists(migrating), "Successful import left the migrating DB behind.");
-
-    using (SqliteConnection connection = Database.OpenConnection())
+    for (int version = 0; version <= LegacyActivityDatabaseReset.MaximumDiscardedVersion; version++)
     {
-      Assert(ActivitySchema.IsCurrent(connection), "Imported activity database does not have the current header.");
-      ActivitySchema.Validate(connection);
-      using SqliteCommand command = connection.CreateCommand();
-      command.CommandText =
-        "SELECT result,input_count,hit_context_count,replay_unavailable_reason FROM runs WHERE id='legacy-run'";
-      using SqliteDataReader run = command.ExecuteReader();
-      Assert(run.Read(), "Imported run ID was not preserved.");
-      Assert(
-        run.GetString(0) == "cleared"
-          && run.GetInt32(1) == 2
-          && run.GetInt32(2) == 1
-          && run.GetString(3) == ReplayUnavailableReasons.LegacyEngine,
-        "Imported run statistics or replay policy changed."
-      );
-      run.Close();
-      command.CommandText = "SELECT gameplay_hash,gameplay_hash_version FROM levels WHERE id='legacy-level'";
-      using SqliteDataReader level = command.ExecuteReader();
-      Assert(level.Read() && level.IsDBNull(0) && level.IsDBNull(1), "Legacy gameplay hash was imported.");
-      level.Close();
-      command.CommandText = "SELECT count(*) FROM replay_artifacts";
-      Assert(Convert.ToInt32(command.ExecuteScalar()) == 0, "Legacy replay payload was imported as a v2 artifact.");
-    }
+      string path = Path.Combine(directory, "v" + version + ".sqlite");
+      CreateLegacyV15Database(path, version);
+      string warning = null;
 
-    using (SqliteConnection connection = OpenUnpooled(backup))
-    {
-      using SqliteCommand command = connection.CreateCommand();
-      command.CommandText = "SELECT input_csv,hit_context_csv,meta_json FROM runs WHERE id='legacy-run'";
-      using SqliteDataReader payload = command.ExecuteReader();
+      LegacyActivityDatabaseReset.EnsureCurrent(path, message => warning = message);
+
+      Assert(IsCurrentDatabase(path), "Legacy schema v" + version + " was not replaced with the current schema.");
+      Assert(CountRows(path, "runs") == 0, "Legacy schema v" + version + " retained activity runs.");
       Assert(
-        payload.Read()
-          && ((byte[])payload.GetValue(0)).SequenceEqual(new byte[] { 1, 2, 3 })
-          && ((byte[])payload.GetValue(1)).SequenceEqual(new byte[] { 4, 5 }),
-        "Pre-0.2 backup did not preserve the legacy replay payload."
+        warning != null && warning.Contains("schema v" + version),
+        "Legacy schema v" + version + " did not emit a warning."
       );
     }
-
-    Assert(
-      MicrophoneRecordingRepository.ImportEmbeddedLegacyRecordings(backup) == 1,
-      "Embedded microphone was not imported."
-    );
-    Assert(
-      MicrophoneRecordingRepository.ImportEmbeddedLegacyRecordings(backup) == 0,
-      "Completed microphone import was repeated."
-    );
-    Assert(MicrophoneRecordingRepository.Exists("legacy-run"), "Imported microphone recording is missing.");
-    using (SqliteConnection microphone = MicrophoneDatabase.OpenConnection())
-    using (SqliteCommand command = microphone.CreateCommand())
-    {
-      command.CommandText = "SELECT audio_wav FROM microphone_recordings WHERE run_id='legacy-run'";
-      Assert(
-        ((byte[])command.ExecuteScalar()).SequenceEqual(new byte[] { 9, 8, 7, 6 }),
-        "Streamed microphone import changed the BLOB."
-      );
-    }
-    Assert(MicrophoneRecordingRepository.DeleteOrphans() == 0, "Valid imported microphone was treated as orphaned.");
-    Assert(RunRepository.Delete("legacy-run"), "Imported run could not be deleted.");
-    Assert(MicrophoneRecordingRepository.DeleteOrphans() == 1, "Deleted imported run left an orphaned microphone.");
-    Assert(
-      MicrophoneRecordingRepository.ImportEmbeddedLegacyRecordings(backup) == 0
-        && !MicrophoneRecordingRepository.Exists("legacy-run"),
-      "Deleted imported microphone was resurrected from the backup."
-    );
-    Assert(CountRows(main, "level_sessions") == 0, "Closed orphan level session was not cleaned up.");
-    Assert(CountRows(main, "app_sessions") == 0, "Closed orphan app session was not cleaned up.");
   }
 
-  private static void TestUnsupportedAndFailedImportsPreserveSource(string root)
+  private static void TestUnsupportedDatabasesArePreserved(string root)
   {
-    string unsupported = Path.Combine(root, "unsupported-v14.sqlite");
-    CreateLegacyV15Database(unsupported, 14);
+    string unsupported = Path.Combine(root, "unsupported-v16.sqlite");
+    CreateLegacyV15Database(unsupported, 16);
     AssertThrows<InvalidOperationException>(
-      () => LegacyActivityV15Importer.EnsureCurrent(unsupported, unsupported + ".migrating", unsupported + ".backup"),
-      "Unsupported v14 database was silently initialized."
+      () => LegacyActivityDatabaseReset.EnsureCurrent(unsupported),
+      "Unsupported v16 database was silently initialized."
     );
-    Assert(ReadUserVersion(unsupported) == 14, "Unsupported database was modified.");
+    Assert(ReadUserVersion(unsupported) == 16, "Unsupported database was modified.");
     Assert(CountRows(unsupported, "runs") == 1, "Unsupported database lost activity data.");
 
     string corrupt = Path.Combine(root, "corrupt.sqlite");
     byte[] corruptBytes = { 1, 3, 3, 7, 9 };
     File.WriteAllBytes(corrupt, corruptBytes);
     AssertThrows<SqliteException>(
-      () => LegacyActivityV15Importer.EnsureCurrent(corrupt, corrupt + ".migrating", corrupt + ".backup"),
+      () => LegacyActivityDatabaseReset.EnsureCurrent(corrupt),
       "Corrupt database was silently initialized."
     );
     Assert(File.ReadAllBytes(corrupt).SequenceEqual(corruptBytes), "Corrupt source database was overwritten.");
-
-    string collision = Path.Combine(root, "backup-collision.sqlite");
-    string collisionBackup = collision + ".backup";
-    CreateLegacyV15Database(collision);
-    File.WriteAllBytes(collisionBackup, new byte[] { 7, 7, 7 });
-    AssertThrows<IOException>(
-      () => LegacyActivityV15Importer.EnsureCurrent(collision, collision + ".migrating", collisionBackup),
-      "Existing backup was overwritten."
-    );
-    Assert(ReadUserVersion(collision) == 15, "Backup collision modified the source database.");
-    Assert(File.ReadAllBytes(collisionBackup).SequenceEqual(new byte[] { 7, 7, 7 }), "Existing backup changed.");
-
-    string invalidImport = Path.Combine(root, "invalid-import.sqlite");
-    CreateLegacyV15Database(invalidImport);
-    using (SqliteConnection connection = OpenUnpooled(invalidImport))
-    {
-      using SqliteCommand command = connection.CreateCommand();
-      command.CommandText = "PRAGMA foreign_keys=OFF; UPDATE runs SET level_session_id='missing';";
-      command.ExecuteNonQuery();
-    }
-    AssertThrows<SqliteException>(
-      () =>
-        LegacyActivityV15Importer.EnsureCurrent(invalidImport, invalidImport + ".migrating", invalidImport + ".backup"),
-      "Invalid v15 import unexpectedly succeeded."
-    );
-    Assert(File.Exists(invalidImport) && ReadUserVersion(invalidImport) == 15, "Failed import replaced its source.");
-    Assert(!File.Exists(invalidImport + ".backup"), "Failed import created a source backup.");
-  }
-
-  private static void TestInterruptedReplacementRecovery(string root)
-  {
-    string completeDirectory = Path.Combine(root, "replacement-complete");
-    Directory.CreateDirectory(completeDirectory);
-    string completeMain = Path.Combine(completeDirectory, "main.sqlite");
-    string completeMigrating = Path.Combine(completeDirectory, "migrating.sqlite");
-    string completeBackup = Path.Combine(completeDirectory, "backup.sqlite");
-    CreateLegacyV15Database(completeBackup);
-    CreateCurrentDatabase(completeMigrating);
-    LegacyActivityV15Importer.EnsureCurrent(completeMain, completeMigrating, completeBackup);
-    Assert(File.Exists(completeMain) && File.Exists(completeBackup), "Interrupted replacement was not completed.");
-    Assert(!File.Exists(completeMigrating), "Completed replacement retained the migrating file.");
-    Assert(IsCurrentDatabase(completeMain), "Recovered main database is not current.");
-
-    string restoreDirectory = Path.Combine(root, "replacement-restore");
-    Directory.CreateDirectory(restoreDirectory);
-    string restoreMain = Path.Combine(restoreDirectory, "main.sqlite");
-    string restoreMigrating = Path.Combine(restoreDirectory, "migrating.sqlite");
-    string restoreBackup = Path.Combine(restoreDirectory, "backup.sqlite");
-    CreateLegacyV15Database(restoreBackup);
-    File.WriteAllBytes(restoreMigrating, new byte[] { 0, 1, 2 });
-    AssertThrows<InvalidOperationException>(
-      () => LegacyActivityV15Importer.EnsureCurrent(restoreMain, restoreMigrating, restoreBackup),
-      "Invalid migrating DB recovery did not stop initialization."
-    );
-    Assert(
-      File.Exists(restoreMain) && ReadUserVersion(restoreMain) == 15,
-      "Invalid migrating DB did not restore backup."
-    );
-    Assert(!File.Exists(restoreMigrating), "Invalid migrating DB was not removed.");
   }
 
   private static RunRecord CreateRun(string id, int index, ReplayArtifact artifact)
