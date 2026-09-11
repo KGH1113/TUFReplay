@@ -160,7 +160,7 @@ Build only the macOS helper or validate the shell layer with:
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Version 0.2.0-beta.1 introduces replay engine `tufreplay.replay.v2` and payload format 1. The new activity database uses application ID `0x54554652` and schema version 1, while gameplay identity uses hash v4. Opening a legacy activity database with schema version 15 or earlier logs a warning, deletes that database, and creates a fresh current database; replay payloads recorded by the previous engine are not imported. App SemVer, activity schema, replay engine, replay payload, and gameplay hash versions are independent compatibility boundaries.
+Beta releases use the same two assets and must be marked as a prerelease on GitHub. Version 0.2.0-beta.1 introduces replay engine `tufreplay.replay.v2` and payload format 1. The new activity database uses application ID `0x54554652` and schema version 1, while gameplay identity uses hash v4. Schema v15 activity and microphone records are imported while the source is preserved as `tufreplay.pre-0.2.sqlite`; replay payloads recorded by the previous engine are intentionally not imported. Schema v14 and earlier databases log a warning and are replaced with a fresh current database. App SemVer, activity schema, replay engine, replay payload, and gameplay hash versions are independent compatibility boundaries.
 
 ## Web Development
 
