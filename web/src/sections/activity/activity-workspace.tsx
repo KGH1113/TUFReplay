@@ -35,6 +35,7 @@ export function ActivityWorkspace({
   selectedRun,
   loading,
   error,
+  chartError,
   readOnly,
   timeZone,
   replayStatus,
@@ -56,6 +57,7 @@ export function ActivityWorkspace({
   selectedRun: ActivityRun | null;
   loading: boolean;
   error: string;
+  chartError: string;
   readOnly: boolean;
   timeZone: string;
   replayStatus: ReplayStatus;
@@ -239,7 +241,7 @@ export function ActivityWorkspace({
     return (
       <StatePanel
         title={loading ? t("chart.loading") : t("chart.unavailable")}
-        body={loading ? t("chart.loadingIncrementally") : t("chart.noData")}
+        body={loading ? t("chart.loadingIncrementally") : chartError || t("chart.noData")}
       />
     );
   return (

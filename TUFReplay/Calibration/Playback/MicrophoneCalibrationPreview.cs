@@ -129,11 +129,16 @@ internal sealed class MicrophoneCalibrationPreview
     }
     catch (Exception exception)
     {
+      Main.Instance?.LogException("Calibration/PreviewPrepare", exception);
       ReplayMicrophonePlaybackFiles.Delete(copyPath);
       UnityMainThread.Post(() =>
       {
         if (_state.IsState(operationId, MicrophoneCalibrationStates.PreviewStarting))
-          _state.Error("calibration_preview_prepare_failed", exception.Message, operationId);
+          _state.Error(
+            "calibration_preview_invalid",
+            "The preview could not be prepared. Your calibration result is still saved.",
+            operationId
+          );
       });
     }
   }

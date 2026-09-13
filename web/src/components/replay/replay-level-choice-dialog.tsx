@@ -104,7 +104,7 @@ export function ReplayLevelChoiceDialog({
   const pickerMessage =
     currentPlayError ||
     (currentPicker?.outcome === "mismatch" || currentPicker?.outcome === "error"
-      ? currentPicker.message
+      ? translatedDomainError(currentPicker.errorCode ?? "") || currentPicker.message
       : null);
   const pickerFailed =
     Boolean(currentPlayError) ||

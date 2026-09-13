@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
+import { useTranslation } from "react-i18next";
 
 import { useApiPromise } from "@/api/app-api-provider";
 import type { ActivityRun } from "@/models/activity/activity-model";
+import { localizedErrorMessage } from "@/models/activity/localized-error";
 import { activityQueryKeys, removeRunById } from "@/state/activity/activity-queries";
 
 export function useLevelSessionData(
@@ -11,6 +13,7 @@ export function useLevelSessionData(
   chartAvailable: boolean,
   revision: number,
 ) {
+  const { t } = useTranslation("activity");
   const apiPromise = useApiPromise();
   const queryClient = useQueryClient();
   const levelKey = id ? activityQueryKeys.logicalLevel(id) : ["activity", "logical-level", null];
@@ -57,13 +60,19 @@ export function useLevelSessionData(
     [queryClient, revision, runsKey],
   );
 
-  const error = overview.error ?? runs.error ?? chart.error;
+  const error = overview.error
+    ? localizedErrorMessage(overview.error, t("errors.loadLevel"))
+    : runs.error
+      ? localizedErrorMessage(runs.error, t("errors.loadRuns"))
+      : "";
+  const chartError = chart.error ? localizedErrorMessage(chart.error, t("errors.loadChart")) : "";
   return {
     overview: overview.data ?? null,
     runs: runs.data ?? [],
     chart: chartAvailable ? (chart.data ?? null) : null,
     loading: overview.isPending || runs.isPending || (chartAvailable && chart.isPending),
-    error: error instanceof Error ? error.message : "",
+    error,
+    chartError,
     updateRun,
     removeRun,
   };

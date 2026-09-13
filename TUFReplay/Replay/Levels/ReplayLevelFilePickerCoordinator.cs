@@ -130,6 +130,7 @@ public static class ReplayLevelFilePickerCoordinator
   private static void PickOnMac(PickOperation operation)
   {
     string selectedPath = null;
+    string errorCode = null;
     string error = null;
     bool cancelled = false;
     try
@@ -156,18 +157,25 @@ public static class ReplayLevelFilePickerCoordinator
       else if (standardError.Contains("(-128)"))
         cancelled = true;
       else
-        error = string.IsNullOrWhiteSpace(standardError) ? "The macOS file picker failed." : standardError.Trim();
+      {
+        errorCode = "file_picker_failed";
+        error = "The file picker could not be opened. Return to ADOFAI and try again.";
+        if (!string.IsNullOrWhiteSpace(standardError))
+          Main.Instance?.Log("[Replay/FilePicker] macOS picker failed. error=" + standardError.Trim());
+      }
     }
     catch (Exception exception)
     {
-      error = "The macOS file picker failed: " + exception.GetType().Name;
+      errorCode = "file_picker_failed";
+      error = "The file picker could not be opened. Return to ADOFAI and try again.";
+      Main.Instance?.LogException("Replay/FilePicker", exception);
     }
 
     if (!IsCurrent(operation))
       return;
     if (error != null)
     {
-      Complete(operation, Error(operation.Run.Id, "file_picker_failed", error));
+      Complete(operation, Error(operation.Run.Id, errorCode ?? "file_picker_failed", error));
       return;
     }
     QueueValidation(operation, cancelled ? null : selectedPath);
@@ -382,6 +390,9 @@ public static class ReplayLevelFilePickerCoordinator
     return false;
   }
 
-  private static string PickerFailure(Exception exception) =>
-    "The level file picker failed: " + exception.GetType().Name;
+  private static string PickerFailure(Exception exception)
+  {
+    Main.Instance?.LogException("Replay/FilePicker", exception);
+    return "The file picker could not be opened. Return to ADOFAI and try again.";
+  }
 }

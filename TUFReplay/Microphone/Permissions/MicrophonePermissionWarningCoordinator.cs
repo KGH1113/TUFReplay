@@ -9,10 +9,8 @@ namespace TUFReplay.Microphone.Permissions;
 
 internal static class MicrophonePermissionWarningCoordinator
 {
-  private const string WarningTitle = "Microphone access is off";
-  private const string WarningMessage =
-    "Enable TUFReplay Microphone Capture in System Settings → Privacy & Security → Microphone. "
-    + "This run will continue without microphone audio.";
+  private const string MicrophoneSettingsUrl =
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone";
   private static readonly MicrophonePermissionWarningPolicy Policy = new MicrophonePermissionWarningPolicy();
   private static bool _initialized;
   private static bool _pendingEditorLevel;
@@ -90,7 +88,15 @@ internal static class MicrophonePermissionWarningCoordinator
       return;
     }
 
-    if (!ReplayTimelineHud.ShowNotificationToast(WarningTitle, WarningMessage))
+    WarningCopy warning = WarningFor(status.State);
+    if (
+      !ReplayTimelineHud.ShowPersistentNotification(
+        warning.Title,
+        warning.Message,
+        warning.ActionLabel,
+        warning.ActionLabel == null ? null : OpenMicrophoneSettings
+      )
+    )
       return;
 
     Policy.MarkShown();
@@ -102,6 +108,36 @@ internal static class MicrophonePermissionWarningCoordinator
     );
   }
 
+  private static WarningCopy WarningFor(MicrophonePermissionState state)
+  {
+    if (state == MicrophonePermissionState.Denied)
+    {
+      return new WarningCopy(
+        "Microphone access is off",
+        "Allow TUFReplay Microphone Capture in System Settings → Privacy & Security → Microphone. "
+          + "This run will continue without microphone audio.",
+        "Open System Settings"
+      );
+    }
+
+    if (state == MicrophonePermissionState.Restricted)
+    {
+      return new WarningCopy(
+        "Microphone access is restricted",
+        "Screen Time or a device management policy is blocking microphone access. Check the restriction or contact "
+          + "your administrator. This run will continue without microphone audio."
+      );
+    }
+
+    return new WarningCopy(
+      "Microphone recording could not start",
+      "Restart the game. If this keeps happening, reinstall TUFReplay and check the mod log. "
+        + "This run will continue without microphone audio."
+    );
+  }
+
+  private static void OpenMicrophoneSettings() => Application.OpenURL(MicrophoneSettingsUrl);
+
   private static bool IsEligibleRuntime()
   {
     return Application.platform == RuntimePlatform.OSXPlayer
@@ -112,5 +148,19 @@ internal static class MicrophonePermissionWarningCoordinator
   {
     _pendingEditorLevel = false;
     _refreshRequested = false;
+  }
+
+  private sealed class WarningCopy
+  {
+    public readonly string Title;
+    public readonly string Message;
+    public readonly string ActionLabel;
+
+    public WarningCopy(string title, string message, string actionLabel = null)
+    {
+      Title = title;
+      Message = message;
+      ActionLabel = actionLabel;
+    }
   }
 }
