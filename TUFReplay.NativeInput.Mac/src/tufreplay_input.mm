@@ -30,6 +30,7 @@ struct InputContext {
   std::atomic<bool> running{false};
   std::atomic<bool> stopping{false};
   std::atomic<int32_t> last_error{TUFREPLAY_INPUT_ERROR_NONE};
+  std::atomic<int32_t> last_system_error{0};
   dispatch_semaphore_t started = dispatch_semaphore_create(0);
   dispatch_semaphore_t events_available = dispatch_semaphore_create(0);
 };
@@ -158,6 +159,7 @@ void *input_thread_main(void *opaque) {
   IOHIDManagerScheduleWithRunLoop(context->manager, loop, kCFRunLoopDefaultMode);
   const IOReturn opened = IOHIDManagerOpen(context->manager, kIOHIDOptionsTypeNone);
   if (opened != kIOReturnSuccess) {
+    context->last_system_error.store(static_cast<int32_t>(opened), std::memory_order_release);
     context->last_error.store(TUFREPLAY_INPUT_ERROR_MANAGER_OPEN, std::memory_order_release);
     IOHIDManagerUnscheduleFromRunLoop(context->manager, loop, kCFRunLoopDefaultMode);
     context->run_loop.store(nullptr, std::memory_order_release);
@@ -245,6 +247,7 @@ int32_t tufreplay_input_start(void *opaque_context) {
   }
   context->stopping.store(false, std::memory_order_release);
   context->last_error.store(TUFREPLAY_INPUT_ERROR_NONE, std::memory_order_release);
+  context->last_system_error.store(0, std::memory_order_release);
   if (pthread_create(&context->thread, nullptr, input_thread_main, context) != 0) {
     context->last_error.store(TUFREPLAY_INPUT_ERROR_THREAD_START, std::memory_order_release);
     return TUFREPLAY_INPUT_ERROR_THREAD_START;
@@ -291,6 +294,11 @@ bool tufreplay_input_is_running(void *opaque_context) {
 int32_t tufreplay_input_last_error(void *opaque_context) {
   InputContext *context = as_context(opaque_context);
   return context == nullptr ? TUFREPLAY_INPUT_ERROR_THREAD_START : context->last_error.load(std::memory_order_acquire);
+}
+
+int32_t tufreplay_input_last_system_error(void *opaque_context) {
+  InputContext *context = as_context(opaque_context);
+  return context == nullptr ? 0 : context->last_system_error.load(std::memory_order_acquire);
 }
 
 int32_t tufreplay_input_wait_dequeue(void *opaque_context, tufreplay_input_event *events, int32_t capacity, int32_t timeout_ms) {

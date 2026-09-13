@@ -9,14 +9,19 @@ namespace TUFReplay.Unity.ReplayTimeline
     [SerializeField]
     private MicrophonePermissionWarningView view;
 
-    public void Configure(MicrophonePermissionWarningView warningView)
+    public void Configure(MicrophonePermissionWarningView notificationView)
     {
-      view = warningView;
+      view = notificationView;
     }
 
     private void Start()
     {
-      view?.Show();
+      view?.ShowPersistent(
+        "Input Monitoring is required",
+        "Allow A Dance of Fire and Ice in System Settings → Privacy & Security → Input Monitoring, then restart the game.",
+        "Open System Settings",
+        () => Debug.Log("[TUFReplay.Unity] Runtime notification action invoked.")
+      );
     }
   }
 }
