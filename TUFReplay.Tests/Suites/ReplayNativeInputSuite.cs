@@ -748,6 +748,16 @@ internal static class ReplayNativeInputSuite
 
   private static void TestMacOsNativeShimAbi()
   {
+    Assert(
+      MacOsIoHidErrorFormatter.Format(MacOsInputError.ManagerOpen, unchecked((int)0xE00002E2u))
+        == "ManagerOpen: kIOReturnNotPermitted (decimal=-536870174, hex=0xE00002E2)",
+      "macOS IOHID error formatter did not preserve the native IOReturn."
+    );
+    Assert(
+      MacOsIoHidErrorFormatter.Format(MacOsInputError.ManagerOpen, 1234)
+        == "ManagerOpen: unknown IOReturn (decimal=1234, hex=0x000004D2)",
+      "macOS IOHID error formatter did not preserve an unknown native error."
+    );
     if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
       return;
     Assert(

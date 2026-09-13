@@ -13,14 +13,13 @@ namespace TUFReplay.Replay.Timeline;
 internal sealed class ReplayTimelineHud : MonoBehaviour
 {
   private const string RuntimePrefabPath = "Assets/Prefabs/ReplayTimelineRuntime.prefab";
-  private const string MicrophonePermissionWarningPrefabPath =
-    "Assets/Prefabs/MicrophonePermissionWarningRuntime.prefab";
+  private const string RuntimeNotificationPrefabPath = "Assets/Prefabs/RuntimeNotificationRuntime.prefab";
   private const int TimelineSortOrder = 32000;
   private static ReplayTimelineHud _instance;
 
   private AssetBundle _bundle;
   private ReplayTimelineView _view;
-  private MicrophonePermissionWarningView _microphonePermissionWarningView;
+  private MicrophonePermissionWarningView _notificationView;
   private UIFloatingPanelDragHandle _panelDragHandle;
   private string _activeRunId;
   private long _lastElapsedSecond = -1L;
@@ -70,12 +69,10 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
         bundle.Unload(true);
         return;
       }
-      GameObject microphonePermissionWarningPrefab = bundle.LoadAsset<GameObject>(
-        MicrophonePermissionWarningPrefabPath
-      );
-      if (microphonePermissionWarningPrefab == null)
+      GameObject runtimeNotificationPrefab = bundle.LoadAsset<GameObject>(RuntimeNotificationPrefabPath);
+      if (runtimeNotificationPrefab == null)
       {
-        Main.Instance?.Log("[ReplayTimelineHud] Microphone permission warning prefab is missing from the UI bundle.");
+        Main.Instance?.Log("[ReplayTimelineHud] Runtime notification prefab is missing from the UI bundle.");
         bundle.Unload(true);
         return;
       }
@@ -119,20 +116,16 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       hud._view.BindExpandDocked(hud.ExpandDockedTimeline);
       hud._view.gameObject.SetActive(false);
 
-      GameObject microphonePermissionWarning = Instantiate(
-        microphonePermissionWarningPrefab,
-        canvasObject.transform,
-        false
-      );
-      microphonePermissionWarning.name = "MicrophonePermissionWarningRuntime";
-      MicrophonePermissionWarningView microphonePermissionWarningView =
-        microphonePermissionWarning.GetComponent<MicrophonePermissionWarningView>();
-      if (microphonePermissionWarningView == null)
+      GameObject runtimeNotification = Instantiate(runtimeNotificationPrefab, canvasObject.transform, false);
+      runtimeNotification.name = "RuntimeNotificationRuntime";
+      MicrophonePermissionWarningView notificationView =
+        runtimeNotification.GetComponent<MicrophonePermissionWarningView>();
+      if (notificationView == null)
         throw new InvalidOperationException(
-          "MicrophonePermissionWarningRuntime.prefab has no MicrophonePermissionWarningView."
+          "RuntimeNotificationRuntime.prefab has no MicrophonePermissionWarningView."
         );
-      hud._microphonePermissionWarningView = microphonePermissionWarningView;
-      hud._microphonePermissionWarningView.ResetImmediate();
+      hud._notificationView = notificationView;
+      hud._notificationView.ResetImmediate();
       _instance = hud;
     }
     catch (Exception exception)
@@ -151,7 +144,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
 
     AssetBundle bundle = instance._bundle;
     instance._bundle = null;
-    instance._microphonePermissionWarningView?.ResetImmediate();
+    instance._notificationView?.ResetImmediate();
     if (instance.gameObject != null)
     {
       instance.gameObject.SetActive(false);
@@ -160,20 +153,30 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     bundle?.Unload(true);
   }
 
-  internal static bool ShowMicrophonePermissionWarning()
+  internal static bool ShowNotificationToast(string title, string message)
   {
-    MicrophonePermissionWarningView view = _instance?._microphonePermissionWarningView;
+    MicrophonePermissionWarningView view = _instance?._notificationView;
     if (view == null)
       return false;
 
-    view.Show(MicrophonePermissionWarningView.DefaultTitle, MicrophonePermissionWarningView.DefaultMessage);
-    return true;
+    return view.ShowToast(title, message);
   }
 
-  internal static void ResetMicrophonePermissionWarning()
+  internal static bool ShowPersistentNotification(
+    string title,
+    string message,
+    string actionLabel = null,
+    Action action = null
+  )
   {
-    _instance?._microphonePermissionWarningView?.ResetImmediate();
+    MicrophonePermissionWarningView view = _instance?._notificationView;
+    if (view == null)
+      return false;
+
+    return view.ShowPersistent(title, message, actionLabel, action);
   }
+
+  internal static void ResetNotification() => _instance?._notificationView?.ResetImmediate();
 
   private void Update()
   {
@@ -423,7 +426,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private void OnDestroy()
   {
     CancelScrub();
-    _microphonePermissionWarningView?.ResetImmediate();
+    _notificationView?.ResetImmediate();
     if (_instance == this)
       _instance = null;
   }

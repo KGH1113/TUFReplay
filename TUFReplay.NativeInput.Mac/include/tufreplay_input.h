@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-#define TUFREPLAY_INPUT_ABI_VERSION 1u
+#define TUFREPLAY_INPUT_ABI_VERSION 2u
 #define TUFREPLAY_INPUT_USAGE_CAPACITY 256u
 
 typedef enum tufreplay_input_access {
@@ -56,6 +56,7 @@ void tufreplay_input_stop(void *opaque_context);
 void tufreplay_input_destroy(void *opaque_context);
 bool tufreplay_input_is_running(void *opaque_context);
 int32_t tufreplay_input_last_error(void *opaque_context);
+int32_t tufreplay_input_last_system_error(void *opaque_context);
 int32_t tufreplay_input_wait_dequeue(void *opaque_context, tufreplay_input_event *events, int32_t capacity, int32_t timeout_ms);
 int32_t tufreplay_input_copy_state(void *opaque_context, uint8_t *usage_down, int32_t capacity);
 uint64_t tufreplay_input_take_dropped(void *opaque_context);

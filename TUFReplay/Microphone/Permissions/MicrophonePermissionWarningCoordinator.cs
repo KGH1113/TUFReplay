@@ -9,6 +9,10 @@ namespace TUFReplay.Microphone.Permissions;
 
 internal static class MicrophonePermissionWarningCoordinator
 {
+  private const string WarningTitle = "Microphone access is off";
+  private const string WarningMessage =
+    "Enable TUFReplay Microphone Capture in System Settings → Privacy & Security → Microphone. "
+    + "This run will continue without microphone audio.";
   private static readonly MicrophonePermissionWarningPolicy Policy = new MicrophonePermissionWarningPolicy();
   private static bool _initialized;
   private static bool _pendingEditorLevel;
@@ -28,7 +32,7 @@ internal static class MicrophonePermissionWarningCoordinator
     _pendingEditorLevel = false;
     _refreshRequested = false;
     Policy.Reset();
-    ReplayTimelineHud.ResetMicrophonePermissionWarning();
+    ReplayTimelineHud.ResetNotification();
   }
 
   internal static void NotifyEditorLevelLoaded()
@@ -86,7 +90,7 @@ internal static class MicrophonePermissionWarningCoordinator
       return;
     }
 
-    if (!ReplayTimelineHud.ShowMicrophonePermissionWarning())
+    if (!ReplayTimelineHud.ShowNotificationToast(WarningTitle, WarningMessage))
       return;
 
     Policy.MarkShown();

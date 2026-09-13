@@ -93,8 +93,9 @@ internal sealed class MacOsIoHidInputEventSource : INativeInputEventSource
       MacOsInputError error = _library.Start(_context);
       if (error != MacOsInputError.None || !_library.IsRunning(_context))
       {
-        MacOsInputMonitoringAccess.NotifyUnavailable("macos_iohid_start_failed: " + error);
-        throw new InvalidOperationException("macos_iohid_start_failed: " + error);
+        string detail = MacOsIoHidErrorFormatter.Format(error, _library.LastSystemError(_context));
+        MacOsInputMonitoringAccess.NotifyUnavailable("macos_iohid_start_failed: " + detail);
+        throw new InvalidOperationException("macos_iohid_start_failed: " + detail);
       }
       RefreshPhysicalState();
       _running = true;
@@ -212,7 +213,8 @@ internal sealed class MacOsIoHidInputEventSource : INativeInputEventSource
           ProcessNativeEvent(_nativeEvents[i]);
         if (!_stopping && !_library.IsRunning(_context))
           throw new InvalidOperationException(
-            "macOS IOHID native thread stopped unexpectedly: " + _library.LastError(_context)
+            "macOS IOHID native thread stopped unexpectedly: "
+              + MacOsIoHidErrorFormatter.Format(_library.LastError(_context), _library.LastSystemError(_context))
           );
       }
     }
