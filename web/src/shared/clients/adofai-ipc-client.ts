@@ -51,8 +51,9 @@ export async function callAdofaiIpc<TResult>(
   try {
     result = await namespace.call(method, params);
   } catch (cause) {
-    throw new ApiError(`AdofaiIpc call failed: ${method}`, {
+    throw new ApiError("The local TUFReplay connection failed.", {
       kind: "connection",
+      code: connectionErrorCode(cause),
       cause,
     });
   }
@@ -73,6 +74,30 @@ export async function callAdofaiIpc<TResult>(
     });
   }
   return parsed.data;
+}
+
+function connectionErrorCode(cause: unknown) {
+  const code = errorString(cause, "code");
+  if (code) {
+    if (code === "UNAVAILABLE") return "ipc_unavailable";
+    if (code === "TIMEOUT") return "ipc_timeout";
+    if (code === "VERSION_MISMATCH") return "ipc_version_mismatch";
+    return code;
+  }
+
+  const name = errorString(cause, "name").toLowerCase();
+  const message = errorString(cause, "message").toLowerCase();
+  if (name.includes("timeout") || message.includes("timeout") || message.includes("timed out"))
+    return "ipc_timeout";
+  if (cause instanceof TypeError || message.includes("fetch") || message.includes("connection"))
+    return "ipc_unavailable";
+  return "ipc_request_failed";
+}
+
+function errorString(cause: unknown, key: "code" | "name" | "message") {
+  if (!cause || typeof cause !== "object" || !(key in cause)) return "";
+  const value = (cause as Record<string, unknown>)[key];
+  return typeof value === "string" ? value : "";
 }
 
 async function connect(

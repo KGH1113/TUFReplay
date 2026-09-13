@@ -44,6 +44,7 @@ public static partial class ReplayPlaybackCoordinator
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
     public Pcm16LimiterEnvelope MicrophoneLimiterEnvelope;
+    public string MicrophoneWarning;
     public int? MicrophoneOffsetMs;
     public int? MicrophoneVolumeDb;
     public bool AllowBackground;

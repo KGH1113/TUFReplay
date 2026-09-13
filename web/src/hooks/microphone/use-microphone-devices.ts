@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback } from "react";
 
 import { useApiPromise } from "@/api/app-api-provider";
+import i18n from "@/i18n/i18n";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
+import { localizedErrorMessage } from "@/models/activity/localized-error";
 import type {
   MicrophoneDevicesState,
   MicrophoneTimingSettings,
@@ -65,7 +67,9 @@ export function useMicrophoneDevices(connectionStatus: ConnectionStatus) {
     loading: query.isPending,
     pendingDeviceId: deviceMutation.isPending ? deviceMutation.variables : undefined,
     pendingEnabled: enabledMutation.isPending ? enabledMutation.variables : undefined,
-    error: error instanceof Error ? error.message : "",
+    error: error
+      ? localizedErrorMessage(error, i18n.t("errors.readDevices", { ns: "microphone" }))
+      : "",
     refreshIfStale,
     setEnabled: enabledMutation.mutateAsync,
     select: deviceMutation.mutateAsync,

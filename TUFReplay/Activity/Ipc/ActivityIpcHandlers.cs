@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using AdofaiIpc.Core;
+using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Ipc;
 using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Queries;
@@ -10,6 +12,7 @@ using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Ipc;
+using TUFReplay.Shared.Database;
 
 namespace TUFReplay.Activity.Ipc;
 
@@ -87,7 +90,7 @@ public static class ActivityIpcHandlers
     catch (Exception exception)
     {
       Main.Instance?.Log("[IPC] Chart read failed: " + exception.GetType().Name);
-      return IpcDomainError.Create("chart_read_failed", "The recorded chart could not be read.");
+      return ChartReadError(exception);
     }
   }
 
@@ -148,7 +151,7 @@ public static class ActivityIpcHandlers
     catch (Exception exception)
     {
       Main.Instance?.Log("[IPC] Logical level chart read failed: " + exception.GetType().Name);
-      return IpcDomainError.Create("chart_read_failed", "The recorded chart could not be read.");
+      return ChartReadError(exception);
     }
   }
 
@@ -178,7 +181,14 @@ public static class ActivityIpcHandlers
     {
       FeatureRegistry.MicrophoneRecording?.CancelRunDeletion(runId);
       Main.Instance?.Log("[IPC] Run deletion failed: " + exception.GetType().Name);
-      return IpcDomainError.Create("run_delete_failed", "The run could not be deleted.");
+      if (exception is SqliteException sqliteException && Database.IsTransientLock(sqliteException))
+      {
+        return IpcDomainError.Create(
+          "activity_busy",
+          "Play history is being updated. Wait a moment and try deleting the run again."
+        );
+      }
+      return IpcDomainError.Create("run_delete_failed", "The run could not be deleted. Try again shortly.");
     }
   }
 
@@ -187,4 +197,20 @@ public static class ActivityIpcHandlers
 
   private static object InvalidLogicalLevelId() =>
     IpcDomainError.Create("invalid_logical_level_id", "id must be a non-empty string.");
+
+  private static object ChartReadError(Exception exception)
+  {
+    if (exception is SqliteException sqliteException && Database.IsTransientLock(sqliteException))
+      return IpcDomainError.Create("activity_busy", "Play history is being updated. Try again shortly.");
+    if (exception is UnauthorizedAccessException)
+    {
+      return IpcDomainError.Create(
+        "chart_permission_denied",
+        "TUFReplay does not have permission to read the level file."
+      );
+    }
+    if (exception is IOException)
+      return IpcDomainError.Create("chart_read_failed", "The level file could not be read. Try again shortly.");
+    return IpcDomainError.Create("chart_read_failed", "The chart could not be loaded. Try again shortly.");
+  }
 }

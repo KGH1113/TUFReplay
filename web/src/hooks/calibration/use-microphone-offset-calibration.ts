@@ -10,7 +10,7 @@ import i18n from "@/i18n/i18n";
 import { mockMicrophoneOffsetCalibration } from "@/mocks/calibration/microphone-offset-fixture";
 import { MockMicrophoneOffsetAudioPlayer } from "@/mocks/calibration/mock-microphone-offset-audio";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
-import { localizedErrorMessage } from "@/models/activity/localized-error";
+import { localizedErrorMessage, translatedDomainError } from "@/models/activity/localized-error";
 import type { CalibrationState } from "@/models/calibration/calibration-model";
 import { clampMicrophoneOffset } from "@/models/calibration/microphone-offset";
 import type { MicrophoneOffsetCalibrationData } from "@/models/calibration/microphone-offset-calibration-data";
@@ -321,7 +321,8 @@ export function useMicrophoneOffsetCalibration(
     if (!previewActive) setPlaybackPositionMs(status.PlaybackPositionMs);
     setAudioError(
       status.State === "error"
-        ? status.Message || i18n.t("errors.calibrationFailed", { ns: "microphone" })
+        ? translatedDomainError(status.ErrorCode ?? "") ||
+            i18n.t("errors.calibrationFailed", { ns: "microphone" })
         : "",
     );
   }, []);

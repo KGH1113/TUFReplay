@@ -13,6 +13,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
+import { localizedErrorMessage } from "@/models/activity/localized-error";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import {
@@ -62,7 +63,7 @@ export function RunActionsMenu({
     try {
       await onKeepMicrophoneRecording(run);
     } catch (cause) {
-      setMenuError(cause instanceof Error ? cause.message : microphoneT("recording.keepFailed"));
+      setMenuError(localizedErrorMessage(cause, microphoneT("recording.keepFailed")));
     } finally {
       setPendingAction(null);
     }
@@ -76,9 +77,7 @@ export function RunActionsMenu({
       await onDeleteMicrophoneRecording(run);
       setRecordingDialogOpen(false);
     } catch (cause) {
-      setDialogError(
-        cause instanceof Error ? cause.message : microphoneT("recording.deleteFailed"),
-      );
+      setDialogError(localizedErrorMessage(cause, microphoneT("recording.deleteFailed")));
     } finally {
       setPendingAction(null);
     }
@@ -92,7 +91,7 @@ export function RunActionsMenu({
       await onDeleteRun(run);
       setRunDialogOpen(false);
     } catch (cause) {
-      setDialogError(cause instanceof Error ? cause.message : t("run.deleteFailed"));
+      setDialogError(localizedErrorMessage(cause, t("run.deleteFailed")));
     } finally {
       setPendingAction(null);
     }
