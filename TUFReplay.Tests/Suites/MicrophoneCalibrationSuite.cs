@@ -495,16 +495,51 @@ internal static class MicrophoneCalibrationSuite
       "User offset and microphone pre-roll composition is wrong."
     );
 
-    var physicalInputSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: false);
+    const long physicalInputTimeUs = 500_000L;
+    var physicalInputSnapshot = new ReplayPlaybackSnapshot(physicalInputTimeUs, 1d, 1d, null, paused: false);
     long physicalInputFrame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
     foreach (int gameInputOffsetMs in new[] { 0, 100, -100 })
     {
-      long frame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
+      long gameInputOffsetUs = gameInputOffsetMs * 1000L;
+      var calibratedSnapshot = new ReplayPlaybackSnapshot(
+        physicalInputTimeUs - gameInputOffsetUs,
+        1d,
+        1d,
+        null,
+        paused: false,
+        gameInputOffsetUs
+      );
+      long frame = ReplayMicrophoneClock.ToFrame(calibratedSnapshot, 0L, 48000, 100000);
       Assert(
         frame == physicalInputFrame,
         "Game input offset changed the recorded physical microphone timeline: " + gameInputOffsetMs
       );
     }
+    const long pitchedGameInputOffsetUs = 100_000L;
+    var pitchedCalibratedSnapshot = new ReplayPlaybackSnapshot(
+      physicalInputTimeUs * 2L - pitchedGameInputOffsetUs * 2L,
+      2d,
+      2d,
+      null,
+      paused: false,
+      pitchedGameInputOffsetUs
+    );
+    Assert(
+      ReplayMicrophoneClock.ToFrame(pitchedCalibratedSnapshot, 0L, 48000, 100000) == physicalInputFrame,
+      "Pitched game input offset changed the recorded physical microphone timeline."
+    );
+    var microphoneOnlyOffsetSnapshot = new ReplayPlaybackSnapshot(
+      physicalInputTimeUs - 100_000L,
+      1d,
+      1d,
+      null,
+      paused: false,
+      gameInputOffsetUs: 100_000L
+    );
+    Assert(
+      ReplayMicrophoneClock.ToFrame(microphoneOnlyOffsetSnapshot, -50_000L, 48000, 100000) == 26_400L,
+      "Game input offset leaked into the configured microphone-only offset."
+    );
     var pausedSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: true);
     Assert(
       ReplayMicrophoneClock.ToFrame(pausedSnapshot, 0L, 48000, 100000) == physicalInputFrame,

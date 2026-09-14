@@ -552,13 +552,16 @@ public static partial class ReplaySessionService
 
   private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
 
+  private static long CurrentGameInputOffsetUs() => scrConductor.currentPreset.inputOffset * 1000L;
+
   private static ReplayPlaybackSnapshot CreatePlaybackSnapshot(long timelineTimeUs, bool? paused = null) =>
     new ReplayPlaybackSnapshot(
       timelineTimeUs,
       CurrentTimelineRate(),
       CurrentGameplayRate(),
       CurrentWonTimeUs(),
-      paused ?? ADOBase.controller?.paused == true
+      paused ?? ADOBase.controller?.paused == true,
+      CurrentGameInputOffsetUs()
     );
 
   private static void ResetReplayHeldInputState()

@@ -50,17 +50,24 @@ public partial class RecordingFeature
     _clearReached = true;
     Session.MarkWonReached();
     if (_calibrationRun)
-    {
-      Session.MarkTerminal();
-      Session.StopInputCapture("calibration_cleared");
-      RunRecord calibrationRun = CompleteCalibrationRun("cleared", RecordingSession.GetLevelTileCount());
-      EndMicrophoneRun(recording =>
-        UnityMainThread.Post(() => FeatureRegistry.MicrophoneCalibration?.OnRunCleared(calibrationRun, recording))
-      );
-      Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
       return;
-    }
     Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
+  }
+
+  public void OnHitPostfixCompleted()
+  {
+    if (!_calibrationRun || !_clearReached || _runSaved || !Session.IsRecording)
+      return;
+
+    // Won is raised from inside scrPlayer.Hit. Complete the transient run only after
+    // that method's postfix has stored the winning hit's resolved judgment.
+    Session.MarkTerminal();
+    Session.StopInputCapture("calibration_cleared");
+    RunRecord calibrationRun = CompleteCalibrationRun("cleared", RecordingSession.GetLevelTileCount());
+    EndMicrophoneRun(recording =>
+      UnityMainThread.Post(() => FeatureRegistry.MicrophoneCalibration?.OnRunCleared(calibrationRun, recording))
+    );
+    Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
   }
 
   public void OnRunFailed()

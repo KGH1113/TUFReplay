@@ -159,7 +159,10 @@ public sealed class MicrophoneCalibrationFeature
   {
     FeatureRegistry.MicrophoneRecording?.Discard(recording);
     if (Active)
+    {
+      Main.Instance?.Log("[Calibration] Run discarded. reason=" + (message ?? "unknown"));
       _state.Update(MicrophoneCalibrationStates.WaitingForRun, message ?? "Try the calibration level again.");
+    }
   }
 
   public MicrophoneCalibrationStatus PlayPreview(string operationId)
