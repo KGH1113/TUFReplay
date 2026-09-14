@@ -7,6 +7,7 @@ using TUFReplay.Recording.Models;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
+using TUFReplay.Shared.Compatibility;
 using TUFReplay.Shared.NativeInput;
 
 namespace TUFReplay.Recording.Patches;
@@ -153,7 +154,7 @@ public static class RecordingPatches
       return false;
     }
 
-    if (!scrController.instance.playerOne.HitInputEvent(isAuto, InputEventState.Down))
+    if (!AdofaiRuntimeCompatibility.HandleHitInputEvent(__instance, isAuto, InputEventState.Down))
     {
       __result = false;
       return false;

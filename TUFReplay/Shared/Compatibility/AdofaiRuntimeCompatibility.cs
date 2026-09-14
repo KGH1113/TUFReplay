@@ -7,6 +7,13 @@ namespace TUFReplay.Shared.Compatibility;
 
 internal static class AdofaiRuntimeCompatibility
 {
+  private delegate bool HitInputEventModern(
+    scrPlayer player,
+    bool isAuto,
+    InputEventState state,
+    bool handleAll
+  );
+  private delegate bool HitInputEventLegacy(scrPlayer player, bool isAuto, InputEventState state);
   private delegate scrPlanet SwitchChosenWithTick(scrPlanet planet, long? hitTick);
   private delegate scrPlanet SwitchChosenLegacy(scrPlanet planet);
   private delegate void UpdateHitErrorMeter(
@@ -32,6 +39,16 @@ internal static class AdofaiRuntimeCompatibility
     typeof(scrPlayer),
     "Hit",
     new[] { typeof(bool) }
+  );
+  private static readonly HitInputEventModern ModernHitInputEvent = CreateDelegate<HitInputEventModern>(
+    AccessTools.Method(
+      typeof(scrPlayer),
+      "HitInputEvent",
+      new[] { typeof(bool), typeof(InputEventState), typeof(bool) }
+    )
+  );
+  private static readonly HitInputEventLegacy LegacyHitInputEvent = CreateDelegate<HitInputEventLegacy>(
+    AccessTools.Method(typeof(scrPlayer), "HitInputEvent", new[] { typeof(bool), typeof(InputEventState) })
   );
   private static readonly SwitchChosenWithTick ModernSwitchChosen = CreateDelegate<SwitchChosenWithTick>(
     AccessTools.Method(typeof(scrPlanet), "SwitchChosen", new[] { typeof(long?) })
@@ -80,6 +97,17 @@ internal static class AdofaiRuntimeCompatibility
     {
       return RunJudgmentSystem.ModernClassic;
     }
+  }
+
+  internal static bool HandleHitInputEvent(scrPlayer player, bool isAuto, InputEventState state)
+  {
+    if (ModernHitInputEvent != null)
+      return ModernHitInputEvent(player, isAuto, state, true);
+    if (LegacyHitInputEvent != null)
+      return LegacyHitInputEvent(player, isAuto, state);
+
+    // Older ADOFAI builds handle this inside Hit and expose no separate input-event API.
+    return true;
   }
 
   internal static RunJudgmentSystem ParseJudgmentSystem(string value)
