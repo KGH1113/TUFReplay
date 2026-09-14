@@ -47,6 +47,7 @@ public static partial class ReplayPlaybackCoordinator
             operation.PreparationCancellation.Token
           );
           operation.PreparationCancellation.Token.ThrowIfCancellationRequested();
+          recording.CaptureStartOffsetUs -= operation.MicrophoneTimelineCorrectionUs;
           operation.MicrophoneRecording = recording;
           operation.MicrophoneWave = wave;
           operation.MicrophoneLimiterEnvelope = limiterEnvelope;
@@ -175,9 +176,36 @@ public static partial class ReplayPlaybackCoordinator
     if (!IsSupportedResult(run.Result))
       return Error("result_unsupported", "This run result cannot be replayed.", out errorCode, out errorMessage);
 
+    long frozenStartCorrectionUs = ReplayFrozenStartCompatibility.DetectCorrectionUs(
+      run.StartTile,
+      inputs,
+      hitContexts
+    );
+    if (frozenStartCorrectionUs > 0L)
+    {
+      inputs = ReplayFrozenStartCompatibility.ShiftInputs(inputs, frozenStartCorrectionUs);
+      hitContexts = ReplayFrozenStartCompatibility.ShiftHitContexts(hitContexts, frozenStartCorrectionUs);
+      if (meta.wonTimeUs.HasValue)
+        meta.wonTimeUs = ReplayFrozenStartCompatibility.ShiftNonNegativeTime(meta.wonTimeUs.Value, frozenStartCorrectionUs);
+      if (meta.terminalTimeUs.HasValue)
+        meta.terminalTimeUs = ReplayFrozenStartCompatibility.ShiftNonNegativeTime(
+          meta.terminalTimeUs.Value,
+          frozenStartCorrectionUs
+        );
+      Main.Instance?.Log(
+        "[Replay/Compatibility] Removed frozen-start wait from legacy replay. correctionUs="
+          + frozenStartCorrectionUs
+          + ", runId="
+          + run.Id
+      );
+    }
+
     long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
     long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
-    pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs);
+    pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs)
+    {
+      MicrophoneTimelineCorrectionUs = frozenStartCorrectionUs,
+    };
     return true;
   }
 

@@ -47,6 +47,7 @@ public static partial class ReplayPlaybackCoordinator
     public string MicrophoneWarning;
     public int? MicrophoneOffsetMs;
     public int? MicrophoneVolumeDb;
+    public long MicrophoneTimelineCorrectionUs;
     public bool AllowBackground;
 
     public PendingReplay(

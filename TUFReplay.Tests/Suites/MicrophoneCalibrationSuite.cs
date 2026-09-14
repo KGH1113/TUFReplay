@@ -336,6 +336,14 @@ internal static class MicrophoneCalibrationSuite
       !ReplayMicrophonePlaybackDecisions.IsCurrentRecovery(6, 7),
       "A stale underrun generation triggered another recovery seek."
     );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.ShouldAcceptReaderPosition(0),
+      "An idle streaming clip rejected its initial reader position."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldAcceptReaderPosition(7),
+      "An active streaming clip mistook normal read-ahead for an external seek."
+    );
   }
 
   private static int ReadPrefetched(Pcm16PrefetchBuffer prefetch, byte[] destination, int expected, int count = -1)
@@ -495,50 +503,36 @@ internal static class MicrophoneCalibrationSuite
       "User offset and microphone pre-roll composition is wrong."
     );
 
-    const long physicalInputTimeUs = 500_000L;
-    var physicalInputSnapshot = new ReplayPlaybackSnapshot(physicalInputTimeUs, 1d, 1d, null, paused: false);
+    var physicalInputSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: false);
     long physicalInputFrame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
-    foreach (int gameInputOffsetMs in new[] { 0, 100, -100 })
-    {
-      long gameInputOffsetUs = gameInputOffsetMs * 1000L;
-      var calibratedSnapshot = new ReplayPlaybackSnapshot(
-        physicalInputTimeUs - gameInputOffsetUs,
-        1d,
-        1d,
-        null,
-        paused: false,
-        gameInputOffsetUs
-      );
-      long frame = ReplayMicrophoneClock.ToFrame(calibratedSnapshot, 0L, 48000, 100000);
-      Assert(
-        frame == physicalInputFrame,
-        "Game input offset changed the recorded physical microphone timeline: " + gameInputOffsetMs
-      );
-    }
-    const long pitchedGameInputOffsetUs = 100_000L;
-    var pitchedCalibratedSnapshot = new ReplayPlaybackSnapshot(
-      physicalInputTimeUs * 2L - pitchedGameInputOffsetUs * 2L,
-      2d,
-      2d,
-      null,
-      paused: false,
-      pitchedGameInputOffsetUs
-    );
-    Assert(
-      ReplayMicrophoneClock.ToFrame(pitchedCalibratedSnapshot, 0L, 48000, 100000) == physicalInputFrame,
-      "Pitched game input offset changed the recorded physical microphone timeline."
-    );
-    var microphoneOnlyOffsetSnapshot = new ReplayPlaybackSnapshot(
-      physicalInputTimeUs - 100_000L,
+    var gameOffsetSnapshot = new ReplayPlaybackSnapshot(
+      500_000L,
       1d,
       1d,
       null,
       paused: false,
       gameInputOffsetUs: 100_000L
     );
+    long compensatedCaptureOffsetUs = ReplayMicrophoneClock.ApplyPlaybackCorrections(
+      0L,
+      0L,
+      gameOffsetSnapshot.GameInputOffsetUs
+    );
     Assert(
-      ReplayMicrophoneClock.ToFrame(microphoneOnlyOffsetSnapshot, -50_000L, 48000, 100000) == 26_400L,
-      "Game input offset leaked into the configured microphone-only offset."
+      ReplayMicrophoneClock.ToFrame(gameOffsetSnapshot, compensatedCaptureOffsetUs, 48000, 100000) == 28_800L,
+      "Game input calibration was not applied separately from microphone latency."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.ShouldMute(
+        new ReplayPlaybackSnapshot(0L, 1d, 1d, null, paused: false, microphoneAudible: false).MicrophoneAudible
+      ),
+      "Replay microphone audio was not muted during pre-roll."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldMute(
+        new ReplayPlaybackSnapshot(0L, 1d, 1d, null, paused: false, microphoneAudible: true).MicrophoneAudible
+      ),
+      "Replay microphone audio remained muted after gameplay started."
     );
     var pausedSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: true);
     Assert(

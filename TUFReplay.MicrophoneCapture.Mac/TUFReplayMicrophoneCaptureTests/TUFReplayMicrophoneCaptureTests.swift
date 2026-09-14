@@ -33,6 +33,20 @@ struct TUFReplayMicrophoneCaptureTests {
     #expect(slice?.startOffsetUs == 5_000)
   }
 
+  @Test func repeatedRunUsesLatestPresentationTimestampAsItsAnchor() {
+    let latestEnd = CMTime(seconds: 48.94, preferredTimescale: 1_000_000)
+    let anchor = CaptureBufferTiming.beginAnchor(latestPresentationEndTime: latestEnd)
+    let slice = CaptureBufferTiming.firstWritableSlice(
+      presentationTime: latestEnd,
+      beginTime: anchor,
+      sampleRate: 48_000,
+      sampleCount: 960
+    )
+
+    #expect(slice?.skippedFrames == 0)
+    #expect(slice?.startOffsetUs == 0)
+  }
+
   @Test func rejectsBuffersEntirelyBeforeBegin() {
     let slice = CaptureBufferTiming.firstWritableSlice(
       presentationTime: CMTime(seconds: 9.97, preferredTimescale: 1_000_000),

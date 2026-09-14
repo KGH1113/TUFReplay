@@ -322,7 +322,7 @@ public partial class RecordingFeature
     if (ReplaySessionService.HasActiveContext)
       return;
 
-    Session.MarkGameplayStarted();
+    Session.MarkGameplayStarted(RecordingClock.IsTimelineAdvancing());
     if (!PrepareActivityRun(RecordingSession.GetLevelTileCount()))
       return;
     StartMicrophoneRun();

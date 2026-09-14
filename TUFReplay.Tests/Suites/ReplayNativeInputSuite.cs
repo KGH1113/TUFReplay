@@ -47,6 +47,8 @@ internal static class ReplayNativeInputSuite
     TestCaptureIncompleteArtifactPolicy();
     TestNativeInputCsvRoundTrip();
     TestInputTimelineMath();
+    TestFrozenGameplayStartAnchor();
+    TestFrozenStartReplayCompatibility();
     TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
@@ -213,6 +215,69 @@ internal static class ReplayNativeInputSuite
     Assert(Math.Abs(countdown + 500_000) <= 1, "First-anchor countdown back-projection lost negative time.");
     long pitched = InputTimelineMath.BackProject(0, frequency / 2, 0, 1.5);
     Assert(Math.Abs(pitched + 750_000) <= 1, "Pitch was not applied to first-anchor back-projection.");
+  }
+
+  private static void TestFrozenGameplayStartAnchor()
+  {
+    long oneSecond = System.Diagnostics.Stopwatch.Frequency;
+    double runningStart = RecordingSession.CalculateGameplayStartSongPosition(
+      12d,
+      oneSecond,
+      0L,
+      1d,
+      timelineWasAdvancing: true
+    );
+    Assert(Math.Abs(runningStart - 11d) < 0.000001d, "A running gameplay start lost its pre-anchor time.");
+
+    double frozenStart = RecordingSession.CalculateGameplayStartSongPosition(
+      12d,
+      oneSecond,
+      0L,
+      1d,
+      timelineWasAdvancing: false
+    );
+    Assert(
+      Math.Abs(frozenStart - 12d) < 0.000001d,
+      "A frozen PlayerControl interval leaked into the replay timeline."
+    );
+  }
+
+  private static void TestFrozenStartReplayCompatibility()
+  {
+    var inputs = new List<RecordedInput>
+    {
+      Input(1_167_630L, 1, true),
+      Input(1_220_000L, 1, false),
+      Input(1_296_079L, 1, true),
+    };
+    var hits = new List<ReplayHitContext>
+    {
+      Hit(timeUs: 0L, isAuto: false),
+      Hit(timeUs: 1_285_700L, isAuto: false),
+    };
+
+    long correctionUs = ReplayFrozenStartCompatibility.DetectCorrectionUs(3223, inputs, hits);
+    Assert(correctionUs == 1_167_630L, "A legacy frozen-start wait was not detected.");
+    List<RecordedInput> shiftedInputs = ReplayFrozenStartCompatibility.ShiftInputs(inputs, correctionUs);
+    List<ReplayHitContext> shiftedHits = ReplayFrozenStartCompatibility.ShiftHitContexts(hits, correctionUs);
+    Assert(shiftedInputs[0].TimeUs == 0L, "The first frozen-start input did not move to gameplay start.");
+    Assert(shiftedInputs[2].TimeUs == 128_449L, "A follow-up frozen-start input lost its relative timing.");
+    Assert(shiftedHits[0].TimeUs == 0L, "The first frozen-start judgment became negative.");
+    Assert(shiftedHits[1].TimeUs == 118_070L, "A follow-up frozen-start judgment lost its relative timing.");
+
+    Assert(
+      ReplayFrozenStartCompatibility.DetectCorrectionUs(1, inputs, hits) == 0L,
+      "A replay from the beginning was mistaken for a frozen middle start."
+    );
+    var unrelatedHits = new List<ReplayHitContext>
+    {
+      Hit(timeUs: 0L, isAuto: false),
+      Hit(timeUs: 500_000L, isAuto: false),
+    };
+    Assert(
+      ReplayFrozenStartCompatibility.DetectCorrectionUs(3223, inputs, unrelatedHits) == 0L,
+      "An unrelated delayed first input was mistaken for a frozen-start timeline."
+    );
   }
 
   private static void TestReplayLatenessHistogram()
@@ -1047,6 +1112,25 @@ internal static class ReplayNativeInputSuite
     if (down)
       flags |= RecordInputFlags.Down;
     return new RecordedInput(timeUs, key, flags);
+  }
+
+  private static ReplayHitContext Hit(long timeUs, bool isAuto)
+  {
+    return new ReplayHitContext(
+      currentFloorID: 0,
+      currAngle: 0d,
+      overloadCounter: 0f,
+      noFailHit: false,
+      isAuto: isAuto,
+      nextFloorAuto: false,
+      cachedAngle: 0d,
+      targetExitAngle: 0d,
+      midspinInfiniteMargin: false,
+      rdcAuto: false,
+      curFreeRoamSection: 0,
+      resolvedHitMargin: 0,
+      timeUs: timeUs
+    );
   }
 
   private sealed class CapturingEmitter : INativeInputEmitter

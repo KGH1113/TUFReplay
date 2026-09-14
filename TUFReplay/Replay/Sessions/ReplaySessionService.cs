@@ -552,6 +552,9 @@ public static partial class ReplaySessionService
 
   private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
 
+  private static bool IsMicrophoneAudible() =>
+    _activeContext?.Phase == ReplayPlaybackPhase.Running || _activeContext?.Phase == ReplayPlaybackPhase.Won;
+
   private static long CurrentGameInputOffsetUs() => scrConductor.currentPreset.inputOffset * 1000L;
 
   private static ReplayPlaybackSnapshot CreatePlaybackSnapshot(long timelineTimeUs, bool? paused = null) =>
@@ -561,6 +564,7 @@ public static partial class ReplaySessionService
       CurrentGameplayRate(),
       CurrentWonTimeUs(),
       paused ?? ADOBase.controller?.paused == true,
+      IsMicrophoneAudible(),
       CurrentGameInputOffsetUs()
     );
 
