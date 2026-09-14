@@ -8,6 +8,12 @@ public static class ReplayMicrophoneClock
   public static long ApplyLatencyCorrection(long captureStartOffsetUs, long microphoneLatencyUs) =>
     captureStartOffsetUs - microphoneLatencyUs;
 
+  public static long ApplyPlaybackCorrections(
+    long captureStartOffsetUs,
+    long microphoneLatencyUs,
+    long gameInputOffsetUs
+  ) => captureStartOffsetUs - microphoneLatencyUs - gameInputOffsetUs;
+
   public static double ToMicrophoneTimeUs(
     long replayTimeUs,
     double gameplayRate,
@@ -51,19 +57,13 @@ public static class ReplayMicrophoneClock
     long captureStartOffsetUs,
     int sampleRate,
     long frameCount
-  )
-  {
-    // songposition_minusi has already moved the replay timeline backwards by
-    // ADOFAI's input calibration. Undo that movement for microphone audio so
-    // the user setting represents microphone latency only.
-    long physicalCaptureOffsetUs = ApplyLatencyCorrection(captureStartOffsetUs, snapshot.GameInputOffsetUs);
-    return ToFrame(
+  ) =>
+    ToFrame(
       snapshot.TimelineTimeUs,
       snapshot.GameplayRate,
-      physicalCaptureOffsetUs,
+      captureStartOffsetUs,
       sampleRate,
       frameCount,
       snapshot.WonTimeUs
     );
-  }
 }

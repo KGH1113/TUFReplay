@@ -9,6 +9,14 @@ struct CaptureBufferSlice {
 }
 
 enum CaptureBufferTiming {
+  static func beginAnchor(latestPresentationEndTime: CMTime) -> CMTime {
+    guard latestPresentationEndTime.isValid, !latestPresentationEndTime.isIndefinite else {
+      return .invalid
+    }
+    let seconds = CMTimeGetSeconds(latestPresentationEndTime)
+    return seconds.isFinite ? latestPresentationEndTime : .invalid
+  }
+
   static func firstWritableSlice(
     presentationTime: CMTime,
     beginTime: CMTime,
@@ -51,6 +59,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   private var output: AVCaptureAudioDataOutput?
   private var writer: PcmWaveFileWriter?
   private var beginTime: CMTime = .invalid
+  private var latestPresentationEndTime: CMTime = .invalid
   private var firstBufferOffsetUs: Int64 = 0
   private var activeDeviceId: String?
 
@@ -131,7 +140,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   }
 
   func begin(path: String) throws {
-    guard let session, session.isRunning, let masterClock = session.masterClock else {
+    guard let session, session.isRunning else {
       throw CaptureError.message("Microphone is not armed.")
     }
     lock.lock()
@@ -139,7 +148,10 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     try finishWriterLocked()
     writer = try PcmWaveFileWriter(path: path)
     firstBufferOffsetUs = 0
-    beginTime = CMClockGetTime(masterClock)
+    // AVCapture presentation timestamps remain continuous across repeated runs,
+    // while session.masterClock can restart from an unrelated epoch. Anchor a new
+    // run to the last delivered buffer instead of accumulating the session age.
+    beginTime = CaptureBufferTiming.beginAnchor(latestPresentationEndTime: latestPresentationEndTime)
   }
 
   func end() throws -> CaptureEndResponse {
@@ -162,6 +174,9 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     output = nil
     session = nil
     activeDeviceId = nil
+    lock.lock()
+    latestPresentationEndTime = .invalid
+    lock.unlock()
   }
 
   func captureOutput(
@@ -188,6 +203,13 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
 
     lock.lock()
     defer { lock.unlock() }
+    if !beginTime.isValid {
+      beginTime = presentationTime
+    }
+    latestPresentationEndTime = CMTimeAdd(
+      presentationTime,
+      CMTime(value: Int64(sampleCount), timescale: CMTimeScale(PcmWaveFile.sampleRate))
+    )
     guard let writer, beginTime.isValid else { return }
     if writer.frameCount == 0 {
       guard

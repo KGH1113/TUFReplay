@@ -135,6 +135,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
     try
     {
+      ApplyAudibility(snapshot);
       long targetFrame = TargetFrame(snapshot);
       if (
         ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(
@@ -176,10 +177,11 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
     try
     {
+      ApplyAudibility(snapshot);
       double microphoneTimeUs = ReplayMicrophoneClock.ToMicrophoneTimeUs(
         snapshot.TimelineTimeUs,
         snapshot.GameplayRate,
-        EffectiveCaptureOffsetUs(),
+        EffectiveCaptureOffsetUs(snapshot),
         snapshot.WonTimeUs
       );
       long targetFrame = TargetFrame(snapshot);
@@ -213,23 +215,20 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         RequestSeek(targetFrame, recovery: false);
       if (_preparing)
       {
-        TryStartPrepared(targetFrame, snapshot.TimelineTimeUs);
+        TryStartPrepared(targetFrame, snapshot);
         return;
       }
       if (!_started)
       {
         RequestSeek(targetFrame, recovery: false);
-        TryStartPrepared(targetFrame, snapshot.TimelineTimeUs);
+        TryStartPrepared(targetFrame, snapshot);
         return;
       }
 
       long expectedFrame =
         _dspAnchorFrame + (long)Math.Max(0d, (AudioSettings.dspTime - _dspAnchorTime) * _wave.SampleRate);
       long actualFrame = _source.timeSamples;
-      long driftFrames = Math.Max(Math.Abs(actualFrame - expectedFrame), Math.Abs(actualFrame - targetFrame));
-      RecordMaximumDrift(driftFrames);
-      if (!_source.isPlaying || driftFrames >= _driftThresholdFrames)
-        RequestSeek(targetFrame, recovery: true);
+      RecordMaximumDrift(Math.Abs(actualFrame - expectedFrame));
     }
     catch (Exception exception)
     {
@@ -285,10 +284,20 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   }
 
   private long TargetFrame(ReplayPlaybackSnapshot snapshot) =>
-    ReplayMicrophoneClock.ToFrame(snapshot, EffectiveCaptureOffsetUs(), _wave.SampleRate, _wave.FrameCount);
+    ReplayMicrophoneClock.ToFrame(snapshot, EffectiveCaptureOffsetUs(snapshot), _wave.SampleRate, _wave.FrameCount);
 
-  private long EffectiveCaptureOffsetUs() =>
-    ReplayMicrophoneClock.ApplyLatencyCorrection(_recording.CaptureStartOffsetUs, _microphoneLatencyUs);
+  private long EffectiveCaptureOffsetUs(ReplayPlaybackSnapshot snapshot) =>
+    ReplayMicrophoneClock.ApplyPlaybackCorrections(
+      _recording.CaptureStartOffsetUs,
+      _microphoneLatencyUs,
+      snapshot.GameInputOffsetUs
+    );
+
+  private void ApplyAudibility(ReplayPlaybackSnapshot snapshot)
+  {
+    if (_source != null)
+      _source.mute = ReplayMicrophonePlaybackDecisions.ShouldMute(snapshot.MicrophoneAudible);
+  }
 
   private void SetLatency(int latencyMs)
   {
@@ -326,7 +335,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       Interlocked.Increment(ref _recoverySeekCount);
   }
 
-  private void TryStartPrepared(long targetFrame, long timelineTimeUs)
+  private void TryStartPrepared(long targetFrame, ReplayPlaybackSnapshot snapshot)
   {
     if (!_preparing)
       return;
@@ -370,9 +379,13 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       _playbackStartLogged = true;
       Main.Instance?.Log(
         "[Replay/Microphone] Playback started. replayTimeUs="
-          + timelineTimeUs
+          + snapshot.TimelineTimeUs
           + ", targetFrame="
           + targetFrame
+          + ", gameInputOffsetUs="
+          + snapshot.GameInputOffsetUs
+          + ", audible="
+          + snapshot.MicrophoneAudible
           + ", gain="
           + _gain
       );
@@ -465,14 +478,17 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     {
       if (_disposed)
         return;
+      // Unity can report the playback cursor while the streaming callback has already
+      // prefetched farther ahead. Treating that normal read-ahead difference as a seek
+      // creates a Stop/Seek/Play loop that outputs silence. TUFReplay owns every real
+      // seek and prepares the matching PCM generation before activating the clip.
+      if (!ReplayMicrophonePlaybackDecisions.ShouldAcceptReaderPosition(_activeGeneration))
+        return;
       long clampedFrame = Math.Max(0, Math.Min(frame, checked((int)_wave.FrameCount)));
       if (clampedFrame == _readerFrame)
         return;
       _readerFrame = clampedFrame;
       _limiter.Reset();
-      int generation = _activeGeneration;
-      if (generation != 0)
-        Interlocked.CompareExchange(ref _pendingRecoveryGeneration, generation, 0);
     }
   }
 

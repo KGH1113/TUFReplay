@@ -24,4 +24,8 @@ internal static class ReplayMicrophonePlaybackDecisions
 
   public static bool IsCurrentRecovery(int recoveryGeneration, int activeGeneration) =>
     recoveryGeneration != 0 && recoveryGeneration == activeGeneration;
+
+  public static bool ShouldAcceptReaderPosition(int activeGeneration) => activeGeneration == 0;
+
+  public static bool ShouldMute(bool microphoneAudible) => !microphoneAudible;
 }
