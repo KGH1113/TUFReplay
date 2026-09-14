@@ -186,15 +186,22 @@ public static class RecordingPatches
       return;
 
     _pendingHitMarginCapture = false;
-    if (!ShouldCaptureHitContext(__instance))
-      return;
+    try
+    {
+      if (!ShouldCaptureHitContext(__instance))
+        return;
 
-    RecordingSession session = RecordingFeature.Instance?.Session;
-    int[] currentHitMarginsCount = scrController.instance?.playerOne?.marginTracker?.hitMarginsCount;
-    if (session == null || !HitMargins.TryGetSingleIncrement(currentHitMarginsCount, out int hitMargin))
-      return;
+      RecordingSession session = RecordingFeature.Instance?.Session;
+      int[] currentHitMarginsCount = scrController.instance?.playerOne?.marginTracker?.hitMarginsCount;
+      if (session == null || !HitMargins.TryGetSingleIncrement(currentHitMarginsCount, out int hitMargin))
+        return;
 
-    session.SetLastHitContextMargin(hitMargin);
+      session.SetLastHitContextMargin(hitMargin);
+    }
+    finally
+    {
+      RecordingFeature.Instance?.OnHitPostfixCompleted();
+    }
   }
 
   public static void OnChangeState(States newState)
