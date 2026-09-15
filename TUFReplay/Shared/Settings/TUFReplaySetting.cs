@@ -9,8 +9,8 @@ public sealed class TUFReplaySetting
 {
   public const string DefaultAutoSubmissionOAuthClientId = "1dc9ff206f5301c9e7ef4ba9b209c7c7";
   public const string DefaultAutoSubmissionTufApiUrl = "https://api.tuforums.com";
-  public const string DefaultAutoSubmissionServerUrl = "https://tufreplay.impl1113.dev";
-  public const string DefaultAutoSubmissionOAuthRedirectUri = "https://tufreplay.impl1113.dev/oauth/callback";
+  public const string DefaultAutoSubmissionServerUrl = "https://tufreplay-auto.impl1113.dev";
+  public const string DefaultAutoSubmissionOAuthRedirectUri = "https://tufreplay-auto.impl1113.dev/oauth/callback";
   public const int CurrentMicrophoneOffsetConventionVersion = 1;
   public const int MinMicrophoneOffsetMs = -500;
   public const int MaxMicrophoneOffsetMs = 500;
