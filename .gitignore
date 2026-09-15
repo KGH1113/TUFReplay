@@ -31,3 +31,7 @@ TUFReplay.Unity/UserSettings/
 TUFReplay.MicrophoneCapture.Mac/**/xcuserdata/
 TUFReplay.MicrophoneCapture.Mac/**/*.xcuserstate
 TUFReplay.MicrophoneCapture.Mac/DerivedData/
+
+# Rust executable sources are not .NET build output.
+!/server/src/bin/
+!/server/src/bin/*.rs
