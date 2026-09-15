@@ -22,6 +22,11 @@ export function createSubmissionApiMock(): SubmissionApi {
     configured: true,
     disabled,
     state: connected ? "ready" : "disconnected",
+    username: connected ? "mock.tester" : null,
+    nickname: connected ? "Mock Tester" : null,
+    accountStatus: connected ? ("available" as const) : ("unavailable" as const),
+    canSubmit: connected,
+    denialReason: null,
   });
   return {
     async connect() {

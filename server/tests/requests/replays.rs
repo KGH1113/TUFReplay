@@ -51,6 +51,9 @@ async fn submitted_replay_is_public_and_internal_evidence_is_hidden() {
             streams,
         };
         let validation = ValidatedResult {
+            validation_contract_version: 2,
+            validation_status: tuf_replay_server::domain::ValidationStatus::SkippedTrustedTester,
+            result_provenance: tuf_replay_server::domain::ResultProvenance::RecordedGameResult,
             validator_version: "test".into(),
             rules_version: "test".into(),
             evidence_digest: manifest.digest.clone(),
@@ -60,9 +63,13 @@ async fn submitted_replay_is_public_and_internal_evidence_is_hidden() {
             gameplay_hash: "a".repeat(64),
             speed: 1.0,
             judgments: [0, 0, 0, 0, 1, 0, 0, 0, 0],
+            perfect_minus: 0,
+            perfect_plus: 0,
             key_count: 1,
             is_no_hold_tap: false,
             is_adofai_v2: true,
+            adofai_version: 1,
+            is_x_perfect_mode: false,
         };
         let record = Submissions::record(&ctx.db, run.id).await.unwrap();
         let mut active: ActiveSubmission = record.into();

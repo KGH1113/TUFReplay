@@ -82,7 +82,9 @@ impl Hooks for App {
     }
 
     fn routes(ctx: &AppContext) -> AppRoutes {
-        let routes = AppRoutes::with_default_routes().add_route(controllers::replays::routes());
+        let routes = AppRoutes::with_default_routes()
+            .add_route(controllers::account::routes())
+            .add_route(controllers::replays::routes());
         if ingest_routes_enabled(&ctx.environment)
             || ctx
                 .shared_store

@@ -24,9 +24,7 @@ public sealed class IssuedRun
 
   public bool HasRemainingLease(TimeSpan minimum)
   {
-    var elapsed = TimeSpan.FromSeconds(
-      (Stopwatch.GetTimestamp() - _receivedAt) / (double)Stopwatch.Frequency
-    );
+    var elapsed = TimeSpan.FromSeconds((Stopwatch.GetTimestamp() - _receivedAt) / (double)Stopwatch.Frequency);
     return _leaseDuration - elapsed > minimum;
   }
 }

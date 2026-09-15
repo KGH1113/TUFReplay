@@ -4,7 +4,6 @@ using System.Diagnostics;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
-
 using static TUFReplay.Recording.Telemetry.RecordingRuntimeTelemetry;
 
 namespace TUFReplay.Recording.Sessions;

@@ -1,0 +1,105 @@
+# Loaded together with the root docker-compose.yml for the home-server stack.
+# The development services in the base file keep their default behavior when
+# developers use docker-compose.yml by itself.
+services:
+  postgres:
+    profiles:
+      - development
+
+  redis-ingest:
+    profiles:
+      - development
+
+  postgres-production:
+    profiles:
+      - production
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${TUF_REPLAY_DB_USER:?TUF_REPLAY_DB_USER must be set}
+      POSTGRES_PASSWORD: ${TUF_REPLAY_DB_PASSWORD:?TUF_REPLAY_DB_PASSWORD must be set}
+      POSTGRES_DB: tuf_replay_production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - tuf-replay-production-postgres:/var/lib/postgresql/data
+    networks:
+      - tuf-replay-production-data
+
+  redis-ingest-production:
+    profiles:
+      - production
+    image: redis:8-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "yes", "--appendfsync", "always", "--maxmemory", "1gb", "--maxmemory-policy", "noeviction"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    volumes:
+      - tuf-replay-production-redis:/data
+    networks:
+      - tuf-replay-production-data
+
+  tuf-replay-server:
+    profiles:
+      - production
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+      args:
+        BUILD_SHA: ${BUILD_SHA:-unknown}
+    image: tuf-replay-server:latest
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    environment:
+      LOCO_ENV: production
+      HOST: https://tufreplay.impl1113.dev
+      BINDING: 0.0.0.0
+      PORT: "5150"
+      SCHEDULER_CONFIG: config/scheduler.yaml
+      DB_AUTO_MIGRATE: "false"
+      DATABASE_URL: "postgres://${TUF_REPLAY_DB_USER:?TUF_REPLAY_DB_USER must be set}:${TUF_REPLAY_DB_PASSWORD:?TUF_REPLAY_DB_PASSWORD must be set}@postgres-production:5432/tuf_replay_production"
+      QUEUE_URL: "postgres://${TUF_REPLAY_DB_USER:?TUF_REPLAY_DB_USER must be set}:${TUF_REPLAY_DB_PASSWORD:?TUF_REPLAY_DB_PASSWORD must be set}@postgres-production:5432/tuf_replay_production"
+      REDIS_INGEST_URL: redis://redis-ingest-production:6379/0
+      TUF_ARTIFACT_ROOT: /var/lib/tuf-replay/artifacts
+      TUF_API_BASE_URL: https://api.tuforums.com
+      TUF_WEB_ORIGIN: https://tuforums.com
+      SUBMISSION_WEB_ORIGIN: https://tufreplay.impl1113.dev
+      TUF_TO_AUTO_SUBMISSION_TOKEN: ${TUF_TO_AUTO_SUBMISSION_TOKEN:?TUF_TO_AUTO_SUBMISSION_TOKEN must be set}
+      AUTO_SUBMISSION_TO_TUF_TOKEN: ${AUTO_SUBMISSION_TO_TUF_TOKEN:?AUTO_SUBMISSION_TO_TUF_TOKEN must be set}
+      SUBMISSION_VALIDATION_MODE: ${SUBMISSION_VALIDATION_MODE:-unavailable}
+    depends_on:
+      postgres-production:
+        condition: service_healthy
+      redis-ingest-production:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5150:5150"
+    volumes:
+      - tuf-replay-production-artifacts:/var/lib/tuf-replay/artifacts
+    networks:
+      - default
+      - tuf-replay-production-data
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "--max-time", "5", "http://127.0.0.1:5150/_readiness"]
+      interval: 10s
+      timeout: 6s
+      retries: 12
+      start_period: 30s
+
+volumes:
+  tuf-replay-production-postgres:
+  tuf-replay-production-redis:
+  tuf-replay-production-artifacts:
+
+networks:
+  tuf-replay-production-data:
+    internal: true

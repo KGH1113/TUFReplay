@@ -4,7 +4,6 @@ using System.Diagnostics;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
-
 using static TUFReplay.Recording.Telemetry.RecordingRuntimeTelemetry;
 
 namespace TUFReplay.Recording.Sessions;
@@ -124,7 +123,8 @@ public partial class RecordingSession
         return;
 
       int index = Data.HitContexts.Count - 1;
-      if (index < _evidenceCommittedHits) AbortEvidenceLocked("committed_hit_changed");
+      if (index < _evidenceCommittedHits)
+        AbortEvidenceLocked("committed_hit_changed");
       RecordedHitContext context = Data.HitContexts[index];
       context.ResolvedHitMargin = hitMargin;
       Data.HitContexts[index] = context;

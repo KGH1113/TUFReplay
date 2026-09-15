@@ -5,6 +5,7 @@ using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
 using TUFReplay.Shared.Compatibility;
+using TUFReplay.Submission.Capture;
 
 namespace TUFReplay.Recording.Telemetry;
 
@@ -157,6 +158,50 @@ internal static class RecordingRuntimeTelemetry
     catch
     {
       // Judgment telemetry must never interrupt run persistence.
+    }
+  }
+
+  internal static bool TryCaptureSubmissionResult(RecordedRunPayload data, int holdBehavior)
+  {
+    try
+    {
+      scrMarginTracker tracker = ADOBase.controller?.playerOne?.marginTracker;
+      int[] hits = tracker?.hitMarginsCount;
+      if (hits == null)
+        return false;
+
+      var namedCounts = new Dictionary<string, int>(StringComparer.Ordinal);
+      foreach (string marginName in Enum.GetNames(typeof(HitMargin)))
+      {
+        if (!Enum.TryParse(marginName, out HitMargin margin) || !Enum.IsDefined(typeof(HitMargin), margin))
+          continue;
+
+        int index = (int)margin;
+        if (index < 0 || index >= hits.Length)
+          return false;
+        namedCounts[marginName] = hits[index];
+      }
+
+      RunJudgmentSystem currentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem();
+      if (
+        currentSystem != data.JudgmentSystem
+        || !SubmissionResultSnapshot.TryCreate(
+          namedCounts,
+          currentSystem,
+          UnityEngine.Application.version,
+          holdBehavior,
+          out SubmissionResultSnapshot snapshot
+        )
+      )
+        return false;
+
+      data.SubmissionResult = snapshot;
+      data.SubmissionHoldBehavior = holdBehavior;
+      return true;
+    }
+    catch
+    {
+      return false;
     }
   }
 

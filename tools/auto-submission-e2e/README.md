@@ -70,6 +70,8 @@ bun run e2e:dev
 
 `createdb`는 PostgreSQL의 `tuf_replay` 역할에 DB 생성 권한이 있어야 한다. 권한이 없으면 로컬 DB 관리 계정으로 소유자가 `tuf_replay`인 `tuf_replay_e2e` DB를 생성한다. 프로젝트 기본 개발 계정의 암호는 `tuf_replay_dev`다. 이미 DB가 있으면 생성 명령은 생략한다.
 
+Fixture 준비는 `bun run e2e:prepare`로 명시적으로 실행한다. 일반 `bun install`이나 운영 이미지 빌드에서는 로컬 게임 DB를 읽거나 fixture를 생성하지 않는다.
+
 연결 기본값은 다음과 같다. 다른 로컬 계정을 쓰면 환경변수로 변경한다. DB 이름과 Redis DB 번호는 격리를 위해 고정한다.
 
 ```sh

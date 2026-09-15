@@ -23,13 +23,18 @@ public sealed class OAuthCoordinator : IDisposable
       State = "restoring";
       _maintenance = Task.Run(Session.Restore);
     }
-    catch (Exception) { State = "oauth_not_configured"; }
+    catch (Exception)
+    {
+      State = "oauth_not_configured";
+    }
   }
 
   public void Tick()
   {
-    if (Session == null) return;
-    if (_maintenance != null && !_maintenance.IsCompleted) return;
+    if (Session == null)
+      return;
+    if (_maintenance != null && !_maintenance.IsCompleted)
+      return;
     if (_maintenance?.IsFaulted == true)
     {
       _ = _maintenance.Exception;
@@ -38,13 +43,16 @@ public sealed class OAuthCoordinator : IDisposable
     }
     else
     {
-      if (_maintenance != null) _restoreNeeded = false;
+      if (_maintenance != null)
+        _restoreNeeded = false;
       State = Session.Account == null ? "disconnected" : "connected";
     }
     _maintenance = null;
-    if (DateTimeOffset.UtcNow < _nextCheck) return;
+    if (DateTimeOffset.UtcNow < _nextCheck)
+      return;
     _nextCheck = DateTimeOffset.UtcNow.AddSeconds(30);
-    if (_restoreNeeded) _maintenance = Task.Run(Session.Restore);
+    if (_restoreNeeded)
+      _maintenance = Task.Run(Session.Restore);
     else if (Session.Account != null)
       _maintenance = Task.Run(async () => await Session.AccessToken(CancellationToken.None).ConfigureAwait(false));
   }

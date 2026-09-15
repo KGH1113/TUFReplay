@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiPromise } from "@/api/app-api-provider";
+import { hasSubmissionPermission } from "@/models/submission/submission-model";
 import { submissionKeys } from "@/state/submission/submission-queries";
 
 export function useSubmissionSettings(enabled = true) {
@@ -40,6 +41,7 @@ export function useSubmissionRun(id: string | null, enabled: boolean) {
     queryFn: async () => (await api).submission.status(),
     enabled,
     staleTime: 2000,
+    refetchInterval: enabled ? 2000 : false,
     retry: false,
   });
   const run = useQuery({
@@ -49,7 +51,18 @@ export function useSubmissionRun(id: string | null, enabled: boolean) {
     retry: false,
   });
   const submit = useMutation({
-    mutationFn: async () => (await api).submission.submit(id as string),
+    mutationFn: async () => {
+      if (!enabled || id === null) throw new Error("submission_not_authorized");
+      const submissionApi = (await api).submission;
+      const latestStatus = await cache.fetchQuery({
+        queryKey: submissionKeys.status,
+        queryFn: () => submissionApi.status(),
+        staleTime: 0,
+        retry: false,
+      });
+      if (!hasSubmissionPermission(latestStatus)) throw new Error("submission_not_authorized");
+      return submissionApi.submit(id);
+    },
     onSuccess: (value) => cache.setQueryData(submissionKeys.run(value.run_id), value),
   });
   return { status, run, submit };

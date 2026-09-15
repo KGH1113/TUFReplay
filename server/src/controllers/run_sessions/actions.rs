@@ -47,6 +47,7 @@ pub async fn submit(
     Path(id): Path<Uuid>,
 ) -> Result<Response> {
     let identity = auth::identity(&ctx, &headers).await?;
+    identity.require_can_submit()?;
     let owner = identity.owner_id;
     submission_queries::one(&ctx.db, &owner, id).await?;
     let run = crate::models::run_sessions::Model::find_by_pid(&ctx.db, id).await?;

@@ -20,10 +20,18 @@ public partial class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || IsCapturingInput || Data.Inputs.Count != 0 || Data.HitContexts.Count != 0
-          || _evidenceSink != null || sink == null) return false;
+      if (
+        !IsRecording
+        || IsCapturingInput
+        || Data.Inputs.Count != 0
+        || Data.HitContexts.Count != 0
+        || _evidenceSink != null
+        || sink == null
+      )
+        return false;
       _evidenceCommittedHits = 0;
-      _evidenceInputs = 0; _evidenceHits = 0;
+      _evidenceInputs = 0;
+      _evidenceHits = 0;
       _evidenceRate = double.NaN;
       _evidenceHoldBehavior = (int)Persistence.holdBehavior;
       Data.SubmissionHoldBehavior = _evidenceHoldBehavior;
@@ -44,34 +52,55 @@ public partial class RecordingSession
   {
     lock (_lock)
     {
-      if (_evidenceSink != expected || expected == null) return null;
-      if (!Data.WonTimeUs.HasValue) { AbortEvidenceLocked("run_not_cleared"); return null; }
+      if (_evidenceSink != expected || expected == null)
+        return null;
+      if (!Data.WonTimeUs.HasValue)
+      {
+        AbortEvidenceLocked("run_not_cleared");
+        return null;
+      }
+      if (Data.SubmissionResult == null)
+      {
+        AbortEvidenceLocked("submission_result_snapshot_missing");
+        return null;
+      }
       CommitEvidenceHitLocked();
       RecordInputTracker.CopyDiagnosticsTo(Data);
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
       WriteEvidenceStateLocked(RecordingStateKind.RecorderHealth);
-      if (Data.JudgmentDifficulty != TUFReplay.Activity.Models.RunJudgmentDifficulty.Strict
-          || Data.InputOverflowDropped > 0 || Data.InputUnmappedEvents > 0
-          || Data.InputReadFailures > 0 || Data.InputDegradedEvents > 0)
+      if (
+        Data.JudgmentDifficulty != TUFReplay.Activity.Models.RunJudgmentDifficulty.Strict
+        || Data.InputOverflowDropped > 0
+        || Data.InputUnmappedEvents > 0
+        || Data.InputReadFailures > 0
+        || Data.InputDegradedEvents > 0
+      )
       {
         AbortEvidenceLocked("recorder_health_failed");
         return null;
       }
       _evidenceSink = null;
       Data.SubmissionKeyCount = SubmissionKeyCount.Count(Data.Inputs, Data.WonTimeUs.Value);
-      return Data.ToActivityMetaJson(_evidenceInputs, _evidenceHits, Data.WonTimeUs, System.DateTime.UtcNow.ToString("O"));
+      return Data.ToActivityMetaJson(
+        _evidenceInputs,
+        _evidenceHits,
+        Data.WonTimeUs,
+        System.DateTime.UtcNow.ToString("O")
+      );
     }
   }
 
   public void AbortEvidence(string reason)
   {
-    lock (_lock) AbortEvidenceLocked(reason);
+    lock (_lock)
+      AbortEvidenceLocked(reason);
   }
 
   private void CommitEvidenceHitLocked()
   {
-    if (_evidenceSink == null || _evidenceCommittedHits >= Data.HitContexts.Count) return;
+    if (_evidenceSink == null || _evidenceCommittedHits >= Data.HitContexts.Count)
+      return;
     var hit = Data.HitContexts[Data.HitContexts.Count - 1];
     if (!Data.WonTimeUs.HasValue || hit.TimeUs <= Data.WonTimeUs.Value)
     {
@@ -90,14 +119,24 @@ public partial class RecordingSession
 
   private void WriteEvidenceStateLocked(RecordingStateKind state)
   {
-    _evidenceSink?.Write(new RecordingStateRecord(state, Data.WonTimeUs ?? CurrentTimelineTimeUsLocked(),
-      EffectiveTimelineRateLocked(), Data.NoFailMode, (int?)Data.JudgmentDifficulty ?? -1,
-      Data.InputOverflowDropped, Data.InputUnmappedEvents, (int)Persistence.holdBehavior));
+    _evidenceSink?.Write(
+      new RecordingStateRecord(
+        state,
+        Data.WonTimeUs ?? CurrentTimelineTimeUsLocked(),
+        EffectiveTimelineRateLocked(),
+        Data.NoFailMode,
+        (int?)Data.JudgmentDifficulty ?? -1,
+        Data.InputOverflowDropped,
+        Data.InputUnmappedEvents,
+        (int)Persistence.holdBehavior
+      )
+    );
   }
 
   private void ObserveEvidenceSettingsLocked(double rate)
   {
-    if (_evidenceSink == null || Data.WonTimeUs.HasValue) return;
+    if (_evidenceSink == null || Data.WonTimeUs.HasValue)
+      return;
     bool noFail = IsNoFailModeActive();
     int difficulty = (int?)GetCurrentJudgmentDifficulty() ?? -1;
     int holdBehavior = (int)Persistence.holdBehavior;
@@ -106,11 +145,26 @@ public partial class RecordingSession
       AbortEvidenceLocked("strict_required");
       return;
     }
-    if (_evidenceRate == rate && _evidenceNoFail == noFail && _evidenceDifficulty == difficulty
-        && _evidenceHoldBehavior == holdBehavior) return;
-    _evidenceRate = rate; _evidenceNoFail = noFail; _evidenceDifficulty = difficulty;
+    if (
+      _evidenceRate == rate
+      && _evidenceNoFail == noFail
+      && _evidenceDifficulty == difficulty
+      && _evidenceHoldBehavior == holdBehavior
+    )
+      return;
+    _evidenceRate = rate;
+    _evidenceNoFail = noFail;
+    _evidenceDifficulty = difficulty;
     _evidenceHoldBehavior = holdBehavior;
-    _evidenceSink.Write(new RecordingStateRecord(RecordingStateKind.RuntimeSettings,
-      CurrentTimelineTimeUsLocked(), rate, noFail, difficulty, holdBehavior: holdBehavior));
+    _evidenceSink.Write(
+      new RecordingStateRecord(
+        RecordingStateKind.RuntimeSettings,
+        CurrentTimelineTimeUsLocked(),
+        rate,
+        noFail,
+        difficulty,
+        holdBehavior: holdBehavior
+      )
+    );
   }
 }

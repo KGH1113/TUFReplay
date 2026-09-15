@@ -46,6 +46,9 @@ impl GameplayValidator for FixtureValidator {
         evidence: &EvidenceManifest,
     ) -> std::result::Result<ValidationOutcome, String> {
         Ok(ValidationOutcome::Accepted(Box::new(ValidatedResult {
+            validation_contract_version: 2,
+            validation_status: ValidationStatus::SkippedTrustedTester,
+            result_provenance: ResultProvenance::RecordedGameResult,
             validator_version: "e2e-fixture-NOT-gameplay-validation-v1".into(),
             rules_version: "e2e-fixture-v1".into(),
             evidence_digest: evidence.digest.clone(),
@@ -55,9 +58,13 @@ impl GameplayValidator for FixtureValidator {
             gameplay_hash: chart.gameplay_hash.clone(),
             speed: self.0.speed,
             judgments: self.0.judgments,
+            perfect_minus: 0,
+            perfect_plus: 0,
             key_count: self.0.key_count,
             is_no_hold_tap: self.0.is_no_hold_tap,
             is_adofai_v2: self.0.is_adofai_v2,
+            adofai_version: if self.0.is_adofai_v2 { 1 } else { 2 },
+            is_x_perfect_mode: false,
         })))
     }
 }

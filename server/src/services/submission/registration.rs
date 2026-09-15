@@ -42,6 +42,22 @@ pub(super) async fn register(
             .await?;
             return Ok(());
         }
+        if !result.has_valid_v2_contract() {
+            Records::transition(
+                &ctx.db,
+                run.id,
+                lease,
+                crate::models::run_submission_records::Transition {
+                    from: "registering",
+                    to: "validation_error",
+                    reason: Some("validation_contract_unsupported"),
+                    validation: None,
+                    pass: None,
+                },
+            )
+            .await?;
+            return Ok(());
+        }
         crate::services::auth::authorize_grant(ctx, &record.owner_id, record.oauth_grant_id)
             .await?;
         let registered = runtime

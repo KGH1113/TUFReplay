@@ -9,6 +9,6 @@ pub use evidence::{EvidenceManifest, EvidenceStream};
 pub use gameplay_hash::{compute_gameplay_hash, GAMEPLAY_HASH_VERSION};
 pub use registration::PassRegistrar;
 pub use validation::{
-    GameplayValidator, OfficialChart, OfficialChartProvider, UnavailableValidator, ValidatedResult,
-    ValidationOutcome,
+    GameplayValidator, OfficialChart, OfficialChartProvider, ResultProvenance,
+    UnavailableValidator, ValidatedResult, ValidationOutcome, ValidationStatus,
 };

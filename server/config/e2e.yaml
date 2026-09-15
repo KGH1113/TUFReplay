@@ -32,6 +32,7 @@ database:
   dangerously_recreate: false
 settings:
   auto_submission:
+    validation_mode: <%= get_env(name="SUBMISSION_VALIDATION_MODE", default="unavailable") %>
     redis_url: <%= get_env(name="E2E_REDIS_URL", default="redis://127.0.0.1:6379/14") %>
     redis_key_prefix: "e2e:"
     active_ttl_seconds: 45

@@ -1,6 +1,6 @@
 {
   "title": "자동 제출",
-  "description": "P·G 차트 클리어를 영상 녹화 없이 제출하세요. 제출한 플레이는 검증을 거쳐 TUF에 등록됩니다.",
+  "description": "영상 없이 P·G 차트를 제출하세요. 등록 전에 캡처한 증거와 현재 TUF 공식 차트를 확인합니다.",
   "connectDescription": "TUF 로그인 화면에서 자동 제출 권한을 허용하세요. 게임이 실행 중이어야 하며, 연결 후 처음부터 플레이한 기록을 제출할 수 있어요.",
   "notConfigured": "자동 제출 로그인 설정이 아직 준비되지 않았어요.",
   "enableCapture": "새 플레이 수집 켜기",
@@ -10,6 +10,15 @@
   "openTuf": "TUF 열기",
   "connected": "TUF 계정 연결됨",
   "account": "TUF 계정",
+  "eligibility": {
+    "checking": "제출 권한 확인 중…",
+    "allowed": "이 계정은 신뢰 테스터 클리어를 제출할 수 있어요.",
+    "testerRequired": "계정은 연결됐지만 신뢰 테스터 권한이 아직 없어요.",
+    "disabledByServer": "현재 신뢰 테스터 제출이 비활성화되어 있어요.",
+    "notAuthorized": "이 계정은 신뢰 테스터 클리어를 제출할 수 없어요.",
+    "stale": "제출 권한을 새로 확인하지 못했어요. 다시 확인할 때까지 새 캡처를 멈춥니다.",
+    "unavailable": "제출 권한을 확인하지 못했어요. 다시 확인할 때까지 새 캡처를 멈춥니다."
+  },
   "capture": "새 플레이 수집",
   "captureDescription": "제출 가능한 P·G 클리어를 수집하고 플레이 메뉴에서 제출할 수 있게 합니다.",
   "disconnect": "연결 해제",

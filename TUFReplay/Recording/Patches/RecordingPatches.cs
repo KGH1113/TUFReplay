@@ -292,7 +292,8 @@ public static class RecordingPatches
       return;
     if (__instance != null && __instance.paused)
     {
-      if (!session.Data.WonTimeUs.HasValue) session.AbortEvidence("pause_not_allowed");
+      if (!session.Data.WonTimeUs.HasValue)
+        session.AbortEvidence("pause_not_allowed");
       RecordInputTracker.DrainCapturedTransitions(session);
     }
     session.BreakInputTimeline(__instance != null && __instance.paused ? "pause" : "resume");

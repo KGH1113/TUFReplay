@@ -5,7 +5,8 @@ namespace TUFReplay.Submission.Transport;
 
 public sealed class UploadRejectedException : Exception
 {
-  public UploadRejectedException(string code) : base(code) { }
+  public UploadRejectedException(string code)
+    : base(code) { }
 }
 
 public static class UploadControlReader
@@ -13,7 +14,8 @@ public static class UploadControlReader
   public static bool Apply(JObject control, UploadJournal journal)
   {
     string kind = (string)control["type"];
-    if (kind == "error") throw new UploadRejectedException((string)control["code"] ?? "upload_rejected");
+    if (kind == "error")
+      throw new UploadRejectedException((string)control["code"] ?? "upload_rejected");
     if (kind != "ready" && kind != "ack" && kind != "sealed")
       throw new UploadRejectedException("unexpected_upload_response");
     if (control["acknowledged_sequence"]?.Type != JTokenType.Integer)

@@ -17,6 +17,7 @@ pub async fn issue_run_session(
     JsonValidateWithMessage(params): JsonValidateWithMessage<CreateRunSessionRequest>,
 ) -> Result<Response> {
     let identity = auth::identity(&ctx, &headers).await?;
+    identity.require_can_submit()?;
     if let Err(error) = catalog_runtime(&ctx)?
         .require_eligible(params.tuf_level_id)
         .await

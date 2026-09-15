@@ -1,10 +1,16 @@
 .git
 .github
 .env
+.env.*
+**/.env
+**/.env.*
 .vscode
 build
 node_modules
 **/node_modules
 web/.env
 web/dist
+**/target
+target
+server/storage
 *.log

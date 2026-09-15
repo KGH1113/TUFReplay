@@ -17,9 +17,50 @@ jobs:
   checks:
     name: Source checks
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tuf_replay
+          POSTGRES_PASSWORD: tuf_replay_dev
+          POSTGRES_DB: tuf_replay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tuf_replay -d tuf_replay_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
+      QUEUE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
+      REDIS_INGEST_URL: redis://127.0.0.1:6379/1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path server/Cargo.toml --all -- --check
+
+      - name: Check Rust lint
+        run: cargo clippy --manifest-path server/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Test Rust server
+        run: cargo test --manifest-path server/Cargo.toml --locked
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4

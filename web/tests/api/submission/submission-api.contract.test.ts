@@ -2,13 +2,59 @@ import { describe, expect, it } from "bun:test";
 import { createSubmissionApi } from "@/api/submission/create-submission-api";
 import { createSubmissionApiMock } from "@/mocks/submission/submission-api-mock";
 import { canSubmit } from "@/models/submission/submission-model";
+import { submissionStatusSchema } from "@/schemas/submission/submission-schema";
 import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 
 describe("auto submission boundaries", () => {
+  it("fails closed when older IPC status has no trusted-tester capability", () => {
+    const status = submissionStatusSchema.parse({
+      connected: true,
+      configured: true,
+      disabled: false,
+      state: "ready",
+    });
+    expect(status.canSubmit).toBe(false);
+    expect(status.accountStatus).toBe("unavailable");
+    expect(status.username).toBeNull();
+    expect(status.nickname).toBeNull();
+    expect(status.denialReason).toBeNull();
+  });
+
+  it("parses connected account identity and trusted-tester eligibility", () => {
+    const status = submissionStatusSchema.parse({
+      connected: true,
+      configured: true,
+      disabled: false,
+      state: "ready",
+      username: "impl.dev",
+      nickname: "impl",
+      accountStatus: "available",
+      canSubmit: true,
+      denialReason: null,
+    });
+    expect(status.username).toBe("impl.dev");
+    expect(status.nickname).toBe("impl");
+    expect(status.accountStatus).toBe("available");
+    expect(status.canSubmit).toBe(true);
+    expect(status.denialReason).toBeNull();
+
+    const denied = submissionStatusSchema.parse({
+      ...status,
+      canSubmit: false,
+      denialReason: "auto_submission_tester_required",
+    });
+    expect(denied.canSubmit).toBe(false);
+    expect(denied.denialReason).toBe("auto_submission_tester_required");
+  });
+
   it("does not validate clears until submit and preserves saved plays when capture is disabled", async () => {
     const api = createSubmissionApiMock();
-    await api.connect();
-    await api.setDisabled(true);
+    const connected = await api.connect();
+    expect(connected.username).toBe("mock.tester");
+    expect(connected.accountStatus).toBe("available");
+    expect(connected.canSubmit).toBe(true);
+    const afterCaptureDisabled = await api.setDisabled(true);
+    expect(afterCaptureDisabled.canSubmit).toBe(true);
     const before = (await api.list()).runs[0];
     if (!before) throw new Error("missing fixture");
     expect(before.status).toBe("evidence_ready");
@@ -53,10 +99,14 @@ describe("auto submission boundaries", () => {
         navigated = url;
       },
     });
+    const status = await api.status();
     await api.status();
-    await api.status();
+    expect(status.canSubmit).toBe(false);
+    expect(status.accountStatus).toBe("unavailable");
     expect(calls.filter((call) => call.method === "submission.oauth.complete")).toHaveLength(1);
-    await api.connect();
+    const authorizing = await api.connect();
+    expect(authorizing.accountStatus).toBe("unavailable");
+    expect(authorizing.canSubmit).toBe(false);
     expect(String(navigated)).toContain("/oauth/authorize");
     await api.list(99);
     await api.get("68727984-2424-4a6d-a72b-919044143454");

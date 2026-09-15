@@ -22,25 +22,29 @@ public sealed class EvidenceCaptureBuffer : IRecordingEvidenceSink
 
   public EvidenceCaptureBuffer(int capacity = 8192)
   {
-    if (capacity < 1 || capacity > 8192) throw new ArgumentOutOfRangeException(nameof(capacity));
+    if (capacity < 1 || capacity > 8192)
+      throw new ArgumentOutOfRangeException(nameof(capacity));
     _records = new CaptureRecord[capacity];
   }
 
   public void Write(RecordedInput input)
   {
-    if (TryWrite(new CaptureRecord(input))) InputCount++;
+    if (TryWrite(new CaptureRecord(input)))
+      InputCount++;
   }
 
   public void Write(RecordedHitContext hit)
   {
-    if (TryWrite(new CaptureRecord(hit))) HitCount++;
+    if (TryWrite(new CaptureRecord(hit)))
+      HitCount++;
   }
 
   public void Write(RecordingStateRecord state) => TryWrite(new CaptureRecord(state));
 
   private bool TryWrite(CaptureRecord record)
   {
-    if (Failure != null || CompletionMeta != null) return false;
+    if (Failure != null || CompletionMeta != null)
+      return false;
     long position = _written;
     if (position - Volatile.Read(ref _read) >= Capacity)
     {
@@ -55,7 +59,11 @@ public sealed class EvidenceCaptureBuffer : IRecordingEvidenceSink
   public bool TryRead(out CaptureRecord record)
   {
     long position = _read;
-    if (position == Volatile.Read(ref _written)) { record = default; return false; }
+    if (position == Volatile.Read(ref _written))
+    {
+      record = default;
+      return false;
+    }
     record = _records[position % Capacity];
     Volatile.Write(ref _read, position + 1);
     return true;
@@ -63,7 +71,11 @@ public sealed class EvidenceCaptureBuffer : IRecordingEvidenceSink
 
   public void Complete(string metadata)
   {
-    if (string.IsNullOrEmpty(metadata)) { Invalidate("missing_metadata"); return; }
+    if (string.IsNullOrEmpty(metadata))
+    {
+      Invalidate("missing_metadata");
+      return;
+    }
     Interlocked.CompareExchange(ref _completionMeta, metadata, null);
   }
 

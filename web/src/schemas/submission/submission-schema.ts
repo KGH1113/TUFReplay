@@ -7,6 +7,14 @@ export const submissionStatusSchema = z.object({
   state: z.string(),
   runId: z.string().nullable().optional(),
   reason: z.string().nullable().optional(),
+  username: z.string().nullable().default(null),
+  nickname: z.string().nullable().default(null),
+  accountStatus: z.enum(["checking", "available", "stale", "unavailable"]).default("unavailable"),
+  canSubmit: z.boolean().default(false),
+  denialReason: z
+    .enum(["auto_submission_disabled", "auto_submission_tester_required"])
+    .nullable()
+    .default(null),
 });
 export const submissionRunSchema = z.object({
   cursor: z.number().int(),

@@ -17,14 +17,16 @@ public sealed class UploadJournal
 
   public UploadJournal(int byteLimit = 4 * 1024 * 1024)
   {
-    if (byteLimit < 20) throw new ArgumentOutOfRangeException(nameof(byteLimit));
+    if (byteLimit < 20)
+      throw new ArgumentOutOfRangeException(nameof(byteLimit));
     _byteLimit = byteLimit;
   }
 
   public bool TryAppend(byte kind, byte[] payload, out UploadFrame frame)
   {
     frame = null;
-    if (payload == null || payload.Length + 20 > _byteLimit - _bytes) return false;
+    if (payload == null || payload.Length + 20 > _byteLimit - _bytes)
+      return false;
     frame = new UploadFrame(kind, LastSequence + 1, payload);
     _pending.Enqueue(frame);
     _bytes += frame.Bytes.Length;

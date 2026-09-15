@@ -164,6 +164,8 @@ public partial class RecordingSession
       if (_hasTimelineTime)
         wonTimeUs = Math.Max(_lastTimelineTimeUs, wonTimeUs);
       Data.WonTimeUs = wonTimeUs;
+      if (_evidenceSink != null && !TryCaptureSubmissionResult(Data, (int)Persistence.holdBehavior))
+        AbortEvidenceLocked("submission_result_snapshot_failed");
       WriteEvidenceStateLocked(TUFReplay.Recording.Capture.RecordingStateKind.Won);
       _wonUnscaledTime = RecordingClock.CurrentUnscaledTime();
       _lastTimelineTimeUs = wonTimeUs;

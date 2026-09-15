@@ -1,6 +1,6 @@
-# Auto submission 구현 상태 — 2026-09-08
+# Auto submission 구현 상태 — 2026-09-15
 
-[확정된 제품 계약](auto-submission-decisions.md)을 기준으로 작성했다. 기존 단계별 문서는 설계 초안이며 이 문서와 다를 수 있다.
+[확정된 제품 계약](auto-submission-decisions.md)에 trusted tester 배포 조건을 추가했다. 최신 운영 준비와 검증 결과는 [테스터 배포 기록](auto-submission-trusted-testers-rollout-2026-09-15.md), 실행 절차는 [배포 안내](../deploy/README.md)를 참고한다.
 
 ## 현재 구현
 
@@ -9,12 +9,12 @@
 - 모드는 TUF Authorization Code + PKCE로 로그인한다. refresh token은 macOS Keychain 또는 Windows Credential Manager에 저장하고 다음 실행에서 복원한다. 설정이 비어 있으면 로그인할 수 없다.
 - 일반 토큰 갱신은 현재 캡처를 끊지 않는다. 현재 기기 로그아웃은 해당 grant를 해제하고, TUF 앱 권한 철회는 해당 앱의 모든 기기 grant를 해제한다. 로그아웃 통신 실패 시 보안 저장소에 해제 의도를 남겨 다음 실행에서 재시도한다.
 - 로그인 후 자동 캡처는 기본 ON이며 끌 수 있다. 저장된 기록과 진행 중 제출 작업은 유지된다. 계정당 동시에 업로드하는 플레이는 하나다.
-- TUFHelperLite 설치 정보로 레벨을 식별한다. 발급 시 공식 파일을 다운로드하지 않는다. Strict, 전체 플레이, 실패 없는 클리어를 대상으로 하며 NoFail 설정 자체는 제외 사유가 아니다. pause는 자동 제출을 중단한다.
+- TUFHelperLite 설치 정보로 레벨을 식별한다. 발급 시 공식 파일을 다운로드하지 않는다. trusted tester 경로는 Strict, 전체 플레이, NoFail OFF, 실패 없는 클리어를 대상으로 한다. pause는 자동 제출을 중단한다.
 - 플레이 중 native input, hit context, lifecycle, runtime settings, recorder health를 청크로 전송한다. 입력 경로는 고정 버퍼를 쓰고 직렬화·통신은 백그라운드에서 수행한다.
 - keyCount는 클리어까지 실제로 눌린 서로 다른 키 수다. 게임 버전과 hold 설정 변화도 증거에 포함한다. 이 클라이언트 값은 검증을 대신하지 않는다.
 - 클리어 후에는 증거만 저장한다. 제출 클릭 시 최신 공식 차트를 임시 다운로드하여 검증기에 전달하고, 임시 ZIP과 추출 원본은 정리한다. 과거 공식 원본과의 호환성을 유지하지 않는다.
-- **시뮬레이터는 미구현이다.** 기본 검증기는 `validator_unavailable`로 끝내며 실제 pass를 승인하지 않는다. 향후 검증기가 판정·입력·사용 키 수·플레이 설정을 검증하고 TUF가 정확도와 점수를 계산한다.
-- TUF pass에는 `submissionSource`와 `autoSubmissionRunId`를 기록한다. 공개 증거 다운로드와 iframe 재생은 구현 범위 밖이다.
+- **시뮬레이터는 미구현이다.** `SUBMISSION_VALIDATION_MODE=unavailable`이 기본이며 `validator_unavailable`로 끝난다. 명시적으로 `trusted_tester`를 설정하면 TUF BE가 허용한 계정의 클리어 결과를 변환해 실제 pass 등록 경로로 전달한다. 결과 계약 v2에 `validation_status=skipped_trusted_tester`, `result_provenance=recorded_game_result`를 저장하며 게임플레이를 검증했다고 표시하지 않는다. TUF 공통 함수가 era/XPerfect/midspin을 반영해 정확도와 점수를 계산한다.
+- TUF pass에는 `submissionSource`와 `autoSubmissionRunId`를 기록한다. 공개 pass의 replay manifest·증거 제공과 TUF의 iframe 재생 연결도 구현되어 있다.
 
 ## 레이어
 
@@ -37,8 +37,9 @@
 3. 두 API에 `TUF_TO_AUTO_SUBMISSION_TOKEN`, `AUTO_SUBMISSION_TO_TUF_TOKEN`을 환경변수로 넣는다. 서로 다른 32–512바이트의 공백 없는 무작위 값이어야 한다. 이전 공용 secret은 사용하지 않는다. 일반 사이트/OAuth 토큰은 internal 라우트에 사용할 수 없다.
 4. TUF backend의 `AUTO_SUBMISSION_API_URL`, replay 서버의 `TUF_API_BASE_URL`을 설정한다.
 5. TUF OAuth 앱을 생성하고 그 ID를 backend의 `TUF_AUTO_SUBMISSION_OAUTH_CLIENT_ID`에 넣은 뒤 해당 앱의 허용 scope를 `65537` (User.Read.Public + User.Submission.Create)로 설정한다. 다른 앱은 제출 scope를 받을 수 없다.
-6. 모드 설정 `AutoSubmissionOAuthClientId`, `AutoSubmissionServerUrl`에 배포 값을 주입한다. 두 값은 아직 정해지지 않아 기본값이 빈 문자열이다. `AutoSubmissionTufApiUrl`, `AutoSubmissionOAuthRedirectUri`는 대상 환경과 OAuth 앱의 등록 redirect URI에 맞춘다.
-7. 웹 callback URL은 같은 웹 앱으로 연결되어야 한다. code/state는 IPC로 모드에 전달되며 주소창에서 제거된다. 토큰은 웹으로 전달하지 않는다.
+6. 모드 설정 `AutoSubmissionOAuthClientId`, `AutoSubmissionServerUrl`에 배포 값을 주입한다. 공식 앱 Client ID는 `1dc9ff206f5301c9e7ef4ba9b209c7c7`, 서버 origin은 `https://tufreplay.impl1113.dev`다. `AutoSubmissionTufApiUrl`, `AutoSubmissionOAuthRedirectUri`는 대상 환경과 OAuth 앱의 등록 redirect URI에 맞춘다.
+7. TUF BE의 `AUTO_SUBMISSION_ENABLED`는 기본 false다. `AUTO_SUBMISSION_TRUSTED_USER_IDS`는 계정 UUID를 사용하며 빈 목록은 모두 거절한다. 초기 테스터 `impl.dev` (player `7410`)의 UUID는 `670cac2c-8175-46a6-87f7-b92741d4499f`다.
+8. 웹 callback URL은 같은 웹 앱으로 연결되어야 한다. code/state는 IPC로 모드에 전달되며 주소창에서 제거된다. 토큰은 웹으로 전달하지 않는다.
 
 TUF → replay 변경 통보 경로는 `/internal/tuf/levels/{id}/changed`다. replay → TUF 호출은 `/v2/internal/auto-submission/*` 아래에 있다. 변경 알림은 인증된 계정 WS를 거쳐 AssetBundle toast에 표시한다. 파일 ID 변경만으로 저장된 플레이를 즉시 거절하지 않고 제출 시 현재 차트로 검증한다.
 
@@ -54,7 +55,9 @@ TUF → replay 변경 통보 경로는 `/internal/tuf/levels/{id}/changed`다. r
 - 제출된 증거는 pass가 유지되는 동안 보관한다. pass 숨김·삭제를 이유로 증거를 공개하거나 자동 제거하지 않는다.
 - 일일 바이트 제한과 분당 5회 발급 제한은 제거했다. 개별 run·청크·버퍼의 방어 상수는 아직 실게임 측정 전 임시 구현값이며 확정된 서비스 한도가 아니다.
 
-## 확인한 범위와 남은 검증
+## 기존 기반 검증 (2026-09-08)과 남은 실환경 검증
+
+아래 횟수는 기존 파이프라인의 당시 검증 기록이다. 2026-09-15 변경의 최종 결과는 위 테스터 배포 기록에 별도로 정리한다.
 
 - 독립 [서버 E2E Lab](../tools/auto-submission-e2e/README.md)은 NoFail OFF·Strict·실패 판정 0개와 시간값·로컬 차트를 확인한 클리어 기록 1개를 HTTP/WS로 재전송한다. 이전 NoFail 기록 2개는 제외했다. 실제 DB·Redis·Worker를 사용하고 TUF API는 로컬 가짜 서버이며 검증은 가상 성공·미준비 모드로 선택한다. 원본 리플레이 DB는 읽기만 한다.
 - 증거 파일과 manifest 확정 후 Redis 청크를 삭제하고 완료 응답 메타데이터는 유지한다. `ingest_released_at`으로 정리 완료를 기록하며 주기적 복구가 미완료 정리를 재시도한다. [DB 컬럼](auto-submission-database.md), [Redis 실측 검증](auto-submission-redis-verification.md).
