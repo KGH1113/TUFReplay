@@ -12,6 +12,7 @@ Usage: ./scripts/run.sh <command>
 Commands:
   build       Build, test, and install the mod
   package     Build the release package and metadata
+  web-check   Run web tests, typecheck, Biome, and production build
   mac-helper  Build and verify the macOS microphone helper
   unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
   check       Validate all shell scripts
@@ -26,6 +27,9 @@ case "$command_name" in
     ;;
   package)
     exec "$SCRIPTS_DIR/workflows/package-release.sh"
+    ;;
+  web-check)
+    run_task "Verify companion web workspace" "$SCRIPTS_DIR/tasks/verify/web.sh"
     ;;
   mac-helper)
     run_task "Build macOS microphone helper" "$SCRIPTS_DIR/tasks/build/macos-microphone-helper.sh"
