@@ -127,7 +127,7 @@ The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFRepl
 
 The first TUFReplay release using `AdofaiIpc.DependencyShim.dll` must be installed manually once. Later releases update the versioned bootstrap without overwriting a loaded DLL.
 
-The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
+Standard builds include a `Receive beta updates` toggle in the Unity Mod Manager GUI. Auto-submission builds show their separate update channel and version. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
 Important environment variables:
 
@@ -141,6 +141,8 @@ Important environment variables:
 - `ADOFAI_IPC_MIGRATION_DLL`: AdofaiIpc migration assembly path.
 - `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
+- `TUFREPLAY_BUILD_FLAVOR`: `standard` (default) or `auto-submission`.
+- `TUFREPLAY_BUILD_VERSION`: explicit package version; required for auto-submission builds.
 
 Create a clean shareable package:
 
@@ -148,7 +150,7 @@ Create a clean shareable package:
 ./scripts/run.sh package
 ```
 
-The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates `build/TUFReplay.update.json`, containing the version, package size, SHA-256, and packaged runtime path. Both files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates `build/TUFReplay.update.json`, containing the version, package size, SHA-256, and packaged runtime path. For standard builds, both files are attached to a GitHub release. Auto-submission builds publish their package and manifest to the isolated home-server update channel. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
 
 Build only the macOS helper or validate the shell layer with:
 
@@ -208,18 +210,21 @@ The web UI is built and deployed independently. The `build` and `package` workfl
 
 The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
 
-## Web Deployment
+## Web and API Deployment
 
-GitHub Actions runs the web checks for pushes to `main` and `dev` and for pull requests targeting `main`. A successful push to `main` then connects to the home server through Tailscale SSH and restarts the Docker Compose app managed by the user-level `tuf-replay-web.service` unit.
+GitHub Actions deploys each branch to a separate Compose project on the home server:
 
-The server checkout must exist at `/srv/TUFReplay`. The container exposes Vite preview on port 4173 and binds it to `127.0.0.1:4174` on the host by default. Set `TUF_REPLAY_WEB_PORT` in the server checkout's `.env` to override the host port. The production build embeds `https://web-adofai.impl1113.dev/embed/chart`; set `VITE_WEB_ADOFAI_EMBED_URL` in the same `.env` to override it.
+| Branch | Website | Build flavor | Host loopback port |
+| --- | --- | --- | --- |
+| `main` | https://tufreplay.impl1113.dev | `standard` | 4174 |
+| `dev` | https://tufreplay-dev.impl1113.dev | `standard` | 4175 |
+| `feat/auto-submission` | https://tufreplay-auto.impl1113.dev | `auto-submission` | 4176 |
 
-The deploy workflow requires these GitHub Actions secrets:
+Main and dev serve the companion web UI. The auto-submission environment also runs the Rust API, worker, scheduler, PostgreSQL, Redis, and artifact storage. Separate deployment Compose files live under `deploy/`; the root `docker-compose.yml` remains available for local development. Each website exposes `/deployment.json` with its environment, build flavor, and deployed commit.
 
-- `TS_OAUTH_CLIENT_ID`
-- `TS_OAUTH_SECRET`
+Deployments and update publication run through GitHub Actions. The workflows use Tailscale to reach the home server and require `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`. See [deployment setup and recovery](deploy/README.md) for the protected environment file, one-time routing bootstrap, and persistent data paths.
 
-The Tailscale OAuth client must be permitted to create an ephemeral `tag:gh-runner` node and use Tailscale SSH to reach `kgh`.
+Standard mod releases use GitHub Releases. Auto-submission builds use the separate home-server feed at `https://tufreplay-auto.impl1113.dev/updates/auto-submission/latest.json`; they are not published as GitHub Releases. Installing a different flavor requires installing that flavor's package. The auto-submission website requires an auto-submission mod with matching submission protocol support before enabling submission features.
 
 ## Formatting
 
