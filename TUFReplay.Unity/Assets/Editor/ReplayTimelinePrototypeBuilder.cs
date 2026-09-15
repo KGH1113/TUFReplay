@@ -205,7 +205,7 @@ namespace TUFReplay.Unity.Editor
       messageRect.anchoredPosition = new Vector2(16f, -48f);
       messageRect.sizeDelta = new Vector2(388f, 42f);
       message.textWrappingMode = TextWrappingModes.Normal;
-      message.overflowMode = TextOverflowModes.Ellipsis;
+      message.overflowMode = TextOverflowModes.Overflow;
 
       GameObject dismissObject = CreateUIObject("DismissButton", root.transform);
       RectTransform dismissRect = dismissObject.GetComponent<RectTransform>();
