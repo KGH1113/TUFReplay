@@ -131,8 +131,8 @@ namespace TUFReplay.Unity.Editor
       RectTransform rootRect = root.GetComponent<RectTransform>();
       rootRect.anchorMin = rootRect.anchorMax = new Vector2(1f, 0f);
       rootRect.pivot = new Vector2(1f, 0f);
-      rootRect.anchoredPosition = new Vector2(-24f, 112f);
-      rootRect.sizeDelta = new Vector2(600f, 154f);
+      rootRect.anchoredPosition = new Vector2(-18f, 88f);
+      rootRect.sizeDelta = new Vector2(420f, 108f);
 
       CanvasGroup canvasGroup = root.AddComponent<CanvasGroup>();
       canvasGroup.alpha = 0f;
@@ -143,30 +143,30 @@ namespace TUFReplay.Unity.Editor
       RectTransform ambientShadowRect = ambientShadowObject.GetComponent<RectTransform>();
       ambientShadowRect.anchorMin = Vector2.zero;
       ambientShadowRect.anchorMax = Vector2.one;
-      ambientShadowRect.offsetMin = new Vector2(-4f, -10f);
-      ambientShadowRect.offsetMax = new Vector2(4f, 4f);
+      ambientShadowRect.offsetMin = new Vector2(-3f, -7f);
+      ambientShadowRect.offsetMax = new Vector2(3f, 3f);
       UIRoundedPanelGraphic ambientShadow = ambientShadowObject.AddComponent<UIRoundedPanelGraphic>();
-      ambientShadow.Configure(new Color(0f, 0f, 0f, 0.24f), Color.clear, 0f, 22f);
+      ambientShadow.Configure(new Color(0f, 0f, 0f, 0.24f), Color.clear, 0f, 16f);
       ambientShadow.raycastTarget = false;
 
       UIRoundedPanelGraphic panel = root.AddComponent<UIRoundedPanelGraphic>();
-      panel.Configure(PanelFill, Html("#FFFFFF20"), 1f, 20f);
+      panel.Configure(PanelFill, Html("#FFFFFF20"), 1f, 15f);
       panel.raycastTarget = true;
 
       GameObject warningBadge = CreateUIObject("WarningBadge", root.transform);
       RectTransform warningBadgeRect = warningBadge.GetComponent<RectTransform>();
       warningBadgeRect.anchorMin = warningBadgeRect.anchorMax = warningBadgeRect.pivot = new Vector2(0f, 1f);
-      warningBadgeRect.anchoredPosition = new Vector2(22f, -20f);
-      warningBadgeRect.sizeDelta = new Vector2(32f, 32f);
+      warningBadgeRect.anchoredPosition = new Vector2(16f, -14f);
+      warningBadgeRect.sizeDelta = new Vector2(26f, 26f);
       UIRoundedPanelGraphic warningBadgeGraphic = warningBadge.AddComponent<UIRoundedPanelGraphic>();
-      warningBadgeGraphic.Configure(WarningAccentSoft, Html("#F2B84B55"), 1f, 10f);
+      warningBadgeGraphic.Configure(WarningAccentSoft, Html("#F2B84B55"), 1f, 8f);
       warningBadgeGraphic.raycastTarget = false;
 
       TextMeshProUGUI warningGlyph = BuildText(
         "Glyph",
         warningBadge.transform,
         "!",
-        19f,
+        15f,
         WarningAccent,
         font,
         TextAlignmentOptions.Center
@@ -181,39 +181,39 @@ namespace TUFReplay.Unity.Editor
         "TitleText",
         root.transform,
         "Microphone access is off",
-        22f,
+        17f,
         WarmWhite,
         font,
         TextAlignmentOptions.MidlineLeft
       );
       RectTransform titleRect = title.rectTransform;
       titleRect.anchorMin = titleRect.anchorMax = titleRect.pivot = new Vector2(0f, 1f);
-      titleRect.anchoredPosition = new Vector2(66f, -20f);
-      titleRect.sizeDelta = new Vector2(470f, 32f);
+      titleRect.anchoredPosition = new Vector2(52f, -14f);
+      titleRect.sizeDelta = new Vector2(328f, 26f);
 
       TextMeshProUGUI message = BuildText(
         "MessageText",
         root.transform,
         "Enable TUFReplay Microphone Capture in System Settings. This run will continue without microphone audio.",
-        16f,
+        13f,
         MutedText,
         font,
         TextAlignmentOptions.TopLeft
       );
       RectTransform messageRect = message.rectTransform;
       messageRect.anchorMin = messageRect.anchorMax = messageRect.pivot = new Vector2(0f, 1f);
-      messageRect.anchoredPosition = new Vector2(22f, -63f);
-      messageRect.sizeDelta = new Vector2(556f, 64f);
+      messageRect.anchoredPosition = new Vector2(16f, -48f);
+      messageRect.sizeDelta = new Vector2(388f, 42f);
       message.textWrappingMode = TextWrappingModes.Normal;
       message.overflowMode = TextOverflowModes.Ellipsis;
 
       GameObject dismissObject = CreateUIObject("DismissButton", root.transform);
       RectTransform dismissRect = dismissObject.GetComponent<RectTransform>();
       dismissRect.anchorMin = dismissRect.anchorMax = dismissRect.pivot = new Vector2(1f, 1f);
-      dismissRect.anchoredPosition = new Vector2(-10f, -10f);
-      dismissRect.sizeDelta = new Vector2(36f, 36f);
+      dismissRect.anchoredPosition = new Vector2(-8f, -8f);
+      dismissRect.sizeDelta = new Vector2(28f, 28f);
       UIRoundedPanelGraphic dismissBackground = dismissObject.AddComponent<UIRoundedPanelGraphic>();
-      dismissBackground.Configure(Color.white, Color.clear, 0f, 11f);
+      dismissBackground.Configure(Color.white, Color.clear, 0f, 9f);
       dismissBackground.raycastTarget = true;
       Button dismissButton = dismissObject.AddComponent<Button>();
       dismissButton.targetGraphic = dismissBackground;
@@ -230,17 +230,17 @@ namespace TUFReplay.Unity.Editor
 
       GameObject closeIconObject = CreateUIObject("Icon", dismissObject.transform);
       RectTransform closeIconRect = closeIconObject.GetComponent<RectTransform>();
-      SetCenteredRect(closeIconRect, Vector2.zero, new Vector2(14f, 14f));
+      SetCenteredRect(closeIconRect, Vector2.zero, new Vector2(11f, 11f));
       UICloseGraphic closeIcon = closeIconObject.AddComponent<UICloseGraphic>();
-      closeIcon.Configure(new Color32(168, 172, 182, 235), 1.8f, 4f);
+      closeIcon.Configure(new Color32(168, 172, 182, 235), 1.5f, 3f);
 
       GameObject actionObject = CreateUIObject("ActionButton", root.transform);
       RectTransform actionRect = actionObject.GetComponent<RectTransform>();
       actionRect.anchorMin = actionRect.anchorMax = actionRect.pivot = new Vector2(1f, 0f);
-      actionRect.anchoredPosition = new Vector2(-20f, 18f);
-      actionRect.sizeDelta = new Vector2(190f, 36f);
+      actionRect.anchoredPosition = new Vector2(-14f, 14f);
+      actionRect.sizeDelta = new Vector2(148f, 30f);
       UIRoundedPanelGraphic actionBackground = actionObject.AddComponent<UIRoundedPanelGraphic>();
-      actionBackground.Configure(Accent, AccentLight, 1f, 10f);
+      actionBackground.Configure(Accent, AccentLight, 1f, 8f);
       actionBackground.raycastTarget = true;
       Button actionButton = actionObject.AddComponent<Button>();
       actionButton.targetGraphic = actionBackground;
@@ -259,7 +259,7 @@ namespace TUFReplay.Unity.Editor
         "Label",
         actionObject.transform,
         "Open System Settings",
-        15f,
+        12f,
         DarkIcon,
         font,
         TextAlignmentOptions.Center
@@ -276,8 +276,8 @@ namespace TUFReplay.Unity.Editor
       progressTrackRect.anchorMin = new Vector2(0f, 0f);
       progressTrackRect.anchorMax = new Vector2(1f, 0f);
       progressTrackRect.pivot = new Vector2(0.5f, 0f);
-      progressTrackRect.anchoredPosition = new Vector2(0f, 11f);
-      progressTrackRect.sizeDelta = new Vector2(-36f, 3f);
+      progressTrackRect.anchoredPosition = new Vector2(0f, 8f);
+      progressTrackRect.sizeDelta = new Vector2(-28f, 2f);
       Image progressTrack = progressTrackObject.AddComponent<Image>();
       progressTrack.color = new Color(1f, 1f, 1f, 0.075f);
       progressTrack.raycastTarget = false;

@@ -52,7 +52,8 @@ xcrun clang++ \
   -o "$TUFREPLAY_MAC_INPUT_TEST"
 
 "$TUFREPLAY_MAC_INPUT_TEST"
-lipo "$TUFREPLAY_MAC_INPUT_LIBRARY" -verify_arch arm64 x86_64
+lipo "$TUFREPLAY_MAC_INPUT_LIBRARY" -verify_arch arm64
+lipo "$TUFREPLAY_MAC_INPUT_LIBRARY" -verify_arch x86_64
 codesign --force --sign - --timestamp=none "$TUFREPLAY_MAC_INPUT_LIBRARY"
 codesign --verify --strict "$TUFREPLAY_MAC_INPUT_LIBRARY"
 printf '%s\n' "$TUFREPLAY_MAC_INPUT_LIBRARY"

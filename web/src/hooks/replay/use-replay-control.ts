@@ -34,8 +34,13 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
   });
 
   const playMutation = useMutation({
-    mutationFn: async ({ runId, levelPath }: { runId: string; levelPath?: string }) =>
-      (await apiPromise).replay.play(runId, levelPath),
+    mutationFn: async ({ runId, levelPath }: { runId: string; levelPath?: string }) => {
+      const next = await (await apiPromise).replay.play(runId, levelPath);
+      if (next.runId !== runId) {
+        throw new Error(i18n.t("errors.replay_busy", { ns: "replay" }));
+      }
+      return next;
+    },
   });
   const pickerMutation = useMutation({
     mutationFn: async (runId: string) => (await apiPromise).replay.pickLevelFile(runId),
@@ -48,7 +53,7 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
         const next = await playMutation.mutateAsync({ runId, levelPath });
         if (generation !== playGeneration.current) return false;
         setReplayStatus(queryClient, next);
-        return true;
+        return next.operationId !== null && next.state !== "error" && next.state !== "cancelled";
       } catch {
         return false;
       }

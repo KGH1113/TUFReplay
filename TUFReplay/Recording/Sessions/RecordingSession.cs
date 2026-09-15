@@ -61,6 +61,7 @@ public class RecordingSession
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),
+        GameInputOffsetMs = GetCurrentGameInputOffsetMs(),
         JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
         GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
         GameplayHashVersion = gameplayHashVersion,
@@ -138,6 +139,7 @@ public class RecordingSession
       RefreshPitchLocked();
       if (!Data.JudgmentDifficulty.HasValue)
         Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
+      Data.GameInputOffsetMs = GetCurrentGameInputOffsetMs() ?? Data.GameInputOffsetMs;
       if (!_gameplayStateReached)
       {
         _gameplayStateReached = true;
@@ -397,6 +399,18 @@ public class RecordingSession
     catch
     {
       return false;
+    }
+  }
+
+  private static int? GetCurrentGameInputOffsetMs()
+  {
+    try
+    {
+      return scrConductor.currentPreset.inputOffset;
+    }
+    catch
+    {
+      return null;
     }
   }
 

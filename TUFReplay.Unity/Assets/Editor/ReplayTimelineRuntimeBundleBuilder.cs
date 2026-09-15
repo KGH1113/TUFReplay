@@ -202,7 +202,7 @@ namespace TUFReplay.Unity.Editor
         throw new InvalidOperationException("Runtime notification contains its preview driver.");
 
       RectTransform root = prefab.transform as RectTransform;
-      ValidateRect(root, "runtime notification", new Vector2(600f, 154f), new Vector2(-24f, 112f));
+      ValidateRect(root, "runtime notification", new Vector2(420f, 108f), new Vector2(-18f, 88f));
       ValidateTextFont(root?.Find("TitleText")?.GetComponent<TMP_Text>(), "runtime notification title");
       ValidateTextFont(root?.Find("MessageText")?.GetComponent<TMP_Text>(), "runtime notification message");
 

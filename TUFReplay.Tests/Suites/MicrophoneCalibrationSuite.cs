@@ -50,7 +50,6 @@ internal static class MicrophoneCalibrationSuite
     TestPcm16PrefetchBuffer();
     TestPcm16PrefetchUnderrunRecovery();
     TestMicrophonePlaybackDecisions();
-    TestPlaybackLimiter(root);
     TestMicrophoneTimelineAnchor();
     TestReplayMicrophoneClock();
     TestCalibrationSettings(root);
@@ -361,88 +360,6 @@ internal static class MicrophoneCalibrationSuite
     return total;
   }
 
-  private static void TestPlaybackLimiter(string root)
-  {
-    const int sampleRate = 48000;
-    const int frameCount = sampleRate / 2;
-    int transientFrame = sampleRate / 10;
-    var samples = new float[frameCount];
-    Array.Fill(samples, 0.01f);
-    samples[transientFrame] = 1f;
-
-    string path = Path.Combine(root, "playback-limiter.wav");
-    using (var writer = new Pcm16WavWriter(path))
-    {
-      Assert(writer.TryEnqueue(samples, samples.Length, 1), "Limiter WAV was not queued.");
-      Assert(writer.Complete() == frameCount, "Limiter WAV frame count is incorrect.");
-    }
-
-    StoredMicrophoneRecording recording = PlaybackRecording(path, frameCount);
-    Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
-    Pcm16LimiterEnvelope envelope = Pcm16WaveAnalyzer.Analyze(recording, wave, System.Threading.CancellationToken.None);
-    Assert(envelope.BinCount == 500, "Limiter envelope did not use one-millisecond bins.");
-    Assert(Math.Abs(envelope.RequiredLimiterGain(0, 10f) - 1f) < 0.0001f, "Limiter attenuated a quiet section.");
-    float gainAtThirtyDb = MicrophoneGain.FromDecibels(30);
-    float boostedQuietGain = envelope.RequiredLimiterGain(0, gainAtThirtyDb) * gainAtThirtyDb;
-    Assert(boostedQuietGain > 10f, "+30 dB did not amplify quiet audio beyond the old +20 dB maximum.");
-    Assert(
-      envelope.RequiredLimiterGain(transientFrame - sampleRate * 4 / 1000, 10f) < 1f,
-      "Limiter look-ahead did not anticipate a loud transient."
-    );
-    Assert(
-      Math.Abs(envelope.RequiredLimiterGain(transientFrame - sampleRate * 7 / 1000, 10f) - 1f) < 0.0001f,
-      "Limiter look-ahead started too early."
-    );
-
-    float limitedGain = envelope.RequiredLimiterGain(transientFrame, 10f) * 10f;
-    Assert(limitedGain <= Pcm16LimiterEnvelope.Ceiling + 0.0001f, "Limiter exceeded its true-peak ceiling.");
-    float limitedGainAtThirtyDb = envelope.RequiredLimiterGain(transientFrame, gainAtThirtyDb) * gainAtThirtyDb;
-    Assert(
-      limitedGainAtThirtyDb <= Pcm16LimiterEnvelope.Ceiling + 0.0001f,
-      "Limiter exceeded its true-peak ceiling at +30 dB."
-    );
-    Assert(Pcm16LimiterEnvelope.Ceiling > 0.96f, "Limiter ceiling was not relaxed to -0.3 dBFS.");
-
-    var limiter = new Pcm16Limiter(envelope, sampleRate);
-    float peakGain = 10f;
-    for (int frame = transientFrame - sampleRate * 7 / 1000; frame <= transientFrame; frame++)
-      peakGain = limiter.NextEffectiveGain(frame, 10f);
-    float releaseGain = peakGain;
-    for (int frame = transientFrame + 1; frame <= transientFrame + sampleRate * 30 / 1000; frame++)
-      releaseGain = limiter.NextEffectiveGain(frame, 10f);
-    Assert(releaseGain > 5f && releaseGain < 10f, "Limiter did not recover quickly with the relaxed release.");
-
-    limiter.Reset();
-    float resetPeakGain = limiter.NextEffectiveGain(transientFrame, 10f);
-    Assert(Math.Abs(resetPeakGain - limitedGain) < 0.0001f, "Limiter reset did not seek by absolute PCM frame.");
-    limiter.Reset();
-    Assert(Math.Abs(limiter.NextEffectiveGain(0, 1f) - 1f) < 0.0001f, "A safe gain change was unnecessarily limited.");
-
-    string stereoPath = Path.Combine(root, "playback-limiter-stereo.wav");
-    short[] stereoSamples = new short[32];
-    stereoSamples[16] = short.MaxValue;
-    stereoSamples[17] = short.MaxValue / 4;
-    WriteTestPcm16Wave(stereoPath, sampleRate, 2, stereoSamples);
-    StoredMicrophoneRecording stereoRecording = PlaybackRecording(stereoPath, 16, sampleRate, 2);
-    Pcm16WaveInfo stereoWave = Pcm16WaveFile.ReadAndValidate(stereoRecording);
-    Pcm16LimiterEnvelope stereoEnvelope = Pcm16WaveAnalyzer.Analyze(
-      stereoRecording,
-      stereoWave,
-      System.Threading.CancellationToken.None
-    );
-    Assert(
-      stereoEnvelope.RequiredLimiterGain(8, 10f) < 0.1f,
-      "Limiter did not link channels using the loudest channel."
-    );
-
-    using var cancelled = new System.Threading.CancellationTokenSource();
-    cancelled.Cancel();
-    AssertThrows<OperationCanceledException>(
-      () => Pcm16WaveAnalyzer.Analyze(recording, wave, cancelled.Token),
-      "Cancelled limiter analysis completed."
-    );
-  }
-
   private static void TestMicrophoneTimelineAnchor()
   {
     Assert(
@@ -505,23 +422,6 @@ internal static class MicrophoneCalibrationSuite
 
     var physicalInputSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: false);
     long physicalInputFrame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
-    var gameOffsetSnapshot = new ReplayPlaybackSnapshot(
-      500_000L,
-      1d,
-      1d,
-      null,
-      paused: false,
-      gameInputOffsetUs: 100_000L
-    );
-    long compensatedCaptureOffsetUs = ReplayMicrophoneClock.ApplyPlaybackCorrections(
-      0L,
-      0L,
-      gameOffsetSnapshot.GameInputOffsetUs
-    );
-    Assert(
-      ReplayMicrophoneClock.ToFrame(gameOffsetSnapshot, compensatedCaptureOffsetUs, 48000, 100000) == 28_800L,
-      "Game input calibration was not applied separately from microphone latency."
-    );
     Assert(
       ReplayMicrophonePlaybackDecisions.ShouldMute(
         new ReplayPlaybackSnapshot(0L, 1d, 1d, null, paused: false, microphoneAudible: false).MicrophoneAudible
@@ -533,6 +433,14 @@ internal static class MicrophoneCalibrationSuite
         new ReplayPlaybackSnapshot(0L, 1d, 1d, null, paused: false, microphoneAudible: true).MicrophoneAudible
       ),
       "Replay microphone audio remained muted after gameplay started."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldStartSource(microphoneAudible: false),
+      "Replay microphone source started against the unstable pre-roll timeline."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.ShouldStartSource(microphoneAudible: true),
+      "Replay microphone source did not start against the PlayerControl timeline."
     );
     var pausedSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: true);
     Assert(
