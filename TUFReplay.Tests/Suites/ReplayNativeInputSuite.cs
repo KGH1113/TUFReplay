@@ -377,7 +377,8 @@ internal static class ReplayNativeInputSuite
         3,
         RunJudgmentSystem.ModernCompetitive,
         out ReplayTimelineJudgmentKind perfectMinus
-      ) && perfectMinus == ReplayTimelineJudgmentKind.PerfectMinus,
+      )
+        && perfectMinus == ReplayTimelineJudgmentKind.PerfectMinus,
       "Competitive PerfectMinus was not preserved."
     );
     Assert(
@@ -385,7 +386,8 @@ internal static class ReplayNativeInputSuite
         4,
         RunJudgmentSystem.ModernCompetitive,
         out ReplayTimelineJudgmentKind xPerfect
-      ) && xPerfect == ReplayTimelineJudgmentKind.XPerfect,
+      )
+        && xPerfect == ReplayTimelineJudgmentKind.XPerfect,
       "Competitive XPerfect was not preserved."
     );
     Assert(
@@ -393,7 +395,8 @@ internal static class ReplayNativeInputSuite
         5,
         RunJudgmentSystem.ModernCompetitive,
         out ReplayTimelineJudgmentKind perfectPlus
-      ) && perfectPlus == ReplayTimelineJudgmentKind.PerfectPlus,
+      )
+        && perfectPlus == ReplayTimelineJudgmentKind.PerfectPlus,
       "Competitive PerfectPlus was not preserved."
     );
   }
@@ -745,6 +748,16 @@ internal static class ReplayNativeInputSuite
 
   private static void TestMacOsNativeShimAbi()
   {
+    Assert(
+      MacOsIoHidErrorFormatter.Format(MacOsInputError.ManagerOpen, unchecked((int)0xE00002E2u))
+        == "ManagerOpen: kIOReturnNotPermitted (decimal=-536870174, hex=0xE00002E2)",
+      "macOS IOHID error formatter did not preserve the native IOReturn."
+    );
+    Assert(
+      MacOsIoHidErrorFormatter.Format(MacOsInputError.ManagerOpen, 1234)
+        == "ManagerOpen: unknown IOReturn (decimal=1234, hex=0x000004D2)",
+      "macOS IOHID error formatter did not preserve an unknown native error."
+    );
     if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
       return;
     Assert(

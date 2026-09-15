@@ -17,6 +17,9 @@ export function useLegacyReplayNotice(connectionStatus: ConnectionStatus) {
     queryFn: async () => (await apiPromise).activity.getLegacyReplayStatus(),
     enabled: connectionStatus === "online" && !acknowledged,
     staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+    refetchOnReconnect: false,
+    refetchOnWindowFocus: false,
   });
 
   return {

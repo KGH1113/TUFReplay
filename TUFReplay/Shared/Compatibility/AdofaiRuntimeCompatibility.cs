@@ -9,15 +9,30 @@ internal static class AdofaiRuntimeCompatibility
 {
   private delegate scrPlanet SwitchChosenWithTick(scrPlanet planet, long? hitTick);
   private delegate scrPlanet SwitchChosenLegacy(scrPlanet planet);
-  private delegate void UpdateHitErrorMeter(scrController controller, scrFloor floor, scrPlayer player, scrPlanet planet);
-  private delegate void AddLegacyHit(scrHitErrorMeter meter, float angleDiff, float marginScale, scrPlanet planet, scrFloor floor);
+  private delegate void UpdateHitErrorMeter(
+    scrController controller,
+    scrFloor floor,
+    scrPlayer player,
+    scrPlanet planet
+  );
+  private delegate void AddLegacyHit(
+    scrHitErrorMeter meter,
+    float angleDiff,
+    float marginScale,
+    scrPlanet planet,
+    scrFloor floor
+  );
 
   private static readonly MethodInfo ModernHitMethod = AccessTools.Method(
     typeof(scrPlayer),
     "Hit",
     new[] { typeof(long?), typeof(bool) }
   );
-  private static readonly MethodInfo LegacyHitMethod = AccessTools.Method(typeof(scrPlayer), "Hit", new[] { typeof(bool) });
+  private static readonly MethodInfo LegacyHitMethod = AccessTools.Method(
+    typeof(scrPlayer),
+    "Hit",
+    new[] { typeof(bool) }
+  );
   private static readonly SwitchChosenWithTick ModernSwitchChosen = CreateDelegate<SwitchChosenWithTick>(
     AccessTools.Method(typeof(scrPlanet), "SwitchChosen", new[] { typeof(long?) })
   );

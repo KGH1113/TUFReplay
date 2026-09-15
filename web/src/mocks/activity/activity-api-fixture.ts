@@ -34,6 +34,7 @@ interface ActivityWireFixture {
     ProtocolVersion: number;
     ServerVersion: number;
   }>;
+  getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAppSessions(offset: number, limit: number): Promise<ActivityAppSession[]>;
   getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;

@@ -19,7 +19,7 @@ internal static class AssetBundleToast
   internal static bool Show(string title, string message)
   {
     if (_view == null || !_view.IsConfigured) return false;
-    _view.Show(title, message);
+    _view.ShowToast(title, message);
     return true;
   }
 }

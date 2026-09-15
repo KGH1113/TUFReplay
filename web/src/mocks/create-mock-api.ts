@@ -18,6 +18,7 @@ import {
   activityChartDtoSchema,
   activityRunDtoSchema,
   appSessionDtoSchema,
+  legacyReplayStatusDtoSchema,
   logicalLevelDtoSchema,
 } from "@/schemas/activity/activity-schema";
 import {
@@ -41,7 +42,7 @@ export function createMockApi(): AppApi {
     },
     activity: {
       async getLegacyReplayStatus() {
-        const status = await fixture.getLegacyReplayStatus();
+        const status = legacyReplayStatusDtoSchema.parse(await fixture.getLegacyReplayStatus());
         return { hasLegacyReplays: status.HasLegacyReplays };
       },
       async listAppSessions(offset, limit) {

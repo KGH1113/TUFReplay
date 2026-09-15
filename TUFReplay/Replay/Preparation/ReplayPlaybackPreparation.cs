@@ -17,6 +17,7 @@ using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
+using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Unity;
 using UnityEngine;
@@ -63,6 +64,8 @@ public static partial class ReplayPlaybackCoordinator
         Main.Instance?.Log(
           "[Replay/Microphone] Recording unavailable; replay will continue without it. error=" + exception.Message
         );
+        operation.MicrophoneWarning =
+          "The microphone recording could not be loaded. The replay will continue without microphone audio.";
       }
       finally
       {
@@ -124,24 +127,42 @@ public static partial class ReplayPlaybackCoordinator
     }
     catch
     {
-      return Error("metadata_invalid", "Replay metadata could not be parsed.", out errorCode, out errorMessage);
+      return Error("metadata_parse_failed", "Replay metadata could not be parsed.", out errorCode, out errorMessage);
     }
 
-    if (!meta.gameplayStartSongPosition.HasValue)
-      return Error("metadata_invalid", "Replay gameplay timing metadata is missing.", out errorCode, out errorMessage);
+    if (meta?.gameplayStartSongPosition == null)
+      return Error(
+        "timing_metadata_missing",
+        "Replay gameplay timing metadata is missing.",
+        out errorCode,
+        out errorMessage
+      );
     if (!ValidateNativePlatform(meta, run.InputCsv, out errorCode, out errorMessage))
       return false;
 
     List<RecordedInput> parsedInputs;
-    List<ReplayHitContext> hitContexts;
     try
     {
       parsedInputs = ReplayInputParser.Parse(run.InputCsv);
+    }
+    catch (InvalidDataException)
+    {
+      return Error("input_payload_invalid", "Replay input data is malformed.", out errorCode, out errorMessage);
+    }
+
+    List<ReplayHitContext> hitContexts;
+    try
+    {
       hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
     }
     catch (InvalidDataException)
     {
-      return Error("payload_invalid", "Replay payload data is malformed.", out errorCode, out errorMessage);
+      return Error(
+        "hit_context_payload_invalid",
+        "Replay judgment data is malformed.",
+        out errorCode,
+        out errorMessage
+      );
     }
     List<RecordedInput> inputs = NativeInputKeyCodeMapper.NormalizeForPlayback(parsedInputs, meta, out int dropped);
     if (inputs.Count == 0 && hitContexts.Count == 0)
@@ -150,7 +171,7 @@ public static partial class ReplayPlaybackCoordinator
       Main.Instance?.Log("[Replay] Dropped unmappable cross-platform input keys. count=" + dropped);
 
     if (run.StartTile < 0)
-      return Error("start_tile_invalid", "The recorded start tile is invalid.", out errorCode, out errorMessage);
+      return Error("start_tile_negative", "The recorded start tile is invalid.", out errorCode, out errorMessage);
     if (!IsSupportedResult(run.Result))
       return Error("result_unsupported", "This run result cannot be replayed.", out errorCode, out errorMessage);
 
@@ -313,7 +334,7 @@ public static partial class ReplayPlaybackCoordinator
 
     if (operation.Run.StartTile >= editor.floors.Count)
     {
-      Fail("start_tile_invalid", "The recorded start tile is outside the current chart.");
+      Fail("start_tile_out_of_range", "The recorded start tile is outside the current chart.");
       return;
     }
 
@@ -347,8 +368,13 @@ public static partial class ReplayPlaybackCoordinator
           "[Replay/Microphone] Playback initialization failed; replay will continue without it. error="
             + exception.Message
         );
+        operation.MicrophoneWarning =
+          "The microphone recording could not be played. The replay will continue without microphone audio.";
       }
     }
+
+    if (!string.IsNullOrEmpty(operation.MicrophoneWarning))
+      ReplayTimelineHud.ShowNotificationToast("Microphone audio unavailable", operation.MicrophoneWarning);
 
     ActiveReplayContext context = new ActiveReplayContext
     {
@@ -402,7 +428,12 @@ public static partial class ReplayPlaybackCoordinator
       || string.IsNullOrWhiteSpace(meta.inputNativePlatform)
       || string.IsNullOrWhiteSpace(meta.inputCapture)
     )
-      return Error("metadata_invalid", "Replay native input metadata is missing.", out errorCode, out errorMessage);
+      return Error(
+        "native_input_metadata_missing",
+        "Replay native input metadata is missing.",
+        out errorCode,
+        out errorMessage
+      );
 
     string current = CurrentPlatform();
     if (current == "unsupported")

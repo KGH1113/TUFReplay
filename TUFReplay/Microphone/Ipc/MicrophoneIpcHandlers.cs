@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using AdofaiIpc.Core;
 using TUFReplay.Microphone.Devices;
 using TUFReplay.Microphone.Ipc;
@@ -19,7 +20,7 @@ public static class MicrophoneIpcHandlers
     catch (Exception exception)
     {
       Main.Instance?.Log("[IPC] Microphone device query failed: " + exception.GetType().Name);
-      return IpcDomainError.Create("microphone_device_query_failed", "Available microphone devices could not be read.");
+      return MicrophoneFailure(exception, "microphone_device_query_failed", "Available microphones could not be read.");
     }
   }
 
@@ -30,8 +31,16 @@ public static class MicrophoneIpcHandlers
 
     try
     {
-      if (!MicrophoneDeviceService.TrySelect(deviceId, out MicrophoneDevicesState state, out bool changed))
-        return IpcDomainError.Create("microphone_device_not_found", "The selected microphone device is not available.");
+      if (
+        !MicrophoneDeviceService.TrySelect(
+          deviceId,
+          out MicrophoneDevicesState state,
+          out bool changed,
+          out string errorCode,
+          out string errorMessage
+        )
+      )
+        return IpcDomainError.Create(errorCode, errorMessage);
 
       if (changed)
         Main.Instance?.Log("[Microphone] Input device selection updated.");
@@ -40,9 +49,10 @@ public static class MicrophoneIpcHandlers
     catch (Exception exception)
     {
       Main.Instance?.Log("[IPC] Microphone device selection failed: " + exception.GetType().Name);
-      return IpcDomainError.Create(
+      return MicrophoneFailure(
+        exception,
         "microphone_device_selection_failed",
-        "The microphone device selection could not be saved."
+        "The microphone selection could not be saved. The previous device is still active."
       );
     }
   }
@@ -70,7 +80,11 @@ public static class MicrophoneIpcHandlers
     catch (Exception exception)
     {
       Main.Instance?.Log("[IPC] Microphone access update failed: " + exception.GetType().Name);
-      return IpcDomainError.Create("microphone_toggle_failed", "Microphone access could not be updated.");
+      return MicrophoneFailure(
+        exception,
+        "microphone_toggle_failed",
+        "The microphone setting could not be saved. The previous setting is still active."
+      );
     }
   }
 
@@ -106,5 +120,24 @@ public static class MicrophoneIpcHandlers
     )
       return IpcDomainError.Create(errorCode, errorMessage);
     return MicrophoneTimingSettingsDto.From(state);
+  }
+
+  private static object MicrophoneFailure(Exception exception, string fallbackCode, string fallbackMessage)
+  {
+    if (exception is UnauthorizedAccessException)
+    {
+      return IpcDomainError.Create(
+        "microphone_permission_denied",
+        "Microphone access is off. Allow TUFReplay Microphone Capture in System Settings."
+      );
+    }
+    if (exception is DllNotFoundException || exception is FileNotFoundException || exception is IOException)
+    {
+      return IpcDomainError.Create(
+        "microphone_helper_unavailable",
+        "The microphone helper could not start. Restart the game; if it continues, reinstall TUFReplay."
+      );
+    }
+    return IpcDomainError.Create(fallbackCode, fallbackMessage);
   }
 }

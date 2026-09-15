@@ -194,7 +194,7 @@ public sealed class SubmissionFeature : IDisposable
     }
     if (
       _pendingToast
-      && TUFReplay.Shared.Notifications.AssetBundleToast.Show(
+      && TUFReplay.Replay.Timeline.ReplayTimelineHud.ShowNotificationToast(
         "TUF chart updated",
         "This chart's TUF information changed. Submission will validate against the current official chart."
       )
