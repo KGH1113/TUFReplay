@@ -216,17 +216,34 @@ public sealed class MicrophoneCalibrationFeature
     {
       float[] inputWaveform = CalibrationWaveformBuilder.FromInputEvents(ReplayInputParser.Parse(inputCsv), durationMs);
       if (!CalibrationWaveformBuilder.HasSignal(inputWaveform))
-        throw new InvalidOperationException("No microphone calibration key presses were recorded.");
+      {
+        PostError(
+          operationId,
+          "calibration_input_missing",
+          "No key presses were recorded. Play the calibration level again and press keys during the run."
+        );
+        return;
+      }
       float[] microphoneWaveform = CalibrationWaveformBuilder.FromPcm16(recording, durationMs);
       UnityMainThread.Post(() => CompleteResult(operationId, durationMs, inputWaveform, microphoneWaveform));
     }
+    catch (System.IO.InvalidDataException exception)
+    {
+      Main.Instance?.LogException("Calibration/RecordingInvalid", exception);
+      PostError(
+        operationId,
+        "calibration_recording_invalid",
+        "The microphone recording could not be analyzed. Check the input device and start calibration again."
+      );
+    }
     catch (Exception exception)
     {
-      UnityMainThread.Post(() =>
-      {
-        if (_state.IsCurrent(operationId))
-          Error("calibration_waveform_failed", exception.Message, operationId);
-      });
+      Main.Instance?.LogException("Calibration/Waveform", exception);
+      PostError(
+        operationId,
+        "calibration_waveform_failed",
+        "The recording could not be analyzed. Start calibration again."
+      );
     }
   }
 
@@ -256,8 +273,22 @@ public sealed class MicrophoneCalibrationFeature
     }
     catch (Exception exception)
     {
-      Error("calibration_level_open_failed", exception.Message, operationId);
+      Main.Instance?.LogException("Calibration/OpenLevel", exception);
+      Error(
+        "calibration_level_open_failed",
+        "The calibration level could not be opened. Return to ADOFAI and try again.",
+        operationId
+      );
     }
+  }
+
+  private void PostError(string operationId, string code, string message)
+  {
+    UnityMainThread.Post(() =>
+    {
+      if (_state.IsCurrent(operationId))
+        Error(code, message, operationId);
+    });
   }
 
   private MicrophoneCalibrationStatus Error(string code, string message, string operationId = null) =>

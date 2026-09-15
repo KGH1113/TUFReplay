@@ -131,7 +131,10 @@ describe("layered AppApi contract", () => {
       message: "Session is missing",
     });
     expect(connectionApi.listAppSessions(0, 20)).rejects.toBeInstanceOf(ApiError);
-    expect(connectionApi.listAppSessions(0, 20)).rejects.toMatchObject({ kind: "connection" });
+    expect(connectionApi.listAppSessions(0, 20)).rejects.toMatchObject({
+      kind: "connection",
+      code: "ipc_unavailable",
+    });
   });
 
   test("run mutations preserve exact IPC method names and params", async () => {

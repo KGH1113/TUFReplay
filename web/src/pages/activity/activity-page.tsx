@@ -82,6 +82,7 @@ export function ActivityPage() {
                 selectedRun={viewModel.selectedRun}
                 loading={viewModel.levelData.loading}
                 error={viewModel.levelData.error}
+                chartError={viewModel.levelData.chartError}
                 readOnly={activity.status !== "online"}
                 timeZone={viewModel.timeZone}
                 replayStatus={replay.status}

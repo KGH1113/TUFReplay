@@ -163,7 +163,13 @@ public static partial class ReplayPlaybackCoordinator
       catch (Exception exception)
       {
         ReplayMicrophonePlaybackFiles.Delete(microphoneRecording?.FilePath);
-        SetError(operationId, run?.Id, "calibration_preview_invalid", exception.Message);
+        Main.Instance?.LogException("Calibration/Preview", exception);
+        SetError(
+          operationId,
+          run?.Id,
+          "calibration_preview_invalid",
+          "The calibration preview could not be prepared. Your calibration result is still available."
+        );
       }
       return GetStatus();
     }

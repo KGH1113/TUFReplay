@@ -2,6 +2,7 @@ import { IpcVersionMismatchError } from "@adofai-ipc/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiPromise, useMockEnabled } from "@/api/app-api-provider";
 import type { AppSession, ConnectionStatus } from "@/models/activity/activity-model";
+import { diagnosticErrorMessage } from "@/models/activity/localized-error";
 import { ApiError } from "@/shared/errors/api-error";
 import {
   activityQueryKeys,
@@ -36,7 +37,7 @@ export function useActivityData() {
   return {
     sessions: query.data ?? [],
     status: statusForQuery(query.status, query.error),
-    error: query.error instanceof Error ? query.error.message : "",
+    error: diagnosticErrorMessage(query.error),
     versionMismatch: query.error instanceof IpcVersionMismatchError ? query.error.direction : null,
     retry: query.refetch,
     mockEnabled,

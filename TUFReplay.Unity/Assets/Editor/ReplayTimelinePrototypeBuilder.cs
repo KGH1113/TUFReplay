@@ -80,7 +80,7 @@ namespace TUFReplay.Unity.Editor
         .GetComponent<ReplayTimelinePreviewDriver>()
         .Configure(connectedRoot.GetComponent<ReplayTimelineView>());
 
-      BuildMicrophonePermissionWarningPreview(canvas.transform, timelineFont);
+      BuildRuntimeNotificationPreview(canvas.transform, timelineFont);
 
       foreach (Graphic graphic in connectedRoot.GetComponentsInChildren<Graphic>(true))
         graphic.SetAllDirty();
@@ -92,31 +92,31 @@ namespace TUFReplay.Unity.Editor
       Debug.Log("[TUFReplay.Unity] Rebuilt the TUFHelperLite-style linear replay timeline prototype.");
     }
 
-    private static void BuildMicrophonePermissionWarningPreview(Transform parent, TMP_FontAsset font)
+    private static void BuildRuntimeNotificationPreview(Transform parent, TMP_FontAsset font)
     {
-      const string PrefabPath = PrefabFolder + "/MicrophonePermissionWarningRuntime.prefab";
+      const string PrefabPath = PrefabFolder + "/RuntimeNotificationRuntime.prefab";
       AssetDatabase.DeleteAsset(PrefabPath);
 
-      GameObject warningRoot = BuildMicrophonePermissionWarning(parent, font);
-      warningRoot.SetActive(false);
-      PrefabUtility.SaveAsPrefabAsset(warningRoot, PrefabPath);
-      UnityEngine.Object.DestroyImmediate(warningRoot);
+      GameObject notificationRoot = BuildRuntimeNotification(parent, font);
+      notificationRoot.SetActive(false);
+      PrefabUtility.SaveAsPrefabAsset(notificationRoot, PrefabPath);
+      UnityEngine.Object.DestroyImmediate(notificationRoot);
 
       GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PrefabPath);
       if (prefab == null)
-        throw new InvalidOperationException("Microphone permission warning prefab could not be created.");
+        throw new InvalidOperationException("Runtime notification prefab could not be created.");
 
       GameObject preview = PrefabUtility.InstantiatePrefab(prefab, parent) as GameObject;
       if (preview == null)
-        throw new InvalidOperationException("Microphone permission warning preview could not be instantiated.");
+        throw new InvalidOperationException("Runtime notification preview could not be instantiated.");
 
-      preview.name = "MicrophonePermissionWarningPreview";
+      preview.name = "RuntimeNotificationPreview";
       preview.SetActive(true);
       preview.GetComponent<CanvasGroup>().alpha = 1f;
       preview.transform.Find("ProgressTrack/ProgressFill").GetComponent<Image>().fillAmount = 1f;
 
       GameObject previewDriver = new GameObject(
-        "MicrophonePermissionWarningPreviewDriver",
+        "RuntimeNotificationPreviewDriver",
         typeof(MicrophonePermissionWarningPreviewDriver)
       );
       previewDriver.transform.SetParent(parent, false);
@@ -125,9 +125,9 @@ namespace TUFReplay.Unity.Editor
         .Configure(preview.GetComponent<MicrophonePermissionWarningView>());
     }
 
-    private static GameObject BuildMicrophonePermissionWarning(Transform parent, TMP_FontAsset font)
+    private static GameObject BuildRuntimeNotification(Transform parent, TMP_FontAsset font)
     {
-      GameObject root = CreateUIObject("MicrophonePermissionWarningRuntime", parent);
+      GameObject root = CreateUIObject("RuntimeNotificationRuntime", parent);
       RectTransform rootRect = root.GetComponent<RectTransform>();
       rootRect.anchorMin = rootRect.anchorMax = new Vector2(1f, 0f);
       rootRect.pivot = new Vector2(1f, 0f);
@@ -141,7 +141,10 @@ namespace TUFReplay.Unity.Editor
 
       GameObject ambientShadowObject = CreateUIObject("AmbientShadow", root.transform);
       RectTransform ambientShadowRect = ambientShadowObject.GetComponent<RectTransform>();
-      SetCenteredRect(ambientShadowRect, new Vector2(0f, -6f), new Vector2(608f, 162f));
+      ambientShadowRect.anchorMin = Vector2.zero;
+      ambientShadowRect.anchorMax = Vector2.one;
+      ambientShadowRect.offsetMin = new Vector2(-4f, -10f);
+      ambientShadowRect.offsetMax = new Vector2(4f, 4f);
       UIRoundedPanelGraphic ambientShadow = ambientShadowObject.AddComponent<UIRoundedPanelGraphic>();
       ambientShadow.Configure(new Color(0f, 0f, 0f, 0.24f), Color.clear, 0f, 22f);
       ambientShadow.raycastTarget = false;
@@ -177,7 +180,7 @@ namespace TUFReplay.Unity.Editor
       TextMeshProUGUI title = BuildText(
         "TitleText",
         root.transform,
-        MicrophonePermissionWarningView.DefaultTitle,
+        "Microphone access is off",
         22f,
         WarmWhite,
         font,
@@ -191,7 +194,7 @@ namespace TUFReplay.Unity.Editor
       TextMeshProUGUI message = BuildText(
         "MessageText",
         root.transform,
-        MicrophonePermissionWarningView.DefaultMessage,
+        "Enable TUFReplay Microphone Capture in System Settings. This run will continue without microphone audio.",
         16f,
         MutedText,
         font,
@@ -231,6 +234,43 @@ namespace TUFReplay.Unity.Editor
       UICloseGraphic closeIcon = closeIconObject.AddComponent<UICloseGraphic>();
       closeIcon.Configure(new Color32(168, 172, 182, 235), 1.8f, 4f);
 
+      GameObject actionObject = CreateUIObject("ActionButton", root.transform);
+      RectTransform actionRect = actionObject.GetComponent<RectTransform>();
+      actionRect.anchorMin = actionRect.anchorMax = actionRect.pivot = new Vector2(1f, 0f);
+      actionRect.anchoredPosition = new Vector2(-20f, 18f);
+      actionRect.sizeDelta = new Vector2(190f, 36f);
+      UIRoundedPanelGraphic actionBackground = actionObject.AddComponent<UIRoundedPanelGraphic>();
+      actionBackground.Configure(Accent, AccentLight, 1f, 10f);
+      actionBackground.raycastTarget = true;
+      Button actionButton = actionObject.AddComponent<Button>();
+      actionButton.targetGraphic = actionBackground;
+      actionButton.navigation = new Navigation { mode = Navigation.Mode.None };
+      ColorBlock actionColors = actionButton.colors;
+      actionColors.normalColor = Color.white;
+      actionColors.highlightedColor = new Color(1.08f, 1.08f, 1.08f, 1f);
+      actionColors.pressedColor = new Color(0.82f, 0.82f, 0.82f, 1f);
+      actionColors.selectedColor = actionColors.normalColor;
+      actionColors.disabledColor = new Color(1f, 1f, 1f, 0.35f);
+      actionColors.colorMultiplier = 1f;
+      actionColors.fadeDuration = 0.08f;
+      actionButton.colors = actionColors;
+
+      TextMeshProUGUI actionLabel = BuildText(
+        "Label",
+        actionObject.transform,
+        "Open System Settings",
+        15f,
+        DarkIcon,
+        font,
+        TextAlignmentOptions.Center
+      );
+      RectTransform actionLabelRect = actionLabel.rectTransform;
+      actionLabelRect.anchorMin = Vector2.zero;
+      actionLabelRect.anchorMax = Vector2.one;
+      actionLabelRect.offsetMin = new Vector2(10f, 0f);
+      actionLabelRect.offsetMax = new Vector2(-10f, 1f);
+      actionObject.SetActive(false);
+
       GameObject progressTrackObject = CreateUIObject("ProgressTrack", root.transform);
       RectTransform progressTrackRect = progressTrackObject.GetComponent<RectTransform>();
       progressTrackRect.anchorMin = new Vector2(0f, 0f);
@@ -257,7 +297,16 @@ namespace TUFReplay.Unity.Editor
       progressFill.raycastTarget = false;
 
       MicrophonePermissionWarningView view = root.AddComponent<MicrophonePermissionWarningView>();
-      view.ConfigureReferences(canvasGroup, title, message, progressFill, dismissButton);
+      view.ConfigureReferences(
+        canvasGroup,
+        title,
+        message,
+        progressTrackObject,
+        progressFill,
+        actionButton,
+        actionLabel,
+        dismissButton
+      );
       return root;
     }
 
