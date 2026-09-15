@@ -28,6 +28,8 @@ public sealed class TUFReplayIpcFeature
         {
           "https://tuforums.com",
           "https://tufreplay.impl1113.dev",
+          "https://tufreplay-dev.impl1113.dev",
+          "https://tufreplay-auto.impl1113.dev",
           "http://localhost",
           "http://127.0.0.1",
         },

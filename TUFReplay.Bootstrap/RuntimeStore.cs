@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace TUFReplay.Bootstrap;
 
@@ -11,7 +12,8 @@ internal sealed class RuntimeStore
 {
   private static readonly Regex VersionPattern = new(
     "\\\"Version\\\"\\s*:\\s*\\\"([^\\\"]+)\\\"",
-    RegexOptions.CultureInvariant);
+    RegexOptions.CultureInvariant
+  );
   private readonly string _runtimeRoot;
   private readonly string _versionsRoot;
   private readonly string _statePath;
@@ -32,7 +34,8 @@ internal sealed class RuntimeStore
       File.Move(backup, _statePath);
     if (!File.Exists(_statePath))
       throw new InvalidDataException("TUFReplay Runtime/state.json is missing. Install beta.3 manually.");
-    RuntimeState state = JsonConvert.DeserializeObject<RuntimeState>(File.ReadAllText(_statePath))
+    RuntimeState state =
+      JsonConvert.DeserializeObject<RuntimeState>(File.ReadAllText(_statePath))
       ?? throw new InvalidDataException("TUFReplay runtime state is empty.");
     if (state.SchemaVersion != 1 || string.IsNullOrWhiteSpace(state.Current))
       throw new InvalidDataException("TUFReplay runtime state is invalid.");
@@ -54,6 +57,7 @@ internal sealed class RuntimeStore
       state.Previous = null;
       Save(state);
     }
+    TryAdoptManualBuildFlavorChange(state);
     CleanupLegacyPayload();
     CleanupVersions(state);
     return state;
@@ -81,7 +85,49 @@ internal sealed class RuntimeStore
     Match match = VersionPattern.Match(File.ReadAllText(info));
     if (!match.Success || !VersionsEqual(match.Groups[1].Value, version))
       throw new InvalidDataException("The runtime Info.json version is invalid.");
+    ReadBuildFlavor(info);
     return new RuntimeCandidate(NormalizeVersion(version), actual);
+  }
+
+  private bool TryAdoptManualBuildFlavorChange(RuntimeState state)
+  {
+    string launcherInfoPath = Path.Combine(_installPath, "Info.json");
+    if (!File.Exists(launcherInfoPath))
+      return false;
+
+    JObject launcherInfo = JObject.Parse(File.ReadAllText(launcherInfoPath));
+    string launcherFlavor = ReadBuildFlavor(launcherInfo);
+    RuntimeCandidate current = GetCandidate(state.Current);
+    string currentFlavor = ReadBuildFlavor(Path.Combine(current.RuntimePath, "Info.json"));
+    if (string.Equals(launcherFlavor, currentFlavor, StringComparison.Ordinal))
+      return false;
+
+    string launcherVersion = launcherInfo.Value<string>("Version");
+    if (string.IsNullOrWhiteSpace(launcherVersion))
+      throw new InvalidDataException("The installed TUFReplay package version is missing.");
+    RuntimeCandidate packaged = GetCandidate(launcherVersion);
+    string packageFlavor = ReadBuildFlavor(Path.Combine(packaged.RuntimePath, "Info.json"));
+    if (!string.Equals(launcherFlavor, packageFlavor, StringComparison.Ordinal))
+      throw new InvalidDataException("The installed TUFReplay launcher and package runtime flavors do not match.");
+
+    state.Current = packaged.Version;
+    state.Previous = null;
+    state.Trial = null;
+    Save(state);
+    return true;
+  }
+
+  private static string ReadBuildFlavor(string infoPath)
+  {
+    return ReadBuildFlavor(JObject.Parse(File.ReadAllText(infoPath)));
+  }
+
+  private static string ReadBuildFlavor(JObject info)
+  {
+    string flavor = info.Value<string>("BuildFlavor") ?? "standard";
+    if (flavor != "standard" && flavor != "auto-submission")
+      throw new InvalidDataException("The TUFReplay runtime build flavor is invalid.");
+    return flavor;
   }
 
   public void Promote(RuntimeState state, string version)
@@ -100,7 +146,11 @@ internal sealed class RuntimeStore
     Directory.CreateDirectory(_runtimeRoot);
     string temporary = _statePath + ".tmp";
     string backup = _statePath + ".bak";
-    File.WriteAllText(temporary, JsonConvert.SerializeObject(state, Formatting.Indented) + Environment.NewLine, Encoding.UTF8);
+    File.WriteAllText(
+      temporary,
+      JsonConvert.SerializeObject(state, Formatting.Indented) + Environment.NewLine,
+      Encoding.UTF8
+    );
     if (File.Exists(_statePath))
     {
       if (File.Exists(backup))
@@ -116,7 +166,11 @@ internal sealed class RuntimeStore
 
   public void DeleteUnreferencedRuntime(string version, RuntimeState state)
   {
-    if (string.IsNullOrWhiteSpace(version) || VersionsEqual(version, state.Current) || VersionsEqual(version, state.Previous))
+    if (
+      string.IsNullOrWhiteSpace(version)
+      || VersionsEqual(version, state.Current)
+      || VersionsEqual(version, state.Previous)
+    )
       return;
     TryDeleteDirectory(Path.Combine(_versionsRoot, NormalizeVersion(version)));
   }
@@ -161,24 +215,38 @@ internal sealed class RuntimeStore
   private static string NormalizeVersion(string version)
   {
     string normalized = version.Trim().TrimStart('v', 'V');
-    if (normalized.Length == 0 || normalized.Any(character => !(char.IsLetterOrDigit(character) || character is '.' or '-')))
+    if (
+      normalized.Length == 0
+      || normalized.Any(character => !(char.IsLetterOrDigit(character) || character is '.' or '-'))
+    )
       throw new InvalidDataException("The runtime version is invalid.");
     return normalized;
   }
 
   private static bool VersionsEqual(string left, string right)
   {
-    return left != null && right != null &&
-           string.Equals(NormalizeVersion(left), NormalizeVersion(right), StringComparison.OrdinalIgnoreCase);
+    return left != null
+      && right != null
+      && string.Equals(NormalizeVersion(left), NormalizeVersion(right), StringComparison.OrdinalIgnoreCase);
   }
 
   private static void TryDeleteDirectory(string path)
   {
-    try { if (Directory.Exists(path)) Directory.Delete(path, true); } catch { }
+    try
+    {
+      if (Directory.Exists(path))
+        Directory.Delete(path, true);
+    }
+    catch { }
   }
 
   private static void TryDeleteFile(string path)
   {
-    try { if (File.Exists(path)) File.Delete(path); } catch { }
+    try
+    {
+      if (File.Exists(path))
+        File.Delete(path);
+    }
+    catch { }
   }
 }

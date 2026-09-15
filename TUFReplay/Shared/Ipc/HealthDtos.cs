@@ -1,6 +1,7 @@
 namespace TUFReplay.Shared.Ipc;
 
 using TUFReplay.Replay.Models;
+using TUFReplay.Shared.Build;
 
 public sealed class HealthResponseDto
 {
@@ -11,6 +12,8 @@ public sealed class HealthResponseDto
   public string ModVersion;
   public int ProtocolVersion;
   public int ServerVersion;
+  public string BuildFlavor;
+  public int AutoSubmissionProtocolVersion;
   public string ReplayEngineId;
   public int ReplayFormatVersion;
 
@@ -23,6 +26,8 @@ public sealed class HealthResponseDto
       ModVersion = Main.Instance.Version.ToString(),
       ProtocolVersion = CurrentProtocolVersion,
       ServerVersion = 1,
+      BuildFlavor = TUFReplayBuildFlavor.Name,
+      AutoSubmissionProtocolVersion = TUFReplayBuildFlavor.AutoSubmissionProtocolVersion,
       ReplayEngineId = ReplayFormat.EngineId,
       ReplayFormatVersion = ReplayFormat.FormatVersion,
     };
