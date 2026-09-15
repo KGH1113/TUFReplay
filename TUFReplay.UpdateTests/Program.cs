@@ -157,7 +157,7 @@ internal static class UpdaterTests
     string checksum = Sha256(package);
     string manifest = Manifest("0.2.0", package.Length, checksum);
     using TestServer server = new(manifest, package);
-    UpdateManager manager = new(temporary.Path, server.BaseUrl, server.BaseUrl + "releases");
+    UpdateManager manager = StandardManager(temporary.Path, server);
     UpdateResult result = manager.Resolve("0.1.0");
     Assert(result.Outcome == UpdateOutcomes.Candidate, "The package was not selected as a candidate.");
     string helper = Path.Combine(result.RuntimePath, "Helpers", "mac", "helper.app", "Contents", "MacOS", "helper");
@@ -176,7 +176,7 @@ internal static class UpdaterTests
     byte[] package = CreatePackage("0.2.0", includeResources: false);
     string manifest = Manifest("0.2.0", package.Length, new string('0', 64));
     using TestServer server = new(manifest, package);
-    UpdateManager manager = new(temporary.Path, server.BaseUrl, server.BaseUrl + "releases");
+    UpdateManager manager = StandardManager(temporary.Path, server);
     AssertThrows<InvalidDataException>(() => manager.Resolve("0.1.0"));
   }
 
@@ -186,7 +186,7 @@ internal static class UpdaterTests
     byte[] package = CreatePackage("0.2.0", includeResources: false);
     string manifest = Manifest("0.2.0", package.Length + 1, Sha256(package));
     using TestServer server = new(manifest, package);
-    UpdateManager manager = new(temporary.Path, server.BaseUrl, server.BaseUrl + "releases");
+    UpdateManager manager = StandardManager(temporary.Path, server);
     AssertThrows<InvalidDataException>(() => manager.Resolve("0.1.0"));
   }
 
@@ -196,7 +196,7 @@ internal static class UpdaterTests
     byte[] package = CreatePackage("0.2.0", includeResources: false, includeUnsafeEntry: true);
     string manifest = Manifest("0.2.0", package.Length, Sha256(package));
     using TestServer server = new(manifest, package);
-    UpdateManager manager = new(temporary.Path, server.BaseUrl, server.BaseUrl + "releases");
+    UpdateManager manager = StandardManager(temporary.Path, server);
     AssertThrows<InvalidDataException>(() => manager.Resolve("0.1.0"));
     Assert(!File.Exists(Path.Combine(temporary.Path, "escape.txt")), "An unsafe archive entry escaped extraction.");
   }
@@ -218,7 +218,7 @@ internal static class UpdaterTests
         }
       )
     );
-    UpdateManager manager = new(temporary.Path, server.BaseUrl, server.BaseUrl + "releases");
+    UpdateManager manager = StandardManager(temporary.Path, server);
     UpdateResult result = manager.Resolve("0.1.0-beta.3");
     Assert(result.Version == "0.3.0-beta.2", "The highest non-draft beta release was not selected.");
   }
@@ -462,6 +462,15 @@ internal static class UpdaterTests
       server.BaseUrl + "releases",
       server.BaseUrl + "updates/auto-submission/latest.json",
       "auto-submission"
+    );
+
+  private static UpdateManager StandardManager(string installPath, TestServer server) =>
+    new(
+      installPath,
+      server.BaseUrl,
+      server.BaseUrl + "releases",
+      server.BaseUrl + "updates/auto-submission/latest.json",
+      "standard"
     );
 
   private static string RuntimePath(string installPath, string version) =>
