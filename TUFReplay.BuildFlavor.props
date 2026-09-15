@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <TUFReplayBuildFlavor Condition="'$(TUFReplayBuildFlavor)' == ''">standard</TUFReplayBuildFlavor>
+    <DefineConstants Condition="'$(TUFReplayBuildFlavor)' == 'standard'">$(DefineConstants);TUFREPLAY_BUILD_FLAVOR_STANDARD</DefineConstants>
+    <DefineConstants Condition="'$(TUFReplayBuildFlavor)' == 'auto-submission'">$(DefineConstants);TUFREPLAY_BUILD_FLAVOR_AUTO_SUBMISSION</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="ValidateTUFReplayBuildFlavor" BeforeTargets="BeforeBuild">
+    <Error
+      Condition="'$(TUFReplayBuildFlavor)' != 'standard' and '$(TUFReplayBuildFlavor)' != 'auto-submission'"
+      Text="TUFReplayBuildFlavor must be either 'standard' or 'auto-submission'."
+    />
+  </Target>
+</Project>
