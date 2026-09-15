@@ -8,5 +8,8 @@ public sealed class CapturedMicrophoneRecording
   public int SampleRate = 48000;
   public int Channels = 1;
   public long FrameCount;
+
+  // Runtime-only timestamp of the first WAV sample, in the native input Stopwatch clock.
+  public long CaptureStartTimestampTicks;
   public long CaptureStartOffsetUs;
 }

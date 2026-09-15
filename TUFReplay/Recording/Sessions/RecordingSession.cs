@@ -55,6 +55,7 @@ public partial class RecordingSession
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),
+        GameInputOffsetMs = GetCurrentGameInputOffsetMs(),
         JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
         GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
         GameplayHashVersion = gameplayHashVersion,
@@ -64,6 +65,7 @@ public partial class RecordingSession
       _previousInputAnchor = null;
       _gameplayStateReached = false;
       _gameplayStateCaptureTicks = 0L;
+      _gameplayTimelineWasAdvancing = false;
       _wonUnscaledTime = null;
       _lastTimelineTimeUs = 0L;
       _hasTimelineTime = false;
@@ -123,7 +125,7 @@ public partial class RecordingSession
     Main.Instance.Log("[Recording] Input capture started");
   }
 
-  public void MarkGameplayStarted()
+  public void MarkGameplayStarted(bool timelineWasAdvancing)
   {
     lock (_lock)
     {
@@ -133,10 +135,12 @@ public partial class RecordingSession
       RefreshPitchLocked();
       if (!Data.JudgmentDifficulty.HasValue)
         Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
+      Data.GameInputOffsetMs = GetCurrentGameInputOffsetMs() ?? Data.GameInputOffsetMs;
       if (!_gameplayStateReached)
       {
         _gameplayStateReached = true;
         _gameplayStateCaptureTicks = Stopwatch.GetTimestamp();
+        _gameplayTimelineWasAdvancing = timelineWasAdvancing;
         WriteEvidenceStateLocked(TUFReplay.Recording.Capture.RecordingStateKind.GameplayStarted);
       }
     }
@@ -237,6 +241,18 @@ public partial class RecordingSession
     }
 
     return GetCurrentTile();
+  }
+
+  private static int? GetCurrentGameInputOffsetMs()
+  {
+    try
+    {
+      return scrConductor.currentPreset.inputOffset;
+    }
+    catch
+    {
+      return null;
+    }
   }
 
   private void RefreshNoFailModeLocked()

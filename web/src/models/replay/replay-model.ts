@@ -24,6 +24,17 @@ export interface ReplayLevelFilePickerResult {
   message: string | null;
 }
 
+export function isReplayInProgress(status: ReplayStatus | undefined) {
+  return (
+    status?.state === "preparing" ||
+    status?.state === "opening_level" ||
+    status?.state === "waiting_for_focus" ||
+    status?.state === "starting" ||
+    status?.state === "playing" ||
+    status?.state === "returning_to_editor"
+  );
+}
+
 export function mapReplayStatus(dto: ReplayStatusDto): ReplayStatus {
   return {
     operationId: dto.OperationId,

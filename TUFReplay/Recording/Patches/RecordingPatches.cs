@@ -7,6 +7,7 @@ using TUFReplay.Recording.Models;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
+using TUFReplay.Shared.Compatibility;
 using TUFReplay.Shared.NativeInput;
 
 namespace TUFReplay.Recording.Patches;
@@ -66,6 +67,8 @@ public static class RecordingPatches
         && !float.IsNaN(pitch)
         && !float.IsInfinity(pitch);
       session.ObserveInputAnchor(_conductorUpdatePrefixTicks, postfixTicks, songPosition, pitch, ready);
+      if (ready && RecordingClock.IsTimelineAdvancing())
+        RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
     }
     catch (Exception exception)
     {
@@ -122,8 +125,6 @@ public static class RecordingPatches
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
 
-    RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
-
     bool captureAllowed = IsNativeInputCaptureAllowed();
     ObserveCapturePermissionTransition(session, captureAllowed);
     RecordInputTracker.SetCaptureWindowActive(captureAllowed);
@@ -153,7 +154,7 @@ public static class RecordingPatches
       return false;
     }
 
-    if (!scrController.instance.playerOne.HitInputEvent(isAuto, InputEventState.Down))
+    if (!AdofaiRuntimeCompatibility.HandleHitInputEvent(__instance, isAuto, InputEventState.Down))
     {
       __result = false;
       return false;
@@ -186,15 +187,22 @@ public static class RecordingPatches
       return;
 
     _pendingHitMarginCapture = false;
-    if (!ShouldCaptureHitContext(__instance))
-      return;
+    try
+    {
+      if (!ShouldCaptureHitContext(__instance))
+        return;
 
-    RecordingSession session = RecordingFeature.Instance?.Session;
-    int[] currentHitMarginsCount = scrController.instance?.playerOne?.marginTracker?.hitMarginsCount;
-    if (session == null || !HitMargins.TryGetSingleIncrement(currentHitMarginsCount, out int hitMargin))
-      return;
+      RecordingSession session = RecordingFeature.Instance?.Session;
+      int[] currentHitMarginsCount = scrController.instance?.playerOne?.marginTracker?.hitMarginsCount;
+      if (session == null || !HitMargins.TryGetSingleIncrement(currentHitMarginsCount, out int hitMargin))
+        return;
 
-    session.SetLastHitContextMargin(hitMargin);
+      session.SetLastHitContextMargin(hitMargin);
+    }
+    finally
+    {
+      RecordingFeature.Instance?.OnHitPostfixCompleted();
+    }
   }
 
   public static void OnChangeState(States newState)

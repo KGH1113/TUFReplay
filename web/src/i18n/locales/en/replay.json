@@ -12,6 +12,29 @@
     "useAnother": "Use another file with identical gameplay",
     "failed": "Replay failed."
   },
+  "handoff": {
+    "sending": {
+      "title": "Sending to ADOFAI",
+      "description": "Stay on this screen for a moment while ADOFAI confirms the request."
+    },
+    "delivered": {
+      "title": "Sent to ADOFAI",
+      "description": "Switch to ADOFAI, then leave the keyboard and mouse alone until the replay starts."
+    },
+    "waitingForFocus": {
+      "title": "Select the ADOFAI window",
+      "description": "The replay starts automatically when the window is active. Wait without interacting."
+    },
+    "starting": {
+      "title": "Replay is about to start",
+      "description": "Take your hands off the keyboard and mouse for a moment."
+    },
+    "playing": {
+      "title": "Playing in ADOFAI",
+      "description": "The replay request was delivered successfully."
+    },
+    "or": "or"
+  },
   "status": {
     "sending": "Sending replay to ADOFAI…",
     "preparing": "Preparing replay…",
@@ -36,6 +59,7 @@
   },
   "errors": {
     "start_failed": "Could not start the replay. Make sure the original level opens correctly, then try again.",
+    "replay_busy": "Another replay is already in progress. Finish or cancel it in ADOFAI, then try again.",
     "file_picker_failed": "Could not open the file picker. Return to ADOFAI, then try again.",
     "run_not_found": "The selected run could not be found. Refresh the activity list.",
     "level_not_found": "The level record for this run could not be found. Refresh the activity list.",

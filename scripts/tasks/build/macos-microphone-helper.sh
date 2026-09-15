@@ -39,7 +39,8 @@ fi
 ditto "$TUFREPLAY_MAC_HELPER_BUILT_APP" "$TUFREPLAY_MAC_HELPER_APP"
 
 require_executable "$TUFREPLAY_MAC_HELPER_EXECUTABLE"
-lipo "$TUFREPLAY_MAC_HELPER_EXECUTABLE" -verify_arch arm64 x86_64
+lipo "$TUFREPLAY_MAC_HELPER_EXECUTABLE" -verify_arch arm64
+lipo "$TUFREPLAY_MAC_HELPER_EXECUTABLE" -verify_arch x86_64
 
 bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$TUFREPLAY_MAC_HELPER_APP/Contents/Info.plist")"
 if [ "$bundle_id" != "impl.tufreplay.microphone-capture" ]; then

@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiPromise, useMockEnabled } from "@/api/app-api-provider";
 import type { AppSession, ConnectionStatus } from "@/models/activity/activity-model";
 import { diagnosticErrorMessage } from "@/models/activity/localized-error";
+import type { Health } from "@/models/health/health-model";
 import { ApiError } from "@/shared/errors/api-error";
 import {
   activityQueryKeys,
@@ -12,6 +13,11 @@ import {
 
 const POLL_INTERVAL_MS = 3000;
 
+interface ActivityDataSnapshot {
+  sessions: AppSession[];
+  health: Health;
+}
+
 export function useActivityData() {
   const apiPromise = useApiPromise();
   const mockEnabled = useMockEnabled();
@@ -20,22 +26,29 @@ export function useActivityData() {
     queryKey: activityQueryKeys.sessions,
     queryFn: async () => {
       const api = await apiPromise;
-      await api.health.get();
-      const current = queryClient.getQueryData<AppSession[]>(activityQueryKeys.sessions);
+      const health = await api.health.get();
+      const current = queryClient.getQueryData<ActivityDataSnapshot>(
+        activityQueryKeys.sessions,
+      )?.sessions;
       if (current) {
         const recent = await api.activity.listAppSessions(0, RECENT_ACTIVITY_SESSION_LIMIT);
-        return mergeRecentAppSessions(current, recent);
+        return { sessions: mergeRecentAppSessions(current, recent), health };
       }
-      return api.activity.listAllAppSessions((items) => {
-        queryClient.setQueryData(activityQueryKeys.sessions, items);
+      const sessions = await api.activity.listAllAppSessions((items) => {
+        queryClient.setQueryData<ActivityDataSnapshot>(activityQueryKeys.sessions, {
+          sessions: items,
+          health,
+        });
       });
+      return { sessions, health };
     },
     refetchInterval: POLL_INTERVAL_MS,
     refetchIntervalInBackground: false,
   });
 
   return {
-    sessions: query.data ?? [],
+    sessions: query.data?.sessions ?? [],
+    health: query.status === "success" ? query.data.health : null,
     status: statusForQuery(query.status, query.error),
     error: diagnosticErrorMessage(query.error),
     versionMismatch: query.error instanceof IpcVersionMismatchError ? query.error.direction : null,

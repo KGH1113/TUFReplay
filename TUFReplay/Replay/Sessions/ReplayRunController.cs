@@ -14,6 +14,9 @@ public static class ReplayRunController
     return context != null && !context.RunStarted && context.Phase == ReplayPlaybackPhase.Prepared;
   }
 
+  public static bool ShouldAlignPlayerControlOrigin(ActiveReplayContext context) =>
+    context != null && context.StartTile == 0;
+
   public static void MarkRestartPrepared(ActiveReplayContext context)
   {
     if (context == null)

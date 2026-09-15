@@ -47,9 +47,11 @@ internal static class ReplayNativeInputSuite
     TestCaptureIncompleteArtifactPolicy();
     TestNativeInputCsvRoundTrip();
     TestInputTimelineMath();
+    TestFrozenGameplayStartAnchor();
     TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
+    TestReplayClockOriginPolicy();
     TestReplayTimelineTopGlowPolicy();
     TestReplayTimelineJudgmentMapping();
     TestHitContextPlaybackPositionComparison();
@@ -58,6 +60,7 @@ internal static class ReplayNativeInputSuite
     TestWindowsNativeModifierNormalization();
     TestWindowsPhysicalStateUsesCurrentDownBit();
     TestMacOsHidMappingAndTimestampConversion();
+    TestMicrophoneHostTimestampConversion();
     TestMacOsNativeShimAbi();
     TestUnsupportedCaptureHasNoPollingFallback();
     TestReplayInputFormatGate();
@@ -213,6 +216,49 @@ internal static class ReplayNativeInputSuite
     Assert(Math.Abs(countdown + 500_000) <= 1, "First-anchor countdown back-projection lost negative time.");
     long pitched = InputTimelineMath.BackProject(0, frequency / 2, 0, 1.5);
     Assert(Math.Abs(pitched + 750_000) <= 1, "Pitch was not applied to first-anchor back-projection.");
+  }
+
+  private static void TestReplayClockOriginPolicy()
+  {
+    Assert(
+      ReplayRunController.ShouldAlignPlayerControlOrigin(new ActiveReplayContext { StartTile = 0 }),
+      "A level-beginning replay did not align PlayerControl to zero."
+    );
+    Assert(
+      !ReplayRunController.ShouldAlignPlayerControlOrigin(new ActiveReplayContext { StartTile = 1 }),
+      "A second-tile EnhancedCountdown replay incorrectly reset its progressed clock."
+    );
+    Assert(
+      !ReplayRunController.ShouldAlignPlayerControlOrigin(new ActiveReplayContext { StartTile = 2 }),
+      "An EnhancedCountdown middle start incorrectly reset its progressed clock."
+    );
+
+    var context = new ActiveReplayContext();
+    ReplayClock.AlignRuntimeTime(context, rawTimeUs: 859_607L, targetTimeUs: 0L);
+    Assert(ReplayClock.ApplyRuntimeOffset(context, 859_607L) == 0L, "First-tile runtime origin was not aligned.");
+    Assert(ReplayClock.ApplyRuntimeOffset(context, 959_607L) == 100_000L, "Aligned replay clock did not advance.");
+  }
+
+  private static void TestFrozenGameplayStartAnchor()
+  {
+    long oneSecond = System.Diagnostics.Stopwatch.Frequency;
+    double runningStart = RecordingSession.CalculateGameplayStartSongPosition(
+      12d,
+      oneSecond,
+      0L,
+      1d,
+      timelineWasAdvancing: true
+    );
+    Assert(Math.Abs(runningStart - 11d) < 0.000001d, "A running gameplay start lost its pre-anchor time.");
+
+    double frozenStart = RecordingSession.CalculateGameplayStartSongPosition(
+      12d,
+      oneSecond,
+      0L,
+      1d,
+      timelineWasAdvancing: false
+    );
+    Assert(Math.Abs(frozenStart - 12d) < 0.000001d, "A frozen PlayerControl interval leaked into the replay timeline.");
   }
 
   private static void TestReplayLatenessHistogram()
@@ -746,6 +792,37 @@ internal static class ReplayNativeInputSuite
     Assert(converter.ToNanoseconds(1_001_000_000) == 1_001_000_000, "Mach nanosecond conversion changed.");
   }
 
+  private static void TestMicrophoneHostTimestampConversion()
+  {
+    long frequency = System.Diagnostics.Stopwatch.Frequency;
+    foreach (var scale in new[] { (Numerator: 1u, Denominator: 1u), (Numerator: 125u, Denominator: 3u) })
+    {
+      const ulong hostOrigin = 9_007_199_254_740_993UL;
+      ulong second = (ulong)(1_000_000_000d * scale.Denominator / scale.Numerator);
+      var before = new MacOsMachTimeConverter(hostOrigin, frequency * 20, scale.Numerator, scale.Denominator);
+      var after = new MacOsMachTimeConverter(
+        hostOrigin + second * 10,
+        frequency * 30,
+        scale.Numerator,
+        scale.Denominator
+      );
+      ulong firstSample = hostOrigin + second;
+      Assert(
+        Math.Abs(before.ToStopwatchTicks(firstSample) - frequency * 21) <= 1,
+        "First sample clock mapping changed."
+      );
+      Assert(
+        Math.Abs(before.ToStopwatchTicks(firstSample) - after.ToStopwatchTicks(firstSample)) <= 1,
+        "Helper response latency shifted the first sample timestamp."
+      );
+    }
+    if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+    {
+      // Exercise the actual host clock ABI without opening any input device.
+      Assert(MacOsMachTimeConverter.CaptureSystemClock() != null, "macOS host clock could not be sampled.");
+    }
+  }
+
   private static void TestMacOsNativeShimAbi()
   {
     Assert(
@@ -1047,6 +1124,25 @@ internal static class ReplayNativeInputSuite
     if (down)
       flags |= RecordInputFlags.Down;
     return new RecordedInput(timeUs, key, flags);
+  }
+
+  private static ReplayHitContext Hit(long timeUs, bool isAuto)
+  {
+    return new ReplayHitContext(
+      currentFloorID: 0,
+      currAngle: 0d,
+      overloadCounter: 0f,
+      noFailHit: false,
+      isAuto: isAuto,
+      nextFloorAuto: false,
+      cachedAngle: 0d,
+      targetExitAngle: 0d,
+      midspinInfiniteMargin: false,
+      rdcAuto: false,
+      curFreeRoamSection: 0,
+      resolvedHitMargin: 0,
+      timeUs: timeUs
+    );
   }
 
   private sealed class CapturingEmitter : INativeInputEmitter

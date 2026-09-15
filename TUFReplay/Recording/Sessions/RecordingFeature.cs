@@ -4,6 +4,7 @@ using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Recording;
+using TUFReplay.Microphone.Timing;
 using TUFReplay.Recording.Input;
 using TUFReplay.Recording.Microphone;
 using TUFReplay.Recording.Patches;
@@ -28,9 +29,7 @@ public partial class RecordingFeature
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
   private bool _microphoneCaptureStarted;
-  private double? _microphoneCaptureStartedAt;
-  private long _microphoneTimelineCorrectionUs;
-  private bool _microphoneTimelineAnchored;
+  private MicrophoneTimelineAnchor? _microphoneTimelineAnchor;
   private PendingMicrophoneDisposition _pendingEditorRecording;
   private bool _calibrationRun;
 
@@ -50,18 +49,25 @@ public partial class RecordingFeature
     _clearReached = true;
     Session.MarkWonReached();
     if (_calibrationRun)
-    {
-      Session.MarkTerminal();
-      Session.StopInputCapture("calibration_cleared");
-      RunRecord calibrationRun = CompleteCalibrationRun("cleared", RecordingSession.GetLevelTileCount());
-      EndMicrophoneRun(recording =>
-        UnityMainThread.Post(() => FeatureRegistry.MicrophoneCalibration?.OnRunCleared(calibrationRun, recording))
-      );
-      Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
       return;
-    }
     Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
     FeatureRegistry.Submission?.Clear(Session);
+  }
+
+  public void OnHitPostfixCompleted()
+  {
+    if (!_calibrationRun || !_clearReached || _runSaved || !Session.IsRecording)
+      return;
+
+    // Won is raised from inside scrPlayer.Hit. Complete the transient run only after
+    // that method's postfix has stored the winning hit's resolved judgment.
+    Session.MarkTerminal();
+    Session.StopInputCapture("calibration_cleared");
+    RunRecord calibrationRun = CompleteCalibrationRun("cleared", RecordingSession.GetLevelTileCount());
+    EndMicrophoneRun(recording =>
+      UnityMainThread.Post(() => FeatureRegistry.MicrophoneCalibration?.OnRunCleared(calibrationRun, recording))
+    );
+    Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
   }
 
   public void OnRunFailed()
@@ -323,13 +329,12 @@ public partial class RecordingFeature
     if (ReplaySessionService.HasActiveContext)
       return;
 
-    Session.MarkGameplayStarted();
+    Session.MarkGameplayStarted(RecordingClock.IsTimelineAdvancing());
     if (!PrepareActivityRun(RecordingSession.GetLevelTileCount()))
       return;
     StartMicrophoneRun();
     if (_calibrationRun)
       FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
-    TryAnchorMicrophoneTimeline();
   }
 
   public void OnInputCaptureStarted()
@@ -350,8 +355,6 @@ public partial class RecordingFeature
     _runSaved = false;
     _currentRun = null;
     _microphoneCaptureStarted = false;
-    _microphoneCaptureStartedAt = null;
-    _microphoneTimelineCorrectionUs = 0L;
-    _microphoneTimelineAnchored = false;
+    _microphoneTimelineAnchor = null;
   }
 }

@@ -19,7 +19,7 @@ import type { ActivityRun } from "@/models/activity/activity-model";
 import { translatedDomainError } from "@/models/activity/localized-error";
 import { replayButtonState } from "@/models/activity/replay-button-state";
 import { formatXAccuracy } from "@/models/activity/x-accuracy";
-import type { ReplayStatus } from "@/models/replay/replay-model";
+import { isReplayInProgress, type ReplayStatus } from "@/models/replay/replay-model";
 import { cn } from "@/shared/lib/cn";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -236,7 +236,11 @@ function RunReplayButton({
   const unavailableMessage = run.replayUnavailableReason
     ? activityT(`run.replayUnavailable.${run.replayUnavailableReason}`)
     : null;
-  const buttonState = replayButtonState(run, disabled, pendingRunId !== null);
+  const buttonState = replayButtonState(
+    run,
+    disabled,
+    pendingRunId !== null || isReplayInProgress(status),
+  );
   const message =
     unavailableMessage ?? describeReplay(run.id, status, pendingRunId, error, errorRunId, replayT);
   const statusMatches = status.runId === run.id;

@@ -23,7 +23,11 @@ export default defineConfig({
     },
   },
   server: {
-    allowedHosts: ["tufreplay.impl1113.dev"],
+    allowedHosts: [
+      "tufreplay.impl1113.dev",
+      "tufreplay-dev.impl1113.dev",
+      "tufreplay-auto.impl1113.dev",
+    ],
     proxy: tufApiProxy,
   },
   preview: { proxy: tufApiProxy },

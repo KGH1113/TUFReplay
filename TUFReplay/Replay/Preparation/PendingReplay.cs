@@ -40,10 +40,10 @@ public static partial class ReplayPlaybackCoordinator
     public byte[] ValidatedLoadedGameplayHash;
     public int ValidatedLoadedGameplayHashVersion;
     public bool PathEditingLockApplied;
+    public double FocusStableStartedAt;
     public INativeInputFocusGuard NativeInputFocusGuard;
     public StoredMicrophoneRecording MicrophoneRecording;
     public Pcm16WaveInfo MicrophoneWave;
-    public Pcm16LimiterEnvelope MicrophoneLimiterEnvelope;
     public string MicrophoneWarning;
     public int? MicrophoneOffsetMs;
     public int? MicrophoneVolumeDb;
@@ -72,7 +72,6 @@ public static partial class ReplayPlaybackCoordinator
     {
       MicrophoneRecording = null;
       MicrophoneWave = null;
-      MicrophoneLimiterEnvelope = null;
     }
 
     public void CleanupPreparedMicrophone()
@@ -80,7 +79,6 @@ public static partial class ReplayPlaybackCoordinator
       string path = MicrophoneRecording?.FilePath;
       MicrophoneRecording = null;
       MicrophoneWave = null;
-      MicrophoneLimiterEnvelope = null;
       ReplayMicrophonePlaybackFiles.Delete(path);
     }
   }

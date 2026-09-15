@@ -43,6 +43,7 @@ public class RecordedRunPayload
   public int InputNativeDevices;
   public int InputNativeQueueDepth;
   public bool NoFailMode;
+  public int? GameInputOffsetMs;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
   public float? EffectivePitch;
@@ -79,6 +80,7 @@ public class RecordedRunPayload
         wonTimeUs = WonTimeUs,
         terminalTimeUs = terminalTimeUs ?? TerminalTimeUs,
         noFailMode = NoFailMode,
+        gameInputOffsetMs = GameInputOffsetMs,
         judgmentDifficulty = (int?)JudgmentDifficulty,
         keyCount = SubmissionKeyCount,
         holdBehavior = SubmissionHoldBehavior,

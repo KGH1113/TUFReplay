@@ -21,7 +21,7 @@ enum CommandName: String {
 struct ConnectionHandshake: Encodable {
   let token: String
   let processId: Int32
-  let protocolVersion = 2
+  let protocolVersion = 3
 }
 
 enum MicrophoneAuthorizationStatus: String, CaseIterable, Encodable {
@@ -58,7 +58,7 @@ struct CaptureEndResponse: Encodable {
   let sampleRate = PcmWaveFile.sampleRate
   let channels = PcmWaveFile.channels
   let deviceId: String?
-  let captureStartOffsetUs: Int64
+  let firstSampleHostTime: UInt64
 }
 
 struct SelfTestResponse: Encodable {
