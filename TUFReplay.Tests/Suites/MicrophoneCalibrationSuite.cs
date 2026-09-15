@@ -362,22 +362,36 @@ internal static class MicrophoneCalibrationSuite
 
   private static void TestMicrophoneTimelineAnchor()
   {
-    Assert(
-      MicrophoneTimelineAnchor.CalculateCorrectionUs(0L, 1d, 3.2d) == -3_200_000L,
-      "Normal microphone preroll correction is incorrect."
-    );
-    Assert(
-      MicrophoneTimelineAnchor.CalculateCorrectionUs(500_000L, 1d, 3d) == -2_500_000L,
-      "Frozen countdown correction did not preserve the resumed timeline position."
-    );
-    Assert(
-      MicrophoneTimelineAnchor.CalculateCorrectionUs(750_000L, 1.5d, 3d) == -2_500_000L,
-      "Frozen countdown correction did not account for gameplay pitch."
-    );
-    Assert(
-      MicrophoneTimelineAnchor.CalculateCorrectionUs(500_000L, double.NaN, 1d) == -500_000L,
-      "Invalid gameplay pitch did not fall back to real-time playback."
-    );
+    long Ticks(double seconds) => (long)Math.Round(seconds * System.Diagnostics.Stopwatch.Frequency);
+    foreach (double rate in new[] { 0.75d, 1d, 1.5d, 2d })
+    foreach (double frozenWait in new[] { 0d, 0.1d, 3.2d, 30d })
+    foreach (double firstSampleDelay in new[] { -0.04d, 0d, 0.015d, 0.15d })
+    foreach (double updateDelay in new[] { 0.001d, 0.017d, 0.25d })
+    {
+      const double begin = 20d;
+      double firstSample = begin + firstSampleDelay;
+      double resumed = begin + frozenWait;
+      // The same conductor observation is used by native input and the mic.
+      var anchor = new MicrophoneTimelineAnchor(
+        Ticks(resumed + updateDelay),
+        (long)Math.Round(updateDelay * rate * 1_000_000d),
+        rate
+      );
+      long offsetUs = anchor.ToCaptureStartOffsetUs(Ticks(firstSample));
+      long expectedOffsetUs = (long)Math.Round((firstSample - resumed) * 1_000_000d);
+      Assert(Math.Abs(offsetUs - expectedOffsetUs) <= 2, "Capture origin changed with frozen wait or frame delay.");
+
+      // Playback reaches the same musical position after an unrelated normal
+      // countdown. A click one real second after release must select its WAV frame.
+      long replayTimeUs = (long)Math.Round(rate * 1_000_000d);
+      long actualFrame = ReplayMicrophoneClock.ToFrame(replayTimeUs, rate, offsetUs, 48000, 10_000_000);
+      long expectedFrame = (long)Math.Round((resumed + 1d - firstSample) * 48000d);
+      Assert(Math.Abs(actualFrame - expectedFrame) <= 1, "Normal replay countdown shifted a frozen-start click.");
+    }
+
+    var negativeAnchor = new MicrophoneTimelineAnchor(Ticks(10d), -500_000L, 2d);
+    Assert(negativeAnchor.ToCaptureStartOffsetUs(Ticks(9d)) == -1_250_000L, "Negative timeline anchor was clamped.");
+    Assert(negativeAnchor.ToCaptureStartOffsetUs(Ticks(10.5d)) == 250_000L, "Late capture start lost its sign.");
   }
 
   private static void TestReplayMicrophoneClock()

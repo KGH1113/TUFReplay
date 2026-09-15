@@ -4,6 +4,7 @@ using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Recording;
+using TUFReplay.Microphone.Timing;
 using TUFReplay.Recording.Input;
 using TUFReplay.Recording.Microphone;
 using TUFReplay.Recording.Patches;
@@ -28,9 +29,7 @@ public partial class RecordingFeature
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
   private bool _microphoneCaptureStarted;
-  private double? _microphoneCaptureStartedAt;
-  private long _microphoneTimelineCorrectionUs;
-  private bool _microphoneTimelineAnchored;
+  private MicrophoneTimelineAnchor? _microphoneTimelineAnchor;
   private PendingMicrophoneDisposition _pendingEditorRecording;
   private bool _calibrationRun;
 
@@ -328,7 +327,6 @@ public partial class RecordingFeature
     StartMicrophoneRun();
     if (_calibrationRun)
       FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
-    TryAnchorMicrophoneTimeline();
   }
 
   public void OnInputCaptureStarted()
@@ -349,8 +347,6 @@ public partial class RecordingFeature
     _runSaved = false;
     _currentRun = null;
     _microphoneCaptureStarted = false;
-    _microphoneCaptureStartedAt = null;
-    _microphoneTimelineCorrectionUs = 0L;
-    _microphoneTimelineAnchored = false;
+    _microphoneTimelineAnchor = null;
   }
 }

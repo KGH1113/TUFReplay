@@ -275,6 +275,18 @@ public class RecordingSession
     }
   }
 
+  internal bool TryGetInputTimelineAnchor(out long captureTicks, out long timelineUs, out double rate)
+  {
+    lock (_lock)
+    {
+      InputTimelineAnchor anchor = _previousInputAnchor.GetValueOrDefault();
+      captureTicks = anchor.CaptureTicks;
+      timelineUs = anchor.TimeUs;
+      rate = anchor.Rate;
+      return IsRecording && IsCapturingInput && _previousInputAnchor.HasValue && !Data.WonTimeUs.HasValue;
+    }
+  }
+
   internal void BreakInputTimeline(string reason)
   {
     lock (_lock)
