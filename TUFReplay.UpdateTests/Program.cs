@@ -267,7 +267,7 @@ internal static class UpdaterTests
     using TestServer autoServer = new(autoManifest, package);
 
     using TemporaryDirectory standardInstall = new();
-    UpdateManager standardManager = new(standardInstall.Path, autoServer.BaseUrl, autoServer.BaseUrl + "releases");
+    UpdateManager standardManager = StandardManager(standardInstall.Path, autoServer);
     AssertThrows<InvalidDataException>(() => standardManager.Resolve("0.2.0-beta.2"));
 
     string standardManifest = Manifest("0.2.0-beta.3", package.Length, Sha256(package));
