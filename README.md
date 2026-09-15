@@ -318,7 +318,9 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.2.0-beta.1",
+  "ModVersion": "0.2.0-beta.2",
+  "BuildFlavor": "standard",
+  "AutoSubmissionProtocolVersion": 0,
   "ProtocolVersion": 7,
   "ReplayEngineId": "tufreplay.replay.v2",
   "ReplayFormatVersion": 1,

@@ -1,136 +1,66 @@
 # Home-server deployment
 
-The home-server Compose stack keeps the existing Vite web preview and adds the
-Rust API, Loco worker, and scheduler. Production uses the root
-`docker-compose.yml` plus `deploy/docker-compose.production.yml`; developers can
-continue using the root file by itself with its current Postgres and Redis
-defaults.
+Web and Rust deployments run only through GitHub Actions. Mod packages are built locally and uploaded by the operator; CI does not receive game DLLs or publish mod releases automatically.
 
-The production overlay profiles out the development database and Redis, then
-creates separate persistent volumes for production Postgres, Redis ingest, and
-the local artifact store. Postgres and Redis have no host-published ports. The
-Rust container is non-root and publishes only `127.0.0.1:5150`; the existing
-web preview remains on `127.0.0.1:4174`.
+| Branch | Compose project | Public hostname | Loopback gateway |
+| --- | --- | --- | --- |
+| `main` | `tufreplay-main` | `tufreplay.impl1113.dev` | 4174 |
+| `dev` | `tufreplay-dev` | `tufreplay-dev.impl1113.dev` | 4175 |
+| `feat/auto-submission` | `tufreplay-auto` | `tufreplay-auto.impl1113.dev` | 4176 |
 
-## Required environment
+Each environment uses `deploy/docker-compose.<environment>.yml` and a checkout under `/home/kgh/tuf-replay-environments/<environment>`. Main and dev run web plus Nginx gateway. Auto-submission also runs the Rust API, worker, scheduler, PostgreSQL, Redis, and persistent artifact storage. The root Compose file remains for local development.
 
-Copy `deploy/production.env.example` to `/srv/TUFReplay/.env.production` on the
-home server, fill the blank fields using a password manager, and set file mode
-to `600`. Do not commit the real file or paste its values into logs or chat.
-Generate independent URL-safe random values for the Postgres password and both
-internal service tokens. The two tokens must differ; each token must be 32–512
-bytes and contain no whitespace. `deploy/scripts/validate-production-env.py`
-reports only variable names and whether each is configured; it never prints a
-value.
+## Host setup
 
-The Compose overlay fixes these server-side origins:
+The protected auto environment is `/home/kgh/tuf-replay-data/auto-submission/.env`, mode `600`. Use `auto-submission.env.example` as the variable list. Database passwords and the two internal tokens must be independently generated URL-safe values; tokens must differ. Keep this file outside the Git checkout and do not put its contents in logs or GitHub artifacts.
 
-- `TUF_WEB_ORIGIN=https://tuforums.com` for the TUF frontend.
-- `SUBMISSION_WEB_ORIGIN=https://tufreplay.impl1113.dev` for the companion web
-  app and OAuth callback.
-- `TUF_API_BASE_URL=https://api.tuforums.com` for TUF API requests.
+`validate-auto-environment.py` checks configuration without printing secret values. Compose runtime metadata lives in `/home/kgh/tuf-replay-data/<environment>/compose.env`; the workflow writes it with mode `600`. Database, Redis, and artifact volumes belong only to the auto Compose project and have no host-published database ports. Never use `docker compose down -v` for deployment or recovery.
 
-Set `SUBMISSION_VALIDATION_MODE=trusted_tester` only after the TUF backend has
-its allowlist policy configured. Rust's trusted-tester mode does not grant
-account permission. TUF remains the only allowlist authority; its
-`AUTO_SUBMISSION_ENABLED` setting defaults to false, and an empty
-`AUTO_SUBMISSION_TRUSTED_USER_IDS` denies everyone. Add the TUF account UUID to
-that allowlist, not the linked player ID.
+The user performs the one-time sudo installation in `host/bootstrap-routing.sh`. It installs a root-owned helper restricted to the fixed dev and auto hostnames, plus a sudo rule for that exact no-argument command. Installing it does not alter routes. The deployment workflow invokes the helper after local readiness; it adds the Nginx and Cloudflare Tunnel routes, validates configuration, and reloads services. Existing main routing remains in place.
 
-The TUF backend also needs:
+Required GitHub secrets are `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`. The Tailnet policy must permit ephemeral `tag:gh-runner` nodes to reach `kgh` with Tailscale SSH.
 
-- `AUTO_SUBMISSION_ENABLED=false` during initial setup
-- `AUTO_SUBMISSION_TRUSTED_USER_IDS=670cac2c-8175-46a6-87f7-b92741d4499f`
-  for the first tester (`impl.dev`, linked player `7410`)
-- `AUTO_SUBMISSION_API_URL=https://tufreplay.impl1113.dev`
-- `TUF_TO_AUTO_SUBMISSION_TOKEN` and `AUTO_SUBMISSION_TO_TUF_TOKEN`, matching
-  the two independently stored Rust service tokens
-- `TUF_AUTO_SUBMISSION_OAUTH_CLIENT_ID=1dc9ff206f5301c9e7ef4ba9b209c7c7`
-- OAuth redirect URI `https://tufreplay.impl1113.dev/oauth/callback`
+## Deployment workflow
 
-Configure those TUF-side values through its own secret/configuration process.
-This repository's workflow does not access or change the TUF production server.
+Push to the corresponding branch, or dispatch `deploy.yml` on that branch. Source checks are required before deployment; the auto branch additionally runs Rust formatting, Clippy, and tests with PostgreSQL/Redis. Linux/amd64 images are built from the tested commit and transferred through Tailscale. Host credentials stay on the home server.
 
-## Nginx routing
+The helper checks that the tested commit remains the branch tip. Environment/commit image tags already present on the host are reused on reruns; new tags are loaded only when missing. A new commit is required to rebuild a deployed tag against updated base images. Services require prebuilt images, including on reboot.
 
-The API reuses the existing `tufreplay.impl1113.dev` hostname, so the current
-exact Cloudflare Tunnel hostname remains sufficient. Merge
-`deploy/nginx/tufreplay-api-locations.conf` into the existing Nginx server block
-for that hostname, before the web SPA fallback. It sends `/api/v1/`,
-`/internal/`, and the exact `/_readiness` path to `127.0.0.1:5150` and forwards
-WebSocket upgrade headers. Keep `/api/tuf/*` and `/oauth/callback` on the web
-upstream at `127.0.0.1:4174`.
+For the first main migration, the workflow stops the old `tuf-replay-web.service` only after the new images are available. It then starts the isolated main stack on port 4174. Failed switches attempt to restore the previous checkout, Compose environment, images, unit, and active state; the first main migration restores the legacy service. Recovery is best-effort. Successful database migrations are retained, so schema changes must remain compatible with the previous API for rollback to work.
 
-Nginx changes are a separate host operation. Before reloading Nginx, inspect the
-merged server block and run `nginx -t`. The deployment workflow does not edit or
-reload Nginx.
+`/deployment.json` returns the deployed environment, build flavor, and Git SHA with cache prevention headers. The workflow verifies this response locally and through the public hostname. Auto-submission additionally exposes `/_readiness`; its Rust process runs `start --all` with scheduler configuration. Readiness checks database/queue availability, not a complete OAuth or in-game submission.
 
-## Deployment sequence
+Do not run `deploy-home.sh`, Compose deployment commands, migrations, or application restarts manually over SSH. Use the workflow to preserve checks and deployment ordering.
 
-The existing `tuf-replay-web.service` unit name is preserved. Its Compose
-project is the same project as the current web preview, so an update reuses the
-existing web container and port binding. Production uses three separate
-persistent volumes:
+## Manual mod packages
 
-- `tuf-replay-production-postgres` for the application database and Loco job
-  queue.
-- `tuf-replay-production-redis` for ingest-session AOF data.
-- `tuf-replay-production-artifacts` mounted at
-  `/var/lib/tuf-replay/artifacts` for downloaded chart and evidence artifacts.
+Build the standard package from the dev worktree using `./scripts/run.sh package`. Its source version is `0.2.0-beta.2`; upload `build/TUFReplay.zip` and `build/TUFReplay.update.json` to the matching GitHub prerelease yourself.
 
-The deploy workflow runs Rust formatting, lint, tests, and both web and Rust
-container builds before connecting to the home server. On the server it checks
-that `.env.production` exists with restrictive permissions, validates the
-required values without displaying them, checks the merged Compose model, builds
-the images, waits for healthy Postgres and Redis, and applies Loco migrations as
-a separate command. Only after the migration succeeds does it restart the
-systemd unit. The service starts `tuf_replay_server-cli start --all` with
-`SCHEDULER_CONFIG=config/scheduler.yaml`, so HTTP, worker, and scheduler share
-one container.
-
-The API healthcheck calls Loco's `/_readiness`, which checks the database and
-Postgres queue. Postgres and Redis have their own healthchecks. A healthy HTTP
-readiness response does not report scheduler job progress; after startup, check
-the Rust service's startup logs for the configured reconciliation and cleanup
-jobs. Never use `docker compose down -v`: it deletes the persistent databases,
-Redis data, and artifact volume.
-
-Production deployments must run through the **Deploy (Guhyeon Kang's Home
-Server)** GitHub Actions workflow. After the environment and initial Nginx
-routing have been provisioned, merge the reviewed change into `main` to trigger
-the workflow. To rerun deployment of current `main`, use the workflow's **Run
-workflow** button with branch `main`, or:
+Build the separate auto package from `feat/auto-submission`:
 
 ```sh
-gh workflow run deploy.yml --ref main
+TUFREPLAY_BUILD_FLAVOR=auto-submission \
+TUFREPLAY_BUILD_VERSION=0.2.0-auto-submission.1 \
+./scripts/run.sh package
 ```
 
-`deploy/scripts/deploy-production.sh` is an internal workflow helper, not a
-manual SSH deployment entry point. It requires the tested revision supplied by
-the workflow and refuses a different checkout. Do not run Compose updates,
-production migrations, or application service restarts manually over SSH.
+Upload that ZIP and manifest into a private directory such as `/home/kgh/tuf-replay-data/auto-submission/incoming/auto-1`. Choose a new increasing version for each package; a published version cannot be replaced with different bytes. Keep the incoming directory private.
 
-The GitHub workflow currently deploys on pushes to `main` and manual dispatch.
-The workflow requires `.env.production` before fetching or resetting the
-checkout. It deploys only the exact commit that passed its checks, and stops
-if `main` advanced while those checks were running. It streams the validator
-from that tested revision and runs it before changing the checkout.
-Do not trigger a production deployment until the TUF allowlist, secrets, and
-Nginx route are ready and the user has authorized the rollout.
+After upload, run **Promote uploaded auto-submission package** (`publish-auto-update.yml`) on `feat/auto-submission`, with `package_version` matching the manifest and `upload_id` matching the incoming directory name. It shares the auto deployment lock, checks the live deployment, validates ZIP size/hash/flavor/version, and publishes atomically. It does not build a mod or create a GitHub Release. `deploymentSha` records which web/API deployment was checked during promotion; it does not claim the ZIP source commit.
 
-## Local preflight
+The gateway serves these files from `/home/kgh/tuf-replay-data/auto-submission/updates`:
 
-From the repository root, inspect the Compose model without printing its
-expanded environment:
+- `/updates/auto-submission/latest.json`: current manifest, no cache.
+- `/updates/auto-submission/versions/<version>/TUFReplay.zip`: immutable package.
 
-```sh
-docker compose \
-  --env-file .env.production \
-  -f docker-compose.yml \
-  -f deploy/docker-compose.production.yml \
-  --profile production config --quiet
-```
+There is no published update until the operator uploads and promotes one. The updater rejects cross-flavor packages and has no GitHub fallback for the auto channel. The web requires the auto mod flavor and submission protocol 1; its exact patch version is independent of the web deployment.
 
-After deployment, the API is available to host-local checks at
-`http://127.0.0.1:5150/_readiness`; the public route is
-`https://tufreplay.impl1113.dev/_readiness` after the Nginx change.
+## TUF production integration
+
+This repository's workflows do not access the TUF production server. TUF-side deployment, migrations, OAuth scope, and allowlist activation require their separate approved operating procedure.
+
+The initial tester is `impl.dev` (player `7410`), account UUID `670cac2c-8175-46a6-87f7-b92741d4499f`. The official OAuth client ID is `1dc9ff206f5301c9e7ef4ba9b209c7c7`, with redirect `https://tufreplay-auto.impl1113.dev/oauth/callback`.
+
+TUF BE needs `AUTO_SUBMISSION_API_URL=https://tufreplay-auto.impl1113.dev`, matching internal tokens, `TUF_AUTO_SUBMISSION_OAUTH_CLIENT_ID`, `AUTO_SUBMISSION_TRUSTED_USER_IDS`, and the explicit `AUTO_SUBMISSION_ENABLED` rollout switch. Its default is off; an empty allowlist denies everyone. The app needs allowed scope `65537` before login can authorize submission.
+
+The Rust setting `SUBMISSION_VALIDATION_MODE=trusted_tester` deliberately skips the unfinished gameplay validator for TUF-authorized testers and records that validation was skipped. It does not grant tester access itself. A ready Replay deployment therefore does not mean TUF-side activation or a real in-game submission has been verified.
