@@ -67,6 +67,8 @@ public static class RecordingPatches
         && !float.IsNaN(pitch)
         && !float.IsInfinity(pitch);
       session.ObserveInputAnchor(_conductorUpdatePrefixTicks, postfixTicks, songPosition, pitch, ready);
+      if (ready && RecordingClock.IsTimelineAdvancing())
+        RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
     }
     catch (Exception exception)
     {
@@ -122,8 +124,6 @@ public static class RecordingPatches
     RecordingSession session = RecordingFeature.Instance?.Session;
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
-
-    RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
 
     bool captureAllowed = IsNativeInputCaptureAllowed();
     ObserveCapturePermissionTransition(session, captureAllowed);

@@ -203,26 +203,25 @@ public sealed partial class MicrophoneRecordingFeature
     }
   }
 
-  public void BeginRun(string runId)
+  public bool BeginRun(string runId)
   {
     if (!IsCaptureEnabled() || _backend == null || string.IsNullOrEmpty(runId))
-      return;
+      return false;
     string path = Path.Combine(_tempDirectory, runId + ".wav.partial");
     try
     {
-      if (!_backend.BeginRun(runId, path, out string error))
-      {
-        Main.Instance?.Log("[Microphone] Capture start failed; this run will have no recording. error=" + error);
-        ShowRecordingUnavailable();
-      }
+      if (_backend.BeginRun(runId, path, out string error))
+        return true;
+      Main.Instance?.Log("[Microphone] Capture start failed; this run will have no recording. error=" + error);
     }
     catch (Exception exception)
     {
       Main.Instance?.Log(
         "[Microphone] Capture start failed; this run will have no recording. error=" + exception.Message
       );
-      ShowRecordingUnavailable();
     }
+    ShowRecordingUnavailable();
+    return false;
   }
 
   private static void ShowRecordingUnavailable()

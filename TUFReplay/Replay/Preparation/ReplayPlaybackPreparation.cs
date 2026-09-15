@@ -169,20 +169,8 @@ public static partial class ReplayPlaybackCoordinator
     if (!IsSupportedResult(run.Result))
       return Error("result_unsupported", "This run result cannot be replayed.", out errorCode, out errorMessage);
 
-    int? gameInputOffsetMs = ReplayGameInputOffsetResolver.Resolve(meta, inputs, hitContexts, out bool inferredOffset);
-    if (gameInputOffsetMs.HasValue)
-    {
-      meta.gameInputOffsetMs = gameInputOffsetMs.Value;
-      if (inferredOffset)
-      {
-        Main.Instance?.Log(
-          "[Replay/Compatibility] Inferred legacy game input offset. offsetMs="
-            + gameInputOffsetMs.Value
-            + ", runId="
-            + run.Id
-        );
-      }
-    }
+    // Older runs have no recorded calibration. Keep the current game setting;
+    // input-versus-hit timing measures frame processing delay, not calibration.
 
     long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
     long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
@@ -362,9 +350,7 @@ public static partial class ReplayPlaybackCoordinator
       operation.NativeInputFocusGuard
       ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
     IReplayMicrophonePlayer microphonePlayer = null;
-    if (
-      operation.MicrophoneRecording != null && operation.MicrophoneWave != null
-    )
+    if (operation.MicrophoneRecording != null && operation.MicrophoneWave != null)
     {
       try
       {

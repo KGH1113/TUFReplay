@@ -51,7 +51,6 @@ internal static class ReplayNativeInputSuite
     TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
-    TestReplayGameInputOffsetResolution();
     TestReplayClockOriginPolicy();
     TestReplayTimelineTopGlowPolicy();
     TestReplayTimelineJudgmentMapping();
@@ -61,6 +60,7 @@ internal static class ReplayNativeInputSuite
     TestWindowsNativeModifierNormalization();
     TestWindowsPhysicalStateUsesCurrentDownBit();
     TestMacOsHidMappingAndTimestampConversion();
+    TestMicrophoneHostTimestampConversion();
     TestMacOsNativeShimAbi();
     TestUnsupportedCaptureHasNoPollingFallback();
     TestReplayInputFormatGate();
@@ -218,39 +218,6 @@ internal static class ReplayNativeInputSuite
     Assert(Math.Abs(pitched + 750_000) <= 1, "Pitch was not applied to first-anchor back-projection.");
   }
 
-  private static void TestReplayGameInputOffsetResolution()
-  {
-    var storedMetadata = new ReplayMetadata { gameInputOffsetMs = 137 };
-    Assert(
-      ReplayGameInputOffsetResolver.Resolve(storedMetadata, null, null, out bool storedWasInferred) == 137
-        && !storedWasInferred,
-      "A stored game input offset was not preferred."
-    );
-
-    var inputs = new List<RecordedInput>();
-    var hits = new List<ReplayHitContext>();
-    for (int index = 0; index < 20; index++)
-    {
-      long hitTimeUs = index * 125_000L;
-      inputs.Add(Input(hitTimeUs + 10_000L, 1, true));
-      hits.Add(Hit(hitTimeUs, isAuto: false));
-    }
-    Assert(
-      ReplayGameInputOffsetResolver.Resolve(new ReplayMetadata(), inputs, hits, out bool inferred) == 10 && inferred,
-      "A legacy 10 ms game input offset was not inferred from input/judgment pairs."
-    );
-
-    var countdownInputs = new List<RecordedInput>();
-    for (int index = 0; index < 11; index++)
-      countdownInputs.Add(Input(-2_000_000L + index * 100_000L, 2, true));
-    countdownInputs.AddRange(inputs);
-    Assert(
-      ReplayGameInputOffsetResolver.Resolve(new ReplayMetadata(), countdownInputs, hits, out inferred) == 10
-        && inferred,
-      "EnhancedCountdown input prefix prevented legacy game offset inference."
-    );
-  }
-
   private static void TestReplayClockOriginPolicy()
   {
     Assert(
@@ -291,10 +258,7 @@ internal static class ReplayNativeInputSuite
       1d,
       timelineWasAdvancing: false
     );
-    Assert(
-      Math.Abs(frozenStart - 12d) < 0.000001d,
-      "A frozen PlayerControl interval leaked into the replay timeline."
-    );
+    Assert(Math.Abs(frozenStart - 12d) < 0.000001d, "A frozen PlayerControl interval leaked into the replay timeline.");
   }
 
   private static void TestReplayLatenessHistogram()
@@ -826,6 +790,37 @@ internal static class ReplayNativeInputSuite
       "Mach absolute time did not map to Stopwatch ticks."
     );
     Assert(converter.ToNanoseconds(1_001_000_000) == 1_001_000_000, "Mach nanosecond conversion changed.");
+  }
+
+  private static void TestMicrophoneHostTimestampConversion()
+  {
+    long frequency = System.Diagnostics.Stopwatch.Frequency;
+    foreach (var scale in new[] { (Numerator: 1u, Denominator: 1u), (Numerator: 125u, Denominator: 3u) })
+    {
+      const ulong hostOrigin = 9_007_199_254_740_993UL;
+      ulong second = (ulong)(1_000_000_000d * scale.Denominator / scale.Numerator);
+      var before = new MacOsMachTimeConverter(hostOrigin, frequency * 20, scale.Numerator, scale.Denominator);
+      var after = new MacOsMachTimeConverter(
+        hostOrigin + second * 10,
+        frequency * 30,
+        scale.Numerator,
+        scale.Denominator
+      );
+      ulong firstSample = hostOrigin + second;
+      Assert(
+        Math.Abs(before.ToStopwatchTicks(firstSample) - frequency * 21) <= 1,
+        "First sample clock mapping changed."
+      );
+      Assert(
+        Math.Abs(before.ToStopwatchTicks(firstSample) - after.ToStopwatchTicks(firstSample)) <= 1,
+        "Helper response latency shifted the first sample timestamp."
+      );
+    }
+    if (System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
+    {
+      // Exercise the actual host clock ABI without opening any input device.
+      Assert(MacOsMachTimeConverter.CaptureSystemClock() != null, "macOS host clock could not be sampled.");
+    }
   }
 
   private static void TestMacOsNativeShimAbi()

@@ -16,12 +16,9 @@ public partial class RecordingFeature
       completed?.Invoke(null);
       return;
     }
-    bool adjustTimeline = _microphoneTimelineAnchored;
-    long timelineCorrectionUs = _microphoneTimelineCorrectionUs;
+    MicrophoneTimelineAnchor? anchor = _microphoneTimelineAnchor;
     _microphoneCaptureStarted = false;
-    _microphoneCaptureStartedAt = null;
-    _microphoneTimelineCorrectionUs = 0L;
-    _microphoneTimelineAnchored = false;
+    _microphoneTimelineAnchor = null;
 
     if (FeatureRegistry.MicrophoneRecording == null)
     {
@@ -30,8 +27,28 @@ public partial class RecordingFeature
     }
     FeatureRegistry.MicrophoneRecording.EndRun(recording =>
     {
-      if (recording != null && adjustTimeline)
-        recording.CaptureStartOffsetUs += timelineCorrectionUs;
+      if (recording != null)
+      {
+        if (!anchor.HasValue || recording.CaptureStartTimestampTicks <= 0)
+        {
+          Main.Instance?.Log("[Recording/Microphone] Discarded recording without a capture timeline anchor.");
+          FeatureRegistry.MicrophoneRecording?.Discard(recording);
+          completed?.Invoke(null);
+          return;
+        }
+
+        recording.CaptureStartOffsetUs = anchor.Value.ToCaptureStartOffsetUs(recording.CaptureStartTimestampTicks);
+        Main.Instance?.Log(
+          "[Recording/Microphone] Capture aligned. runId="
+            + recording.RunId
+            + ", timelineUs="
+            + anchor.Value.TimelineTimeUs
+            + ", rate="
+            + anchor.Value.GameplayRate
+            + ", captureOffsetUs="
+            + recording.CaptureStartOffsetUs
+        );
+      }
       completed?.Invoke(recording);
     });
   }
@@ -41,45 +58,20 @@ public partial class RecordingFeature
     if (_currentRun == null || _microphoneCaptureStarted)
       return;
 
-    FeatureRegistry.MicrophoneRecording?.BeginRun(_currentRun.Id);
-    _microphoneCaptureStarted = true;
-    _microphoneCaptureStartedAt = RecordingClock.CurrentUnscaledTime();
+    _microphoneCaptureStarted = FeatureRegistry.MicrophoneRecording?.BeginRun(_currentRun.Id) == true;
   }
 
   internal void TryAnchorMicrophoneTimeline()
   {
-    if (!_microphoneCaptureStarted || _microphoneTimelineAnchored || !Session.Data.GameplayStartSongPosition.HasValue)
+    if (!_microphoneCaptureStarted || _microphoneTimelineAnchor.HasValue)
       return;
 
-    scrConductor conductor = ADOBase.conductor;
-    if (conductor == null || !conductor.enabled || UnityEngine.Time.timeScale <= 0f || UnityEngine.AudioListener.pause)
+    // Called only after a fresh, advancing conductor update. Reuse the exact pair
+    // used to map native input; reading songposition in PlayerControl_Update can
+    // pair a stale position with a later frame, especially on frozen-start release.
+    if (!Session.TryGetInputTimelineAnchor(out long captureTicks, out long timelineUs, out double rate))
       return;
-
-    double now = RecordingClock.CurrentUnscaledTime();
-    double startedAt = _microphoneCaptureStartedAt ?? now;
-    double captureElapsedSeconds = Math.Max(0d, now - startedAt);
-    long timelineTimeUs = Math.Max(
-      0L,
-      RecordingClock.ToRecordTimeUs(RecordingClock.CurrentSongPosition(), Session.Data.GameplayStartSongPosition)
-    );
-    double gameplayRate = Session.Data.EffectivePitch ?? conductor.song?.pitch ?? 1f;
-
-    _microphoneTimelineCorrectionUs = MicrophoneTimelineAnchor.CalculateCorrectionUs(
-      timelineTimeUs,
-      gameplayRate,
-      captureElapsedSeconds
-    );
-    _microphoneTimelineAnchored = true;
-    Main.Instance.Log(
-      "[Recording/Microphone] Timeline anchored. timelineUs="
-        + timelineTimeUs
-        + ", captureElapsedUs="
-        + (long)(captureElapsedSeconds * 1_000_000d)
-        + ", rate="
-        + gameplayRate
-        + ", correctionUs="
-        + _microphoneTimelineCorrectionUs
-    );
+    _microphoneTimelineAnchor = new MicrophoneTimelineAnchor(captureTicks, timelineUs, rate);
   }
 
   private void QueueEditorRecording()
