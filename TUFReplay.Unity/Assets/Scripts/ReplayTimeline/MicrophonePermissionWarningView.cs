@@ -14,8 +14,22 @@ namespace TUFReplay.Unity.Notifications
     private const float ShowDuration = 0.16f;
     private const float HideDuration = 0.12f;
     private const float HiddenOffset = -6f;
-    private const float ToastHeight = 108f;
-    private const float PersistentHeight = 148f;
+    private const float MinWidth = 300f;
+    private const float MaxWidth = 520f;
+    private const float MinHeight = 72f;
+    private const float MaxHeight = 360f;
+    private const float ScreenMargin = 18f;
+    private const float HorizontalPadding = 16f;
+    private const float TopPadding = 14f;
+    private const float HeaderMinHeight = 26f;
+    private const float HeaderGap = 8f;
+    private const float TitleLeadingInset = 52f;
+    private const float TitleTrailingInset = 44f;
+    private const float ToastBottomReserve = 18f;
+    private const float PersistentBottomPadding = 16f;
+    private const float PersistentActionReserve = 58f;
+    private const float ActionHorizontalPadding = 20f;
+    private const float MinActionWidth = 112f;
 
     [SerializeField]
     private CanvasGroup canvasGroup;
@@ -220,7 +234,7 @@ namespace TUFReplay.Unity.Notifications
       actionLabel.text = hasAction ? actionText.Trim() : string.Empty;
       actionButton.gameObject.SetActive(hasAction);
       progressTrack.SetActive(!persistent);
-      rectTransform.sizeDelta = new Vector2(rectTransform.sizeDelta.x, persistent ? PersistentHeight : ToastHeight);
+      Reflow(persistent, hasAction);
       stateElapsed = 0f;
       hovered = false;
       state = persistent ? NotificationState.ShowingPersistent : NotificationState.ShowingToast;
@@ -233,6 +247,77 @@ namespace TUFReplay.Unity.Notifications
       if (!gameObject.activeSelf)
         gameObject.SetActive(true);
       return true;
+    }
+
+    private void Reflow(bool persistent, bool hasAction)
+    {
+      RectTransform parentRect = rectTransform.parent as RectTransform;
+      float availableCanvasWidth =
+        parentRect != null && parentRect.rect.width > 0f ? parentRect.rect.width - ScreenMargin * 2f : MaxWidth;
+      float maximumWidth = Mathf.Max(1f, Mathf.Min(MaxWidth, availableCanvasWidth));
+      float minimumWidth = Mathf.Min(MinWidth, maximumWidth);
+
+      Vector2 titlePreferred = titleText.GetPreferredValues(titleText.text, Mathf.Infinity, Mathf.Infinity);
+      Vector2 messageUnwrapped = messageText.GetPreferredValues(messageText.text, Mathf.Infinity, Mathf.Infinity);
+      float desiredWidth = Mathf.Max(
+        MinWidth,
+        TitleLeadingInset + titlePreferred.x + TitleTrailingInset,
+        HorizontalPadding * 2f + messageUnwrapped.x
+      );
+
+      Vector2 actionPreferred = Vector2.zero;
+      if (hasAction)
+      {
+        actionPreferred = actionLabel.GetPreferredValues(actionLabel.text, Mathf.Infinity, Mathf.Infinity);
+        desiredWidth = Mathf.Max(desiredWidth, HorizontalPadding * 2f + actionPreferred.x + ActionHorizontalPadding);
+      }
+
+      float width = Mathf.Clamp(desiredWidth, minimumWidth, maximumWidth);
+      float titleWidth = Mathf.Max(1f, width - TitleLeadingInset - TitleTrailingInset);
+      RectTransform titleRect = titleText.rectTransform;
+      titleRect.sizeDelta = new Vector2(titleWidth, HeaderMinHeight);
+      titleText.overflowMode = titlePreferred.x > titleWidth ? TextOverflowModes.Ellipsis : TextOverflowModes.Overflow;
+
+      float messageWidth = Mathf.Max(1f, width - HorizontalPadding * 2f);
+      Vector2 messagePreferred = messageText.GetPreferredValues(messageText.text, messageWidth, Mathf.Infinity);
+      float messageTop = TopPadding + HeaderMinHeight + HeaderGap;
+      float bottomReserve = persistent
+        ? hasAction
+          ? PersistentActionReserve
+          : PersistentBottomPadding
+        : ToastBottomReserve;
+      float desiredHeight = messageTop + messagePreferred.y + bottomReserve;
+
+      float availableCanvasHeight =
+        parentRect != null && parentRect.rect.height > 0f
+          ? parentRect.rect.height - Mathf.Max(0f, restingPosition.y) - ScreenMargin
+          : MaxHeight;
+      float maximumHeight = Mathf.Max(MinHeight, Mathf.Min(MaxHeight, availableCanvasHeight));
+      float height = Mathf.Clamp(desiredHeight, MinHeight, maximumHeight);
+      float messageHeight = Mathf.Max(0f, height - messageTop - bottomReserve);
+
+      RectTransform messageRect = messageText.rectTransform;
+      messageRect.anchoredPosition = new Vector2(HorizontalPadding, -messageTop);
+      messageRect.sizeDelta = new Vector2(messageWidth, messageHeight);
+      messageText.overflowMode =
+        messagePreferred.y > messageHeight + 0.01f ? TextOverflowModes.Ellipsis : TextOverflowModes.Overflow;
+
+      if (hasAction)
+      {
+        RectTransform actionRect = actionButton.transform as RectTransform;
+        if (actionRect != null)
+        {
+          float maximumActionWidth = Mathf.Max(1f, width - HorizontalPadding * 2f);
+          float actionWidth = Mathf.Clamp(
+            actionPreferred.x + ActionHorizontalPadding,
+            Mathf.Min(MinActionWidth, maximumActionWidth),
+            maximumActionWidth
+          );
+          actionRect.sizeDelta = new Vector2(actionWidth, actionRect.sizeDelta.y);
+        }
+      }
+
+      rectTransform.sizeDelta = new Vector2(width, height);
     }
 
     private void InvokeAction()
