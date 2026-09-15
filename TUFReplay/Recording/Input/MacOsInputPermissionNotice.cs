@@ -36,7 +36,8 @@ internal static class MacOsInputPermissionNotice
     else
     {
       title = "Native input failed to start";
-      message = "TUFReplay could not start macOS native keyboard capture. Restart the game and check the log if it repeats.";
+      message =
+        "TUFReplay could not start macOS native keyboard capture. Restart the game and check the log if it repeats.";
     }
 
     message += "\nReason: " + (string.IsNullOrWhiteSpace(reason) ? "unknown" : reason);

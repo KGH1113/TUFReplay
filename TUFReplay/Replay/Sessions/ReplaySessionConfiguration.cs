@@ -106,7 +106,9 @@ public static partial class ReplaySessionService
     }
     catch (Exception exception)
     {
-      Main.Instance?.Log("[Replay/Configuration] Could not apply recorded game input offset. error=" + exception.Message);
+      Main.Instance?.Log(
+        "[Replay/Configuration] Could not apply recorded game input offset. error=" + exception.Message
+      );
     }
   }
 

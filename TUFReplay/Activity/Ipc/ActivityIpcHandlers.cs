@@ -11,8 +11,8 @@ using TUFReplay.Composition;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Sessions;
-using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Database;
+using TUFReplay.Shared.Ipc;
 
 namespace TUFReplay.Activity.Ipc;
 
