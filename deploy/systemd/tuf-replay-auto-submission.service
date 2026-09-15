@@ -1,0 +1,18 @@
+[Unit]
+Description=TUFReplay auto-submission web and API deployment
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kgh/tuf-replay-environments/auto-submission
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/test -f /home/kgh/tuf-replay-data/auto-submission/compose.env
+ExecStartPre=/usr/bin/test -f /home/kgh/tuf-replay-data/auto-submission/.env
+ExecStartPre=/usr/bin/python3 /home/kgh/tuf-replay-environments/auto-submission/deploy/scripts/validate-auto-environment.py /home/kgh/tuf-replay-data/auto-submission/.env
+ExecStart=/usr/bin/env docker compose --project-name tufreplay-auto --env-file /home/kgh/tuf-replay-data/auto-submission/compose.env --env-file /home/kgh/tuf-replay-data/auto-submission/.env -f deploy/docker-compose.auto-submission.yml up -d --no-build --wait --remove-orphans
+ExecStop=/usr/bin/env docker compose --project-name tufreplay-auto --env-file /home/kgh/tuf-replay-data/auto-submission/compose.env --env-file /home/kgh/tuf-replay-data/auto-submission/.env -f deploy/docker-compose.auto-submission.yml down
+TimeoutStartSec=300s
+
+[Install]
+WantedBy=default.target
