@@ -1,6 +1,6 @@
 {
   "title": "Auto submission",
-  "description": "Submit P and G chart clears without recording a video. Each submission is validated before it is registered on TUF.",
+  "description": "Submit P and G chart clears without recording a video. TUF checks the captured evidence and current official chart before registration.",
   "connectDescription": "Allow auto submission on the TUF sign-in screen while the game is running. Play from the beginning after connecting to capture a new submission.",
   "notConfigured": "Auto submission sign-in has not been configured yet.",
   "enableCapture": "Enable capture for new plays",
@@ -10,6 +10,15 @@
   "openTuf": "Open TUF",
   "connected": "TUF account connected",
   "account": "TUF account",
+  "eligibility": {
+    "checking": "Checking submission access…",
+    "allowed": "This account can submit trusted-tester clears.",
+    "testerRequired": "This account is connected, but trusted-tester access has not been granted.",
+    "disabledByServer": "Trusted-tester submissions are currently disabled.",
+    "notAuthorized": "This account cannot submit trusted-tester clears.",
+    "stale": "Submission access could not be refreshed. New capture is paused until it can be checked again.",
+    "unavailable": "Submission access could not be confirmed. New capture is paused until it can be checked again."
+  },
   "capture": "Capture new plays",
   "captureDescription": "Collect eligible P and G clears so they can be submitted from the play menu.",
   "disconnect": "Disconnect",

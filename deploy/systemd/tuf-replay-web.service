@@ -1,14 +1,15 @@
 [Unit]
-Description=TUFReplay Web Docker Compose service
+Description=TUFReplay web and auto-submission Docker Compose services
 After=default.target
 
 [Service]
 Type=oneshot
 WorkingDirectory=/srv/TUFReplay
 RemainAfterExit=yes
-ExecStart=/usr/bin/env docker compose up -d --build --remove-orphans
-ExecStop=/usr/bin/env docker compose down
-TimeoutStartSec=0
+ExecStartPre=/usr/bin/python3 /srv/TUFReplay/deploy/scripts/validate-production-env.py /srv/TUFReplay/.env.production
+ExecStart=/usr/bin/env docker compose --env-file .env.production -f docker-compose.yml -f deploy/docker-compose.production.yml --profile production up -d --wait
+ExecStop=/usr/bin/env docker compose --env-file .env.production -f docker-compose.yml -f deploy/docker-compose.production.yml --profile production down
+TimeoutStartSec=300s
 
 [Install]
 WantedBy=default.target

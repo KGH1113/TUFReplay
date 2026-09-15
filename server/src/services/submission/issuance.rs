@@ -47,6 +47,7 @@ pub async fn issue(
     identity: AccountIdentity,
     claims: RunClaims,
 ) -> Result<IssuedRun, IssuanceError> {
+    identity.require_can_submit()?;
     let store = ctx
         .shared_store
         .get::<RunIngestStore>()

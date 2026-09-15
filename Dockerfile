@@ -4,6 +4,7 @@ WORKDIR /app
 
 COPY package.json bun.lock ./
 COPY web/package.json ./web/package.json
+COPY tools/auto-submission-e2e/package.json ./tools/auto-submission-e2e/package.json
 RUN bun install --frozen-lockfile
 
 FROM deps AS build

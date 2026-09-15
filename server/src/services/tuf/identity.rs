@@ -17,6 +17,10 @@ pub struct TufIdentity {
     pub client_id: String,
     pub username: String,
     pub nickname: Option<String>,
+    #[serde(default)]
+    pub can_submit: bool,
+    #[serde(default)]
+    pub denial_reason: Option<crate::services::auth::SubmissionDenialReason>,
 }
 
 impl TufIdentityClient {
@@ -78,11 +82,48 @@ impl crate::services::auth::IdentityProvider for TufIdentityClient {
         Ok(crate::services::auth::AccountIdentity {
             owner_id: identity.owner_id,
             grant_id: identity.grant_id,
+            client_id: identity.client_id,
+            username: identity.username,
+            nickname: identity.nickname,
+            can_submit: identity.can_submit,
+            denial_reason: identity.denial_reason,
         })
     }
-    async fn authorize(&self, owner: &str, grant: Uuid) -> Result<()> {
+    async fn authorize(
+        &self,
+        owner: &str,
+        grant: Uuid,
+    ) -> Result<crate::services::auth::AccountIdentity> {
         TufIdentityClient::authorize(self, owner, grant)
             .await
-            .map(|_| ())
+            .map(|identity| crate::services::auth::AccountIdentity {
+                owner_id: identity.owner_id,
+                grant_id: identity.grant_id,
+                client_id: identity.client_id,
+                username: identity.username,
+                nickname: identity.nickname,
+                can_submit: identity.can_submit,
+                denial_reason: identity.denial_reason,
+            })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TufIdentity;
+
+    #[test]
+    fn a_missing_can_submit_field_fails_closed() {
+        let identity: TufIdentity = serde_json::from_value(serde_json::json!({
+            "owner_id": "owner",
+            "grant_id": "00000000-0000-0000-0000-000000000042",
+            "client_id": "client",
+            "username": "player",
+            "nickname": null
+        }))
+        .unwrap();
+
+        assert!(!identity.can_submit);
+        assert!(identity.denial_reason.is_none());
     }
 }

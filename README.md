@@ -56,7 +56,7 @@ Replay engine v2 preserves OS-native input, the resolved margin of every accepte
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
 - Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
 - Identifies TUFHelperLite-downloaded levels and optionally streams P/G auto-submission evidence through an authenticated account connection.
-- Provides replay playback and the auto-submission capture, upload, review UI, and registration pipeline. The gameplay simulator is not implemented; real submissions remain blocked at `validator_unavailable`. See [implementation status and setup](docs/auto-submission-status.md).
+- Provides replay playback and the auto-submission capture, upload, review UI, and registration pipeline. The gameplay simulator is not implemented. The default mode remains `validator_unavailable`; the explicit `trusted_tester` rollout converts recorded clear results for TUF accounts on the backend allowlist and records that validation was skipped. Replay beta updates do not grant submission permission. See [implementation status and setup](docs/auto-submission-status.md).
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
 - Shows a one-time browser notice when saved runs use the previous replay engine and cannot be played by the current engine.
 - Groups revisions of the same TUF level or local level path into one web activity card. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
@@ -210,11 +210,11 @@ The web UI is built and deployed independently. The `build` and `package` workfl
 
 The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
 
-## Web Deployment
+## Web and API Deployment
 
-GitHub Actions runs the web checks for pushes to `main` and `dev` and for pull requests targeting `main`. A successful push to `main` then connects to the home server through Tailscale SSH and restarts the Docker Compose app managed by the user-level `tuf-replay-web.service` unit.
+GitHub Actions runs source checks for pushes to `main` and `dev` and for pull requests targeting `main`. A successful push to `main` connects to the home server through Tailscale SSH. The existing user-level `tuf-replay-web.service` Compose project serves the web preview and, when the production overlay is enabled, the Rust API, worker, and scheduler.
 
-The server checkout must exist at `/srv/TUFReplay`. The container exposes Vite preview on port 4173 and binds it to `127.0.0.1:4174` on the host by default. Set `TUF_REPLAY_WEB_PORT` in the server checkout's `.env` to override the host port. The production build embeds `https://web-adofai.impl1113.dev/embed/chart`; set `VITE_WEB_ADOFAI_EMBED_URL` in the same `.env` to override it.
+The server checkout must exist at `/srv/TUFReplay`. Vite preview binds to `127.0.0.1:4174`; the Rust API binds to `127.0.0.1:5150`. Production uses a separate protected `.env.production`, database, Redis instance, and artifact volume. The production deployment steps, required values, readiness check, and Nginx path configuration are in [deploy/README.md](deploy/README.md).
 
 The deploy workflow requires these GitHub Actions secrets:
 

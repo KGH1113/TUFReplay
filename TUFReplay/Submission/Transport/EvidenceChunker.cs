@@ -11,9 +11,14 @@ namespace TUFReplay.Submission.Transport;
 public sealed class EvidenceChunker
 {
   private readonly EvidenceCaptureBuffer _capture;
-  private readonly StringBuilder[] _text = {
-    new StringBuilder(18000), new StringBuilder(18000), new StringBuilder(),
-    new StringBuilder(18000), new StringBuilder(18000), new StringBuilder(18000),
+  private readonly StringBuilder[] _text =
+  {
+    new StringBuilder(18000),
+    new StringBuilder(18000),
+    new StringBuilder(),
+    new StringBuilder(18000),
+    new StringBuilder(18000),
+    new StringBuilder(18000),
   };
   private bool _metaWritten;
   private readonly Stopwatch _flush = Stopwatch.StartNew();
@@ -29,19 +34,22 @@ public sealed class EvidenceChunker
     {
       var target = _text[record.Kind];
       EvidenceRecordWriter.Append(target, record);
-      if (target.Length >= 16000) yield return Flush(record.Kind);
+      if (target.Length >= 16000)
+        yield return Flush(record.Kind);
     }
     if (completedMetadata != null || _flush.ElapsedMilliseconds >= 250)
     {
       for (byte kind = 0; kind < 6; kind++)
-        if (_text[kind].Length > 0) yield return Flush(kind);
+        if (_text[kind].Length > 0)
+          yield return Flush(kind);
       _flush.Restart();
     }
     // A full batch may leave records in the ring. Finish only after an empty read.
     if (count <= 256 && completedMetadata != null && !_metaWritten)
     {
       byte[] metadata = Encoding.UTF8.GetBytes(completedMetadata);
-      if (metadata.Length > 256 * 1024) throw new InvalidOperationException("Oversized metadata.");
+      if (metadata.Length > 256 * 1024)
+        throw new InvalidOperationException("Oversized metadata.");
       for (int offset = 0; offset < metadata.Length; offset += 16000)
       {
         var fragment = new byte[Math.Min(16000, metadata.Length - offset)];

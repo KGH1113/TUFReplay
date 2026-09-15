@@ -31,6 +31,7 @@ database:
 
 settings:
   auto_submission:
+    validation_mode: <%= get_env(name="SUBMISSION_VALIDATION_MODE", default="unavailable") %>
     redis_url: <%= get_env(name="REDIS_INGEST_URL", default="redis://127.0.0.1:6379/1") %>
     active_ttl_seconds: 45
     sealed_ttl_seconds: 86400

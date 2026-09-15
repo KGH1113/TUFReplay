@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Submission.Api;
 using TUFReplay.Submission.Debug;
@@ -12,6 +14,7 @@ public sealed class SubmissionFeature : IDisposable
     new TUFReplay.Submission.Auth.OAuthCoordinator(TUFReplay.Shared.Settings.TUFReplaySettingStore.Current);
   public SubmissionRecordsClient Records { get; } = new SubmissionRecordsClient();
   public SubmissionAccount Account => Authentication.Session?.Account;
+  public bool CanSubmit => _account?.CanSubmit == true;
   private readonly RunIssuanceClient _api = new RunIssuanceClient();
   private SubmissionAccount _account;
   private SubmissionPreflight _preflight;
@@ -26,6 +29,11 @@ public sealed class SubmissionFeature : IDisposable
   private bool _pendingToast;
   private bool _preflightReadyReported;
   private bool _preflightFailureReported;
+  private Task<SubmissionAccountIdentity> _identityRefresh;
+  private CancellationTokenSource _identityRefreshCancellation;
+  private SubmissionAccount _identityRefreshAccount;
+  private DateTimeOffset _identityRefreshAt;
+  private bool _submissionAuthorized;
 
   public object Status() =>
     new
@@ -33,11 +41,16 @@ public sealed class SubmissionFeature : IDisposable
       connected = _account != null,
       configured = Authentication.Configured,
       disabled = TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true,
-      state = _account == null
-        ? Authentication.State
-        : _attempt?.State ?? (_preflight?.IsReady == true ? "ready" : _preflight?.Error ?? "preparing"),
+      state = _account == null ? Authentication.State
+      : !_account.CanSubmit ? "eligibility_" + _account.IdentityStatus
+      : _attempt?.State ?? (_preflight?.IsReady == true ? "ready" : _preflight?.Error ?? "preparing"),
       runId = _attempt?.RunId.ToString(),
       reason = _attempt?.Capture.Failure,
+      username = _account?.Username,
+      nickname = _account?.Nickname,
+      accountStatus = _account?.IdentityStatus ?? "unavailable",
+      canSubmit = CanSubmit,
+      denialReason = _account?.DenialReason,
     };
 
   public void SetDisabled(bool disabled)
@@ -64,12 +77,19 @@ public sealed class SubmissionFeature : IDisposable
     Disconnect();
     _account = account;
     SubmissionDebugTelemetry.Publish("TUF account connected");
-    WatchLevel();
-    Prepare();
+    _identityRefreshAt = DateTimeOffset.MinValue;
+    StartIdentityRefresh();
   }
 
   public void Disconnect()
   {
+    _identityRefreshCancellation?.Cancel();
+    _identityRefreshCancellation?.Dispose();
+    _identityRefreshCancellation = null;
+    _identityRefresh = null;
+    _identityRefreshAccount = null;
+    _identityRefreshAt = DateTimeOffset.MinValue;
+    _submissionAuthorized = false;
     _session?.AbortEvidence("account_disconnected");
     _attempt?.Dispose();
     _attempt = null;
@@ -118,6 +138,11 @@ public sealed class SubmissionFeature : IDisposable
     if (_account == null)
     {
       SubmissionDebugTelemetry.Publish("Capture skipped: TUF login required");
+      return;
+    }
+    if (!_account.CanSubmit)
+    {
+      SubmissionDebugTelemetry.Publish("Capture skipped: trusted-tester submission access is unavailable");
       return;
     }
     if (TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true)
@@ -184,6 +209,10 @@ public sealed class SubmissionFeature : IDisposable
       else
         Connect(Account);
     }
+    CompleteIdentityRefresh();
+    SyncSubmissionAuthorization();
+    if (_account != null && _identityRefresh == null && DateTimeOffset.UtcNow >= _identityRefreshAt)
+      StartIdentityRefresh();
     if (_changes?.TakeChange() == true)
     {
       _pendingToast = true;
@@ -213,6 +242,7 @@ public sealed class SubmissionFeature : IDisposable
     }
     if (
       _account != null
+      && _account.CanSubmit
       && (_attempt == null || _attempt.Finished)
       && DateTimeOffset.UtcNow >= _retryAt
       && (_preflight == null || (_preflight.Finished && !_preflight.IsReady))
@@ -243,6 +273,7 @@ public sealed class SubmissionFeature : IDisposable
     if (
       _disposed
       || _account == null
+      || !_account.CanSubmit
       || !_levelId.HasValue
       || string.IsNullOrEmpty(_path)
       || TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true
@@ -264,8 +295,86 @@ public sealed class SubmissionFeature : IDisposable
   {
     _changes?.Dispose();
     _changes = null;
-    if (_account != null && _levelId.HasValue)
+    if (_account?.CanSubmit == true && _levelId.HasValue)
       _changes = new TUFReplay.Submission.Transport.LevelChangeListener(_account, _levelId.Value);
+  }
+
+  private void StartIdentityRefresh()
+  {
+    if (_account == null || _identityRefresh != null)
+      return;
+
+    SubmissionAccount account = _account;
+    _identityRefreshAt = DateTimeOffset.UtcNow.AddSeconds(20);
+    _identityRefreshAccount = account;
+    _identityRefreshCancellation = new CancellationTokenSource();
+    CancellationToken cancellation = _identityRefreshCancellation.Token;
+    _identityRefresh = Task.Run(async () =>
+      await Records.GetAccountIdentity(account, cancellation).ConfigureAwait(false)
+    );
+    _ = _identityRefresh.ContinueWith(
+      completed => _ = completed.Exception,
+      CancellationToken.None,
+      TaskContinuationOptions.ExecuteSynchronously | TaskContinuationOptions.OnlyOnFaulted,
+      TaskScheduler.Default
+    );
+  }
+
+  private void CompleteIdentityRefresh()
+  {
+    Task<SubmissionAccountIdentity> refresh = _identityRefresh;
+    if (refresh == null || !refresh.IsCompleted)
+      return;
+
+    SubmissionAccount account = _identityRefreshAccount;
+    _identityRefresh = null;
+    _identityRefreshAccount = null;
+    _identityRefreshCancellation?.Dispose();
+    _identityRefreshCancellation = null;
+    if (!ReferenceEquals(account, _account))
+      return;
+
+    if (refresh.Status == TaskStatus.RanToCompletion)
+    {
+      account.ApplyIdentity(refresh.Result);
+      SubmissionDebugTelemetry.Publish("TUF account eligibility refreshed");
+    }
+    else
+    {
+      if (refresh.IsFaulted)
+        _ = refresh.Exception;
+      account.MarkIdentityUnavailable();
+      SubmissionDebugTelemetry.Publish("TUF account eligibility could not be confirmed");
+    }
+    SyncSubmissionAuthorization();
+  }
+
+  private void SyncSubmissionAuthorization()
+  {
+    bool canSubmit = _account?.CanSubmit == true;
+    if (canSubmit == _submissionAuthorized)
+      return;
+
+    _submissionAuthorized = canSubmit;
+    if (canSubmit)
+    {
+      SubmissionDebugTelemetry.Publish("Trusted-tester submission access confirmed");
+      WatchLevel();
+      Prepare();
+      return;
+    }
+
+    if (_account != null)
+      SubmissionDebugTelemetry.Publish("Submission access unavailable; capture is paused");
+    _session?.AbortEvidence("submission_permission_unavailable");
+    _session = null;
+    _clearPending = false;
+    _preflight?.Dispose();
+    _preflight = null;
+    if (_attempt != null && !_attempt.Finished)
+      _attempt.Dispose();
+    _changes?.Dispose();
+    _changes = null;
   }
 
   public void Dispose()

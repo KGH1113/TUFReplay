@@ -16,9 +16,50 @@ jobs:
   deploy-main:
     name: Deploy main to home server
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tuf_replay
+          POSTGRES_PASSWORD: tuf_replay_dev
+          POSTGRES_DB: tuf_replay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tuf_replay -d tuf_replay_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
+      QUEUE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
+      REDIS_INGEST_URL: redis://127.0.0.1:6379/1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@1.97.1
+        with:
+          components: rustfmt, clippy
+
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path server/Cargo.toml --all -- --check
+
+      - name: Check Rust lint
+        run: cargo clippy --manifest-path server/Cargo.toml --locked --all-targets -- -D warnings
+
+      - name: Test Rust server
+        run: cargo test --manifest-path server/Cargo.toml --locked
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -39,6 +80,32 @@ jobs:
           VITE_WEB_ADOFAI_EMBED_URL: https://web-adofai.impl1113.dev/embed/chart
         run: bun run web:build
 
+      - name: Build web container
+        run: docker build --file Dockerfile --tag tuf-replay-web:ci .
+
+      - name: Build Rust server container
+        run: >-
+          docker build
+          --file server/Dockerfile
+          --tag tuf-replay-server:ci
+          --build-arg "BUILD_SHA=${GITHUB_SHA}"
+          server
+
+      - name: Validate Tailscale deployment secrets
+        env:
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$TS_OAUTH_CLIENT_ID" ]]; then
+            echo "Missing required Actions secret: TS_OAUTH_CLIENT_ID" >&2
+            exit 1
+          fi
+          if [[ -z "$TS_OAUTH_SECRET" ]]; then
+            echo "Missing required Actions secret: TS_OAUTH_SECRET" >&2
+            exit 1
+          fi
+
       - name: Connect to Tailscale (Guhyeon Kang's Tailnet)
         uses: tailscale/github-action@v4
         with:
@@ -51,25 +118,18 @@ jobs:
         run: |
           set -euo pipefail
           tailscale status
-          tailscale ssh kgh@kgh "whoami && hostname"
+          tailscale ssh kgh@kgh "id -un"
 
-      - name: Deploy web app
+      - name: Deploy web app and Rust API
         run: |
           set -euo pipefail
-          tailscale ssh kgh@kgh 'bash -s' <<'REMOTE'
+          tailscale ssh kgh@kgh "bash -s -- '${GITHUB_SHA}'" <<'REMOTE'
           set -euo pipefail
 
           DEPLOY_DIR="/srv/TUFReplay"
-          SERVICE_UNIT="tuf-replay-web.service"
+          DEPLOY_SHA="$1"
+          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
           REPO_URL="https://github.com/KGH1113/TUFReplay.git"
-          UNIT_SOURCE="$DEPLOY_DIR/deploy/systemd/$SERVICE_UNIT"
-          USER_SYSTEMD_DIR="$HOME/.config/systemd/user"
-          UNIT_TARGET="$USER_SYSTEMD_DIR/$SERVICE_UNIT"
-          USER_RUNTIME_DIR="/run/user/$(id -u)"
-
-          if [ -z "${XDG_RUNTIME_DIR:-}" ] && [ -d "$USER_RUNTIME_DIR" ]; then
-            export XDG_RUNTIME_DIR="$USER_RUNTIME_DIR"
-          fi
 
           require_command() {
             command -v "$1" >/dev/null || {
@@ -79,13 +139,8 @@ jobs:
           }
 
           require_command git
-          require_command docker
-          require_command systemctl
-
-          docker compose version >/dev/null || {
-            echo "Missing required Docker Compose plugin: docker compose"
-            exit 1
-          }
+          require_command stat
+          require_command python3
 
           test -d "$DEPLOY_DIR" || {
             echo "Missing deploy directory: $DEPLOY_DIR"
@@ -100,29 +155,37 @@ jobs:
             exit 1
           }
 
+          test -f .env.production || {
+            echo "Missing /srv/TUFReplay/.env.production; create it from deploy/production.env.example first."
+            exit 1
+          }
+
+          ENV_MODE="$(stat -c '%a' .env.production)"
+          case "$ENV_MODE" in
+            600|400) ;;
+            *)
+              echo ".env.production permissions must be 600 or 400."
+              exit 1
+              ;;
+          esac
+
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "Tracked changes exist in $DEPLOY_DIR; refusing to reset the checkout."
+            exit 1
+          fi
+
           git fetch origin main
+          if [[ "$(git rev-parse origin/main)" != "$DEPLOY_SHA" ]]; then
+            echo "The tested revision is not current main; rerun deployment from main." >&2
+            exit 1
+          fi
+          if ! git show "$DEPLOY_SHA:deploy/scripts/validate-production-env.py" | python3 - .env.production; then
+            echo "Production environment preflight failed; checkout was not changed." >&2
+            exit 1
+          fi
+
           git checkout main
-          git reset --hard origin/main
+          git reset --hard "$DEPLOY_SHA"
 
-          test -f docker-compose.yml || {
-            echo "Missing docker-compose.yml in $DEPLOY_DIR"
-            exit 1
-          }
-
-          test -f Dockerfile || {
-            echo "Missing Dockerfile in $DEPLOY_DIR"
-            exit 1
-          }
-
-          test -f "$UNIT_SOURCE" || {
-            echo "Missing systemd unit: $UNIT_SOURCE"
-            exit 1
-          }
-
-          mkdir -p "$USER_SYSTEMD_DIR"
-          install -m 0644 "$UNIT_SOURCE" "$UNIT_TARGET"
-          systemctl --user daemon-reload
-          systemctl --user enable "$SERVICE_UNIT"
-          systemctl --user restart "$SERVICE_UNIT"
-          systemctl --user --no-pager --full status "$SERVICE_UNIT"
+          bash deploy/scripts/deploy-production.sh "$DEPLOY_SHA"
           REMOTE

@@ -47,9 +47,13 @@ public sealed class WebSocketUploadConnection : IUploadConnection
     WebSocketReceiveResult message;
     do
     {
-      if (total == bytes.Length) throw new InvalidDataException("Oversized upload control.");
-      message = await _socket.ReceiveAsync(new ArraySegment<byte>(bytes, total, bytes.Length - total), timeout.Token).ConfigureAwait(false);
-      if (message.MessageType != WebSocketMessageType.Text) throw new IOException("Upload socket closed or sent invalid control.");
+      if (total == bytes.Length)
+        throw new InvalidDataException("Oversized upload control.");
+      message = await _socket
+        .ReceiveAsync(new ArraySegment<byte>(bytes, total, bytes.Length - total), timeout.Token)
+        .ConfigureAwait(false);
+      if (message.MessageType != WebSocketMessageType.Text)
+        throw new IOException("Upload socket closed or sent invalid control.");
       total += message.Count;
     } while (!message.EndOfMessage);
     return JObject.Parse(Encoding.UTF8.GetString(bytes, 0, total));

@@ -33,7 +33,8 @@ public sealed class UploadRecoveryWindow
 
   public TimeSpan Failed()
   {
-    if (!_started.HasValue) _started = _now();
+    if (!_started.HasValue)
+      _started = _now();
     EnsureWithinDeadline();
     _retries = Math.Min(_retries + 1, 10);
     return TimeSpan.FromMilliseconds(Math.Min(200 * _retries, Remaining.TotalMilliseconds));
@@ -43,7 +44,8 @@ public sealed class UploadRecoveryWindow
   {
     EnsureWithinDeadline();
     var deadline = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-    if (_started.HasValue) deadline.CancelAfter(Remaining);
+    if (_started.HasValue)
+      deadline.CancelAfter(Remaining);
     return deadline;
   }
 

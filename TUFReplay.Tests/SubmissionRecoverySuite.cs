@@ -24,7 +24,10 @@ internal static class SubmissionRecoverySuite
     now = TimeSpan.FromMilliseconds(29980);
     Require(window.Failed() <= TimeSpan.FromMilliseconds(20), "backoff is capped by remaining time");
     using (var attempt = window.Attempt(CancellationToken.None))
-      Require(attempt.Token.WaitHandle.WaitOne(1000), "handshake cancellation uses remaining budget, not a fresh 30 seconds");
+      Require(
+        attempt.Token.WaitHandle.WaitOne(1000),
+        "handshake cancellation uses remaining budget, not a fresh 30 seconds"
+      );
     using (var cancelled = new CancellationTokenSource())
     {
       cancelled.Cancel();
@@ -36,11 +39,20 @@ internal static class SubmissionRecoverySuite
 
   private static void ExpectExpired(Action action)
   {
-    try { action(); }
-    catch (UploadRejectedException error) when (error.Message == "upload_connection_expired") { return; }
+    try
+    {
+      action();
+    }
+    catch (UploadRejectedException error) when (error.Message == "upload_connection_expired")
+    {
+      return;
+    }
     throw new InvalidOperationException("Recovery at or after the deadline must be rejected");
   }
 
   private static void Require(bool condition, string message)
-  { if (!condition) throw new InvalidOperationException(message); }
+  {
+    if (!condition)
+      throw new InvalidOperationException(message);
+  }
 }

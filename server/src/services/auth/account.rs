@@ -35,5 +35,9 @@ pub async fn authorize_grant(
     grant: Option<uuid::Uuid>,
 ) -> Result<()> {
     let grant = grant.ok_or_else(|| Error::Unauthorized("oauth_grant_required".into()))?;
-    IdentityService::get(ctx)?.0.authorize(owner, grant).await
+    let identity = IdentityService::get(ctx)?.0.authorize(owner, grant).await?;
+    if identity.owner_id != owner || identity.grant_id != grant {
+        return Err(Error::Unauthorized("identity_mismatch".into()));
+    }
+    identity.require_can_submit()
 }

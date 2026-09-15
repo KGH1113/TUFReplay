@@ -16,23 +16,39 @@ public sealed class SubmissionPreflight : IDisposable
   private int _finished;
   public bool Finished => Volatile.Read(ref _finished) != 0;
 
-  public SubmissionPreflight(RunIssuanceClient api, SubmissionAccount account, string path,
-    int levelId, string gameVersion, string modVersion)
+  public SubmissionPreflight(
+    RunIssuanceClient api,
+    SubmissionAccount account,
+    string path,
+    int levelId,
+    string gameVersion,
+    string modVersion
+  )
   {
-    _ = Task.Run(async () => {
+    _ = Task.Run(async () =>
+    {
       try
       {
         var level = InstalledLevelReader.Read(path, levelId);
         var run = await api.Issue(account, level, gameVersion, modVersion, _cancellation.Token).ConfigureAwait(false);
-        if (!_cancellation.IsCancellationRequested) Volatile.Write(ref _ready, run);
+        if (!_cancellation.IsCancellationRequested)
+          Volatile.Write(ref _ready, run);
       }
       catch (OperationCanceledException) { }
-      catch (Exception) { Volatile.Write(ref _error, "level_preparation_failed"); }
-      finally { Volatile.Write(ref _finished, 1); }
+      catch (Exception)
+      {
+        Volatile.Write(ref _error, "level_preparation_failed");
+      }
+      finally
+      {
+        Volatile.Write(ref _finished, 1);
+      }
     });
   }
 
   public IssuedRun Take() => Interlocked.Exchange(ref _ready, null);
+
   public bool IsReady => Volatile.Read(ref _ready)?.HasRemainingLease(TimeSpan.FromSeconds(5)) == true;
+
   public void Dispose() => _cancellation.Cancel();
 }

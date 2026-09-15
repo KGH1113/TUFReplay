@@ -7,6 +7,10 @@ namespace TUFReplay;
 
 public sealed class TUFReplaySetting
 {
+  public const string DefaultAutoSubmissionOAuthClientId = "1dc9ff206f5301c9e7ef4ba9b209c7c7";
+  public const string DefaultAutoSubmissionTufApiUrl = "https://api.tuforums.com";
+  public const string DefaultAutoSubmissionServerUrl = "https://tufreplay.impl1113.dev";
+  public const string DefaultAutoSubmissionOAuthRedirectUri = "https://tufreplay.impl1113.dev/oauth/callback";
   public const int CurrentMicrophoneOffsetConventionVersion = 1;
   public const int MinMicrophoneOffsetMs = -500;
   public const int MaxMicrophoneOffsetMs = 500;
@@ -15,10 +19,10 @@ public sealed class TUFReplaySetting
 
   public bool AutoRecord { get; set; } = true;
   public bool AutoSubmissionDisabled { get; set; }
-  public string AutoSubmissionOAuthClientId { get; set; } = "";
-  public string AutoSubmissionServerUrl { get; set; } = "";
-  public string AutoSubmissionTufApiUrl { get; set; } = "https://api.tuforums.com";
-  public string AutoSubmissionOAuthRedirectUri { get; set; } = "https://tufreplay.impl1113.dev/oauth/callback";
+  public string AutoSubmissionOAuthClientId { get; set; } = DefaultAutoSubmissionOAuthClientId;
+  public string AutoSubmissionServerUrl { get; set; } = DefaultAutoSubmissionServerUrl;
+  public string AutoSubmissionTufApiUrl { get; set; } = DefaultAutoSubmissionTufApiUrl;
+  public string AutoSubmissionOAuthRedirectUri { get; set; } = DefaultAutoSubmissionOAuthRedirectUri;
   public bool MicrophoneEnabled { get; set; } = true;
   public string MicrophoneDeviceId { get; set; }
   public int MicrophoneOffsetMs { get; set; }

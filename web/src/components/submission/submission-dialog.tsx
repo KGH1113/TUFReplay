@@ -18,7 +18,32 @@ export function SubmissionDialog({ disabled = false }: { disabled?: boolean }) {
   const { t } = useTranslation("submission");
   const { status, connect, disconnect, setDisabled } = useSubmissionSettings(!disabled);
   const connected = status.data?.connected === true;
-  const error = connect.error ?? disconnect.error ?? setDisabled.error ?? status.error;
+  const username = status.data?.username?.trim();
+  const nickname = status.data?.nickname?.trim();
+  const accountName =
+    nickname && username ? `${nickname} (@${username})` : nickname || username || t("connected");
+  const eligibilityKey = status.isError
+    ? status.data
+      ? "eligibility.stale"
+      : "eligibility.unavailable"
+    : !status.data || status.data.accountStatus === "checking"
+      ? "eligibility.checking"
+      : status.data.accountStatus === "stale"
+        ? "eligibility.stale"
+        : status.data.accountStatus === "unavailable"
+          ? "eligibility.unavailable"
+          : status.data.canSubmit
+            ? "eligibility.allowed"
+            : status.data.denialReason === "auto_submission_disabled"
+              ? "eligibility.disabledByServer"
+              : status.data.denialReason === "auto_submission_tester_required"
+                ? "eligibility.testerRequired"
+                : "eligibility.notAuthorized";
+  const error =
+    connect.error ??
+    disconnect.error ??
+    setDisabled.error ??
+    (connected ? undefined : status.error);
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -55,7 +80,7 @@ export function SubmissionDialog({ disabled = false }: { disabled?: boolean }) {
             <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-medium">{t("account")}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{t("connected")}</p>
+                <p className="mt-0.5 truncate text-xs text-muted-foreground">{accountName}</p>
               </div>
               <Button
                 variant="ghost"
@@ -66,6 +91,13 @@ export function SubmissionDialog({ disabled = false }: { disabled?: boolean }) {
                 {t("disconnect")}
               </Button>
             </div>
+            <p
+              role="status"
+              aria-live="polite"
+              className="mx-4 mb-3 rounded-lg bg-background/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground ring-1 ring-foreground/8"
+            >
+              {t(eligibilityKey)}
+            </p>
             <div className="mx-4 h-px bg-foreground/8" />
             <div className="flex min-h-20 items-center justify-between gap-5 px-4 py-3">
               <label className="min-w-0 cursor-pointer" htmlFor="auto-submission-capture">

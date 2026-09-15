@@ -15,7 +15,7 @@ import { useSubmissionRun } from "@/hooks/submission/use-submission";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
-import { canSubmit } from "@/models/submission/submission-model";
+import { canSubmit, hasSubmissionPermission } from "@/models/submission/submission-model";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import {
@@ -65,7 +65,7 @@ export function RunActionsMenu({
   const submitted =
     submission.run.data?.status === "submitted" || submission.run.data?.external_pass_id != null;
   const submissionReady =
-    submission.status.data?.connected === true &&
+    hasSubmissionPermission(submission.status.data, submission.status.isError) &&
     submission.run.data !== undefined &&
     canSubmit(submission.run.data);
 

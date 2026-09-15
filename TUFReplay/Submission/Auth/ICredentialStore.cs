@@ -14,8 +14,10 @@ public static class CredentialStore
 {
   public static ICredentialStore Create(string account)
   {
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX)) return new MacCredentialStore(account);
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows)) return new WindowsCredentialStore(account);
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+      return new MacCredentialStore(account);
+    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+      return new WindowsCredentialStore(account);
     throw new PlatformNotSupportedException("secure_credentials_unavailable");
   }
 }

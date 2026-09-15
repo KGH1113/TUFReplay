@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "prepare": "bun src/fixtures/prepare.ts",
+    "prepare:fixtures": "bun src/fixtures/prepare.ts",
     "dev": "bun src/launcher.ts",
     "test": "bun test tests/unit.test.ts",
     "test:e2e": "bun src/test-e2e.ts",

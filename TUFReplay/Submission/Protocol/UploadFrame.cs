@@ -14,8 +14,12 @@ public sealed class UploadFrame
       throw new ArgumentException("Invalid upload frame.");
     Sequence = sequence;
     Bytes = new byte[20 + payload.Length];
-    Bytes[0] = (byte)'T'; Bytes[1] = (byte)'U'; Bytes[2] = (byte)'F'; Bytes[3] = (byte)'R';
-    Bytes[4] = 1; Bytes[5] = kind;
+    Bytes[0] = (byte)'T';
+    Bytes[1] = (byte)'U';
+    Bytes[2] = (byte)'F';
+    Bytes[3] = (byte)'R';
+    Bytes[4] = 1;
+    Bytes[5] = kind;
     BinaryPrimitives.WriteInt64BigEndian(Bytes.AsSpan(8, 8), sequence);
     BinaryPrimitives.WriteInt32BigEndian(Bytes.AsSpan(16, 4), payload.Length);
     payload.CopyTo(Bytes, 20);

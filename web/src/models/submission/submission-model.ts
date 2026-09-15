@@ -9,6 +9,18 @@ export type SubmissionStatus = z.infer<typeof submissionStatusSchema>;
 export type SubmissionRun = z.infer<typeof submissionRunSchema>;
 export type SubmissionPage = z.infer<typeof submissionPageSchema>;
 
+export function hasSubmissionPermission(
+  status: SubmissionStatus | undefined,
+  statusRequestFailed = false,
+) {
+  return (
+    !statusRequestFailed &&
+    status?.connected === true &&
+    status.accountStatus === "available" &&
+    status.canSubmit === true
+  );
+}
+
 export function canSubmit(run: SubmissionRun) {
   if (run.status === "registration_error") return true;
   if (run.evidence_expires_at && Date.parse(run.evidence_expires_at) <= Date.now()) return false;

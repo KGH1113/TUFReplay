@@ -43,7 +43,12 @@ export function createSubmissionApi(
           z.object({ authorizationUrl: z.url() }),
         );
         navigate(result.authorizationUrl);
-        return { connected: false, configured: true, disabled: false, state: "authorizing" };
+        return submissionStatusSchema.parse({
+          connected: false,
+          configured: true,
+          disabled: false,
+          state: "authorizing",
+        });
       } catch (error) {
         navigate(null);
         throw error;
@@ -56,7 +61,12 @@ export function createSubmissionApi(
         {},
         z.object({ disconnected: z.literal(true) }),
       );
-      return { connected: false, configured: true, disabled: false, state: "disconnected" };
+      return submissionStatusSchema.parse({
+        connected: false,
+        configured: true,
+        disabled: false,
+        state: "disconnected",
+      });
     },
     async status() {
       await completeCallback();

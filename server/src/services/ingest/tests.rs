@@ -69,7 +69,8 @@ fn settings(
 ) -> RunIngestSettings {
     RunIngestSettings {
         redis_key_prefix: String::new(),
-        redis_url: "redis://127.0.0.1:6379/1".to_owned(),
+        redis_url: std::env::var("TEST_REDIS_URL")
+            .unwrap_or_else(|_| "redis://127.0.0.1:6379/1".to_owned()),
         active_ttl_seconds,
         sealed_ttl_seconds: 60,
         hard_duration_seconds: 60,

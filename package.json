@@ -7,7 +7,7 @@
     "tools/auto-submission-e2e"
   ],
   "scripts": {
-    "e2e:prepare": "bun run --cwd tools/auto-submission-e2e prepare",
+    "e2e:prepare": "bun run --cwd tools/auto-submission-e2e prepare:fixtures",
     "e2e:reset": "bun run tools/auto-submission-e2e/src/reset.ts",
     "e2e:inspect": "bun run tools/auto-submission-e2e/src/test-lifecycle.ts",
     "e2e:dev": "bun run --cwd tools/auto-submission-e2e dev",

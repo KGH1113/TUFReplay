@@ -3,7 +3,9 @@ using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using TUFReplay.Activity.Models;
+using TUFReplay.Submission.Capture;
 
 namespace TUFReplay.Replay.Models;
 
@@ -52,6 +54,7 @@ public class RecordedRunPayload
   public string GameVersion;
   public RunJudgmentSystem JudgmentSystem;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
+  public SubmissionResultSnapshot SubmissionResult;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
   public string PitchSource;
@@ -65,64 +68,69 @@ public class RecordedRunPayload
     string endedAtUtc = null
   )
   {
-    var meta = new
-    {
-      metadataVersion = 1,
-      tufLevelId = TufLevelId,
-      startedAtUtc = StartedAtUtc,
-      endedAtUtc = endedAtUtc ?? EndedAtUtc,
-      gameplayStartSongPosition = GameplayStartSongPosition,
-      wonTimeUs = WonTimeUs,
-      terminalTimeUs = terminalTimeUs ?? TerminalTimeUs,
-      noFailMode = NoFailMode,
-      judgmentDifficulty = (int?)JudgmentDifficulty,
-      keyCount = SubmissionKeyCount,
-      holdBehavior = SubmissionHoldBehavior,
-      submissionRunId = SubmissionRunId,
-      gameVersion = GameVersion,
-      levelPitchPercent = LevelPitchPercent,
-      pitchSpeedMultiplier = PitchSpeedMultiplier,
-      effectivePitch = EffectivePitch,
-      judgmentSystem = JudgmentSystem.ToString(),
-      pitchSource = PitchSource,
-      inputFormat = NativeInputFormatV2,
-      inputTimeBase = InputTimeBase,
-      inputCapture = InputCapture,
-      inputPendingMax = InputPendingMax,
-      inputPendingMaxDurationUs = InputPendingMaxDurationUs,
-      inputAnchorMaxDurationUs = InputAnchorMaxDurationUs,
-      inputInvalidAnchors = InputInvalidAnchors,
-      inputDiscontinuities = InputDiscontinuities,
-      inputLastDiscontinuity = InputLastDiscontinuity,
-      inputUnmappedEvents = InputUnmappedEvents,
-      inputDegradedEvents = InputDegradedEvents,
-      inputDegradedReason = InputDegradedReason,
-      inputFallbackReason = InputFallbackReason,
-      inputReceived = InputReceived,
-      inputRecorded = InputRecorded,
-      inputRepeatDropped = InputRepeatDropped,
-      inputOverflowDropped = InputOverflowDropped,
-      inputResyncs = InputResyncs,
-      inputReadFailures = InputReadFailures,
-      inputMaxQueueDepth = InputMaxQueueDepth,
-      inputNativeCallbacks = InputNativeCallbacks,
-      inputNativeRepeatDropped = InputNativeRepeatDropped,
-      inputNativeUnmapped = InputNativeUnmapped,
-      inputNativeDevices = InputNativeDevices,
-      inputNativeQueueDepth = InputNativeQueueDepth,
-      inputKeySpace = "os-native-key-code",
-      inputNativePlatform = NativeInputPlatformName(),
-      inputCount = inputCount ?? Inputs.Count,
-      gameplayHashVersion = GameplayHashVersion,
-      gameplayHashHex = GameplayHash == null
-        ? null
-        : System.BitConverter.ToString(GameplayHash).Replace("-", "").ToLowerInvariant(),
-      hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection-resolvedHitMargin-timeUs",
-      hitContextCount = hitContextCount ?? HitContexts.Count,
-      micRecord = false,
-    };
+    var meta = JObject.FromObject(
+      new
+      {
+        metadataVersion = 1,
+        tufLevelId = TufLevelId,
+        startedAtUtc = StartedAtUtc,
+        endedAtUtc = endedAtUtc ?? EndedAtUtc,
+        gameplayStartSongPosition = GameplayStartSongPosition,
+        wonTimeUs = WonTimeUs,
+        terminalTimeUs = terminalTimeUs ?? TerminalTimeUs,
+        noFailMode = NoFailMode,
+        judgmentDifficulty = (int?)JudgmentDifficulty,
+        keyCount = SubmissionKeyCount,
+        holdBehavior = SubmissionHoldBehavior,
+        submissionRunId = SubmissionRunId,
+        gameVersion = GameVersion,
+        levelPitchPercent = LevelPitchPercent,
+        pitchSpeedMultiplier = PitchSpeedMultiplier,
+        effectivePitch = EffectivePitch,
+        judgmentSystem = JudgmentSystem.ToString(),
+        pitchSource = PitchSource,
+        inputFormat = NativeInputFormatV2,
+        inputTimeBase = InputTimeBase,
+        inputCapture = InputCapture,
+        inputPendingMax = InputPendingMax,
+        inputPendingMaxDurationUs = InputPendingMaxDurationUs,
+        inputAnchorMaxDurationUs = InputAnchorMaxDurationUs,
+        inputInvalidAnchors = InputInvalidAnchors,
+        inputDiscontinuities = InputDiscontinuities,
+        inputLastDiscontinuity = InputLastDiscontinuity,
+        inputUnmappedEvents = InputUnmappedEvents,
+        inputDegradedEvents = InputDegradedEvents,
+        inputDegradedReason = InputDegradedReason,
+        inputFallbackReason = InputFallbackReason,
+        inputReceived = InputReceived,
+        inputRecorded = InputRecorded,
+        inputRepeatDropped = InputRepeatDropped,
+        inputOverflowDropped = InputOverflowDropped,
+        inputResyncs = InputResyncs,
+        inputReadFailures = InputReadFailures,
+        inputMaxQueueDepth = InputMaxQueueDepth,
+        inputNativeCallbacks = InputNativeCallbacks,
+        inputNativeRepeatDropped = InputNativeRepeatDropped,
+        inputNativeUnmapped = InputNativeUnmapped,
+        inputNativeDevices = InputNativeDevices,
+        inputNativeQueueDepth = InputNativeQueueDepth,
+        inputKeySpace = "os-native-key-code",
+        inputNativePlatform = NativeInputPlatformName(),
+        inputCount = inputCount ?? Inputs.Count,
+        gameplayHashVersion = GameplayHashVersion,
+        gameplayHashHex = GameplayHash == null
+          ? null
+          : System.BitConverter.ToString(GameplayHash).Replace("-", "").ToLowerInvariant(),
+        hitContextFormat = "csv-creplay-currentFloorId-currAngle-overloadCounter-noFailHit-isAuto-nextFloorAuto-cachedAngle-targetExitAngle-midspinInfiniteMargin-rdcAuto-curFreeRoamSection-resolvedHitMargin-timeUs",
+        hitContextCount = hitContextCount ?? HitContexts.Count,
+        micRecord = false,
+      }
+    );
 
-    return JsonConvert.SerializeObject(meta, Formatting.None);
+    if (SubmissionResult != null)
+      meta["submissionResult"] = JObject.FromObject(SubmissionResult);
+
+    return meta.ToString(Formatting.None);
   }
 
   private static string NativeInputPlatformName()

@@ -36,7 +36,6 @@ interface ActivityWireFixture {
   }>;
   getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAppSessions(offset: number, limit: number): Promise<ActivityAppSession[]>;
-  getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAllAppSessions(onPage?: (items: ActivityAppSession[]) => void): Promise<ActivityAppSession[]>;
   getLevelSession(id: string): Promise<ActivityLevelSessionOverview>;
   getLogicalLevel(id: string): Promise<ActivityLogicalLevelOverview>;

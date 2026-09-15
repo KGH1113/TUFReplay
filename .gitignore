@@ -13,6 +13,7 @@ web/dist/
 
 # Local Environment
 .env
+.env.production
 web/.env
 server/storage/
 

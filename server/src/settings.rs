@@ -13,6 +13,16 @@ pub struct SubmissionSettings {
     pub ingest: RunIngestSettings,
     #[serde(flatten)]
     pub catalog: TufCatalogSettings,
+    #[serde(default)]
+    pub validation_mode: SubmissionValidationMode,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SubmissionValidationMode {
+    #[default]
+    Unavailable,
+    TrustedTester,
 }
 
 impl Settings {
@@ -52,5 +62,50 @@ impl Settings {
         ctx.shared_store
             .get::<Self>()
             .ok_or_else(|| Error::Message("submission settings unavailable".into()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{SubmissionSettings, SubmissionValidationMode};
+
+    #[test]
+    fn validation_mode_defaults_to_unavailable_and_rejects_unknown_values() {
+        assert_eq!(
+            serde_json::from_value::<SubmissionValidationMode>(serde_json::json!("unavailable"))
+                .unwrap(),
+            SubmissionValidationMode::Unavailable
+        );
+        assert_eq!(
+            serde_json::from_value::<SubmissionValidationMode>(serde_json::json!("trusted_tester"))
+                .unwrap(),
+            SubmissionValidationMode::TrustedTester
+        );
+        assert!(
+            serde_json::from_value::<SubmissionValidationMode>(serde_json::json!("fixture_accept"))
+                .is_err()
+        );
+
+        let settings: SubmissionSettings = serde_json::from_value(serde_json::json!({
+            "redis_url": "redis://localhost/1",
+            "active_ttl_seconds": 60,
+            "sealed_ttl_seconds": 120,
+            "hard_duration_seconds": 300,
+            "max_chunk_bytes": 1024,
+            "max_session_bytes": 4096,
+            "heartbeat_interval_ms": 100,
+            "tuf_api_base_url": "http://localhost",
+            "artifact_root": "/tmp/tuf-replay-test",
+            "artifact_max_download_bytes": 1024,
+            "artifact_max_extracted_bytes": 2048,
+            "artifact_max_files": 4,
+            "artifact_hydration_timeout_seconds": 5,
+            "artifact_max_concurrent_hydrations": 1
+        }))
+        .unwrap();
+        assert_eq!(
+            settings.validation_mode,
+            SubmissionValidationMode::Unavailable
+        );
     }
 }
