@@ -2,19 +2,131 @@ name: Deploy (Guhyeon Kang's Home Server)
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - dev
+      - feat/auto-submission
   workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: deploy-main
+  group: home-deploy-${{ github.ref_name == 'feat/auto-submission' && 'auto-submission' || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
-  deploy-main:
-    name: Deploy main to home server
+  preflight:
+    name: Validate deployment commit
+    runs-on: ubuntu-latest
+    outputs:
+      environment: ${{ steps.target.outputs.environment }}
+      branch: ${{ steps.target.outputs.branch }}
+      sha: ${{ steps.target.outputs.sha }}
+    steps:
+      - name: Checkout event commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - name: Validate branch and full commit SHA
+        id: target
+        env:
+          EVENT_REF: ${{ github.ref }}
+          EVENT_SHA: ${{ github.sha }}
+        run: |
+          set -Eeuo pipefail
+
+          case "$EVENT_REF" in
+            refs/heads/main)
+              deploy_environment=main
+              deploy_branch=main
+              ;;
+            refs/heads/dev)
+              deploy_environment=dev
+              deploy_branch=dev
+              ;;
+            refs/heads/feat/auto-submission)
+              deploy_environment=auto-submission
+              deploy_branch=feat/auto-submission
+              ;;
+            *)
+              echo "::error::Unsupported deployment ref: $EVENT_REF"
+              exit 64
+              ;;
+          esac
+
+          if [[ ! "$EVENT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Deployment requires a full lowercase Git commit SHA."
+            exit 64
+          fi
+
+          checkout_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          if [[ "$checkout_sha" != "$EVENT_SHA" ]]; then
+            echo "::error::The checked out commit does not match the GitHub event SHA."
+            exit 1
+          fi
+
+          git fetch --force --no-tags --depth=1 origin "$deploy_branch"
+          branch_tip_sha="$(git rev-parse --verify FETCH_HEAD)"
+          if [[ "$branch_tip_sha" != "$EVENT_SHA" ]]; then
+            echo "::error::The event commit is no longer the current branch tip."
+            exit 1
+          fi
+
+          {
+            printf 'environment=%s\n' "$deploy_environment"
+            printf 'branch=%s\n' "$deploy_branch"
+            printf 'sha=%s\n' "$EVENT_SHA"
+          } >> "$GITHUB_OUTPUT"
+
+  source_checks:
+    name: Web and C# source checks
+    needs: preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Check C# formatting
+        run: dotnet csharpier check TUFReplay TUFReplay.Tests
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run web tests
+        run: bun run web:test
+
+      - name: Typecheck web workspace
+        run: bun run web:typecheck
+
+      - name: Check web formatting and lint
+        run: bun run web:biome
+
+      - name: Build web workspace
+        env:
+          VITE_WEB_ADOFAI_EMBED_URL: https://web-adofai.impl1113.dev/embed/chart
+        run: bun run web:build
+
+  auto_server_checks:
+    name: Auto-submission Rust checks
+    needs: preflight
+    if: ${{ needs.preflight.outputs.environment == 'auto-submission' }}
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -44,13 +156,28 @@ jobs:
       QUEUE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
       REDIS_INGEST_URL: redis://127.0.0.1:6379/1
     steps:
-      - name: Checkout
+      - name: Checkout verified commit
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 1
 
-      - name: Setup Rust
+      - name: Setup Rust 1.97.1
         uses: dtolnay/rust-toolchain@1.97.1
         with:
           components: rustfmt, clippy
+
+      - name: Cache Rust dependencies and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+            server/target
+          key: ${{ runner.os }}-rust-1.97.1-${{ hashFiles('server/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-1.97.1-
 
       - name: Check Rust formatting
         run: cargo fmt --manifest-path server/Cargo.toml --all -- --check
@@ -61,52 +188,140 @@ jobs:
       - name: Test Rust server
         run: cargo test --manifest-path server/Cargo.toml --locked
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+  build_and_deploy:
+    name: Build and deploy tested images
+    needs:
+      - preflight
+      - source_checks
+      - auto_server_checks
+    if: >-
+      ${{ !cancelled() &&
+          needs.preflight.result == 'success' &&
+          needs.source_checks.result == 'success' &&
+          (needs.auto_server_checks.result == 'success' ||
+          needs.auto_server_checks.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout verified commit
+        uses: actions/checkout@v4
         with:
-          bun-version: 1.3.11
+          ref: ${{ needs.preflight.outputs.sha }}
+          fetch-depth: 1
 
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Biome check
-        run: bun run web:biome
-
-      - name: Typecheck
-        run: bun run web:typecheck
-
-      - name: Build
+      - name: Build tagged linux/amd64 deployment images
         env:
-          VITE_WEB_ADOFAI_EMBED_URL: https://web-adofai.impl1113.dev/embed/chart
-        run: bun run web:build
-
-      - name: Build web container
-        run: docker build --file Dockerfile --tag tuf-replay-web:ci .
-
-      - name: Build Rust server container
-        run: >-
-          docker build
-          --file server/Dockerfile
-          --tag tuf-replay-server:ci
-          --build-arg "BUILD_SHA=${GITHUB_SHA}"
-          server
-
-      - name: Validate Tailscale deployment secrets
-        env:
-          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          TS_OAUTH_SECRET: ${{ secrets.TS_OAUTH_SECRET }}
+          DEPLOY_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          DEPLOY_BRANCH: ${{ needs.preflight.outputs.branch }}
+          DEPLOY_SHA: ${{ needs.preflight.outputs.sha }}
         run: |
-          set -euo pipefail
-          if [[ -z "$TS_OAUTH_CLIENT_ID" ]]; then
-            echo "Missing required Actions secret: TS_OAUTH_CLIENT_ID" >&2
-            exit 1
-          fi
-          if [[ -z "$TS_OAUTH_SECRET" ]]; then
-            echo "Missing required Actions secret: TS_OAUTH_SECRET" >&2
+          set -Eeuo pipefail
+
+          if [[ "$(uname -s)" != Linux || "$(uname -m)" != x86_64 ]]; then
+            echo "::error::Deployment images must be built on a Linux amd64 runner."
             exit 1
           fi
 
-      - name: Connect to Tailscale (Guhyeon Kang's Tailnet)
+          if [[ ! "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Deployment requires a full lowercase Git commit SHA."
+            exit 64
+          fi
+
+          checkout_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          if [[ "$checkout_sha" != "$DEPLOY_SHA" ]]; then
+            echo "::error::The image source checkout does not match the verified commit."
+            exit 1
+          fi
+
+          git fetch --force --no-tags --depth=1 origin "$DEPLOY_BRANCH"
+          branch_tip_sha="$(git rev-parse --verify FETCH_HEAD)"
+          if [[ "$branch_tip_sha" != "$DEPLOY_SHA" ]]; then
+            echo "::error::The deployment branch moved while source checks were running."
+            exit 1
+          fi
+
+          case "$DEPLOY_ENVIRONMENT" in
+            main)
+              project_name=tufreplay-main
+              compose_file=deploy/docker-compose.main.yml
+              ;;
+            dev)
+              project_name=tufreplay-dev
+              compose_file=deploy/docker-compose.dev.yml
+              ;;
+            auto-submission)
+              project_name=tufreplay-auto
+              compose_file=deploy/docker-compose.auto-submission.yml
+              ;;
+            *)
+              echo "::error::Unsupported deployment environment: $DEPLOY_ENVIRONMENT"
+              exit 64
+              ;;
+          esac
+
+          compose_env_file="$RUNNER_TEMP/tuf-replay-compose-build.env"
+          platform_override_file="$RUNNER_TEMP/tuf-replay-compose-platform.yml"
+          auto_updates_dir="$RUNNER_TEMP/tuf-replay-build-updates"
+          mkdir -p "$auto_updates_dir"
+
+          {
+            printf 'BUILD_SHA=%s\n' "$DEPLOY_SHA"
+            printf '%s\n' 'VITE_WEB_ADOFAI_EMBED_URL=https://web-adofai.impl1113.dev/embed/chart'
+            printf 'AUTO_UPDATES_DIR=%s\n' "$auto_updates_dir"
+            if [[ "$DEPLOY_ENVIRONMENT" == auto-submission ]]; then
+              # These build-only placeholders satisfy Compose interpolation; host secrets stay on the home server.
+              printf '%s\n' \
+                'TUF_REPLAY_DB_USER=build_only' \
+                'TUF_REPLAY_DB_PASSWORD=build_only_password' \
+                'TUF_TO_AUTO_SUBMISSION_TOKEN=build_only_token' \
+                'AUTO_SUBMISSION_TO_TUF_TOKEN=build_only_token' \
+                'SUBMISSION_VALIDATION_MODE=unavailable'
+            fi
+          } > "$compose_env_file"
+          chmod 0600 "$compose_env_file"
+
+          cat > "$platform_override_file" <<'YAML'
+          services:
+            tuf-replay-web:
+              platform: linux/amd64
+            gateway:
+              platform: linux/amd64
+          YAML
+          if [[ "$DEPLOY_ENVIRONMENT" == auto-submission ]]; then
+            cat >> "$platform_override_file" <<'YAML'
+            tuf-replay-server:
+              platform: linux/amd64
+          YAML
+          fi
+
+          export DOCKER_DEFAULT_PLATFORM=linux/amd64
+          compose=(
+            docker compose
+            --project-name "$project_name"
+            --env-file "$compose_env_file"
+            --file "$compose_file"
+            --file "$platform_override_file"
+          )
+
+          "${compose[@]}" config --quiet
+          "${compose[@]}" build --pull
+
+          images=(
+            "tuf-replay-web:${DEPLOY_ENVIRONMENT}-${DEPLOY_SHA}"
+            "tuf-replay-gateway:${DEPLOY_ENVIRONMENT}-${DEPLOY_SHA}"
+          )
+          if [[ "$DEPLOY_ENVIRONMENT" == auto-submission ]]; then
+            images+=("tuf-replay-server:auto-submission-${DEPLOY_SHA}")
+          fi
+
+          for image in "${images[@]}"; do
+            platform="$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$image")"
+            if [[ "$platform" != linux/amd64 ]]; then
+              echo "::error::Image $image was built for $platform instead of linux/amd64."
+              exit 1
+            fi
+          done
+
+      - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
@@ -114,78 +329,71 @@ jobs:
           tags: tag:gh-runner
           ping: kgh
 
-      - name: Verify connectivity
+      - name: Reuse existing SHA-tagged images and load missing ones
+        env:
+          DEPLOY_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          DEPLOY_SHA: ${{ needs.preflight.outputs.sha }}
         run: |
-          set -euo pipefail
-          tailscale status
-          tailscale ssh kgh@kgh "id -un"
+          set -Eeuo pipefail
 
-      - name: Deploy web app and Rust API
-        run: |
-          set -euo pipefail
-          tailscale ssh kgh@kgh "bash -s -- '${GITHUB_SHA}'" <<'REMOTE'
-          set -euo pipefail
-
-          DEPLOY_DIR="/srv/TUFReplay"
-          DEPLOY_SHA="$1"
-          [[ "$DEPLOY_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
-          REPO_URL="https://github.com/KGH1113/TUFReplay.git"
-
-          require_command() {
-            command -v "$1" >/dev/null || {
-              echo "Missing required command: $1"
-              exit 1
-            }
-          }
-
-          require_command git
-          require_command stat
-          require_command python3
-
-          test -d "$DEPLOY_DIR" || {
-            echo "Missing deploy directory: $DEPLOY_DIR"
-            echo "Clone $REPO_URL into $DEPLOY_DIR before deploying."
-            exit 1
-          }
-
-          cd "$DEPLOY_DIR"
-
-          test -d .git || {
-            echo "Deploy directory is not a git clone: $DEPLOY_DIR"
-            exit 1
-          }
-
-          test -f .env.production || {
-            echo "Missing /srv/TUFReplay/.env.production; create it from deploy/production.env.example first."
-            exit 1
-          }
-
-          ENV_MODE="$(stat -c '%a' .env.production)"
-          case "$ENV_MODE" in
-            600|400) ;;
-            *)
-              echo ".env.production permissions must be 600 or 400."
-              exit 1
-              ;;
-          esac
-
-          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
-            echo "Tracked changes exist in $DEPLOY_DIR; refusing to reset the checkout."
-            exit 1
+          images=(
+            "tuf-replay-web:${DEPLOY_ENVIRONMENT}-${DEPLOY_SHA}"
+            "tuf-replay-gateway:${DEPLOY_ENVIRONMENT}-${DEPLOY_SHA}"
+          )
+          if [[ "$DEPLOY_ENVIRONMENT" == auto-submission ]]; then
+            images+=("tuf-replay-server:auto-submission-${DEPLOY_SHA}")
           fi
 
-          git fetch origin main
-          if [[ "$(git rev-parse origin/main)" != "$DEPLOY_SHA" ]]; then
-            echo "The tested revision is not current main; rerun deployment from main." >&2
-            exit 1
-          fi
-          if ! git show "$DEPLOY_SHA:deploy/scripts/validate-production-env.py" | python3 - .env.production; then
-            echo "Production environment preflight failed; checkout was not changed." >&2
-            exit 1
-          fi
-
-          git checkout main
-          git reset --hard "$DEPLOY_SHA"
-
-          bash deploy/scripts/deploy-production.sh "$DEPLOY_SHA"
+          remote_inventory="$(
+            tailscale ssh kgh@kgh bash -s <<'REMOTE'
+          set -Eeuo pipefail
+          docker info >/dev/null
+          docker image ls --format '{{.Repository}}:{{.Tag}}'
           REMOTE
+          )"
+          mapfile -t remote_tags <<< "$remote_inventory"
+
+          # SHA-tagged images are immutable; retries reuse present tags and transfer only missing ones.
+          missing_images=()
+          for image in "${images[@]}"; do
+            tag_present=false
+            for remote_tag in "${remote_tags[@]}"; do
+              if [[ "$remote_tag" == "$image" ]]; then
+                tag_present=true
+                break
+              fi
+            done
+
+            if [[ "$tag_present" == true ]]; then
+              echo "Reusing previously loaded $image"
+            else
+              missing_images+=("$image")
+            fi
+          done
+
+          if [[ "${#missing_images[@]}" == 0 ]]; then
+            echo "All expected SHA-tagged images already exist on the home server."
+            exit 0
+          fi
+
+          image_archive="$RUNNER_TEMP/tuf-replay-images.tar.gz"
+          docker save "${missing_images[@]}" | gzip --fast > "$image_archive"
+          gzip --test "$image_archive"
+          test -s "$image_archive"
+          tailscale ssh kgh@kgh docker load < "$image_archive"
+          rm -f "$image_archive"
+
+      - name: Deploy verified commit on the home server
+        env:
+          DEPLOY_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          DEPLOY_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          test -f deploy/scripts/deploy-home.sh
+          checkout_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          if [[ "$checkout_sha" != "$DEPLOY_SHA" ]]; then
+            echo "::error::The deployment script does not come from the verified commit."
+            exit 1
+          fi
+
+          tailscale ssh kgh@kgh bash -s -- "$DEPLOY_ENVIRONMENT" "$DEPLOY_SHA" < deploy/scripts/deploy-home.sh
