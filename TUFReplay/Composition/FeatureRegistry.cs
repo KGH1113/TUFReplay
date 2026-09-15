@@ -6,6 +6,7 @@ using TUFReplay.Microphone.Permissions;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
+using TUFReplay.Shared.Build;
 using TUFReplay.Shared.Ipc;
 
 namespace TUFReplay.Composition;
@@ -29,7 +30,8 @@ public static class FeatureRegistry
 
     Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
-    Submission = new TUFReplay.Submission.Sessions.SubmissionFeature();
+    if (TUFReplayBuildFlavor.Name == "auto-submission")
+      Submission = new TUFReplay.Submission.Sessions.SubmissionFeature();
     Replay = new ReplayFeature();
     MicrophoneRecording = new MicrophoneRecordingFeature();
     MicrophoneCalibration = new MicrophoneCalibrationFeature();
@@ -44,7 +46,8 @@ public static class FeatureRegistry
       MicrophoneCalibration.Enable();
       Recording.Enable();
       Replay.Enable();
-      TUFReplay.Submission.Debug.SubmissionDebugHud.Initialize();
+      if (Submission != null)
+        TUFReplay.Submission.Debug.SubmissionDebugHud.Initialize();
       MicrophonePermissionWarningCoordinator.Initialize();
       Ipc.Enable();
     }
