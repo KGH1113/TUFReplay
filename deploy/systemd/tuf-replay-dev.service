@@ -1,0 +1,16 @@
+[Unit]
+Description=TUFReplay dev web deployment
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/kgh/tuf-replay-environments/dev
+RemainAfterExit=yes
+ExecStartPre=/usr/bin/test -f /home/kgh/tuf-replay-data/dev/compose.env
+ExecStart=/usr/bin/env docker compose --project-name tufreplay-dev --env-file /home/kgh/tuf-replay-data/dev/compose.env -f deploy/docker-compose.dev.yml up -d --no-build --wait --remove-orphans
+ExecStop=/usr/bin/env docker compose --project-name tufreplay-dev --env-file /home/kgh/tuf-replay-data/dev/compose.env -f deploy/docker-compose.dev.yml down
+TimeoutStartSec=300s
+
+[Install]
+WantedBy=default.target
