@@ -397,3 +397,31 @@ jobs:
           fi
 
           tailscale ssh kgh@kgh bash -s -- "$DEPLOY_ENVIRONMENT" "$DEPLOY_SHA" < deploy/scripts/deploy-home.sh
+
+      - name: Independently verify public deployment
+        env:
+          DEPLOY_ENVIRONMENT: ${{ needs.preflight.outputs.environment }}
+          DEPLOY_SHA: ${{ needs.preflight.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          case "$DEPLOY_ENVIRONMENT" in
+            main) domain=tufreplay.impl1113.dev; flavor=standard ;;
+            dev) domain=tufreplay-dev.impl1113.dev; flavor=standard ;;
+            auto-submission) domain=tufreplay-auto.impl1113.dev; flavor=auto-submission ;;
+            *) exit 64 ;;
+          esac
+          metadata_file="$RUNNER_TEMP/deployed-metadata.json"
+          curl --fail --silent --show-error --max-time 20 "https://$domain/deployment.json" -o "$metadata_file"
+          python3 - "$metadata_file" "$DEPLOY_ENVIRONMENT" "$flavor" "$DEPLOY_SHA" <<'PYCODE'
+          import json
+          import sys
+          path, environment, flavor, sha = sys.argv[1:]
+          with open(path, encoding="utf-8") as source:
+              data = json.load(source)
+          assert data.get("environment") == environment, "Unexpected deployment environment"
+          assert data.get("buildFlavor") == flavor, "Unexpected web build flavor"
+          assert data.get("gitSHA") == sha, "The tested commit was not deployed"
+          PYCODE
+          if [[ "$DEPLOY_ENVIRONMENT" == auto-submission ]]; then
+            curl --fail --silent --show-error --max-time 20 "https://$domain/_readiness" >/dev/null
+          fi

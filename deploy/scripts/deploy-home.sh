@@ -319,7 +319,7 @@ if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
   STACK_TOUCHED=1
   compose up -d --wait postgres-production redis-ingest-production
   compose stop tuf-replay-server >/dev/null 2>&1 || true
-  if ! compose run --rm --no-deps tuf-replay-server db migrate >/dev/null 2>&1; then
+  if ! compose run --rm --no-deps tuf-replay-server db migrate </dev/null >/dev/null 2>&1; then
     fail_deploy "Auto-submission database migration failed; migration output was withheld."
   fi
   DB_MIGRATION_APPLIED=1
