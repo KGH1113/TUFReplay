@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main, dev, feat/auto-submission]
   pull_request:
-    branches: [main]
+    branches: [main, dev, feat/auto-submission]
 
 permissions:
   contents: read
@@ -85,5 +85,69 @@ jobs:
       - name: Typecheck
         run: bun run web:typecheck
 
+      - name: Web tests
+        run: bun run web:test
+
       - name: Build
+        env:
+          VITE_WEB_ADOFAI_EMBED_URL: https://web-adofai.impl1113.dev/embed/chart
         run: bun run web:build
+
+  server-checks:
+    name: Auto-submission Rust checks
+    if: github.ref == 'refs/heads/feat/auto-submission' || github.head_ref == 'feat/auto-submission' || (github.event_name == 'pull_request' && github.base_ref == 'feat/auto-submission')
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: tuf_replay
+          POSTGRES_PASSWORD: tuf_replay_dev
+          POSTGRES_DB: tuf_replay_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tuf_replay -d tuf_replay_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
+      QUEUE_URL: postgres://tuf_replay:tuf_replay_dev@127.0.0.1:5432/tuf_replay_test
+      REDIS_INGEST_URL: redis://127.0.0.1:6379/1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        run: rustup toolchain install 1.97.1 --profile minimal --component rustfmt --component clippy
+
+      - name: Cache Rust dependencies and build output
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/cache
+            ~/.cargo/registry/index
+            ~/.cargo/git/db
+            server/target
+          key: ${{ runner.os }}-rust-1.97.1-${{ hashFiles('server/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-rust-1.97.1-
+
+      - name: Check Rust formatting
+        run: cargo +1.97.1 fmt --manifest-path server/Cargo.toml --all -- --check
+
+      - name: Run Rust lint checks
+        run: cargo +1.97.1 clippy --locked --manifest-path server/Cargo.toml --all-targets -- -D warnings
+
+      - name: Run Rust tests
+        run: cargo +1.97.1 test --locked --manifest-path server/Cargo.toml
