@@ -5,6 +5,18 @@ import { canSubmit } from "@/models/submission/submission-model";
 import { submissionStatusSchema } from "@/schemas/submission/submission-schema";
 import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 
+const compatibleHealth = {
+  Ok: true,
+  Mod: "TUFReplay",
+  ModVersion: "0.2.0-auto-submission.1",
+  ProtocolVersion: 7,
+  ServerVersion: 1,
+  ReplayEngineId: "tufreplay.replay.v2",
+  ReplayFormatVersion: 1,
+  BuildFlavor: "auto-submission",
+  AutoSubmissionProtocolVersion: 1,
+};
+
 describe("auto submission boundaries", () => {
   it("fails closed when older IPC status has no trusted-tester capability", () => {
     const status = submissionStatusSchema.parse({
@@ -70,6 +82,7 @@ describe("auto submission boundaries", () => {
     const namespace = {
       call: async (method: string, params: unknown) => {
         calls.push({ method, params });
+        if (method === "health.get") return compatibleHealth;
         if (method === "submission.oauth.begin")
           return { authorizationUrl: "https://api.tuforums.com/oauth/authorize?state=fixture" };
         if (method === "submission.oauth.complete") return { completed: true };
@@ -93,12 +106,16 @@ describe("auto submission boundaries", () => {
     };
     const clients = { namespace, pickerNamespace: namespace } as unknown as AdofaiIpcClients;
     let navigated: string | null = null;
-    const api = createSubmissionApi(clients, {
-      takeOAuthCallback: () => ({ code: "one-use-code", state: "mod-state" }),
-      prepareOAuthWindow: () => (url: string | null) => {
-        navigated = url;
+    const api = createSubmissionApi(
+      clients,
+      {
+        takeOAuthCallback: () => ({ code: "one-use-code", state: "mod-state" }),
+        prepareOAuthWindow: () => (url: string | null) => {
+          navigated = url;
+        },
       },
-    });
+      "auto-submission",
+    );
     const status = await api.status();
     await api.status();
     expect(status.canSubmit).toBe(false);
@@ -123,5 +140,51 @@ describe("auto submission boundaries", () => {
     expect(JSON.stringify(calls)).not.toContain("refresh_token");
     expect(JSON.stringify(calls)).not.toContain("ticket");
     expect(calls.some((call) => call.method === "submission.run.submit")).toBe(false);
+  });
+
+  it("blocks standard web and incompatible mod builds before any submission IPC", async () => {
+    for (const flavor of ["standard", "auto-submission"] as const) {
+      const calls: string[] = [];
+      const namespace = {
+        call: async (method: string) => {
+          calls.push(method);
+          return { ...compatibleHealth, BuildFlavor: "standard", AutoSubmissionProtocolVersion: 0 };
+        },
+      };
+      const api = createSubmissionApi(
+        { namespace } as unknown as AdofaiIpcClients,
+        {
+          takeOAuthCallback: () => null,
+          prepareOAuthWindow: () => () => {},
+        },
+        flavor,
+      );
+      await expect(api.submit("68727984-2424-4a6d-a72b-919044143454")).rejects.toThrow();
+      expect(calls.every((method) => method === "health.get")).toBe(true);
+    }
+  });
+
+  it("rechecks mod compatibility after a successful status request", async () => {
+    let compatible = true;
+    const calls: string[] = [];
+    const namespace = {
+      call: async (method: string) => {
+        calls.push(method);
+        if (method === "health.get") return { ...compatibleHealth, Ok: compatible };
+        return { connected: true, configured: true, disabled: false, state: "ready" };
+      },
+    };
+    const api = createSubmissionApi(
+      { namespace } as unknown as AdofaiIpcClients,
+      {
+        takeOAuthCallback: () => null,
+        prepareOAuthWindow: () => () => {},
+      },
+      "auto-submission",
+    );
+    await api.status();
+    compatible = false;
+    await expect(api.submit("68727984-2424-4a6d-a72b-919044143454")).rejects.toThrow();
+    expect(calls).not.toContain("submission.run.submit");
   });
 });

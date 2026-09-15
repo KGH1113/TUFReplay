@@ -3,6 +3,8 @@ import { LanguageMenu } from "@/components/activity/language-menu";
 import { MicrophoneControls } from "@/components/microphone/microphone-controls";
 import { SubmissionDialog } from "@/components/submission/submission-dialog";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
+import { getAutoSubmissionCompatibility, type Health } from "@/models/health/health-model";
+import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 
@@ -10,10 +12,12 @@ export function DashboardHeader({
   status,
   onRetry,
   mockEnabled,
+  health,
 }: {
   status: ConnectionStatus;
   onRetry: () => void;
   mockEnabled: boolean;
+  health: Health | null;
 }) {
   const { t } = useTranslation("common");
   return (
@@ -21,7 +25,14 @@ export function DashboardHeader({
       <h1 className="font-heading text-2xl font-semibold tracking-tight">{t("appName")}</h1>
       <div className="flex flex-wrap items-center gap-2">
         <MicrophoneControls connectionStatus={status} mockEnabled={mockEnabled} />
-        <SubmissionDialog disabled={status !== "online" && !mockEnabled} />
+        {TUFREPLAY_WEB_BUILD.flavor === "auto-submission" ? (
+          <SubmissionDialog
+            disabled={
+              (status !== "online" && !mockEnabled) ||
+              !getAutoSubmissionCompatibility(TUFREPLAY_WEB_BUILD.flavor, health).available
+            }
+          />
+        ) : null}
         <span
           role="status"
           className={cn(

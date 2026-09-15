@@ -32,6 +32,7 @@ export function ActivityPage() {
           />
           <section className="flex min-h-0 min-w-0 flex-col gap-3">
             <DashboardHeader
+              health={activity.health}
               status={activity.status}
               onRetry={() => void actions.retry()}
               mockEnabled={activity.mockEnabled}
