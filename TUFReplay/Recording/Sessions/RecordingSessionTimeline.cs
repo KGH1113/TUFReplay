@@ -14,6 +14,7 @@ public partial class RecordingSession
   private InputTimelineAnchor? _previousInputAnchor;
   private bool _gameplayStateReached;
   private long _gameplayStateCaptureTicks;
+  private bool _gameplayTimelineWasAdvancing;
   private double? _wonUnscaledTime;
   private long _lastTimelineTimeUs;
   private bool _hasTimelineTime;
@@ -50,8 +51,13 @@ public partial class RecordingSession
 
     if (!Data.GameplayStartSongPosition.HasValue)
     {
-      double elapsedSeconds = CaptureTicksToSeconds(captureTicks - _gameplayStateCaptureTicks);
-      Data.GameplayStartSongPosition = songPosition - elapsedSeconds * timelineRate;
+      Data.GameplayStartSongPosition = CalculateGameplayStartSongPosition(
+        songPosition,
+        captureTicks,
+        _gameplayStateCaptureTicks,
+        timelineRate,
+        _gameplayTimelineWasAdvancing
+      );
     }
 
     long timelineUs = Data.WonTimeUs.HasValue ? CurrentTimelineTimeUsLocked() : ToRecordTimeUs(songPosition);
@@ -101,6 +107,31 @@ public partial class RecordingSession
   private long ToRecordTimeUs(double songPosition)
   {
     return RecordingClock.ToRecordTimeUs(songPosition, Data.GameplayStartSongPosition);
+  }
+
+  internal static double CalculateGameplayStartSongPosition(
+    double songPosition,
+    long anchorCaptureTicks,
+    long gameplayStateCaptureTicks,
+    double timelineRate,
+    bool timelineWasAdvancing
+  )
+  {
+    long originTicks = timelineWasAdvancing ? gameplayStateCaptureTicks : anchorCaptureTicks;
+    double elapsedSeconds = CaptureTicksToSeconds(anchorCaptureTicks - originTicks);
+    return songPosition - elapsedSeconds * timelineRate;
+  }
+
+  internal bool TryGetInputTimelineAnchor(out long captureTicks, out long timelineUs, out double rate)
+  {
+    lock (_lock)
+    {
+      InputTimelineAnchor anchor = _previousInputAnchor.GetValueOrDefault();
+      captureTicks = anchor.CaptureTicks;
+      timelineUs = anchor.TimeUs;
+      rate = anchor.Rate;
+      return IsRecording && IsCapturingInput && _previousInputAnchor.HasValue && !Data.WonTimeUs.HasValue;
+    }
   }
 
   private long CurrentTimelineTimeUsLocked()

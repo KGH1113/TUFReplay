@@ -62,6 +62,10 @@
     "description": "Replays made with the older engine cannot be played in this version. The new engine records key input more accurately and reliably.",
     "confirm": "OK"
   },
+  "autoSubmissionCompatibility": {
+    "modBuildMismatch": "This page needs an auto-submission TUFReplay build. Install that build and refresh this page; activity and replay remain available.",
+    "protocolMismatch": "Update TUFReplay to a build with the current auto-submission protocol, then refresh this page. Activity and replay remain available."
+  },
   "errors": {
     "load": "Could not load play history. Make sure ADOFAI is running, then refresh the page.",
     "connect": "Could not connect to TUFReplay. Make sure ADOFAI and AdofaiIPC are running.",

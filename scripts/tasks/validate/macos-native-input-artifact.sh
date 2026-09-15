@@ -11,7 +11,8 @@ artifact_path="${1:-$TUFREPLAY_MAC_INPUT_LIBRARY}"
 require_file "$artifact_path"
 require_command lipo
 require_command nm
-lipo "$artifact_path" -verify_arch arm64 x86_64
+lipo "$artifact_path" -verify_arch arm64
+lipo "$artifact_path" -verify_arch x86_64
 
 required_symbols=(
   _tufreplay_input_abi_version

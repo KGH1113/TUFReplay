@@ -46,6 +46,8 @@ describe("layered AppApi contract", () => {
       serverVersion: 1,
       replayEngineId: "tufreplay.replay.v2",
       replayFormatVersion: 1,
+      buildFlavor: "standard",
+      autoSubmissionProtocolVersion: 0,
     });
   });
 

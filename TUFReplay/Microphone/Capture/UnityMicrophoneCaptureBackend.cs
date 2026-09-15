@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Threading.Tasks;
 using TUFReplay.Microphone.Capture;
@@ -25,6 +26,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   private string _tempPath;
   private bool _failed;
   private float _lastPollRealtime;
+  private long _captureStartTimestampTicks;
 
   public void RequestPermission() { }
 
@@ -78,7 +80,9 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     AbortWriter();
     try
     {
+      long before = Stopwatch.GetTimestamp();
       int position = UnityEngine.Microphone.GetPosition(_deviceId);
+      long after = Stopwatch.GetTimestamp();
       if (position < 0)
       {
         error = "Microphone sample position is unavailable.";
@@ -86,6 +90,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       }
 
       _cursor = position;
+      _captureStartTimestampTicks = before + (after - before) / 2L;
       _runId = runId;
       _tempPath = tempPath;
       _failed = false;
@@ -175,6 +180,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     string tempPath = _tempPath;
     string deviceId = _deviceId;
     bool failed = _failed;
+    long captureStartTimestampTicks = _captureStartTimestampTicks;
     _writer = null;
     _runId = null;
     _tempPath = null;
@@ -200,6 +206,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
           SampleRate = SampleRate,
           Channels = 1,
           FrameCount = frames,
+          CaptureStartTimestampTicks = captureStartTimestampTicks,
           CaptureStartOffsetUs = 0,
         };
       }

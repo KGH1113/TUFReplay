@@ -28,6 +28,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private bool? _lastInteractable;
   private bool? _lastSeekInteractable;
   private bool _isScrubbing;
+  private bool _replayPreparationNotificationVisible;
   private long _scrubDurationTimeUs;
   private readonly Vector3[] _nativeControlCorners = new Vector3[4];
   private int _lastScreenWidth = -1;
@@ -169,14 +170,48 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     Action action = null
   )
   {
-    MicrophonePermissionWarningView view = _instance?._notificationView;
+    ReplayTimelineHud instance = _instance;
+    MicrophonePermissionWarningView view = instance?._notificationView;
     if (view == null)
       return false;
 
-    return view.ShowPersistent(title, message, actionLabel, action);
+    bool shown = view.ShowPersistent(title, message, actionLabel, action);
+    if (shown)
+      instance._replayPreparationNotificationVisible = false;
+    return shown;
   }
 
-  internal static void ResetNotification() => _instance?._notificationView?.ResetImmediate();
+  internal static bool ShowReplayPreparationNotification(string title, string message)
+  {
+    ReplayTimelineHud instance = _instance;
+    MicrophonePermissionWarningView view = instance?._notificationView;
+    if (view == null)
+      return false;
+
+    bool shown = view.ShowPersistent(title, message);
+    instance._replayPreparationNotificationVisible = shown;
+    return shown;
+  }
+
+  internal static void HideReplayPreparationNotification()
+  {
+    ReplayTimelineHud instance = _instance;
+    if (instance?._replayPreparationNotificationVisible != true)
+      return;
+
+    instance._replayPreparationNotificationVisible = false;
+    instance._notificationView?.ResetImmediate();
+  }
+
+  internal static void ResetNotification()
+  {
+    ReplayTimelineHud instance = _instance;
+    if (instance == null)
+      return;
+
+    instance._replayPreparationNotificationVisible = false;
+    instance._notificationView?.ResetImmediate();
+  }
 
   private void Update()
   {

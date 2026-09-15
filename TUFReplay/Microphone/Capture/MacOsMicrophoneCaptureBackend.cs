@@ -12,12 +12,13 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Microphone.Capture;
 using TUFReplay.Microphone.Models;
+using TUFReplay.Recording.Input;
 
 namespace TUFReplay.Microphone.Capture;
 
 public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 {
-  private const int ProtocolVersion = 2;
+  private const int ProtocolVersion = 3;
   private const int ConnectTimeoutMilliseconds = 10000;
   private const int CommandTimeoutMilliseconds = 300000;
 
@@ -165,6 +166,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     var run = new PendingRun(runId, tempPath);
     try
     {
+      run.Clock = MacOsMachTimeConverter.CaptureSystemClock();
       Send(
         new JObject
         {
@@ -219,6 +221,9 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
             completion.TrySetResult(null);
             return;
           }
+          ulong firstSampleHostTime = (ulong?)response["firstSampleHostTime"] ?? 0;
+          if (firstSampleHostTime == 0)
+            throw new IOException("macOS microphone helper did not return the first sample timestamp.");
           completion.TrySetResult(
             new CapturedMicrophoneRecording
             {
@@ -228,7 +233,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
               SampleRate = (int?)response["sampleRate"] ?? 48000,
               Channels = (int?)response["channels"] ?? 1,
               FrameCount = (long)response["frameCount"],
-              CaptureStartOffsetUs = (long?)response["captureStartOffsetUs"] ?? 0,
+              CaptureStartTimestampTicks = run.Clock.ToStopwatchTicks(firstSampleHostTime),
             }
           );
         }
@@ -671,6 +676,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     public readonly string RunId;
     public readonly string TempPath;
     public bool BeginSucceeded;
+    public MacOsMachTimeConverter Clock;
 
     public PendingRun(string runId, string tempPath)
     {
