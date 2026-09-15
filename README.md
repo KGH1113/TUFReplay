@@ -206,18 +206,21 @@ The web UI is built and deployed independently. The `build` and `package` workfl
 
 The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
 
-## Web Deployment
+## Web and API Deployment
 
-GitHub Actions runs the web checks for pushes to `main` and `dev` and for pull requests targeting `main`. A successful push to `main` then connects to the home server through Tailscale SSH and restarts the Docker Compose app managed by the user-level `tuf-replay-web.service` unit.
+GitHub Actions deploys each branch to a separate Compose project on the home server:
 
-The server checkout must exist at `/srv/TUFReplay`. The container exposes Vite preview on port 4173 and binds it to `127.0.0.1:4174` on the host by default. Set `TUF_REPLAY_WEB_PORT` in the server checkout's `.env` to override the host port. The production build embeds `https://web-adofai.impl1113.dev/embed/chart`; set `VITE_WEB_ADOFAI_EMBED_URL` in the same `.env` to override it.
+| Branch | Website | Build flavor | Host loopback port |
+| --- | --- | --- | --- |
+| `main` | https://tufreplay.impl1113.dev | `standard` | 4174 |
+| `dev` | https://tufreplay-dev.impl1113.dev | `standard` | 4175 |
+| `feat/auto-submission` | https://tufreplay-auto.impl1113.dev | `auto-submission` | 4176 |
 
-The deploy workflow requires these GitHub Actions secrets:
+Main and dev serve the companion web UI. The auto-submission environment also runs the Rust API, worker, scheduler, PostgreSQL, Redis, and artifact storage. Separate deployment Compose files live under `deploy/`; the root `docker-compose.yml` remains available for local development. Each website exposes `/deployment.json` with its environment, build flavor, and deployed commit.
 
-- `TS_OAUTH_CLIENT_ID`
-- `TS_OAUTH_SECRET`
+Web and API deployments run through GitHub Actions. Mod packages are built locally and uploaded by the operator. The workflows use Tailscale to reach the home server and require `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`. See [deployment setup and recovery](deploy/README.md) for the protected environment file, one-time routing bootstrap, and persistent data paths.
 
-The Tailscale OAuth client must be permitted to create an ephemeral `tag:gh-runner` node and use Tailscale SSH to reach `kgh`.
+Standard mod releases use GitHub Releases. Auto-submission builds use the separate home-server feed at `https://tufreplay-auto.impl1113.dev/updates/auto-submission/latest.json`; they are not published as GitHub Releases. Installing a different flavor requires installing that flavor's package. The auto-submission website requires an auto-submission mod with matching submission protocol support before enabling submission features.
 
 ## Formatting
 
