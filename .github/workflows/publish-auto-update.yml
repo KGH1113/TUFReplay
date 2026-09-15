@@ -1,0 +1,59 @@
+name: Promote uploaded auto-submission package
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: Version in the uploaded TUFReplay.update.json manifest
+        required: true
+        type: string
+      upload_id:
+        description: Private incoming directory name on the home server
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: home-deploy-auto-submission
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    name: Verify and promote staged package
+    if: github.ref == 'refs/heads/feat/auto-submission'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Connect to the home Tailnet
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:gh-runner
+          ping: kgh
+
+      - name: Promote private staged package
+        env:
+          PACKAGE_VERSION: ${{ inputs.package_version }}
+          UPLOAD_ID: ${{ inputs.upload_id }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Workflow dispatch did not resolve to a full commit SHA." >&2
+            exit 1
+          fi
+          if [[ ! "$PACKAGE_VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)-auto-submission\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Package version has an invalid format." >&2
+            exit 1
+          fi
+          if [[ ! "$UPLOAD_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+            echo "Upload identifier has an invalid format." >&2
+            exit 1
+          fi
+
+          tailscale ssh kgh@kgh "bash -s -- '$GITHUB_SHA' '$PACKAGE_VERSION' '$UPLOAD_ID'" \
+            < deploy/scripts/publish-auto-submission.sh
