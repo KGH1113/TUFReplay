@@ -10,7 +10,9 @@ internal sealed class ReleaseManifest
 
   public int SchemaVersion { get; private set; }
   public string Version { get; private set; }
+  public string BuildFlavor { get; private set; }
   public string PackageAsset { get; private set; }
+  public string PackageUrl { get; private set; }
   public long PackageBytes { get; private set; }
   public string PackageSha256 { get; private set; }
   public string RuntimePath { get; private set; }
@@ -22,7 +24,9 @@ internal sealed class ReleaseManifest
     {
       SchemaVersion = root.Value<int?>("schemaVersion") ?? 0,
       Version = root.Value<string>("version"),
+      BuildFlavor = root.Value<string>("buildFlavor") ?? "standard",
       PackageAsset = root.Value<string>("packageAsset"),
+      PackageUrl = root.Value<string>("packageUrl"),
       PackageBytes = root.Value<long?>("packageBytes") ?? 0,
       PackageSha256 = root.Value<string>("packageSha256"),
       RuntimePath = root.Value<string>("runtimePath"),
@@ -31,6 +35,8 @@ internal sealed class ReleaseManifest
     if (manifest.SchemaVersion != CurrentSchemaVersion)
       throw new InvalidDataException("The update manifest schema is not supported.");
     SemanticVersion.Parse(manifest.Version);
+    if (manifest.BuildFlavor != "standard" && manifest.BuildFlavor != "auto-submission")
+      throw new InvalidDataException("The update manifest build flavor is not supported.");
     if (!string.Equals(manifest.PackageAsset, UpdateManager.PackageAsset, StringComparison.Ordinal))
       throw new InvalidDataException("The update manifest references an unexpected package asset.");
     if (manifest.PackageBytes <= 0 || manifest.PackageBytes > UpdateManager.MaximumPackageBytes)
@@ -39,6 +45,8 @@ internal sealed class ReleaseManifest
       throw new InvalidDataException("The update manifest checksum is invalid.");
     if (string.IsNullOrWhiteSpace(manifest.RuntimePath) || Path.IsPathRooted(manifest.RuntimePath))
       throw new InvalidDataException("The update manifest runtime path is invalid.");
+    if (manifest.PackageUrl != null && manifest.PackageUrl.Length > 2048)
+      throw new InvalidDataException("The update manifest package URL is invalid.");
     return manifest;
   }
 

@@ -10,9 +10,13 @@ source "$TASK_DIR/../../lib/guards.sh"
 source "$TASK_DIR/../../lib/manifests.sh"
 # shellcheck source=../../lib/dependencies.sh
 source "$TASK_DIR/../../lib/dependencies.sh"
+# shellcheck source=../../lib/build-metadata.sh
+source "$TASK_DIR/../../lib/build-metadata.sh"
 
 require_command zip
 require_command shasum
+require_command python3
+tufreplay_resolve_build_version "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" >/dev/null
 require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"

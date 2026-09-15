@@ -10,6 +10,7 @@ configuration="${1:-Debug}"
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   "$DOTNET_EXE" build "$TUFREPLAY_PROJECT_ROOT/TUFReplay.UpdateEngine/TUFReplay.UpdateEngine.csproj" \
     --configuration "$configuration" \
+    -p:TUFReplayBuildFlavor="$TUFREPLAY_BUILD_FLAVOR" \
     -p:OutputPath="$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/" \
     -p:AdofaiManaged="$ADOFAI_MANAGED" \
     -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL"

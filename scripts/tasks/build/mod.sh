@@ -10,6 +10,7 @@ configuration="${1:-Debug}"
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   "$DOTNET_EXE" build "$TUFREPLAY_PROJECT_ROOT/TUFReplay/TUFReplay.csproj" \
     --configuration "$configuration" \
+    -p:TUFReplayBuildFlavor="$TUFREPLAY_BUILD_FLAVOR" \
     -p:OutputPath="$TUFREPLAY_BUILD_OUTPUT/" \
     -p:AdofaiManaged="$ADOFAI_MANAGED" \
     -p:AdofaiMods="$ADOFAI_MODS_DIR" \
