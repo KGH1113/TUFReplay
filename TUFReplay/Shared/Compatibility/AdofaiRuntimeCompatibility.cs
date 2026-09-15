@@ -7,12 +7,7 @@ namespace TUFReplay.Shared.Compatibility;
 
 internal static class AdofaiRuntimeCompatibility
 {
-  private delegate bool HitInputEventModern(
-    scrPlayer player,
-    bool isAuto,
-    InputEventState state,
-    bool handleAll
-  );
+  private delegate bool HitInputEventModern(scrPlayer player, bool isAuto, InputEventState state, bool handleAll);
   private delegate bool HitInputEventLegacy(scrPlayer player, bool isAuto, InputEventState state);
   private delegate scrPlanet SwitchChosenWithTick(scrPlanet planet, long? hitTick);
   private delegate scrPlanet SwitchChosenLegacy(scrPlanet planet);
