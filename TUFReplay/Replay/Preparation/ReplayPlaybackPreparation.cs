@@ -41,16 +41,9 @@ public static partial class ReplayPlaybackCoordinator
         if (recording != null)
         {
           Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(recording);
-          Pcm16LimiterEnvelope limiterEnvelope = Pcm16WaveAnalyzer.Analyze(
-            recording,
-            wave,
-            operation.PreparationCancellation.Token
-          );
           operation.PreparationCancellation.Token.ThrowIfCancellationRequested();
-          recording.CaptureStartOffsetUs -= operation.MicrophoneTimelineCorrectionUs;
           operation.MicrophoneRecording = recording;
           operation.MicrophoneWave = wave;
-          operation.MicrophoneLimiterEnvelope = limiterEnvelope;
         }
       }
       catch (OperationCanceledException)
@@ -176,36 +169,24 @@ public static partial class ReplayPlaybackCoordinator
     if (!IsSupportedResult(run.Result))
       return Error("result_unsupported", "This run result cannot be replayed.", out errorCode, out errorMessage);
 
-    long frozenStartCorrectionUs = ReplayFrozenStartCompatibility.DetectCorrectionUs(
-      run.StartTile,
-      inputs,
-      hitContexts
-    );
-    if (frozenStartCorrectionUs > 0L)
+    int? gameInputOffsetMs = ReplayGameInputOffsetResolver.Resolve(meta, inputs, hitContexts, out bool inferredOffset);
+    if (gameInputOffsetMs.HasValue)
     {
-      inputs = ReplayFrozenStartCompatibility.ShiftInputs(inputs, frozenStartCorrectionUs);
-      hitContexts = ReplayFrozenStartCompatibility.ShiftHitContexts(hitContexts, frozenStartCorrectionUs);
-      if (meta.wonTimeUs.HasValue)
-        meta.wonTimeUs = ReplayFrozenStartCompatibility.ShiftNonNegativeTime(meta.wonTimeUs.Value, frozenStartCorrectionUs);
-      if (meta.terminalTimeUs.HasValue)
-        meta.terminalTimeUs = ReplayFrozenStartCompatibility.ShiftNonNegativeTime(
-          meta.terminalTimeUs.Value,
-          frozenStartCorrectionUs
+      meta.gameInputOffsetMs = gameInputOffsetMs.Value;
+      if (inferredOffset)
+      {
+        Main.Instance?.Log(
+          "[Replay/Compatibility] Inferred legacy game input offset. offsetMs="
+            + gameInputOffsetMs.Value
+            + ", runId="
+            + run.Id
         );
-      Main.Instance?.Log(
-        "[Replay/Compatibility] Removed frozen-start wait from legacy replay. correctionUs="
-          + frozenStartCorrectionUs
-          + ", runId="
-          + run.Id
-      );
+      }
     }
 
     long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
     long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
-    pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs)
-    {
-      MicrophoneTimelineCorrectionUs = frozenStartCorrectionUs,
-    };
+    pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs);
     return true;
   }
 
@@ -336,10 +317,20 @@ public static partial class ReplayPlaybackCoordinator
 
     if (!operation.NativeInputFocusGuard.IsStable(out _))
     {
+      operation.FocusStableStartedAt = 0d;
       if (GetStatus().State != ReplayPlaybackStates.WaitingForFocus)
         SetOperationState(operation, ReplayPlaybackStates.WaitingForFocus, "Focus ADOFAI to start replay.");
       return;
     }
+
+    double now = Time.realtimeSinceStartupAsDouble;
+    if (operation.FocusStableStartedAt <= 0d)
+    {
+      operation.FocusStableStartedAt = now;
+      return;
+    }
+    if (now - operation.FocusStableStartedAt < FocusHandoffDelaySeconds)
+      return;
 
     StartReplay(operation);
   }
@@ -372,9 +363,7 @@ public static partial class ReplayPlaybackCoordinator
       ?? throw new InvalidOperationException("Native input focus guard is unavailable.");
     IReplayMicrophonePlayer microphonePlayer = null;
     if (
-      operation.MicrophoneRecording != null
-      && operation.MicrophoneWave != null
-      && operation.MicrophoneLimiterEnvelope != null
+      operation.MicrophoneRecording != null && operation.MicrophoneWave != null
     )
     {
       try
@@ -383,7 +372,6 @@ public static partial class ReplayPlaybackCoordinator
         microphonePlayer = new ReplayMicrophonePlayer(
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
-          operation.MicrophoneLimiterEnvelope,
           operation.MicrophoneOffsetMs ?? settings?.MicrophoneOffsetMs ?? 0,
           operation.MicrophoneVolumeDb ?? settings?.MicrophoneVolumeDb ?? 0
         );
@@ -401,6 +389,7 @@ public static partial class ReplayPlaybackCoordinator
       }
     }
 
+    HidePreparationNotice();
     if (!string.IsNullOrEmpty(operation.MicrophoneWarning))
       ReplayTimelineHud.ShowNotificationToast("Microphone audio unavailable", operation.MicrophoneWarning);
 
@@ -432,11 +421,22 @@ public static partial class ReplayPlaybackCoordinator
 
     ReplaySessionService.InstallActiveContext(context);
     ReplaySessionService.ApplyReplayNoFailNow();
+    ReplaySessionService.ApplyReplayGameInputOffsetNow();
     ReplaySessionService.ApplyReplayPitchNow();
     ReplaySessionService.ApplyReplayJudgmentDifficultyNow();
     editor.SelectFloor(editor.floors[operation.Run.StartTile]);
     SetOperationState(operation, ReplayPlaybackStates.Starting, "Starting replay.");
-    editor.Play();
+    lock (Gate)
+      _allowEditorPlay = true;
+    try
+    {
+      editor.Play();
+    }
+    finally
+    {
+      lock (Gate)
+        _allowEditorPlay = false;
+    }
   }
 
   private static bool ValidateNativePlatform(

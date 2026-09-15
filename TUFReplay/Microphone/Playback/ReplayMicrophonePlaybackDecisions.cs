@@ -28,4 +28,6 @@ internal static class ReplayMicrophonePlaybackDecisions
   public static bool ShouldAcceptReaderPosition(int activeGeneration) => activeGeneration == 0;
 
   public static bool ShouldMute(bool microphoneAudible) => !microphoneAudible;
+
+  public static bool ShouldStartSource(bool microphoneAudible) => microphoneAudible;
 }

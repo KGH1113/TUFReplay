@@ -13,9 +13,9 @@ namespace TUFReplay.Unity.Notifications
     private const float DefaultToastDuration = 5f;
     private const float ShowDuration = 0.16f;
     private const float HideDuration = 0.12f;
-    private const float HiddenOffset = -8f;
-    private const float ToastHeight = 154f;
-    private const float PersistentHeight = 204f;
+    private const float HiddenOffset = -6f;
+    private const float ToastHeight = 108f;
+    private const float PersistentHeight = 148f;
 
     [SerializeField]
     private CanvasGroup canvasGroup;

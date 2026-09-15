@@ -15,7 +15,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private readonly object _readerGate = new object();
   private readonly StoredMicrophoneRecording _recording;
   private readonly Pcm16WaveInfo _wave;
-  private readonly Pcm16Limiter _limiter;
   private readonly Pcm16PrefetchBuffer _prefetch;
   private readonly GameObject _gameObject;
   private readonly AudioSource _source;
@@ -52,14 +51,12 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   internal ReplayMicrophonePlayer(
     StoredMicrophoneRecording recording,
     Pcm16WaveInfo wave,
-    Pcm16LimiterEnvelope limiterEnvelope,
     int userOffsetMs = 0,
     int volumeDb = 0
   )
   {
     _recording = recording ?? throw new ArgumentNullException(nameof(recording));
     _wave = wave ?? throw new ArgumentNullException(nameof(wave));
-    _limiter = new Pcm16Limiter(limiterEnvelope, wave.SampleRate);
     SetLatency(userOffsetMs);
     SetVolume(volumeDb);
     if (wave.FrameCount > int.MaxValue)
@@ -181,7 +178,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       double microphoneTimeUs = ReplayMicrophoneClock.ToMicrophoneTimeUs(
         snapshot.TimelineTimeUs,
         snapshot.GameplayRate,
-        EffectiveCaptureOffsetUs(snapshot),
+        EffectiveCaptureOffsetUs(),
         snapshot.WonTimeUs
       );
       long targetFrame = TargetFrame(snapshot);
@@ -202,6 +199,20 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         RequestSeek(targetFrame, recovery: true);
 
       if (snapshot.Paused)
+      {
+        if (_started && !_paused)
+        {
+          _source.Pause();
+          _paused = true;
+        }
+        return;
+      }
+
+      // Countdown/checkpoint time can jump when PlayerControl begins, especially
+      // when EnhancedCountdown prepared a frozen middle start. Prefetch against
+      // that timeline, but do not let the AudioSource free-run across the state
+      // boundary. Start from the stable PlayerControl target instead.
+      if (!ReplayMicrophonePlaybackDecisions.ShouldStartSource(snapshot.MicrophoneAudible))
       {
         if (_started && !_paused)
         {
@@ -284,14 +295,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   }
 
   private long TargetFrame(ReplayPlaybackSnapshot snapshot) =>
-    ReplayMicrophoneClock.ToFrame(snapshot, EffectiveCaptureOffsetUs(snapshot), _wave.SampleRate, _wave.FrameCount);
+    ReplayMicrophoneClock.ToFrame(snapshot, EffectiveCaptureOffsetUs(), _wave.SampleRate, _wave.FrameCount);
 
-  private long EffectiveCaptureOffsetUs(ReplayPlaybackSnapshot snapshot) =>
-    ReplayMicrophoneClock.ApplyPlaybackCorrections(
-      _recording.CaptureStartOffsetUs,
-      _microphoneLatencyUs,
-      snapshot.GameInputOffsetUs
-    );
+  private long EffectiveCaptureOffsetUs() =>
+    ReplayMicrophoneClock.ApplyLatencyCorrection(_recording.CaptureStartOffsetUs, _microphoneLatencyUs);
 
   private void ApplyAudibility(ReplayPlaybackSnapshot snapshot)
   {
@@ -324,7 +331,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     lock (_readerGate)
     {
       _readerFrame = _requestedFrame;
-      _limiter.Reset();
     }
     _seekGeneration = _prefetch.Seek(_requestedFrame * _frameBytes);
     _activeGeneration = 0;
@@ -364,7 +370,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     lock (_readerGate)
     {
       _readerFrame = targetFrame;
-      _limiter.Reset();
     }
     _source.timeSamples = checked((int)targetFrame);
     _dspAnchorTime = AudioSettings.dspTime;
@@ -382,8 +387,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           + snapshot.TimelineTimeUs
           + ", targetFrame="
           + targetFrame
-          + ", gameInputOffsetUs="
-          + snapshot.GameInputOffsetUs
           + ", audible="
           + snapshot.MicrophoneAudible
           + ", gain="
@@ -438,14 +441,13 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           float requestedGain = _gain;
           for (int frame = 0; frame < framesRead; frame++)
           {
-            float effectiveGain = _limiter.NextEffectiveGain(_readerFrame + frame, requestedGain);
             int frameSampleOffset = frame * channelCount;
             for (int channel = 0; channel < channelCount; channel++)
             {
               int sampleIndex = frameSampleOffset + channel;
               int byteIndex = sampleIndex * 2;
               short sample = (short)(_readBuffer[byteIndex] | (_readBuffer[byteIndex + 1] << 8));
-              data[outputOffset + sampleIndex] = Mathf.Clamp(sample / 32768f * effectiveGain, -1f, 1f);
+              data[outputOffset + sampleIndex] = Mathf.Clamp(sample / 32768f * requestedGain, -1f, 1f);
             }
           }
           outputOffset += samplesRead;
@@ -488,7 +490,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       if (clampedFrame == _readerFrame)
         return;
       _readerFrame = clampedFrame;
-      _limiter.Reset();
     }
   }
 

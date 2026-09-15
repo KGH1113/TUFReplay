@@ -8,12 +8,6 @@ public static class ReplayMicrophoneClock
   public static long ApplyLatencyCorrection(long captureStartOffsetUs, long microphoneLatencyUs) =>
     captureStartOffsetUs - microphoneLatencyUs;
 
-  public static long ApplyPlaybackCorrections(
-    long captureStartOffsetUs,
-    long microphoneLatencyUs,
-    long gameInputOffsetUs
-  ) => captureStartOffsetUs - microphoneLatencyUs - gameInputOffsetUs;
-
   public static double ToMicrophoneTimeUs(
     long replayTimeUs,
     double gameplayRate,
