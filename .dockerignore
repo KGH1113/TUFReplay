@@ -8,3 +8,15 @@ node_modules
 web/.env
 web/dist
 *.log
+TUFReplay/
+TUFReplay.*/
+TUFReplay.*
+TUFReplay.Tests/
+TUFReplay.UpdateTests/
+TUFReplay.Unity/
+server/
+scripts/
+docs/
+tools/auto-submission-e2e/**
+!tools/auto-submission-e2e/package.json
+deploy/host/
