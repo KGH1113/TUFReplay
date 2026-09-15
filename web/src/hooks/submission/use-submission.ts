@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiPromise } from "@/api/app-api-provider";
 import { hasSubmissionPermission } from "@/models/submission/submission-model";
+import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { submissionKeys } from "@/state/submission/submission-queries";
 
 export function useSubmissionSettings(enabled = true) {
+  enabled = enabled && TUFREPLAY_WEB_BUILD.flavor === "auto-submission";
   const api = useApiPromise();
   const cache = useQueryClient();
   const status = useQuery({
@@ -34,6 +36,7 @@ export function useSubmissionSettings(enabled = true) {
 }
 
 export function useSubmissionRun(id: string | null, enabled: boolean) {
+  enabled = enabled && TUFREPLAY_WEB_BUILD.flavor === "auto-submission";
   const api = useApiPromise();
   const cache = useQueryClient();
   const status = useQuery({

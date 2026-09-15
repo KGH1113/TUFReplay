@@ -16,6 +16,7 @@ import type {
   ReplayStatus,
 } from "@/mocks/activity/activity-wire-fixture";
 import { mockMicrophoneOffsetCalibration } from "@/mocks/calibration/microphone-offset-fixture";
+import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import level5Text from "./levels/tuf-5.adofai?raw";
 import level303Text from "./levels/tuf-303.adofai?raw";
 import level871Text from "./levels/tuf-871.adofai?raw";
@@ -33,6 +34,8 @@ interface ActivityWireFixture {
     ModVersion: string;
     ProtocolVersion: number;
     ServerVersion: number;
+    BuildFlavor: string;
+    AutoSubmissionProtocolVersion: number;
   }>;
   getLegacyReplayStatus(): Promise<ActivityLegacyReplayStatus>;
   listAppSessions(offset: number, limit: number): Promise<ActivityAppSession[]>;
@@ -168,6 +171,8 @@ export function createActivityWireFixture(): ActivityWireFixture {
       ModVersion: "mock",
       ProtocolVersion: 7,
       ServerVersion: 1,
+      BuildFlavor: TUFREPLAY_WEB_BUILD.flavor,
+      AutoSubmissionProtocolVersion: TUFREPLAY_WEB_BUILD.flavor === "auto-submission" ? 1 : 0,
       ReplayEngineId: "tufreplay.replay.v2",
       ReplayFormatVersion: 1,
     }),

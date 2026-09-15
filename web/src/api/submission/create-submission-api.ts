@@ -1,5 +1,7 @@
 import { z } from "zod";
+import { createHealthApi } from "@/api/health/create-health-api";
 import type { SubmissionApi } from "@/api/submission/submission-api";
+import { getAutoSubmissionCompatibility } from "@/models/health/health-model";
 import {
   submissionPageSchema,
   submissionRunSchema,
@@ -7,15 +9,31 @@ import {
 } from "@/schemas/submission/submission-schema";
 import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 import { prepareOAuthWindow, takeOAuthCallback } from "@/shared/clients/oauth-browser";
+import {
+  TUFREPLAY_WEB_BUILD,
+  type TufReplayBuildFlavor,
+} from "@/shared/config/tufreplay-build-info";
+import { ApiError } from "@/shared/errors/api-error";
 
 export function createSubmissionApi(
   clients: AdofaiIpcClients,
   browser = { prepareOAuthWindow, takeOAuthCallback },
+  webFlavor: TufReplayBuildFlavor = TUFREPLAY_WEB_BUILD.flavor,
 ): SubmissionApi {
   let callback = browser.takeOAuthCallback();
   let completion: Promise<unknown> | null = null;
   const ipc = (method: string, params = {}) =>
     callAdofaiIpc(clients.namespace, method, params, submissionStatusSchema);
+  const healthApi = createHealthApi(clients);
+  async function requireCompatibleBuild() {
+    const health = webFlavor === "auto-submission" ? await healthApi.get() : null;
+    if (!getAutoSubmissionCompatibility(webFlavor, health).available) {
+      throw new ApiError("Auto-submission requires a compatible test build.", {
+        kind: "protocol",
+        code: "auto_submission_build_mismatch",
+      });
+    }
+  }
   async function completeCallback() {
     if (!callback) return;
     completion ??= callAdofaiIpc(
@@ -36,6 +54,7 @@ export function createSubmissionApi(
       callback = null;
       const navigate = browser.prepareOAuthWindow();
       try {
+        await requireCompatibleBuild();
         const result = await callAdofaiIpc(
           clients.namespace,
           "submission.oauth.begin",
@@ -55,6 +74,7 @@ export function createSubmissionApi(
       }
     },
     async disconnect() {
+      await requireCompatibleBuild();
       await callAdofaiIpc(
         clients.namespace,
         "submission.account.disconnect",
@@ -69,13 +89,16 @@ export function createSubmissionApi(
       });
     },
     async status() {
+      await requireCompatibleBuild();
       await completeCallback();
       return ipc("submission.status.get");
     },
-    setDisabled(disabled) {
+    async setDisabled(disabled) {
+      await requireCompatibleBuild();
       return ipc("submission.disabled.set", { disabled });
     },
-    list(before) {
+    async list(before) {
+      await requireCompatibleBuild();
       return callAdofaiIpc(
         clients.namespace,
         "submission.runs.list",
@@ -83,10 +106,12 @@ export function createSubmissionApi(
         submissionPageSchema,
       );
     },
-    get(runId) {
+    async get(runId) {
+      await requireCompatibleBuild();
       return callAdofaiIpc(clients.namespace, "submission.run.get", { runId }, submissionRunSchema);
     },
-    submit(runId) {
+    async submit(runId) {
+      await requireCompatibleBuild();
       return callAdofaiIpc(
         clients.namespace,
         "submission.run.submit",
@@ -95,6 +120,7 @@ export function createSubmissionApi(
       );
     },
     async remove(runId) {
+      await requireCompatibleBuild();
       await callAdofaiIpc(
         clients.namespace,
         "submission.run.remove",

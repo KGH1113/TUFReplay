@@ -16,6 +16,7 @@ import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
 import { canSubmit, hasSubmissionPermission } from "@/models/submission/submission-model";
+import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import {
@@ -204,22 +205,26 @@ export function RunActionsMenu({
               {microphoneT("recording.label")}
             </DropdownMenuItem>
           )}
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            disabled={disabled || busy || submitted || !submissionReady}
-            onSelect={(event) => {
-              event.preventDefault();
-              void submitRun();
-            }}
-          >
-            <span aria-hidden="true" className="size-4" />
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={pendingAction === "submit" ? Loading03Icon : Upload04Icon}
-              className={pendingAction === "submit" ? "size-4 animate-spin" : "size-4"}
-            />
-            {submitted ? submissionT("phase.submitted") : t("run.submit")}
-          </DropdownMenuItem>
+          {TUFREPLAY_WEB_BUILD.flavor === "auto-submission" ? (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                disabled={disabled || busy || submitted || !submissionReady}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  void submitRun();
+                }}
+              >
+                <span aria-hidden="true" className="size-4" />
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={pendingAction === "submit" ? Loading03Icon : Upload04Icon}
+                  className={pendingAction === "submit" ? "size-4 animate-spin" : "size-4"}
+                />
+                {submitted ? submissionT("phase.submitted") : t("run.submit")}
+              </DropdownMenuItem>
+            </>
+          ) : null}
           {menuError ? (
             <p
               aria-live="polite"
