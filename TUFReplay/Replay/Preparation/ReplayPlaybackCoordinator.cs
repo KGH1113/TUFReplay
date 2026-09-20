@@ -14,6 +14,7 @@ using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
+using TUFReplay.Replay.Timeline;
 using TUFReplay.Replay.Transport;
 using TUFReplay.Shared.Unity;
 using UnityEngine;
@@ -24,6 +25,7 @@ public static partial class ReplayPlaybackCoordinator
 {
   private const double LevelOpenTimeoutSeconds = 30d;
   private const double EditorTransitionTimeoutSeconds = 10d;
+  private const double FocusHandoffDelaySeconds = 0.6d;
   private static readonly object Gate = new object();
   private static readonly object CommandGate = new object();
 
@@ -37,6 +39,23 @@ public static partial class ReplayPlaybackCoordinator
   private static string _returnTerminalState;
   private static int _returnNotBeforeFrame;
   private static bool _forcedFail;
+  private static bool _allowEditorPlay;
+
+  public static bool ShouldBlockEditorPlay
+  {
+    get
+    {
+      lock (Gate)
+      {
+        if (_allowEditorPlay)
+          return false;
+
+        return _status.State == ReplayPlaybackStates.Preparing
+          || _status.State == ReplayPlaybackStates.OpeningLevel
+          || _status.State == ReplayPlaybackStates.WaitingForFocus;
+      }
+    }
+  }
 
   public static bool IsBusy
   {
@@ -80,6 +99,9 @@ public static partial class ReplayPlaybackCoordinator
   {
     lock (CommandGate)
     {
+      if (IsBusy)
+        return GetStatus();
+
       string operationId = Guid.NewGuid().ToString("N");
       SetStatus(
         new ReplayPlaybackStatus
@@ -105,7 +127,11 @@ public static partial class ReplayPlaybackCoordinator
 
       CancelPendingPreparation();
       _preparingOperation = pending;
-      UnityMainThread.Post(() => CancelCurrentReplayForReplacement(operationId));
+      UnityMainThread.Post(() =>
+      {
+        CancelCurrentReplayForReplacement(operationId);
+        ShowPreparationNotice(operationId);
+      });
       QueueMicrophonePreparation(pending);
       return GetStatus();
     }
@@ -116,7 +142,6 @@ public static partial class ReplayPlaybackCoordinator
     string levelPath,
     StoredMicrophoneRecording microphoneRecording,
     Pcm16WaveInfo microphoneWave,
-    Pcm16LimiterEnvelope microphoneLimiterEnvelope,
     int microphoneOffsetMs,
     int microphoneVolumeDb
   )
@@ -152,7 +177,6 @@ public static partial class ReplayPlaybackCoordinator
           AllowBackground = true,
           MicrophoneRecording = microphoneRecording,
           MicrophoneWave = microphoneWave,
-          MicrophoneLimiterEnvelope = microphoneLimiterEnvelope,
           MicrophoneOffsetMs = microphoneOffsetMs,
           MicrophoneVolumeDb = microphoneVolumeDb,
         };
@@ -163,7 +187,13 @@ public static partial class ReplayPlaybackCoordinator
       catch (Exception exception)
       {
         ReplayMicrophonePlaybackFiles.Delete(microphoneRecording?.FilePath);
-        SetError(operationId, run?.Id, "calibration_preview_invalid", exception.Message);
+        Main.Instance?.LogException("Calibration/Preview", exception);
+        SetError(
+          operationId,
+          run?.Id,
+          "calibration_preview_invalid",
+          "The calibration preview could not be prepared. Your calibration result is still available."
+        );
       }
       return GetStatus();
     }
@@ -180,6 +210,7 @@ public static partial class ReplayPlaybackCoordinator
     lock (CommandGate)
     {
       ReplayLevelOpenService.ReleaseHeldBlack();
+      HidePreparationNotice();
       CancelPendingPreparation();
       PendingReplay operation = _operation;
       ReplaySessionService.ClearActiveContext();
@@ -373,6 +404,7 @@ public static partial class ReplayPlaybackCoordinator
   public static void Shutdown()
   {
     ReplayLevelOpenService.ReleaseHeldBlack();
+    HidePreparationNotice();
     CancelPendingPreparation();
     ReplaySessionService.ClearActiveContext();
     _operation?.CleanupPreparedMicrophone();
@@ -457,6 +489,7 @@ public static partial class ReplayPlaybackCoordinator
   private static void SetError(string operationId, string runId, string code, string message)
   {
     ReplayLevelOpenService.ReleaseHeldBlack();
+    HidePreparationNotice();
     SetStatus(
       new ReplayPlaybackStatus
       {
@@ -473,6 +506,22 @@ public static partial class ReplayPlaybackCoordinator
   {
     lock (Gate)
       _status = status;
+  }
+
+  private static void ShowPreparationNotice(string operationId)
+  {
+    if (!IsCurrent(operationId))
+      return;
+
+    ReplayTimelineHud.ShowReplayPreparationNotification(
+      "Replay requested",
+      "Keep ADOFAI focused and leave the keyboard and mouse alone. The replay will start automatically."
+    );
+  }
+
+  private static void HidePreparationNotice()
+  {
+    UnityMainThread.Post(ReplayTimelineHud.HideReplayPreparationNotification);
   }
 
   private static bool IsCurrent(string operationId)

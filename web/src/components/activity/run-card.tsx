@@ -19,7 +19,7 @@ import type { ActivityRun } from "@/models/activity/activity-model";
 import { translatedDomainError } from "@/models/activity/localized-error";
 import { replayButtonState } from "@/models/activity/replay-button-state";
 import { formatXAccuracy } from "@/models/activity/x-accuracy";
-import type { ReplayStatus } from "@/models/replay/replay-model";
+import { isReplayInProgress, type ReplayStatus } from "@/models/replay/replay-model";
 import { cn } from "@/shared/lib/cn";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -36,6 +36,7 @@ export const RunCard = memo(function RunCard({
   onPlayReplay,
   onDeleteRun,
   onKeepMicrophoneRecording,
+  onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
 }: {
   run: ActivityRun;
@@ -50,6 +51,7 @@ export const RunCard = memo(function RunCard({
   onPlayReplay: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
@@ -93,6 +95,7 @@ export const RunCard = memo(function RunCard({
           disabled={readOnly}
           runDeleteDisabled={runDeleteDisabled}
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
+          onDownloadMicrophoneRecording={onDownloadMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
           onDeleteRun={onDeleteRun}
         />
@@ -236,7 +239,11 @@ function RunReplayButton({
   const unavailableMessage = run.replayUnavailableReason
     ? activityT(`run.replayUnavailable.${run.replayUnavailableReason}`)
     : null;
-  const buttonState = replayButtonState(run, disabled, pendingRunId !== null);
+  const buttonState = replayButtonState(
+    run,
+    disabled,
+    pendingRunId !== null || isReplayInProgress(status),
+  );
   const message =
     unavailableMessage ?? describeReplay(run.id, status, pendingRunId, error, errorRunId, replayT);
   const statusMatches = status.runId === run.id;

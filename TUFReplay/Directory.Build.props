@@ -1,4 +1,6 @@
 <Project>
+  <Import Project="../TUFReplay.BuildFlavor.props" />
+
   <PropertyGroup>
     <AdofaiDir Condition="'$(AdofaiDir)' == '' and '$(ADOFAI_DIR)' != ''">$(ADOFAI_DIR)</AdofaiDir>
     <AdofaiDir Condition="'$(AdofaiDir)' == ''"

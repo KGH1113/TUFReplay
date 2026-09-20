@@ -9,6 +9,32 @@ struct CaptureBufferSlice {
 }
 
 enum CaptureBufferTiming {
+  static func firstSampleHostTime(
+    presentationTime: CMTime,
+    skippedFrames: Int,
+    sampleRate: Int,
+    clock: CMClockOrTimebase
+  ) -> UInt64? {
+    guard sampleRate > 0, skippedFrames >= 0 else { return nil }
+    let firstWrittenTime = CMTimeAdd(
+      presentationTime,
+      CMTime(value: Int64(skippedFrames), timescale: CMTimeScale(sampleRate))
+    )
+    let hostTime = CMSyncConvertTime(firstWrittenTime, from: clock, to: CMClockGetHostTimeClock())
+    guard hostTime.isValid, !hostTime.isIndefinite,
+      CMTimeGetSeconds(hostTime).isFinite, CMTimeGetSeconds(hostTime) > 0
+    else { return nil }
+    return CMClockConvertHostTimeToSystemUnits(hostTime)
+  }
+
+  static func beginAnchor(latestPresentationEndTime: CMTime) -> CMTime {
+    guard latestPresentationEndTime.isValid, !latestPresentationEndTime.isIndefinite else {
+      return .invalid
+    }
+    let seconds = CMTimeGetSeconds(latestPresentationEndTime)
+    return seconds.isFinite ? latestPresentationEndTime : .invalid
+  }
+
   static func firstWritableSlice(
     presentationTime: CMTime,
     beginTime: CMTime,
@@ -51,7 +77,8 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   private var output: AVCaptureAudioDataOutput?
   private var writer: PcmWaveFileWriter?
   private var beginTime: CMTime = .invalid
-  private var firstBufferOffsetUs: Int64 = 0
+  private var latestPresentationEndTime: CMTime = .invalid
+  private var firstSampleHostTime: UInt64 = 0
   private var activeDeviceId: String?
 
   func devices() -> [MicrophoneDeviceResponse] {
@@ -131,15 +158,18 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   }
 
   func begin(path: String) throws {
-    guard let session, session.isRunning, let masterClock = session.masterClock else {
+    guard let session, session.isRunning else {
       throw CaptureError.message("Microphone is not armed.")
     }
     lock.lock()
     defer { lock.unlock() }
     try finishWriterLocked()
     writer = try PcmWaveFileWriter(path: path)
-    firstBufferOffsetUs = 0
-    beginTime = CMClockGetTime(masterClock)
+    firstSampleHostTime = 0
+    // Keep the run boundary on the delivered sample timeline. The first written
+    // sample supplies its own host timestamp, independently of when begin arrived
+    // or how long this capture session has already been armed.
+    beginTime = CaptureBufferTiming.beginAnchor(latestPresentationEndTime: latestPresentationEndTime)
   }
 
   func end() throws -> CaptureEndResponse {
@@ -149,7 +179,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     return CaptureEndResponse(
       frameCount: frameCount,
       deviceId: activeDeviceId,
-      captureStartOffsetUs: firstBufferOffsetUs
+      firstSampleHostTime: firstSampleHostTime
     )
   }
 
@@ -162,6 +192,9 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     output = nil
     session = nil
     activeDeviceId = nil
+    lock.lock()
+    latestPresentationEndTime = .invalid
+    lock.unlock()
   }
 
   func captureOutput(
@@ -188,6 +221,13 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
 
     lock.lock()
     defer { lock.unlock() }
+    if !beginTime.isValid {
+      beginTime = presentationTime
+    }
+    latestPresentationEndTime = CMTimeAdd(
+      presentationTime,
+      CMTime(value: Int64(sampleCount), timescale: CMTimeScale(PcmWaveFile.sampleRate))
+    )
     guard let writer, beginTime.isValid else { return }
     if writer.frameCount == 0 {
       guard
@@ -199,11 +239,22 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
         )
       else { return }
 
+      // Capture output PTS belongs to the session clock. Convert the actual first
+      // written sample while that clock is live; callback and IPC latency do not
+      // change its position on the game's monotonic clock.
+      guard let clock = session?.masterClock,
+        let hostTime = CaptureBufferTiming.firstSampleHostTime(
+          presentationTime: presentationTime,
+          skippedFrames: slice.skippedFrames,
+          sampleRate: PcmWaveFile.sampleRate,
+          clock: clock
+        )
+      else { return }
+      firstSampleHostTime = hostTime
       let bytesPerFrame = length / sampleCount
       if slice.skippedFrames > 0 {
         data = Data(data.dropFirst(slice.skippedFrames * bytesPerFrame))
       }
-      firstBufferOffsetUs = slice.startOffsetUs
     }
     do {
       try writer.append(pcm16: data)

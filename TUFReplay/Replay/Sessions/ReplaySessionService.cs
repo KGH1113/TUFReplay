@@ -137,6 +137,7 @@ public static partial class ReplaySessionService
       context.MicrophonePlayer?.Dispose();
     }
     RestoreReplayNoFail();
+    RestoreReplayGameInputOffset();
     RestoreReplayPitch();
     RestoreReplayJudgmentDifficulty();
     _activeContext = null;
@@ -185,7 +186,12 @@ public static partial class ReplaySessionService
         if (ReplayRunController.ShouldInitializeFromPlayerControl(_activeContext))
           EnsurePlayerControlRunStarted();
         else if (_activeContext.Phase == ReplayPlaybackPhase.Armed)
-          TransitionTo(ReplayPlaybackPhase.Running, "state_player_control");
+        {
+          if (ReplayRunController.ShouldAlignPlayerControlOrigin(_activeContext))
+            AlignFirstTilePlayerControlOrigin();
+          else
+            TransitionTo(ReplayPlaybackPhase.Running, "state_player_control");
+        }
         CompleteTimelineRestart();
         break;
 
@@ -203,7 +209,16 @@ public static partial class ReplaySessionService
 
   public static void TickStartup()
   {
-    if (_activeContext == null || _activeContext.RunStarted)
+    if (
+      _activeContext == null
+      || (
+        _activeContext.RunStarted
+        && !(
+          _activeContext.Phase == ReplayPlaybackPhase.Armed
+          && ReplayRunController.ShouldAlignPlayerControlOrigin(_activeContext)
+        )
+      )
+    )
       return;
     if (!TryGetControllerState(out States state))
       return;
@@ -249,13 +264,13 @@ public static partial class ReplaySessionService
       && GameplayChartHash.Equals(_activeContext.GameplayHash, currentHash);
   }
 
-  private static void PrepareReplayRunRestart(string reason)
+  private static void PrepareReplayRunRestart(string reason, bool preserveClockOrigin = false)
   {
     if (_activeContext == null)
       return;
 
     ReplayPlaybackPhase previous = _activeContext.Phase;
-    ReplayRunController.MarkRestartPrepared(_activeContext);
+    ReplayRunController.MarkRestartPrepared(_activeContext, preserveClockOrigin);
     _activeContext.MicrophonePlayer?.Stop();
     LogLifecycleTransition(previous, ReplayPlaybackPhase.Prepared, reason);
     _suppressReplayMarkFail = false;
@@ -482,9 +497,18 @@ public static partial class ReplaySessionService
   {
     if (_activeContext == null)
       return false;
-    if (_activeContext.RunStarted)
+    if (
+      _activeContext.RunStarted
+      && !(
+        _activeContext.Phase == ReplayPlaybackPhase.Armed
+        && ReplayRunController.ShouldAlignPlayerControlOrigin(_activeContext)
+      )
+    )
       return true;
-    if (!ReplayRunController.ShouldInitializeFromPlayerControl(_activeContext))
+    if (
+      _activeContext.Phase != ReplayPlaybackPhase.Armed
+      && !ReplayRunController.ShouldInitializeFromPlayerControl(_activeContext)
+    )
       return false;
     if (!TryGetControllerState(out States state) || state != States.PlayerControl)
       return false;
@@ -494,7 +518,27 @@ public static partial class ReplaySessionService
       return false;
     }
 
+    if (ReplayRunController.ShouldAlignPlayerControlOrigin(_activeContext))
+      return AlignFirstTilePlayerControlOrigin();
     return ResetReplayRun("player_control_without_countdown", ReplayPlaybackPhase.Running);
+  }
+
+  private static bool AlignFirstTilePlayerControlOrigin()
+  {
+    if (!ReplayClock.TryComputeRawReplayTimeUs(_activeContext, out long rawTimeUs, out string blockedReason))
+    {
+      LogStartupBlocked(blockedReason);
+      return false;
+    }
+
+    ReplayClock.AlignRuntimeTime(_activeContext, rawTimeUs, targetTimeUs: 0L);
+    Main.Instance?.Log(
+      "[Replay/Clock] First-tile PlayerControl origin aligned. rawTimeUs="
+        + rawTimeUs
+        + ", runId="
+        + _activeContext.RunId
+    );
+    return ResetReplayRun("first_tile_player_control_origin_aligned", ReplayPlaybackPhase.Running);
   }
 
   private static ReplayRuntimeReadiness GetRuntimeReadiness()
@@ -552,13 +596,17 @@ public static partial class ReplaySessionService
 
   private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
 
+  private static bool IsMicrophoneAudible() =>
+    _activeContext?.Phase == ReplayPlaybackPhase.Running || _activeContext?.Phase == ReplayPlaybackPhase.Won;
+
   private static ReplayPlaybackSnapshot CreatePlaybackSnapshot(long timelineTimeUs, bool? paused = null) =>
     new ReplayPlaybackSnapshot(
       timelineTimeUs,
       CurrentTimelineRate(),
       CurrentGameplayRate(),
       CurrentWonTimeUs(),
-      paused ?? ADOBase.controller?.paused == true
+      paused ?? ADOBase.controller?.paused == true,
+      IsMicrophoneAudible()
     );
 
   private static void ResetReplayHeldInputState()

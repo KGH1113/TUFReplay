@@ -9,13 +9,7 @@ public static class ReplayClock
     if (context == null || context.WonClockStarted)
       return;
 
-    long fallback = 0L;
-    if (context.Meta?.gameplayStartSongPosition != null && ADOBase.conductor != null)
-    {
-      fallback = (long)(
-        (ADOBase.conductor.songposition_minusi - context.Meta.gameplayStartSongPosition.Value) * 1_000_000d
-      );
-    }
+    long fallback = TryComputeReplayTimeUs(context, out long replayTimeUs, out _) ? replayTimeUs : 0L;
 
     context.WonClockStartTimeUs = context.Meta?.wonTimeUs ?? fallback;
     context.WonClockStartedAt = UnityEngine.Time.realtimeSinceStartupAsDouble;
@@ -38,6 +32,24 @@ public static class ReplayClock
       double elapsed = UnityEngine.Time.realtimeSinceStartupAsDouble - context.WonClockStartedAt;
       nowUs = context.WonClockStartTimeUs + (long)(System.Math.Max(0d, elapsed) * 1_000_000d);
       return true;
+    }
+
+    if (!TryComputeRawReplayTimeUs(context, out long rawTimeUs, out reason))
+      return false;
+
+    nowUs = ApplyRuntimeOffset(context, rawTimeUs);
+    return true;
+  }
+
+  public static bool TryComputeRawReplayTimeUs(ActiveReplayContext context, out long nowUs, out string reason)
+  {
+    nowUs = 0L;
+    reason = null;
+
+    if (context?.Meta == null)
+    {
+      reason = "meta_missing";
+      return false;
     }
 
     if (ADOBase.conductor == null)
@@ -87,4 +99,15 @@ public static class ReplayClock
     nowUs = (long)((songPosition - start) * 1_000_000d);
     return true;
   }
+
+  public static void AlignRuntimeTime(ActiveReplayContext context, long rawTimeUs, long targetTimeUs)
+  {
+    if (context == null)
+      return;
+    context.ReplayClockOffsetUs = rawTimeUs - targetTimeUs;
+    context.ReplayClockOffsetInitialized = true;
+  }
+
+  public static long ApplyRuntimeOffset(ActiveReplayContext context, long rawTimeUs) =>
+    context?.ReplayClockOffsetInitialized == true ? rawTimeUs - context.ReplayClockOffsetUs : rawTimeUs;
 }

@@ -41,8 +41,8 @@ export function useEmbeddedChartViewModel({
     const client = new ChartEmbedClient(frame, embed.origin, {
       onReady: () => setStatus("loading"),
       onLoaded: () => setStatus("ready"),
-      onError: (message) => {
-        setError(message);
+      onError: () => {
+        setError(t("chart.viewerLoadFailed"));
         setStatus("error");
       },
       onFloorSelected: (floorIndex) => callbacksRef.current.onFloorSelect(floorIndex),
@@ -56,7 +56,7 @@ export function useEmbeddedChartViewModel({
       window.removeEventListener("message", listener);
       if (clientRef.current === client) clientRef.current = null;
     };
-  }, [embed.origin, embed.src]);
+  }, [embed.origin, embed.src, t]);
 
   const chartLevelSessionId = chart?.levelSessionId;
   const chartLevelText = chart?.levelText;

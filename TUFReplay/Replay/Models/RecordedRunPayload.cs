@@ -41,6 +41,7 @@ public class RecordedRunPayload
   public int InputNativeDevices;
   public int InputNativeQueueDepth;
   public bool NoFailMode;
+  public int? GameInputOffsetMs;
   public int? LevelPitchPercent;
   public float? PitchSpeedMultiplier;
   public float? EffectivePitch;
@@ -66,6 +67,7 @@ public class RecordedRunPayload
       wonTimeUs = WonTimeUs,
       terminalTimeUs = TerminalTimeUs,
       noFailMode = NoFailMode,
+      gameInputOffsetMs = GameInputOffsetMs,
       levelPitchPercent = LevelPitchPercent,
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,

@@ -86,13 +86,13 @@ public static class Bootstrap
       try { DependencyBootstrapShim.Discard(modEntry.Path, bootstrapTrial); }
       catch (Exception exception) { Warn(modEntry, "The dependency bootstrap trial could not be discarded.", exception); }
       modEntry.Info.Version = current.Version;
-      modEntry.Info.DisplayName = displayName + " <color=red>[Failed to update!]</color>";
+      modEntry.Info.DisplayName = displayName + " <color=red>[Update failed - restart the game]</color>";
       Warn(modEntry, "The updated runtime failed to initialize. It will be retried next launch.", loadException);
       return false;
     }
     catch (Exception exception)
     {
-      modEntry.Info.DisplayName = displayName + " <color=red>[Failed to update!]</color>";
+      modEntry.Info.DisplayName = displayName + " <color=red>[Could not start - reinstall TUFReplay]</color>";
       Warn(modEntry, "The runtime launcher failed.", exception);
       return false;
     }
@@ -103,6 +103,7 @@ public static class Bootstrap
     modEntry.Info.Version = current.Version;
     if (TryLoad(modEntry, current, out Exception exception))
       return true;
+    modEntry.Info.DisplayName += " <color=red>[Could not start - reinstall TUFReplay]</color>";
     modEntry.Logger.Error(exception?.ToString() ?? "The current TUFReplay runtime failed to load.");
     return false;
   }

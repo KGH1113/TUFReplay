@@ -7,7 +7,9 @@ using Newtonsoft.Json;
 using TUFReplay.Microphone.Capture;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Recording;
+using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Shared.Unity;
 using UnityEngine;
 
 namespace TUFReplay.Microphone.Recording;
@@ -132,11 +134,15 @@ public sealed partial class MicrophoneRecordingFeature
     {
       string deviceId = TUFReplaySettingStore.Current.MicrophoneDeviceId;
       if (!_backend.Arm(deviceId, out string error))
+      {
         Main.Instance?.Log("[Microphone] Arm failed; this run will have no recording. error=" + error);
+        ShowRecordingUnavailable();
+      }
     }
     catch (Exception exception)
     {
       Main.Instance?.Log("[Microphone] Arm failed; this run will have no recording. error=" + exception.Message);
+      ShowRecordingUnavailable();
     }
   }
 
@@ -197,15 +203,16 @@ public sealed partial class MicrophoneRecordingFeature
     }
   }
 
-  public void BeginRun(string runId)
+  public bool BeginRun(string runId)
   {
     if (!IsCaptureEnabled() || _backend == null || string.IsNullOrEmpty(runId))
-      return;
+      return false;
     string path = Path.Combine(_tempDirectory, runId + ".wav.partial");
     try
     {
-      if (!_backend.BeginRun(runId, path, out string error))
-        Main.Instance?.Log("[Microphone] Capture start failed; this run will have no recording. error=" + error);
+      if (_backend.BeginRun(runId, path, out string error))
+        return true;
+      Main.Instance?.Log("[Microphone] Capture start failed; this run will have no recording. error=" + error);
     }
     catch (Exception exception)
     {
@@ -213,6 +220,16 @@ public sealed partial class MicrophoneRecordingFeature
         "[Microphone] Capture start failed; this run will have no recording. error=" + exception.Message
       );
     }
+    ShowRecordingUnavailable();
+    return false;
+  }
+
+  private static void ShowRecordingUnavailable()
+  {
+    ReplayTimelineHud.ShowPersistentNotification(
+      "Microphone recording unavailable",
+      "This play will be saved without microphone audio. Check the selected input device and microphone permission."
+    );
   }
 
   public void EndRun(Action<CapturedMicrophoneRecording> completed)
@@ -225,6 +242,7 @@ public sealed partial class MicrophoneRecordingFeature
     catch (Exception exception)
     {
       Main.Instance?.Log("[Microphone] Capture finalization failed. error=" + exception.Message);
+      ShowRecordingUnavailable();
       finalization = Task.FromResult<CapturedMicrophoneRecording>(null);
     }
 
@@ -252,14 +270,18 @@ public sealed partial class MicrophoneRecordingFeature
       if (task.Status == TaskStatus.RanToCompletion)
         recording = task.Result;
       else if (task.Exception != null)
+      {
         Main.Instance?.Log(
           "[Microphone] Capture finalization failed. error=" + task.Exception.GetBaseException().Message
         );
+        UnityMainThread.Post(ShowRecordingUnavailable);
+      }
       completed?.Invoke(recording);
     }
     catch (Exception exception)
     {
       Main.Instance?.Log("[Microphone] Capture completion failed. error=" + exception.Message);
+      UnityMainThread.Post(ShowRecordingUnavailable);
       Discard(recording);
     }
     finally

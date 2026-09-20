@@ -13,14 +13,13 @@ namespace TUFReplay.Replay.Timeline;
 internal sealed class ReplayTimelineHud : MonoBehaviour
 {
   private const string RuntimePrefabPath = "Assets/Prefabs/ReplayTimelineRuntime.prefab";
-  private const string MicrophonePermissionWarningPrefabPath =
-    "Assets/Prefabs/MicrophonePermissionWarningRuntime.prefab";
+  private const string RuntimeNotificationPrefabPath = "Assets/Prefabs/RuntimeNotificationRuntime.prefab";
   private const int TimelineSortOrder = 32000;
   private static ReplayTimelineHud _instance;
 
   private AssetBundle _bundle;
   private ReplayTimelineView _view;
-  private MicrophonePermissionWarningView _microphonePermissionWarningView;
+  private MicrophonePermissionWarningView _notificationView;
   private UIFloatingPanelDragHandle _panelDragHandle;
   private string _activeRunId;
   private long _lastElapsedSecond = -1L;
@@ -29,6 +28,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private bool? _lastInteractable;
   private bool? _lastSeekInteractable;
   private bool _isScrubbing;
+  private bool _replayPreparationNotificationVisible;
   private long _scrubDurationTimeUs;
   private readonly Vector3[] _nativeControlCorners = new Vector3[4];
   private int _lastScreenWidth = -1;
@@ -70,12 +70,10 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
         bundle.Unload(true);
         return;
       }
-      GameObject microphonePermissionWarningPrefab = bundle.LoadAsset<GameObject>(
-        MicrophonePermissionWarningPrefabPath
-      );
-      if (microphonePermissionWarningPrefab == null)
+      GameObject runtimeNotificationPrefab = bundle.LoadAsset<GameObject>(RuntimeNotificationPrefabPath);
+      if (runtimeNotificationPrefab == null)
       {
-        Main.Instance?.Log("[ReplayTimelineHud] Microphone permission warning prefab is missing from the UI bundle.");
+        Main.Instance?.Log("[ReplayTimelineHud] Runtime notification prefab is missing from the UI bundle.");
         bundle.Unload(true);
         return;
       }
@@ -119,20 +117,16 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       hud._view.BindExpandDocked(hud.ExpandDockedTimeline);
       hud._view.gameObject.SetActive(false);
 
-      GameObject microphonePermissionWarning = Instantiate(
-        microphonePermissionWarningPrefab,
-        canvasObject.transform,
-        false
-      );
-      microphonePermissionWarning.name = "MicrophonePermissionWarningRuntime";
-      MicrophonePermissionWarningView microphonePermissionWarningView =
-        microphonePermissionWarning.GetComponent<MicrophonePermissionWarningView>();
-      if (microphonePermissionWarningView == null)
+      GameObject runtimeNotification = Instantiate(runtimeNotificationPrefab, canvasObject.transform, false);
+      runtimeNotification.name = "RuntimeNotificationRuntime";
+      MicrophonePermissionWarningView notificationView =
+        runtimeNotification.GetComponent<MicrophonePermissionWarningView>();
+      if (notificationView == null)
         throw new InvalidOperationException(
-          "MicrophonePermissionWarningRuntime.prefab has no MicrophonePermissionWarningView."
+          "RuntimeNotificationRuntime.prefab has no MicrophonePermissionWarningView."
         );
-      hud._microphonePermissionWarningView = microphonePermissionWarningView;
-      hud._microphonePermissionWarningView.ResetImmediate();
+      hud._notificationView = notificationView;
+      hud._notificationView.ResetImmediate();
       _instance = hud;
     }
     catch (Exception exception)
@@ -151,7 +145,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
 
     AssetBundle bundle = instance._bundle;
     instance._bundle = null;
-    instance._microphonePermissionWarningView?.ResetImmediate();
+    instance._notificationView?.ResetImmediate();
     if (instance.gameObject != null)
     {
       instance.gameObject.SetActive(false);
@@ -160,19 +154,63 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     bundle?.Unload(true);
   }
 
-  internal static bool ShowMicrophonePermissionWarning()
+  internal static bool ShowNotificationToast(string title, string message)
   {
-    MicrophonePermissionWarningView view = _instance?._microphonePermissionWarningView;
+    MicrophonePermissionWarningView view = _instance?._notificationView;
     if (view == null)
       return false;
 
-    view.Show(MicrophonePermissionWarningView.DefaultTitle, MicrophonePermissionWarningView.DefaultMessage);
-    return true;
+    return view.ShowToast(title, message);
   }
 
-  internal static void ResetMicrophonePermissionWarning()
+  internal static bool ShowPersistentNotification(
+    string title,
+    string message,
+    string actionLabel = null,
+    Action action = null
+  )
   {
-    _instance?._microphonePermissionWarningView?.ResetImmediate();
+    ReplayTimelineHud instance = _instance;
+    MicrophonePermissionWarningView view = instance?._notificationView;
+    if (view == null)
+      return false;
+
+    bool shown = view.ShowPersistent(title, message, actionLabel, action);
+    if (shown)
+      instance._replayPreparationNotificationVisible = false;
+    return shown;
+  }
+
+  internal static bool ShowReplayPreparationNotification(string title, string message)
+  {
+    ReplayTimelineHud instance = _instance;
+    MicrophonePermissionWarningView view = instance?._notificationView;
+    if (view == null)
+      return false;
+
+    bool shown = view.ShowPersistent(title, message);
+    instance._replayPreparationNotificationVisible = shown;
+    return shown;
+  }
+
+  internal static void HideReplayPreparationNotification()
+  {
+    ReplayTimelineHud instance = _instance;
+    if (instance?._replayPreparationNotificationVisible != true)
+      return;
+
+    instance._replayPreparationNotificationVisible = false;
+    instance._notificationView?.ResetImmediate();
+  }
+
+  internal static void ResetNotification()
+  {
+    ReplayTimelineHud instance = _instance;
+    if (instance == null)
+      return;
+
+    instance._replayPreparationNotificationVisible = false;
+    instance._notificationView?.ResetImmediate();
   }
 
   private void Update()
@@ -183,7 +221,10 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     if (!ReplaySessionService.TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot))
     {
       if (ReplaySessionService.IsTimelineRestartPending)
+      {
+        SetTimelineControlsInteractable(false, false);
         return;
+      }
 
       Hide();
       return;
@@ -202,7 +243,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       UpdatePlacementReference();
     }
 
-    if (!_isScrubbing)
+    if (!_isScrubbing && !ReplaySessionService.IsTimelineRestartPending)
     {
       float progress =
         snapshot.DurationTimeUs > 0L ? (float)((double)snapshot.ElapsedTimeUs / snapshot.DurationTimeUs) : 0f;
@@ -224,15 +265,20 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       _lastPlaying = playing;
       _view.SetPlaying(playing);
     }
-    if (_lastInteractable != snapshot.CanTogglePause)
+    SetTimelineControlsInteractable(snapshot.CanTogglePause, snapshot.CanSeek);
+  }
+
+  private void SetTimelineControlsInteractable(bool canTogglePause, bool canSeek)
+  {
+    if (_lastInteractable != canTogglePause)
     {
-      _lastInteractable = snapshot.CanTogglePause;
-      _view.SetPlaybackControlInteractable(snapshot.CanTogglePause);
+      _lastInteractable = canTogglePause;
+      _view.SetPlaybackControlInteractable(canTogglePause);
     }
-    if (_lastSeekInteractable != snapshot.CanSeek)
+    if (_lastSeekInteractable != canSeek)
     {
-      _lastSeekInteractable = snapshot.CanSeek;
-      _view.SetSeekControlsInteractable(snapshot.CanSeek);
+      _lastSeekInteractable = canSeek;
+      _view.SetSeekControlsInteractable(canSeek);
     }
   }
 
@@ -423,7 +469,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private void OnDestroy()
   {
     CancelScrub();
-    _microphonePermissionWarningView?.ResetImmediate();
+    _notificationView?.ResetImmediate();
     if (_instance == this)
       _instance = null;
   }

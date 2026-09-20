@@ -14,12 +14,12 @@ describe("localized errors", () => {
         new ApiError("Run was not found", { kind: "domain", code: "run_not_found" }),
         "fallback",
       ),
-    ).toBe("선택한 플레이를 찾을 수 없습니다.");
+    ).toBe("선택한 플레이를 찾을 수 없어요. 활동 목록을 새로고침해 주세요.");
   });
 
-  test("preserves an unknown diagnostic message", () => {
+  test("keeps unknown diagnostics out of user-facing copy", () => {
     expect(localizedErrorMessage(new Error("bridge failed at frame 7"), "fallback")).toBe(
-      "bridge failed at frame 7",
+      "fallback",
     );
   });
 
@@ -33,16 +33,16 @@ describe("localized errors", () => {
         }),
         "fallback",
       ),
-    ).toBe("현재 플레이를 먼저 종료하세요");
+    ).toBe("현재 플레이를 종료한 뒤 마이크 타이밍을 바꿀 수 있어요.");
   });
 
   test("translates typed IPC readiness and timeout errors", async () => {
     await i18n.changeLanguage("ko");
     expect(localizedErrorMessage({ code: "namespace_initializing" }, "fallback")).toBe(
-      "TUFReplay가 초기화 중입니다. 잠시 후 다시 시도하세요.",
+      "TUFReplay가 시작 중이에요. 준비되면 자동으로 다시 연결할게요.",
     );
-    expect(localizedErrorMessage({ code: "TIMEOUT" }, "fallback")).toBe(
-      "TUFReplay 응답 시간이 너무 오래 걸렸습니다.",
+    expect(localizedErrorMessage({ code: "TIMEOUT" }, "fallback")).toContain(
+      "30초 안에 응답하지 않았어요",
     );
   });
 });

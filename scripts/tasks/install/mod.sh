@@ -8,6 +8,10 @@ source "$TASK_DIR/../../lib/context.sh"
 source "$TASK_DIR/../../lib/guards.sh"
 # shellcheck source=../../lib/artifacts.sh
 source "$TASK_DIR/../../lib/artifacts.sh"
+# shellcheck source=../../lib/build-metadata.sh
+source "$TASK_DIR/../../lib/build-metadata.sh"
+
+version="$(tufreplay_resolve_build_version "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json")"
 
 assert_non_root_path "$TUFREPLAY_INSTALL_PATH"
 mkdir -p "$TUFREPLAY_INSTALL_PATH"
@@ -36,12 +40,18 @@ for platform in mac win linux; do
   rm -f "$TUFREPLAY_INSTALL_PATH/Assets/$platform/tufreplay_ui.bundle"
 done
 
-version="$(sed -n 's/.*"Version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" | head -n 1)"
-[ -n "$version" ] || fail "TUFReplay version is missing from Info.json."
 runtime="$TUFREPLAY_INSTALL_PATH/Runtime/versions/$version"
 
 copy_launcher_payload "$TUFREPLAY_INSTALL_PATH"
 copy_runtime_core "$runtime"
+tufreplay_write_build_info \
+  "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" \
+  "$TUFREPLAY_INSTALL_PATH/Info.json" \
+  "$version"
+tufreplay_write_build_info \
+  "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" \
+  "$runtime/Info.json" \
+  "$version"
 copy_assets "$runtime" optional
 if is_macos; then
   copy_mac_helper "$runtime" required

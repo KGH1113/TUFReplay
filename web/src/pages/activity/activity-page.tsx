@@ -1,3 +1,4 @@
+import { AutoSubmissionBuildNotice } from "@/components/activity/auto-submission-build-notice";
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
 import { DashboardHeader } from "@/components/activity/dashboard-header";
 import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
@@ -7,6 +8,7 @@ import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { DayRail } from "@/sections/activity/day-rail";
 import { LevelStrip } from "@/sections/activity/level-strip";
+import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
@@ -15,7 +17,13 @@ export function ActivityPage() {
 
   return (
     <>
-      <main className="h-screen overflow-hidden bg-muted/20 p-3 text-foreground">
+      <main
+        data-tufreplay-environment={TUFREPLAY_WEB_BUILD.environment}
+        data-tufreplay-build-flavor={TUFREPLAY_WEB_BUILD.flavor}
+        data-tufreplay-build-origin={TUFREPLAY_WEB_BUILD.expectedOrigin}
+        data-tufreplay-build-sha={TUFREPLAY_WEB_BUILD.buildSha ?? undefined}
+        className="h-screen overflow-hidden bg-muted/20 p-3 text-foreground"
+      >
         <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)] gap-3">
           <DayRail
             days={viewModel.days}
@@ -28,6 +36,7 @@ export function ActivityPage() {
               onRetry={() => void actions.retry()}
               mockEnabled={activity.mockEnabled}
             />
+            <AutoSubmissionBuildNotice health={activity.health} />
             <LevelStrip
               levelSessions={viewModel.levelSessions}
               selectedLevelGroupId={viewModel.selectedLevel?.levelGroupId ?? null}
@@ -82,6 +91,7 @@ export function ActivityPage() {
                 selectedRun={viewModel.selectedRun}
                 loading={viewModel.levelData.loading}
                 error={viewModel.levelData.error}
+                chartError={viewModel.levelData.chartError}
                 readOnly={activity.status !== "online"}
                 timeZone={viewModel.timeZone}
                 replayStatus={replay.status}
@@ -94,6 +104,7 @@ export function ActivityPage() {
                 onDeleteRun={actions.deleteRun}
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
+                onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
               />
             )}
           </section>

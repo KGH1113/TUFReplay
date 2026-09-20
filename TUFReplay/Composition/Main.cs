@@ -6,6 +6,7 @@ using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Sessions;
+using TUFReplay.Shared.Build;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Settings;
@@ -78,13 +79,22 @@ public sealed class Main
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
     GUILayout.Label("Updates");
-    bool receiveBetaUpdates = GUILayout.Toggle(UpdaterSettings.ReceiveBetaUpdates, "Receive beta updates");
-    GUILayout.Label("Beta builds may be unstable. Changes apply on the next game launch.");
-
-    if (receiveBetaUpdates != UpdaterSettings.ReceiveBetaUpdates)
+    if (TUFReplayBuildFlavor.Name == "auto-submission")
     {
-      UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
-      SaveUpdateSettings(modEntry);
+      GUILayout.Label("Build channel: Auto-submission");
+      GUILayout.Label("Build version: " + Instance.Version);
+      GUILayout.Label("Updates use the isolated auto-submission feed.");
+    }
+    else
+    {
+      bool receiveBetaUpdates = GUILayout.Toggle(UpdaterSettings.ReceiveBetaUpdates, "Receive beta updates");
+      GUILayout.Label("Beta builds may be unstable. Changes apply on the next game launch.");
+
+      if (receiveBetaUpdates != UpdaterSettings.ReceiveBetaUpdates)
+      {
+        UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
+        SaveUpdateSettings(modEntry);
+      }
     }
 
     _showReplayInputDiagnostics = GUILayout.Toggle(_showReplayInputDiagnostics, "Replay input diagnostics");

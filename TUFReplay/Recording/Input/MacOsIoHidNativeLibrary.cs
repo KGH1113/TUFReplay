@@ -22,6 +22,63 @@ internal enum MacOsInputError
   StartTimeout = 5,
 }
 
+internal static class MacOsIoHidErrorFormatter
+{
+  public static string Format(MacOsInputError error, int systemError)
+  {
+    if (systemError == 0)
+      return error.ToString();
+
+    uint code = unchecked((uint)systemError);
+    return error + ": " + GetIoReturnName(code) + " (decimal=" + systemError + ", hex=0x" + code.ToString("X8") + ")";
+  }
+
+  private static string GetIoReturnName(uint code)
+  {
+    switch (code)
+    {
+      case 0xE00002BC:
+        return "kIOReturnError";
+      case 0xE00002BD:
+        return "kIOReturnNoMemory";
+      case 0xE00002BE:
+        return "kIOReturnNoResources";
+      case 0xE00002BF:
+        return "kIOReturnIPCError";
+      case 0xE00002C0:
+        return "kIOReturnNoDevice";
+      case 0xE00002C1:
+        return "kIOReturnNotPrivileged";
+      case 0xE00002C2:
+        return "kIOReturnBadArgument";
+      case 0xE00002C5:
+        return "kIOReturnExclusiveAccess";
+      case 0xE00002C7:
+        return "kIOReturnUnsupported";
+      case 0xE00002C9:
+        return "kIOReturnInternalError";
+      case 0xE00002CA:
+        return "kIOReturnIOError";
+      case 0xE00002CD:
+        return "kIOReturnNotOpen";
+      case 0xE00002D5:
+        return "kIOReturnBusy";
+      case 0xE00002D6:
+        return "kIOReturnTimeout";
+      case 0xE00002D8:
+        return "kIOReturnNotReady";
+      case 0xE00002D9:
+        return "kIOReturnNotAttached";
+      case 0xE00002E2:
+        return "kIOReturnNotPermitted";
+      case 0xE00002E9:
+        return "kIOReturnDeviceError";
+      default:
+        return "unknown IOReturn";
+    }
+  }
+}
+
 [StructLayout(LayoutKind.Sequential)]
 internal struct MacOsIoHidNativeEvent
 {
@@ -48,7 +105,7 @@ internal struct MacOsIoHidNativeStats
 
 internal sealed class MacOsIoHidNativeLibrary
 {
-  private const uint ExpectedAbiVersion = 1;
+  private const uint ExpectedAbiVersion = 2;
   private const int RtldNow = 2;
   private static readonly object LoadGate = new object();
   private static MacOsIoHidNativeLibrary _instance;
@@ -102,6 +159,7 @@ internal sealed class MacOsIoHidNativeLibrary
   private readonly ContextActionDelegate _destroy;
   private readonly IsRunningDelegate _isRunning;
   private readonly ContextResultDelegate _lastError;
+  private readonly ContextResultDelegate _lastSystemError;
   private readonly WaitDequeueDelegate _waitDequeue;
   private readonly CopyStateDelegate _copyState;
   private readonly TakeDroppedDelegate _takeDropped;
@@ -131,6 +189,7 @@ internal sealed class MacOsIoHidNativeLibrary
     _destroy = Bind<ContextActionDelegate>("tufreplay_input_destroy");
     _isRunning = Bind<IsRunningDelegate>("tufreplay_input_is_running");
     _lastError = Bind<ContextResultDelegate>("tufreplay_input_last_error");
+    _lastSystemError = Bind<ContextResultDelegate>("tufreplay_input_last_system_error");
     _waitDequeue = Bind<WaitDequeueDelegate>("tufreplay_input_wait_dequeue");
     _copyState = Bind<CopyStateDelegate>("tufreplay_input_copy_state");
     _takeDropped = Bind<TakeDroppedDelegate>("tufreplay_input_take_dropped");
@@ -196,6 +255,8 @@ internal sealed class MacOsIoHidNativeLibrary
   public bool IsRunning(IntPtr context) => context != IntPtr.Zero && _isRunning(context);
 
   public MacOsInputError LastError(IntPtr context) => (MacOsInputError)_lastError(context);
+
+  public int LastSystemError(IntPtr context) => _lastSystemError(context);
 
   public int WaitDequeue(IntPtr context, IntPtr events, int capacity, int timeoutMs) =>
     _waitDequeue(context, events, capacity, timeoutMs);

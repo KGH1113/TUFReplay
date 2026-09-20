@@ -35,6 +35,7 @@ export function ActivityWorkspace({
   selectedRun,
   loading,
   error,
+  chartError,
   readOnly,
   timeZone,
   replayStatus,
@@ -47,6 +48,7 @@ export function ActivityWorkspace({
   onDeleteRun,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
+  onDownloadMicrophoneRecording,
 }: {
   chartAvailable: boolean;
   chart: ActivityChart | null;
@@ -56,6 +58,7 @@ export function ActivityWorkspace({
   selectedRun: ActivityRun | null;
   loading: boolean;
   error: string;
+  chartError: string;
   readOnly: boolean;
   timeZone: string;
   replayStatus: ReplayStatus;
@@ -68,6 +71,7 @@ export function ActivityWorkspace({
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
   const chartRef = useRef<EmbeddedChartHandle>(null);
@@ -83,6 +87,7 @@ export function ActivityWorkspace({
   const playReplay = useStableCallback(onPlayReplay);
   const deleteRun = useStableCallback(onDeleteRun);
   const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
+  const downloadMicrophoneRecording = useStableCallback(onDownloadMicrophoneRecording);
   const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
@@ -239,7 +244,7 @@ export function ActivityWorkspace({
     return (
       <StatePanel
         title={loading ? t("chart.loading") : t("chart.unavailable")}
-        body={loading ? t("chart.loadingIncrementally") : t("chart.noData")}
+        body={loading ? t("chart.loadingIncrementally") : chartError || t("chart.noData")}
       />
     );
   return (
@@ -334,6 +339,7 @@ export function ActivityWorkspace({
                             onPlayReplay={playReplay}
                             onDeleteRun={deleteRun}
                             onKeepMicrophoneRecording={keepMicrophoneRecording}
+                            onDownloadMicrophoneRecording={downloadMicrophoneRecording}
                             onDeleteMicrophoneRecording={deleteMicrophoneRecording}
                           />
                         </div>

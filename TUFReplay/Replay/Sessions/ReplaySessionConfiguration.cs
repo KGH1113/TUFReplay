@@ -87,6 +87,31 @@ public static partial class ReplaySessionService
   public static void UpdateActiveMicrophoneVolume(int volumeDb) =>
     _activeContext?.MicrophonePlayer?.UpdateVolume(volumeDb);
 
+  public static void ApplyReplayGameInputOffsetNow()
+  {
+    if (_activeContext?.Meta?.gameInputOffsetMs == null || _activeContext.ReplayGameInputOffsetApplied)
+      return;
+
+    try
+    {
+      _activeContext.OriginalGameInputOffsetMs = scrConductor.currentPreset.inputOffset;
+      scrConductor.currentPreset.inputOffset = _activeContext.Meta.gameInputOffsetMs.Value;
+      _activeContext.ReplayGameInputOffsetApplied = true;
+      Main.Instance?.Log(
+        "[Replay/Configuration] Applied recorded game input offset. recordedMs="
+          + _activeContext.Meta.gameInputOffsetMs.Value
+          + ", originalMs="
+          + _activeContext.OriginalGameInputOffsetMs.Value
+      );
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log(
+        "[Replay/Configuration] Could not apply recorded game input offset. error=" + exception.Message
+      );
+    }
+  }
+
   public static void ApplyReplayPitchNow()
   {
     if (_activeContext?.Meta?.levelPitchPercent == null)
@@ -131,6 +156,22 @@ public static partial class ReplaySessionService
 
     ReplayPitchService.ApplyToEditorLevelData(_activeContext.OriginalLevelPitchPercent.Value);
     _activeContext.ReplayPitchApplied = false;
+  }
+
+  private static void RestoreReplayGameInputOffset()
+  {
+    if (_activeContext?.ReplayGameInputOffsetApplied != true || !_activeContext.OriginalGameInputOffsetMs.HasValue)
+      return;
+
+    try
+    {
+      scrConductor.currentPreset.inputOffset = _activeContext.OriginalGameInputOffsetMs.Value;
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Replay/Configuration] Could not restore game input offset. error=" + exception.Message);
+    }
+    _activeContext.ReplayGameInputOffsetApplied = false;
   }
 
   private static void RestoreReplayJudgmentDifficulty()

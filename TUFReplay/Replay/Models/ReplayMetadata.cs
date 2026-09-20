@@ -8,6 +8,7 @@ public class ReplayMetadata
   public long? wonTimeUs;
   public long? terminalTimeUs;
   public bool? noFailMode;
+  public int? gameInputOffsetMs;
   public int? levelPitchPercent;
   public float? pitchSpeedMultiplier;
   public float? effectivePitch;

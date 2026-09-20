@@ -15,6 +15,7 @@ public class RecordingSession
   private InputTimelineAnchor? _previousInputAnchor;
   private bool _gameplayStateReached;
   private long _gameplayStateCaptureTicks;
+  private bool _gameplayTimelineWasAdvancing;
   private double? _wonUnscaledTime;
   private long _lastTimelineTimeUs;
   private bool _hasTimelineTime;
@@ -60,6 +61,7 @@ public class RecordingSession
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),
+        GameInputOffsetMs = GetCurrentGameInputOffsetMs(),
         JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
         GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
         GameplayHashVersion = gameplayHashVersion,
@@ -69,6 +71,7 @@ public class RecordingSession
       _previousInputAnchor = null;
       _gameplayStateReached = false;
       _gameplayStateCaptureTicks = 0L;
+      _gameplayTimelineWasAdvancing = false;
       _wonUnscaledTime = null;
       _lastTimelineTimeUs = 0L;
       _hasTimelineTime = false;
@@ -126,7 +129,7 @@ public class RecordingSession
     Main.Instance.Log("[Recording] Input capture started");
   }
 
-  public void MarkGameplayStarted()
+  public void MarkGameplayStarted(bool timelineWasAdvancing)
   {
     lock (_lock)
     {
@@ -136,10 +139,12 @@ public class RecordingSession
       RefreshPitchLocked();
       if (!Data.JudgmentDifficulty.HasValue)
         Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
+      Data.GameInputOffsetMs = GetCurrentGameInputOffsetMs() ?? Data.GameInputOffsetMs;
       if (!_gameplayStateReached)
       {
         _gameplayStateReached = true;
         _gameplayStateCaptureTicks = Stopwatch.GetTimestamp();
+        _gameplayTimelineWasAdvancing = timelineWasAdvancing;
       }
     }
 
@@ -270,6 +275,18 @@ public class RecordingSession
     }
   }
 
+  internal bool TryGetInputTimelineAnchor(out long captureTicks, out long timelineUs, out double rate)
+  {
+    lock (_lock)
+    {
+      InputTimelineAnchor anchor = _previousInputAnchor.GetValueOrDefault();
+      captureTicks = anchor.CaptureTicks;
+      timelineUs = anchor.TimeUs;
+      rate = anchor.Rate;
+      return IsRecording && IsCapturingInput && _previousInputAnchor.HasValue && !Data.WonTimeUs.HasValue;
+    }
+  }
+
   internal void BreakInputTimeline(string reason)
   {
     lock (_lock)
@@ -394,6 +411,18 @@ public class RecordingSession
     catch
     {
       return false;
+    }
+  }
+
+  private static int? GetCurrentGameInputOffsetMs()
+  {
+    try
+    {
+      return scrConductor.currentPreset.inputOffset;
+    }
+    catch
+    {
+      return null;
     }
   }
 
@@ -563,8 +592,13 @@ public class RecordingSession
 
     if (!Data.GameplayStartSongPosition.HasValue)
     {
-      double elapsedSeconds = CaptureTicksToSeconds(captureTicks - _gameplayStateCaptureTicks);
-      Data.GameplayStartSongPosition = songPosition - elapsedSeconds * timelineRate;
+      Data.GameplayStartSongPosition = CalculateGameplayStartSongPosition(
+        songPosition,
+        captureTicks,
+        _gameplayStateCaptureTicks,
+        timelineRate,
+        _gameplayTimelineWasAdvancing
+      );
     }
 
     long timelineUs = Data.WonTimeUs.HasValue ? CurrentTimelineTimeUsLocked() : ToRecordTimeUs(songPosition);
@@ -608,6 +642,19 @@ public class RecordingSession
     if (extendedKey)
       flags |= RecordInputFlags.ExtendedKey;
     return flags;
+  }
+
+  internal static double CalculateGameplayStartSongPosition(
+    double songPosition,
+    long anchorCaptureTicks,
+    long gameplayStateCaptureTicks,
+    double timelineRate,
+    bool timelineWasAdvancing
+  )
+  {
+    long originTicks = timelineWasAdvancing ? gameplayStateCaptureTicks : anchorCaptureTicks;
+    double elapsedSeconds = CaptureTicksToSeconds(anchorCaptureTicks - originTicks);
+    return songPosition - elapsedSeconds * timelineRate;
   }
 
   private long ToRecordTimeUs(double songPosition)

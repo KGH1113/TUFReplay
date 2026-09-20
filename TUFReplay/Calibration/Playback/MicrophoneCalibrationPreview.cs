@@ -124,16 +124,20 @@ internal sealed class MicrophoneCalibrationPreview
         ByteLength = new FileInfo(copyPath).Length,
       };
       Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(stored);
-      Pcm16LimiterEnvelope limiterEnvelope = Pcm16WaveAnalyzer.Analyze(stored, wave, CancellationToken.None);
-      UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored, wave, limiterEnvelope));
+      UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored, wave));
     }
     catch (Exception exception)
     {
+      Main.Instance?.LogException("Calibration/PreviewPrepare", exception);
       ReplayMicrophonePlaybackFiles.Delete(copyPath);
       UnityMainThread.Post(() =>
       {
         if (_state.IsState(operationId, MicrophoneCalibrationStates.PreviewStarting))
-          _state.Error("calibration_preview_prepare_failed", exception.Message, operationId);
+          _state.Error(
+            "calibration_preview_invalid",
+            "The preview could not be prepared. Your calibration result is still saved.",
+            operationId
+          );
       });
     }
   }
@@ -142,8 +146,7 @@ internal sealed class MicrophoneCalibrationPreview
     string operationId,
     string levelPath,
     StoredMicrophoneRecording recording,
-    Pcm16WaveInfo wave,
-    Pcm16LimiterEnvelope limiterEnvelope
+    Pcm16WaveInfo wave
   )
   {
     if (!_state.IsState(operationId, MicrophoneCalibrationStates.PreviewStarting) || _run == null)
@@ -160,7 +163,6 @@ internal sealed class MicrophoneCalibrationPreview
       levelPath,
       recording,
       wave,
-      limiterEnvelope,
       calibrationStatus.MicrophoneOffsetMs,
       calibrationStatus.MicrophoneVolumeDb
     );
