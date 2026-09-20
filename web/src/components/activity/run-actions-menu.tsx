@@ -1,6 +1,7 @@
 import {
   ArrowLeft01Icon,
   Delete02Icon,
+  Download01Icon,
   FloppyDiskIcon,
   Loading03Icon,
   Mic01Icon,
@@ -13,6 +14,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
+import { localizedErrorMessage } from "@/models/activity/localized-error";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 import {
@@ -26,13 +28,14 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-type PendingAction = "keep" | "delete-recording" | "delete-run" | null;
+type PendingAction = "download" | "keep" | "delete-recording" | "delete-run" | null;
 
 export function RunActionsMenu({
   run,
   disabled,
   runDeleteDisabled,
   onKeepMicrophoneRecording,
+  onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
   onDeleteRun,
 }: {
@@ -40,6 +43,7 @@ export function RunActionsMenu({
   disabled: boolean;
   runDeleteDisabled: boolean;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
 }) {
@@ -55,6 +59,20 @@ export function RunActionsMenu({
   const [dialogError, setDialogError] = useState("");
   const busy = pendingAction !== null;
 
+  const downloadRecording = async () => {
+    if (disabled || busy) return;
+    setPendingAction("download");
+    setMenuError("");
+    try {
+      await onDownloadMicrophoneRecording(run);
+      setMenuOpen(false);
+    } catch (cause) {
+      setMenuError(localizedErrorMessage(cause, microphoneT("recording.downloadFailed")));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
   const keepRecording = async () => {
     if (disabled || busy) return;
     setPendingAction("keep");
@@ -62,7 +80,7 @@ export function RunActionsMenu({
     try {
       await onKeepMicrophoneRecording(run);
     } catch (cause) {
-      setMenuError(cause instanceof Error ? cause.message : microphoneT("recording.keepFailed"));
+      setMenuError(localizedErrorMessage(cause, microphoneT("recording.keepFailed")));
     } finally {
       setPendingAction(null);
     }
@@ -76,9 +94,7 @@ export function RunActionsMenu({
       await onDeleteMicrophoneRecording(run);
       setRecordingDialogOpen(false);
     } catch (cause) {
-      setDialogError(
-        cause instanceof Error ? cause.message : microphoneT("recording.deleteFailed"),
-      );
+      setDialogError(localizedErrorMessage(cause, microphoneT("recording.deleteFailed")));
     } finally {
       setPendingAction(null);
     }
@@ -92,7 +108,7 @@ export function RunActionsMenu({
       await onDeleteRun(run);
       setRunDialogOpen(false);
     } catch (cause) {
-      setDialogError(cause instanceof Error ? cause.message : t("run.deleteFailed"));
+      setDialogError(localizedErrorMessage(cause, t("run.deleteFailed")));
     } finally {
       setPendingAction(null);
     }
@@ -137,6 +153,20 @@ export function RunActionsMenu({
                   </p>
                 </div>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={disabled || busy}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void downloadRecording();
+                  }}
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={pendingAction === "download" ? Loading03Icon : Download01Icon}
+                    className={pendingAction === "download" ? "size-4 animate-spin" : "size-4"}
+                  />
+                  {microphoneT("recording.download")}
+                </DropdownMenuItem>
                 {!run.microphoneRecordingPermanent ? (
                   <DropdownMenuItem
                     disabled={disabled || busy}

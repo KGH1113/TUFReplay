@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Replay.Transport;
 using TUFReplay.Shared.Compatibility;
 using UnityEngine;
 
@@ -29,7 +30,9 @@ public static partial class ReplaySessionService
 
     long durationTimeUs = TimelineDurationTimeUs(context);
     elapsedTimeUs = Math.Max(0L, Math.Min(elapsedTimeUs, durationTimeUs));
-    bool canTogglePause = state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl;
+    bool canTogglePause =
+      !_timelineRestartPending
+      && (state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl);
     bool canSeek = state == States.PlayerControl && durationTimeUs > 0L && !_timelineRestartPending;
     snapshot = new ReplayTimelinePlaybackSnapshot(
       context.RunId,
@@ -280,7 +283,7 @@ public static partial class ReplaySessionService
       return long.MaxValue;
     if (replayTimeUs <= long.MinValue)
       return long.MinValue;
-    return (long)replayTimeUs;
+    return ReplayClock.ApplyRuntimeOffset(context, (long)replayTimeUs);
   }
 
   private static bool TryRestartActiveReplayAt(long targetTimeUs, bool pauseAtPlayerControl)
@@ -302,7 +305,10 @@ public static partial class ReplaySessionService
 
     long durationTimeUs = TimelineDurationTimeUs(context);
     targetTimeUs = ClampTimelineSeekTime(targetTimeUs, durationTimeUs);
-    double targetSongTime = context.Meta.gameplayStartSongPosition.Value + targetTimeUs / 1_000_000d;
+    long rawTargetTimeUs = targetTimeUs;
+    if (context.ReplayClockOffsetInitialized)
+      rawTargetTimeUs += context.ReplayClockOffsetUs;
+    double targetSongTime = context.Meta.gameplayStartSongPosition.Value + rawTargetTimeUs / 1_000_000d;
     int floorIndex = FindTimelineSeekFloor(targetSongTime);
     if (floorIndex < 1)
       floorIndex = 1;
@@ -314,7 +320,7 @@ public static partial class ReplaySessionService
     context.NativeInputPlayer?.SkipTo(targetTimeUs);
     context.MicrophonePlayer?.Stop();
     ResetReplayHeldInputState();
-    PrepareReplayRunRestart("timeline_native_checkpoint_restart");
+    PrepareReplayRunRestart("timeline_native_checkpoint_restart", preserveClockOrigin: true);
 
     _timelineRestartPending = true;
     _timelineRestartPauseAtPlayerControl = pauseAtPlayerControl;

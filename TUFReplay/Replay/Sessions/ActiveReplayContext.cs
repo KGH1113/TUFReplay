@@ -27,11 +27,15 @@ public class ActiveReplayContext
   public ReplayHitContextPlayer HitContextPlayer;
   public IReplayMicrophonePlayer MicrophonePlayer;
   public ReplayMetadata Meta;
+  public bool ReplayClockOffsetInitialized;
+  public long ReplayClockOffsetUs;
   public ReplayPlaybackPhase Phase = ReplayPlaybackPhase.Prepared;
   public bool RunStarted;
   public bool WonClockStarted;
   public double WonClockStartedAt;
   public long WonClockStartTimeUs;
+  public int? OriginalGameInputOffsetMs;
+  public bool ReplayGameInputOffsetApplied;
   public int? OriginalLevelPitchPercent;
   public bool ReplayPitchApplied;
   public int? OriginalJudgmentDifficulty;

@@ -28,6 +28,8 @@ public sealed class TUFReplayIpcFeature
         {
           "https://tuforums.com",
           "https://tufreplay.impl1113.dev",
+          "https://tufreplay-dev.impl1113.dev",
+          "https://tufreplay-auto.impl1113.dev",
           "http://localhost",
           "http://127.0.0.1",
         },
@@ -46,6 +48,7 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("activity.run.delete", ActivityIpcHandlers.DeleteRun);
     ipc.Register("microphone.recording.delete", MicrophoneRecordingIpcHandlers.Delete);
     ipc.Register("microphone.recording.keep", MicrophoneRecordingIpcHandlers.KeepPermanently);
+    ipc.RegisterDownload("microphone.recording.export", MicrophoneRecordingIpcHandlers.Export);
     ipc.Register("replay.play", ReplayIpcHandlers.Play);
     ipc.Register("replay.status.get", ReplayIpcHandlers.GetStatus);
     ipc.Register("replay.level-file.pick", ReplayIpcHandlers.PickLevelFile);

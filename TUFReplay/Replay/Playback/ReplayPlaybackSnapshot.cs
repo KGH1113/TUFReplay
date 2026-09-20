@@ -7,7 +7,8 @@ public readonly struct ReplayPlaybackSnapshot
     double timelineRate,
     double gameplayRate,
     long? wonTimeUs,
-    bool paused
+    bool paused,
+    bool microphoneAudible = true
   )
   {
     TimelineTimeUs = timelineTimeUs;
@@ -15,6 +16,7 @@ public readonly struct ReplayPlaybackSnapshot
     GameplayRate = gameplayRate;
     WonTimeUs = wonTimeUs;
     Paused = paused;
+    MicrophoneAudible = microphoneAudible;
   }
 
   public long TimelineTimeUs { get; }
@@ -22,4 +24,5 @@ public readonly struct ReplayPlaybackSnapshot
   public double GameplayRate { get; }
   public long? WonTimeUs { get; }
   public bool Paused { get; }
+  public bool MicrophoneAudible { get; }
 }

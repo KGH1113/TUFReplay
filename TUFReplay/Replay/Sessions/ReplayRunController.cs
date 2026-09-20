@@ -14,7 +14,10 @@ public static class ReplayRunController
     return context != null && !context.RunStarted && context.Phase == ReplayPlaybackPhase.Prepared;
   }
 
-  public static void MarkRestartPrepared(ActiveReplayContext context)
+  public static bool ShouldAlignPlayerControlOrigin(ActiveReplayContext context) =>
+    context != null && context.StartTile == 0 && !context.ReplayClockOffsetInitialized;
+
+  public static void MarkRestartPrepared(ActiveReplayContext context, bool preserveClockOrigin = false)
   {
     if (context == null)
       return;
@@ -24,5 +27,10 @@ public static class ReplayRunController
     context.WonClockStarted = false;
     context.WonClockStartedAt = 0d;
     context.WonClockStartTimeUs = 0L;
+    if (!preserveClockOrigin)
+    {
+      context.ReplayClockOffsetInitialized = false;
+      context.ReplayClockOffsetUs = 0L;
+    }
   }
 }

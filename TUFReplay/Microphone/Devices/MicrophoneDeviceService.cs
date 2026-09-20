@@ -67,9 +67,10 @@ public static class MicrophoneDeviceService
         FeatureRegistry.MicrophoneRecording.SetCaptureEnabled(previous, out _);
       }
       catch { }
+      Main.Instance?.LogException("Microphone/Toggle", exception);
       return Fail(
         "microphone_toggle_failed",
-        "Microphone access could not be updated: " + exception.Message,
+        "The microphone setting could not be saved. The previous setting is still active.",
         out errorCode,
         out errorMessage
       );
@@ -79,17 +80,35 @@ public static class MicrophoneDeviceService
     return true;
   }
 
-  public static bool TrySelect(string deviceId, out MicrophoneDevicesState state, out bool changed)
+  public static bool TrySelect(
+    string deviceId,
+    out MicrophoneDevicesState state,
+    out bool changed,
+    out string errorCode,
+    out string errorMessage
+  )
   {
     state = GetState();
     changed = false;
+    errorCode = null;
+    errorMessage = null;
     if (!state.Enabled)
-      return false;
+      return Fail(
+        "microphone_input_disabled",
+        "Turn on microphone input before selecting a device.",
+        out errorCode,
+        out errorMessage
+      );
     if (
       deviceId != null
       && !state.Devices.Exists(device => string.Equals(device.Id, deviceId, StringComparison.Ordinal))
     )
-      return false;
+      return Fail(
+        "microphone_device_not_found",
+        "The selected microphone is no longer connected. Refresh the device list and choose another input.",
+        out errorCode,
+        out errorMessage
+      );
 
     string previousDeviceId = TUFReplaySettingStore.Current.MicrophoneDeviceId;
     if (string.Equals(previousDeviceId, deviceId, StringComparison.Ordinal))

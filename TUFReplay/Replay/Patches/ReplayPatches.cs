@@ -129,6 +129,13 @@ public static class ReplayInputPatches
     }
   }
 
+  [HarmonyPatch(typeof(scnEditor), nameof(scnEditor.Play))]
+  [HarmonyPrefix]
+  private static bool OnScnEditorPlayPrefix()
+  {
+    return !IsActive || !ReplayPlaybackCoordinator.ShouldBlockEditorPlay;
+  }
+
   [HarmonyPatch(typeof(scnEditor), "SwitchToEditMode", new[] { typeof(bool) })]
   [HarmonyPostfix]
   private static void OnSwitchToEditModePostfix(bool clsToEditor)

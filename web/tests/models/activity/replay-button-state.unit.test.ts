@@ -35,7 +35,7 @@ describe("replay button state", () => {
     });
     expect(replayButtonState(run(true), false, true)).toMatchObject({
       permanentlyUnavailable: false,
-      disabled: false,
+      disabled: true,
       ariaDisabled: true,
       cursor: "wait",
     });

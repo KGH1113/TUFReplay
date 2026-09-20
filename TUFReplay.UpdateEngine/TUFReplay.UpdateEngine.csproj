@@ -1,4 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <Import Project="../TUFReplay.BuildFlavor.props" />
+
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -10,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../TUFReplay/Shared/Build/TUFReplayBuildFlavor.cs" Link="Shared/Build/TUFReplayBuildFlavor.cs" />
     <Reference Include="Newtonsoft.Json">
       <HintPath>$(AdofaiManaged)/Newtonsoft.Json.dll</HintPath>
       <Private>false</Private>

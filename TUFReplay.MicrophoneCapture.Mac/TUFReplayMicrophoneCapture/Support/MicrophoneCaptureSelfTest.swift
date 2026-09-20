@@ -1,4 +1,5 @@
 import Foundation
+import CoreMedia
 
 enum MicrophoneCaptureSelfTest {
   struct Result {
@@ -53,11 +54,57 @@ enum MicrophoneCaptureSelfTest {
     }
 
     try SocketTransportSelfTest.run()
+    try verifyCaptureClock()
 
     let path = FileManager.default.temporaryDirectory
       .appendingPathComponent("tufreplay-microphone-self-test.wav")
     try audio.write(to: path, options: .atomic)
     defer { try? FileManager.default.removeItem(at: path) }
     return Result(bytes: audio.count)
+  }
+
+  private static func verifyCaptureClock() throws {
+    let hostTicks: UInt64 = 9_007_199_254_740_993
+    let response = CaptureEndResponse(frameCount: 480, deviceId: nil, firstSampleHostTime: hostTicks)
+    let json = try JsonLineCodec.encode(response)
+    struct TimestampResponse: Decodable { let firstSampleHostTime: UInt64 }
+    let decoded = try JSONDecoder().decode(TimestampResponse.self, from: Data(json.utf8))
+    guard decoded.firstSampleHostTime == hostTicks else {
+      throw CaptureError.message("First-sample host timestamp lost precision in the end response.")
+    }
+
+    let hostClock = CMClockGetHostTimeClock()
+    var timebase: CMTimebase?
+    guard CMTimebaseCreateWithSourceClock(
+      allocator: kCFAllocatorDefault, sourceClock: hostClock, timebaseOut: &timebase
+    ) == noErr, let timebase else {
+      throw CaptureError.message("Could not create the synthetic capture clock.")
+    }
+    let hostAnchor = CMClockGetTime(hostClock)
+    // Different capture epochs and a delayed/trimmed first callback must map
+    // to the same host timestamp. This also covers repeated capture sessions.
+    for epoch in [7.0, 48.94, 90_000.0] {
+      let captureAnchor = CMTime(seconds: epoch, preferredTimescale: 1_000_000)
+      guard CMTimebaseSetRateAndAnchorTime(
+        timebase, rate: 1, anchorTime: captureAnchor, immediateSourceTime: hostAnchor
+      ) == noErr else {
+        throw CaptureError.message("Could not set the synthetic capture epoch.")
+      }
+      guard let firstHost = CaptureBufferTiming.firstSampleHostTime(
+        presentationTime: captureAnchor, skippedFrames: 480, sampleRate: 48_000, clock: timebase
+      ) else {
+        throw CaptureError.message("Capture sample timestamp conversion failed.")
+      }
+      let actual = CMClockMakeHostTimeFromSystemUnits(firstHost)
+      let expected = CMTimeAdd(hostAnchor, CMTime(value: 1, timescale: 100))
+      guard abs(CMTimeGetSeconds(CMTimeSubtract(actual, expected))) < 0.000_001 else {
+        throw CaptureError.message("Capture clock epoch or trimmed samples shifted the host timestamp.")
+      }
+    }
+    guard CaptureBufferTiming.firstSampleHostTime(
+      presentationTime: .invalid, skippedFrames: 0, sampleRate: 48_000, clock: hostClock
+    ) == nil else {
+      throw CaptureError.message("An invalid sample timestamp was accepted.")
+    }
   }
 }

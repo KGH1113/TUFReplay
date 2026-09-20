@@ -16,6 +16,15 @@ public static class RecordingClock
     return UnityEngine.Time.unscaledTimeAsDouble;
   }
 
+  public static bool IsTimelineAdvancing()
+  {
+    scrConductor conductor = ADOBase.conductor;
+    return conductor != null
+      && conductor.enabled
+      && UnityEngine.Time.timeScale > 0f
+      && !UnityEngine.AudioListener.pause;
+  }
+
   public static long ToRecordTimeUs(double songPosition, double? gameplayStartSongPosition)
   {
     double start = gameplayStartSongPosition ?? songPosition;

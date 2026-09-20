@@ -15,7 +15,7 @@ namespace TUFReplay.Unity.Editor
   {
     private const string PreviewPrefabPath = "Assets/Prefabs/ReplayTimeline.prefab";
     private const string RuntimePrefabPath = "Assets/Prefabs/ReplayTimelineRuntime.prefab";
-    private const string WarningPrefabPath = "Assets/Prefabs/MicrophonePermissionWarningRuntime.prefab";
+    private const string NotificationPrefabPath = "Assets/Prefabs/RuntimeNotificationRuntime.prefab";
     private const string TimelineFontPath = "Assets/Fonts/MAPLESTORY_OTF_BOLD.OTF";
     private const string TimelineTmpFontPath = "Assets/Fonts/MAPLESTORY_OTF_BOLD Dynamic SDF.asset";
     private const string BundleName = "tufreplay_ui.bundle";
@@ -26,7 +26,7 @@ namespace TUFReplay.Unity.Editor
       ReplayTimelinePrototypeBuilder.Rebuild();
       BuildRuntimePrefab();
       ValidateRuntimePrefab();
-      ValidatePermissionWarningPrefab();
+      ValidateNotificationPrefab();
 
       BuildBundle(BuildTarget.StandaloneOSX, "mac");
       BuildBundle(BuildTarget.StandaloneWindows64, "win");
@@ -165,50 +165,50 @@ namespace TUFReplay.Unity.Editor
       ValidateRuntimeInstantiation(prefab);
     }
 
-    private static void ValidatePermissionWarningPrefab()
+    private static void ValidateNotificationPrefab()
     {
-      string[] dependencies = AssetDatabase.GetDependencies(WarningPrefabPath, true);
+      string[] dependencies = AssetDatabase.GetDependencies(NotificationPrefabPath, true);
       string forbidden = dependencies.FirstOrDefault(path =>
         path.StartsWith("Assets/Art/ADOFAI/", StringComparison.OrdinalIgnoreCase)
         || path.EndsWith("MicrophonePermissionWarningPreviewDriver.cs", StringComparison.OrdinalIgnoreCase)
       );
       if (forbidden != null)
-        throw new InvalidOperationException(
-          "Runtime microphone permission warning contains a forbidden dependency: " + forbidden
-        );
+        throw new InvalidOperationException("Runtime notification contains a forbidden dependency: " + forbidden);
       if (!dependencies.Contains(TimelineFontPath, StringComparer.OrdinalIgnoreCase))
-        throw new InvalidOperationException(
-          "Runtime microphone permission warning does not contain the MapleStory font."
-        );
+        throw new InvalidOperationException("Runtime notification does not contain the MapleStory font.");
       if (!dependencies.Contains(TimelineTmpFontPath, StringComparer.OrdinalIgnoreCase))
-        throw new InvalidOperationException(
-          "Runtime microphone permission warning does not contain the MapleStory TMP font."
-        );
+        throw new InvalidOperationException("Runtime notification does not contain the MapleStory TMP font.");
 
-      GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(WarningPrefabPath);
+      GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(NotificationPrefabPath);
       if (prefab == null)
-        throw new InvalidOperationException("Runtime microphone permission warning prefab is missing.");
+        throw new InvalidOperationException("Runtime notification prefab is missing.");
       if (prefab.activeSelf)
-        throw new InvalidOperationException("Runtime microphone permission warning must be inactive by default.");
+        throw new InvalidOperationException("Runtime notification must be inactive by default.");
 
       MicrophonePermissionWarningView view = prefab.GetComponent<MicrophonePermissionWarningView>();
       if (view == null || !view.IsConfigured)
-        throw new InvalidOperationException("Runtime microphone permission warning view is not configured.");
+        throw new InvalidOperationException("Runtime notification view is not configured.");
       if (prefab.GetComponent<CanvasGroup>() == null)
-        throw new InvalidOperationException("Runtime microphone permission warning has no CanvasGroup.");
+        throw new InvalidOperationException("Runtime notification has no CanvasGroup.");
       if (prefab.GetComponent<UIRoundedPanelGraphic>() == null)
-        throw new InvalidOperationException("Runtime microphone permission warning has no rounded panel graphic.");
+        throw new InvalidOperationException("Runtime notification has no rounded panel graphic.");
       if (prefab.GetComponentInChildren<MicrophonePermissionWarningPreviewDriver>(true) != null)
-        throw new InvalidOperationException("Runtime microphone permission warning contains its preview driver.");
+        throw new InvalidOperationException("Runtime notification contains its preview driver.");
 
       RectTransform root = prefab.transform as RectTransform;
-      ValidateRect(root, "microphone permission warning", new Vector2(600f, 154f), new Vector2(-24f, 112f));
-      ValidateTextFont(root?.Find("TitleText")?.GetComponent<TMP_Text>(), "microphone permission warning title");
-      ValidateTextFont(root?.Find("MessageText")?.GetComponent<TMP_Text>(), "microphone permission warning message");
+      ValidateRect(root, "runtime notification", new Vector2(420f, 108f), new Vector2(-18f, 88f));
+      ValidateResponsiveNotificationLayout(prefab);
+      ValidateTextFont(root?.Find("TitleText")?.GetComponent<TMP_Text>(), "runtime notification title");
+      ValidateTextFont(root?.Find("MessageText")?.GetComponent<TMP_Text>(), "runtime notification message");
+
+      Button actionButton = root?.Find("ActionButton")?.GetComponent<Button>();
+      if (actionButton == null || actionButton.gameObject.activeSelf)
+        throw new InvalidOperationException("Runtime notification action button is invalid.");
+      ValidateTextFont(actionButton.transform.Find("Label")?.GetComponent<TMP_Text>(), "runtime notification action");
 
       Button dismissButton = root?.Find("DismissButton")?.GetComponent<Button>();
       if (dismissButton == null || dismissButton.GetComponentInChildren<UICloseGraphic>(true) == null)
-        throw new InvalidOperationException("Runtime microphone permission warning dismiss button is invalid.");
+        throw new InvalidOperationException("Runtime notification dismiss button is invalid.");
 
       Image progressFill = root?.Find("ProgressTrack/ProgressFill")?.GetComponent<Image>();
       if (
@@ -216,7 +216,56 @@ namespace TUFReplay.Unity.Editor
         || progressFill.type != Image.Type.Filled
         || progressFill.fillMethod != Image.FillMethod.Horizontal
       )
-        throw new InvalidOperationException("Runtime microphone permission warning progress fill is invalid.");
+        throw new InvalidOperationException("Runtime notification progress fill is invalid.");
+    }
+
+    private static void ValidateResponsiveNotificationLayout(GameObject prefab)
+    {
+      GameObject canvasRoot = new GameObject("NotificationLayoutValidationCanvas", typeof(RectTransform));
+      GameObject instance = null;
+      try
+      {
+        RectTransform canvasRect = canvasRoot.GetComponent<RectTransform>();
+        canvasRect.sizeDelta = new Vector2(1920f, 1080f);
+        instance = UnityEngine.Object.Instantiate(prefab, canvasRect, false);
+        MicrophonePermissionWarningView view = instance.GetComponent<MicrophonePermissionWarningView>();
+        RectTransform notificationRect = instance.transform as RectTransform;
+
+        view.ShowToast("Saved", "Replay ready.");
+        Vector2 compactSize = notificationRect.sizeDelta;
+
+        view.ResetImmediate();
+        view.ShowToast(
+          "Microphone audio is unavailable",
+          "The microphone recording could not be played. The replay will continue without microphone audio. "
+            + "Check the selected input device and microphone permission before trying again."
+        );
+        Vector2 wrappedSize = notificationRect.sizeDelta;
+        if (wrappedSize.x <= compactSize.x || wrappedSize.y <= compactSize.y)
+          throw new InvalidOperationException("Runtime notification does not expand for wider, wrapped content.");
+        if (wrappedSize.x > 520.01f || wrappedSize.y > 360.01f)
+          throw new InvalidOperationException("Runtime notification exceeds its responsive bounds.");
+
+        view.ResetImmediate();
+        view.ShowPersistent("Input monitoring is required", "Restart the game after allowing access.");
+        float passivePersistentHeight = notificationRect.sizeDelta.y;
+
+        view.ResetImmediate();
+        view.ShowPersistent(
+          "Input monitoring is required",
+          "Restart the game after allowing access.",
+          "Open System Settings",
+          () => { }
+        );
+        if (notificationRect.sizeDelta.y <= passivePersistentHeight)
+          throw new InvalidOperationException("Runtime notification does not reserve space for a persistent action.");
+      }
+      finally
+      {
+        if (instance != null)
+          UnityEngine.Object.DestroyImmediate(instance);
+        UnityEngine.Object.DestroyImmediate(canvasRoot);
+      }
     }
 
     private static RectTransform FindRect(Transform root, string name)
@@ -391,7 +440,7 @@ namespace TUFReplay.Unity.Editor
       var build = new AssetBundleBuild
       {
         assetBundleName = BundleName,
-        assetNames = new[] { RuntimePrefabPath, WarningPrefabPath },
+        assetNames = new[] { RuntimePrefabPath, NotificationPrefabPath },
       };
       AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(
         intermediate,

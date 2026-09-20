@@ -121,6 +121,24 @@ internal static class ActivityDatabaseSuite
       CountRows(MicrophoneDatabase.DbPath, "microphone_recordings") == 1,
       "Imported microphone recording was not stored in the dedicated database."
     );
+    Assert(MicrophoneRecordingRepository.RunExists("legacy-run"), "Imported recording lost its run.");
+    Assert(MicrophoneRecordingRepository.GetByteLength("legacy-run") == 4, "Recording byte length is incorrect.");
+    using (MemoryStream destination = new())
+    {
+      Assert(
+        MicrophoneRecordingRepository.WriteTo("legacy-run", destination, CancellationToken.None, 4)?.ByteLength == 4,
+        "Recording export did not return its metadata."
+      );
+      Assert(
+        destination.ToArray().SequenceEqual(new byte[] { 9, 8, 7, 6 }),
+        "Recording export changed the streamed bytes."
+      );
+    }
+    using MemoryStream changedDestination = new();
+    AssertThrows<InvalidDataException>(
+      () => MicrophoneRecordingRepository.WriteTo("legacy-run", changedDestination, CancellationToken.None, 5),
+      "Recording export accepted a changed byte length."
+    );
   }
 
   private static void TestLegacyDatabaseReset(string root)

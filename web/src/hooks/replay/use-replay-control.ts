@@ -2,7 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useRef, useState } from "react";
 
 import { useApiPromise } from "@/api/app-api-provider";
+import i18n from "@/i18n/i18n";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
+import { localizedErrorMessage } from "@/models/activity/localized-error";
 import type { ReplayLevelFilePickerResult, ReplayStatus } from "@/models/replay/replay-model";
 import { isReplayActive, replayQueryKeys, setReplayStatus } from "@/state/replay/replay-queries";
 
@@ -32,8 +34,13 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
   });
 
   const playMutation = useMutation({
-    mutationFn: async ({ runId, levelPath }: { runId: string; levelPath?: string }) =>
-      (await apiPromise).replay.play(runId, levelPath),
+    mutationFn: async ({ runId, levelPath }: { runId: string; levelPath?: string }) => {
+      const next = await (await apiPromise).replay.play(runId, levelPath);
+      if (next.runId !== runId) {
+        throw new Error(i18n.t("errors.replay_busy", { ns: "replay" }));
+      }
+      return next;
+    },
   });
   const pickerMutation = useMutation({
     mutationFn: async (runId: string) => (await apiPromise).replay.pickLevelFile(runId),
@@ -46,7 +53,7 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
         const next = await playMutation.mutateAsync({ runId, levelPath });
         if (generation !== playGeneration.current) return false;
         setReplayStatus(queryClient, next);
-        return true;
+        return next.operationId !== null && next.state !== "error" && next.state !== "cancelled";
       } catch {
         return false;
       }
@@ -71,7 +78,10 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
             outcome: "error",
             levelPath: null,
             errorCode: "file_picker_failed",
-            message: cause instanceof Error ? cause.message : String(cause),
+            message: localizedErrorMessage(
+              cause,
+              i18n.t("errors.file_picker_failed", { ns: "replay" }),
+            ),
           });
         }
         return false;
@@ -91,7 +101,9 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
   return {
     status,
     pendingRunId: playMutation.isPending ? (playMutation.variables?.runId ?? null) : null,
-    error: errorCause instanceof Error ? errorCause.message : "",
+    error: errorCause
+      ? localizedErrorMessage(errorCause, i18n.t("errors.start_failed", { ns: "replay" }))
+      : "",
     errorRunId: playMutation.isError ? (playMutation.variables?.runId ?? null) : null,
     pickerResult,
     pickingRunId: pickerMutation.isPending ? (pickerMutation.variables ?? null) : null,

@@ -51,8 +51,10 @@ Replay engine v2 preserves OS-native input, the resolved margin of every accepte
 - Captures microphone audio from countdown through the clear screen until editor return, or until fail or abort, and temporarily saves it for each valid run. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture.
 - Streams microphone WAV files into a separate `tufreplay.microphones.sqlite` database without loading the full recording into memory; this isolates large BLOB writes from activity-run writes. Temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs.
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
-- Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization.
+- Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization. New recordings align the first microphone sample to the native-input clock after the game timeline resumes, so EnhancedCountdown waits do not become replay offsets. On macOS the helper supplies the first written sample's host timestamp; other platforms anchor Unity's microphone cursor to the same monotonic clock.
+- Replays restore the recorded game input offset when available. Older records without that value keep the current game setting; input/hit timestamp differences are not used to guess calibration.
 - Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
+- Guides replay handoff from the web UI into ADOFAI with an acknowledged, persistent focus prompt; blocks duplicate replay launches, protects the editor play command during preparation, and waits briefly after focus stabilizes before playback starts.
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
@@ -67,7 +69,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc 0.3.0 or newer; a missing installation is attempted automatically
+- AdofaiIpc 0.4.0 or newer; a missing installation is attempted automatically
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -125,7 +127,7 @@ The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFRepl
 
 The first TUFReplay release using `AdofaiIpc.DependencyShim.dll` must be installed manually once. Later releases update the versioned bootstrap without overwriting a loaded DLL.
 
-The Unity Mod Manager GUI includes a `Receive beta updates` toggle. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
+Standard builds include a `Receive beta updates` toggle in the Unity Mod Manager GUI. Auto-submission builds show their separate update channel and version. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
 Important environment variables:
 
@@ -139,6 +141,8 @@ Important environment variables:
 - `ADOFAI_IPC_MIGRATION_DLL`: AdofaiIpc migration assembly path.
 - `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
+- `TUFREPLAY_BUILD_FLAVOR`: `standard` (default) or `auto-submission`.
+- `TUFREPLAY_BUILD_VERSION`: explicit package version; required for auto-submission builds.
 
 Create a clean shareable package:
 
@@ -146,7 +150,7 @@ Create a clean shareable package:
 ./scripts/run.sh package
 ```
 
-The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates `build/TUFReplay.update.json`, containing the version, package size, SHA-256, and packaged runtime path. Both files must be attached to a GitHub release for auto-update. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
+The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates `build/TUFReplay.update.json`, containing the version, package size, SHA-256, and packaged runtime path. For standard builds, both files are attached to a GitHub release. Auto-submission builds publish their package and manifest to the isolated home-server update channel. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
 
 Build only the macOS helper or validate the shell layer with:
 
@@ -156,7 +160,7 @@ Build only the macOS helper or validate the shell layer with:
 ./scripts/run.sh check
 ```
 
-`unity-ui` rebuilds `ReplayTimelineRuntime.prefab` with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
+`unity-ui` rebuilds the replay timeline and generic runtime notification prefabs with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel, uGUI toast/persistent-error UI, and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
 
 The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
 
@@ -283,6 +287,7 @@ Registered methods:
 - `activity.logical-level.runs.list` (`appSessionIds` scopes the logical level's runs to the selected day)
 - `activity.logical-level.chart.get`
 - `activity.run.delete` (`runId` identifies the run; active replays cannot be deleted)
+- `microphone.recording.export` (`runId` identifies a recorded run; returns a short-lived download URL)
 - `replay.play`
 - `replay.status.get`
 - `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
@@ -300,6 +305,12 @@ Registered methods:
 - `microphone.calibration.volume.set`
 - `microphone.calibration.close`
 
+The run card's microphone menu uses `microphone.recording.export` to request a one-use URL.
+The browser opens that URL as a normal download; AdofaiIpc sends the WAV directly from
+SQLite through its existing HTTP listener. The web UI never buffers or base64-encodes the
+recording. Expired or already-used URLs require another export request.
+The web workspace uses the matching `@adofai-ipc/client` 0.4.0 npm package.
+
 TUFReplay registers its namespace as `initializing` while handlers are being attached and marks it
 `ready` only after feature initialization completes. AdofaiIpc rejects premature calls with
 `namespace_initializing`; an initialization failure is exposed as `namespace_error`.
@@ -310,7 +321,9 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.2.0-beta.1",
+  "ModVersion": "0.2.0-beta.3",
+  "BuildFlavor": "standard",
+  "AutoSubmissionProtocolVersion": 0,
   "ProtocolVersion": 7,
   "ReplayEngineId": "tufreplay.replay.v2",
   "ReplayFormatVersion": 1,
