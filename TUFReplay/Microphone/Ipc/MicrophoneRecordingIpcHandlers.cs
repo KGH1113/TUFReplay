@@ -68,15 +68,16 @@ public static class MicrophoneRecordingIpcHandlers
     {
       if (safeId.Length == 64)
         break;
-      if ((character >= 'a' && character <= 'z') ||
-          (character >= 'A' && character <= 'Z') ||
-          (character >= '0' && character <= '9') ||
-          character == '-' || character == '_')
+      if (
+        (character >= 'a' && character <= 'z')
+        || (character >= 'A' && character <= 'Z')
+        || (character >= '0' && character <= '9')
+        || character == '-'
+        || character == '_'
+      )
         safeId.Append(character);
     }
 
-    return safeId.Length == 0
-      ? "tufreplay-microphone.wav"
-      : "tufreplay-run-" + safeId + "-microphone.wav";
+    return safeId.Length == 0 ? "tufreplay-microphone.wav" : "tufreplay-run-" + safeId + "-microphone.wav";
   }
 }
