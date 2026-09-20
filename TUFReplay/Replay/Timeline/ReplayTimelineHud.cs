@@ -221,7 +221,10 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     if (!ReplaySessionService.TryGetTimelineSnapshot(out ReplayTimelinePlaybackSnapshot snapshot))
     {
       if (ReplaySessionService.IsTimelineRestartPending)
+      {
+        SetTimelineControlsInteractable(false, false);
         return;
+      }
 
       Hide();
       return;
@@ -240,7 +243,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       UpdatePlacementReference();
     }
 
-    if (!_isScrubbing)
+    if (!_isScrubbing && !ReplaySessionService.IsTimelineRestartPending)
     {
       float progress =
         snapshot.DurationTimeUs > 0L ? (float)((double)snapshot.ElapsedTimeUs / snapshot.DurationTimeUs) : 0f;
@@ -262,15 +265,20 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       _lastPlaying = playing;
       _view.SetPlaying(playing);
     }
-    if (_lastInteractable != snapshot.CanTogglePause)
+    SetTimelineControlsInteractable(snapshot.CanTogglePause, snapshot.CanSeek);
+  }
+
+  private void SetTimelineControlsInteractable(bool canTogglePause, bool canSeek)
+  {
+    if (_lastInteractable != canTogglePause)
     {
-      _lastInteractable = snapshot.CanTogglePause;
-      _view.SetPlaybackControlInteractable(snapshot.CanTogglePause);
+      _lastInteractable = canTogglePause;
+      _view.SetPlaybackControlInteractable(canTogglePause);
     }
-    if (_lastSeekInteractable != snapshot.CanSeek)
+    if (_lastSeekInteractable != canSeek)
     {
-      _lastSeekInteractable = snapshot.CanSeek;
-      _view.SetSeekControlsInteractable(snapshot.CanSeek);
+      _lastSeekInteractable = canSeek;
+      _view.SetSeekControlsInteractable(canSeek);
     }
   }
 
