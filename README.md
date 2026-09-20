@@ -69,7 +69,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc 0.4.0 or newer; a missing installation is attempted automatically
+- AdofaiIpc 0.4.1 or newer; a missing installation is attempted automatically
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -309,7 +309,7 @@ The run card's microphone menu uses `microphone.recording.export` to request a o
 The browser opens that URL as a normal download; AdofaiIpc sends the WAV directly from
 SQLite through its existing HTTP listener. The web UI never buffers or base64-encodes the
 recording. Expired or already-used URLs require another export request.
-The web workspace uses the matching `@adofai-ipc/client` 0.4.0 npm package.
+The web workspace uses the matching `@adofai-ipc/client` 0.4.1 npm package.
 
 TUFReplay registers its namespace as `initializing` while handlers are being attached and marks it
 `ready` only after feature initialization completes. AdofaiIpc rejects premature calls with
@@ -321,7 +321,7 @@ TUFReplay registers its namespace as `initializing` while handlers are being att
 {
   "Ok": true,
   "Mod": "TUFReplay",
-  "ModVersion": "0.2.0-beta.3",
+  "ModVersion": "0.2.0-beta.4",
   "BuildFlavor": "standard",
   "AutoSubmissionProtocolVersion": 0,
   "ProtocolVersion": 7,
