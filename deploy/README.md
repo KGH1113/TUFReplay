@@ -34,7 +34,7 @@ Do not run `deploy-home.sh`, Compose deployment commands, migrations, or applica
 
 ## Manual mod packages
 
-Build the standard package from the dev worktree using `./scripts/run.sh package`. Its source version is `0.2.0-beta.3`; upload `build/TUFReplay.zip` and `build/TUFReplay.update.json` to the matching GitHub prerelease yourself.
+Build the standard package from the dev worktree using `./scripts/run.sh package`. Its source version is `0.2.0-beta.4`; upload `build/TUFReplay.zip` and `build/TUFReplay.update.json` to the matching GitHub prerelease yourself.
 
 Build the separate auto package from `feat/auto-submission`:
 
