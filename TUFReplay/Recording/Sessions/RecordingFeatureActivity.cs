@@ -87,6 +87,8 @@ public partial class RecordingFeature
         + run.InputCount
         + ", hitContexts="
         + run.HitContextCount
+        + ", replayUnavailableReason="
+        + (run.ReplayUnavailableReason ?? "none")
     );
     return true;
   }
