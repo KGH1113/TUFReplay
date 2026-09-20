@@ -36,6 +36,7 @@ export const RunCard = memo(function RunCard({
   onPlayReplay,
   onDeleteRun,
   onKeepMicrophoneRecording,
+  onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
 }: {
   run: ActivityRun;
@@ -50,6 +51,7 @@ export const RunCard = memo(function RunCard({
   onPlayReplay: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
@@ -93,6 +95,7 @@ export const RunCard = memo(function RunCard({
           disabled={readOnly}
           runDeleteDisabled={runDeleteDisabled}
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
+          onDownloadMicrophoneRecording={onDownloadMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
           onDeleteRun={onDeleteRun}
         />

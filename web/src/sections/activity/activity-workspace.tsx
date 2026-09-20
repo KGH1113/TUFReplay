@@ -48,6 +48,7 @@ export function ActivityWorkspace({
   onDeleteRun,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
+  onDownloadMicrophoneRecording,
 }: {
   chartAvailable: boolean;
   chart: ActivityChart | null;
@@ -70,6 +71,7 @@ export function ActivityWorkspace({
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
   const chartRef = useRef<EmbeddedChartHandle>(null);
@@ -85,6 +87,7 @@ export function ActivityWorkspace({
   const playReplay = useStableCallback(onPlayReplay);
   const deleteRun = useStableCallback(onDeleteRun);
   const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
+  const downloadMicrophoneRecording = useStableCallback(onDownloadMicrophoneRecording);
   const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
@@ -336,6 +339,7 @@ export function ActivityWorkspace({
                             onPlayReplay={playReplay}
                             onDeleteRun={deleteRun}
                             onKeepMicrophoneRecording={keepMicrophoneRecording}
+                            onDownloadMicrophoneRecording={downloadMicrophoneRecording}
                             onDeleteMicrophoneRecording={deleteMicrophoneRecording}
                           />
                         </div>
