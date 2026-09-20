@@ -24,6 +24,7 @@ public partial class RecordingFeature
 
   private bool _clearReached;
   private bool _failed;
+  private bool _failedRunWaitingForHit;
   private bool _runSaved;
   private RunRecord _currentRun;
   private byte[] _gameplayHash;
@@ -55,6 +56,13 @@ public partial class RecordingFeature
 
   public void OnHitPostfixCompleted()
   {
+    if (_failedRunWaitingForHit)
+    {
+      _failedRunWaitingForHit = false;
+      CompleteFailedRun();
+      return;
+    }
+
     if (!_calibrationRun || !_clearReached || _runSaved || !Session.IsRecording)
       return;
 
@@ -69,14 +77,30 @@ public partial class RecordingFeature
     Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
   }
 
-  public void OnRunFailed()
+  public void OnRunFailed(bool hitInProgress)
   {
-    if (!Session.IsRecording || _runSaved)
+    if (!Session.IsRecording || _runSaved || _failed)
       return;
 
     _failed = true;
     Session.MarkTerminal();
     Session.StopInputCapture("failed");
+    if (hitInProgress)
+    {
+      // Fail can be raised inside scrPlayer.Hit before the game's margin counter advances.
+      // Wait for the Hit postfix to resolve the final context before persisting the run.
+      _failedRunWaitingForHit = true;
+      return;
+    }
+
+    CompleteFailedRun();
+  }
+
+  private void CompleteFailedRun()
+  {
+    if (!Session.IsRecording || _runSaved)
+      return;
+
     if (_calibrationRun)
     {
       _runSaved = true;
@@ -97,6 +121,13 @@ public partial class RecordingFeature
   {
     if (!Session.IsRecording)
       return;
+
+    if (_failedRunWaitingForHit)
+    {
+      _failedRunWaitingForHit = false;
+      Main.Instance.Log("[Recording] Failed hit did not finish before editor return; saving the available capture.");
+      CompleteFailedRun();
+    }
 
     Session.MarkTerminal();
     Session.StopInputCapture("editor");
@@ -295,6 +326,13 @@ public partial class RecordingFeature
 
   public void StopSession()
   {
+    if (_failedRunWaitingForHit)
+    {
+      _failedRunWaitingForHit = false;
+      Main.Instance.Log("[Recording] Failed hit did not finish before session stop; saving the available capture.");
+      CompleteFailedRun();
+    }
+
     if (_calibrationRun)
     {
       EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));
@@ -344,6 +382,7 @@ public partial class RecordingFeature
     DiscardPendingEditorRecording();
     _clearReached = false;
     _failed = false;
+    _failedRunWaitingForHit = false;
     _runSaved = false;
     _currentRun = null;
     _microphoneCaptureStarted = false;
