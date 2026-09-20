@@ -90,6 +90,8 @@
     "label": "Microphone",
     "permanent": "Permanent",
     "keep": "Keep permanently",
+    "download": "Download recording",
+    "downloadFailed": "Could not download this recording. Check the game connection and try again.",
     "delete": "Delete recording",
     "deleteTitle": "Delete microphone recording?",
     "deleteDescription": "This permanently deletes the {{size}} recording for run #{{runIndex}}. The run and replay will remain.",

@@ -90,6 +90,8 @@
     "label": "마이크",
     "permanent": "영구 보관",
     "keep": "영구 보관",
+    "download": "마이크 추출",
+    "downloadFailed": "마이크 녹음을 추출하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
     "delete": "녹음 삭제",
     "deleteTitle": "마이크 녹음을 삭제할까요?",
     "deleteDescription": "플레이 #{{runIndex}}의 {{size}} 녹음을 영구 삭제합니다. 플레이와 리플레이는 유지됩니다.",

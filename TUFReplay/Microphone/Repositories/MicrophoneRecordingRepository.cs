@@ -43,6 +43,16 @@ public static class MicrophoneRecordingRepository
     return Convert.ToInt32(command.ExecuteScalar()) != 0;
   }
 
+  public static long? GetByteLength(string runId)
+  {
+    using SqliteConnection connection = AudioDatabase.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "SELECT length(audio_wav) FROM microphone_recordings WHERE run_id=@run LIMIT 1";
+    command.Parameters.AddWithValue("@run", runId);
+    object result = command.ExecuteScalar();
+    return result == null || result == DBNull.Value ? null : Convert.ToInt64(result);
+  }
+
   public static bool KeepPermanently(string runId)
   {
     using SqliteConnection connection = AudioDatabase.OpenConnection();
@@ -313,7 +323,12 @@ LIMIT 1";
     }
   }
 
-  public static StoredMicrophoneRecording WriteTo(string runId, Stream destination, CancellationToken cancellationToken)
+  public static StoredMicrophoneRecording WriteTo(
+    string runId,
+    Stream destination,
+    CancellationToken cancellationToken,
+    long? expectedByteLength = null
+  )
   {
     if (string.IsNullOrWhiteSpace(runId))
       throw new ArgumentException("A run ID is required.", nameof(runId));
@@ -349,6 +364,9 @@ LIMIT 1";
         ByteLength = reader.GetInt64(6),
       };
     }
+
+    if (expectedByteLength.HasValue && recording.ByteLength != expectedByteLength.Value)
+      throw new InvalidDataException("The microphone recording changed before download.");
 
     cancellationToken.ThrowIfCancellationRequested();
     long written = 0;
