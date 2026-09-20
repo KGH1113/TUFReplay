@@ -30,7 +30,9 @@ public static partial class ReplaySessionService
 
     long durationTimeUs = TimelineDurationTimeUs(context);
     elapsedTimeUs = Math.Max(0L, Math.Min(elapsedTimeUs, durationTimeUs));
-    bool canTogglePause = state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl;
+    bool canTogglePause =
+      !_timelineRestartPending
+      && (state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl);
     bool canSeek = state == States.PlayerControl && durationTimeUs > 0L && !_timelineRestartPending;
     snapshot = new ReplayTimelinePlaybackSnapshot(
       context.RunId,
@@ -318,7 +320,7 @@ public static partial class ReplaySessionService
     context.NativeInputPlayer?.SkipTo(targetTimeUs);
     context.MicrophonePlayer?.Stop();
     ResetReplayHeldInputState();
-    PrepareReplayRunRestart("timeline_native_checkpoint_restart");
+    PrepareReplayRunRestart("timeline_native_checkpoint_restart", preserveClockOrigin: true);
 
     _timelineRestartPending = true;
     _timelineRestartPauseAtPlayerControl = pauseAtPlayerControl;
