@@ -264,15 +264,13 @@ public static partial class ReplaySessionService
       && GameplayChartHash.Equals(_activeContext.GameplayHash, currentHash);
   }
 
-  private static void PrepareReplayRunRestart(string reason)
+  private static void PrepareReplayRunRestart(string reason, bool preserveClockOrigin = false)
   {
     if (_activeContext == null)
       return;
 
     ReplayPlaybackPhase previous = _activeContext.Phase;
-    ReplayRunController.MarkRestartPrepared(_activeContext);
-    _activeContext.ReplayClockOffsetInitialized = false;
-    _activeContext.ReplayClockOffsetUs = 0L;
+    ReplayRunController.MarkRestartPrepared(_activeContext, preserveClockOrigin);
     _activeContext.MicrophonePlayer?.Stop();
     LogLifecycleTransition(previous, ReplayPlaybackPhase.Prepared, reason);
     _suppressReplayMarkFail = false;

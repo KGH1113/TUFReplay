@@ -157,6 +157,17 @@ export function useActivityPageViewModel() {
       microphoneRecordingExpiresAtUtc: null,
     });
   };
+  const downloadMicrophoneRecording = async (run: ActivityRun) => {
+    const url = await runActions.prepareMicrophoneRecordingDownload(run.id);
+    const frame = document.createElement("iframe");
+    frame.hidden = true;
+    frame.tabIndex = -1;
+    frame.referrerPolicy = "no-referrer";
+    frame.src = url;
+    document.body.append(frame);
+    // Keep the navigation alive while the browser handles a slow native download.
+    window.setTimeout(() => frame.remove(), 30 * 60 * 1000);
+  };
   const deleteRun = async (run: ActivityRun) => {
     await runActions.deleteRun(run.id);
     levelData.removeRun(run.id);
@@ -198,6 +209,7 @@ export function useActivityPageViewModel() {
       deleteRun,
       deleteMicrophoneRecording,
       keepMicrophoneRecording,
+      downloadMicrophoneRecording,
     },
   };
 }
