@@ -105,6 +105,7 @@ export function ActivityPage() {
                 onDeleteRun={actions.deleteRun}
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
+                onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
               />
             )}
           </section>

@@ -166,4 +166,19 @@ describe("layered AppApi contract", () => {
       { method: "microphone.recording.keep", params: { runId: "run-7" } },
     ]);
   });
+
+  test("prepares a local native microphone download", async () => {
+    const calls: Call[] = [];
+    const api = createRunApi(
+      clientsWith((method, params) => {
+        calls.push({ method, params });
+        return { Url: "http://127.0.0.1:32145/ipc/download/test-ticket" };
+      }),
+    );
+
+    expect(await api.prepareMicrophoneRecordingDownload("run-7")).toBe(
+      "http://127.0.0.1:32145/ipc/download/test-ticket",
+    );
+    expect(calls).toEqual([{ method: "microphone.recording.export", params: { runId: "run-7" } }]);
+  });
 });

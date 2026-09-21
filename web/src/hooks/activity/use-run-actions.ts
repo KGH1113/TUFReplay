@@ -5,6 +5,10 @@ import { useApiPromise } from "@/api/app-api-provider";
 export function useRunActions() {
   const apiPromise = useApiPromise();
   return {
+    prepareMicrophoneRecordingDownload: useCallback(
+      async (runId: string) => (await apiPromise).run.prepareMicrophoneRecordingDownload(runId),
+      [apiPromise],
+    ),
     deleteRun: useCallback(
       async (runId: string) => (await apiPromise).run.deleteRun(runId),
       [apiPromise],

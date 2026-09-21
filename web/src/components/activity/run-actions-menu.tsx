@@ -1,6 +1,7 @@
 import {
   ArrowLeft01Icon,
   Delete02Icon,
+  Download01Icon,
   FloppyDiskIcon,
   Loading03Icon,
   Mic01Icon,
@@ -30,13 +31,14 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
 
-type PendingAction = "keep" | "delete-recording" | "submit" | "delete-run" | null;
+type PendingAction = "download" | "keep" | "delete-recording" | "submit" | "delete-run" | null;
 
 export function RunActionsMenu({
   run,
   disabled,
   runDeleteDisabled,
   onKeepMicrophoneRecording,
+  onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
   onDeleteRun,
 }: {
@@ -44,6 +46,7 @@ export function RunActionsMenu({
   disabled: boolean;
   runDeleteDisabled: boolean;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
 }) {
@@ -69,6 +72,20 @@ export function RunActionsMenu({
     hasSubmissionPermission(submission.status.data, submission.status.isError) &&
     submission.run.data !== undefined &&
     canSubmit(submission.run.data);
+
+  const downloadRecording = async () => {
+    if (disabled || busy) return;
+    setPendingAction("download");
+    setMenuError("");
+    try {
+      await onDownloadMicrophoneRecording(run);
+      setMenuOpen(false);
+    } catch (cause) {
+      setMenuError(localizedErrorMessage(cause, microphoneT("recording.downloadFailed")));
+    } finally {
+      setPendingAction(null);
+    }
+  };
 
   const keepRecording = async () => {
     if (disabled || busy) return;
@@ -164,6 +181,20 @@ export function RunActionsMenu({
                   </p>
                 </div>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  disabled={disabled || busy}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    void downloadRecording();
+                  }}
+                >
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={pendingAction === "download" ? Loading03Icon : Download01Icon}
+                    className={pendingAction === "download" ? "size-4 animate-spin" : "size-4"}
+                  />
+                  {microphoneT("recording.download")}
+                </DropdownMenuItem>
                 {!run.microphoneRecordingPermanent ? (
                   <DropdownMenuItem
                     disabled={disabled || busy}

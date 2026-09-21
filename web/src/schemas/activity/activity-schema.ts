@@ -129,6 +129,7 @@ export const activityChartDtoSchema = z
 export const runDeleteResultDtoSchema = z.object({ RunId: z.string(), Deleted: z.boolean() });
 export const recordingDeleteResultDtoSchema = runDeleteResultDtoSchema;
 export const recordingKeepResultDtoSchema = z.object({ RunId: z.string(), Permanent: z.boolean() });
+export const recordingDownloadTicketDtoSchema = z.object({ Url: z.url() });
 
 export type LevelSessionDto = z.infer<typeof levelSessionDtoSchema>;
 export type LogicalLevelDto = z.infer<typeof logicalLevelDtoSchema>;

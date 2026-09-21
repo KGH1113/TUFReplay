@@ -247,7 +247,7 @@ public static class RecordingPatches
       case States.Fail:
       case States.Fail2:
         recording.Session.BreakInputTimeline("fail");
-        RecordingFeature.Instance.OnRunFailed();
+        RecordingFeature.Instance.OnRunFailed(_pendingHitMarginCapture);
         break;
     }
   }
