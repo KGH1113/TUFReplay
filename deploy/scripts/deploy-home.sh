@@ -336,6 +336,22 @@ fi
 STACK_TOUCHED=1
 compose up -d --no-build --wait --remove-orphans
 
+verify_level_stream_routing() {
+  local origin="$1"
+  local status
+  status="$(curl --silent --show-error --http1.1 --max-time 10 \
+    --output /dev/null --write-out '%{http_code}' \
+    -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+    -H 'Sec-WebSocket-Version: 13' \
+    -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' \
+    "$origin/api/v2/levels/1/runs/stream")" || return 1
+  # An unauthenticated upgrade must reach Rust's auth gate, never the SPA fallback.
+  if [[ "$status" != "401" ]]; then
+    echo "Level-session routing check expected HTTP 401, received $status." >&2
+    return 1
+  fi
+}
+
 verify_local_deployment() {
   local response_file
   response_file="$(mktemp)"
@@ -374,6 +390,7 @@ PY
 
   if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
     curl --fail --silent --show-error --max-time 5 "http://127.0.0.1:$PORT/_readiness" >/dev/null
+    verify_level_stream_routing "http://127.0.0.1:$PORT" || return 1
   fi
   rm -f "$response_file"
 }
@@ -409,6 +426,9 @@ PY
   if [[ "$ready" != "1" ]]; then
     echo "Public deployment metadata did not become ready at https://$DOMAIN." >&2
     return 1
+  fi
+  if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
+    verify_level_stream_routing "https://$DOMAIN" || return 1
   fi
 }
 
