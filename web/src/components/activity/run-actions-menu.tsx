@@ -1,5 +1,6 @@
 import {
   ArrowLeft01Icon,
+  ArrowUpRight01Icon,
   Delete02Icon,
   Download01Icon,
   FloppyDiskIcon,
@@ -10,13 +11,22 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { SubmissionGalleryDialog } from "@/components/submission/submission-gallery-dialog";
 import { useSubmissionRun } from "@/hooks/submission/use-submission";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
-import { canSubmit, hasSubmissionPermission } from "@/models/submission/submission-model";
+import type { VisualSelection } from "@/models/submission/submission-model";
+import {
+  canSubmit,
+  hasSubmissionPermission,
+  submissionAccountKey,
+  submissionPhase,
+  submissionPresentationForRequest,
+} from "@/models/submission/submission-model";
+import { TUF_WEB_URL } from "@/shared/config/tuf-web-url";
 import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
@@ -61,10 +71,12 @@ export function RunActionsMenu({
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
   const [menuError, setMenuError] = useState("");
   const [dialogError, setDialogError] = useState("");
+  const [galleryOpen, setGalleryOpen] = useState(false);
+  const [attemptedPresentation, setAttemptedPresentation] = useState<VisualSelection | null>(null);
   const busy = pendingAction !== null;
   const submission = useSubmissionRun(
     run.submissionRunId,
-    menuOpen && !disabled && run.submissionRunId !== null,
+    (menuOpen || galleryOpen) && !disabled && run.submissionRunId !== null,
   );
   const submitted =
     submission.run.data?.status === "submitted" || submission.run.data?.external_pass_id != null;
@@ -86,6 +98,10 @@ export function RunActionsMenu({
       setPendingAction(null);
     }
   };
+
+  useEffect(() => {
+    if (run.submissionRunId !== null) setAttemptedPresentation(null);
+  }, [run.submissionRunId]);
 
   const keepRecording = async () => {
     if (disabled || busy) return;
@@ -130,11 +146,38 @@ export function RunActionsMenu({
 
   const submitRun = async () => {
     if (disabled || busy || !submissionReady) return;
+    if (submission.run.data?.presentation === null) {
+      setMenuError("");
+      setMenuOpen(false);
+      setGalleryOpen(true);
+      return;
+    }
     setPendingAction("submit");
     setMenuError("");
     try {
-      await submission.submit.mutateAsync();
-      setMenuOpen(false);
+      await submission.submit.mutateAsync(undefined);
+    } catch {
+      setMenuError(submissionT("requestFailed"));
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const submitFromGallery = async (presentation: VisualSelection | undefined) => {
+    if (disabled || busy || !submissionReady) return;
+    const nextPresentation = submissionPresentationForRequest(
+      submission.run.data?.presentation,
+      presentation,
+      attemptedPresentation,
+    );
+    if (submission.run.data?.presentation == null && nextPresentation === undefined) return;
+    if (nextPresentation) setAttemptedPresentation(nextPresentation);
+    setPendingAction("submit");
+    setMenuError("");
+    try {
+      await submission.submit.mutateAsync(nextPresentation);
+      setGalleryOpen(false);
+      setMenuOpen(true);
     } catch {
       setMenuError(submissionT("requestFailed"));
     } finally {
@@ -252,8 +295,29 @@ export function RunActionsMenu({
                   icon={pendingAction === "submit" ? Loading03Icon : Upload04Icon}
                   className={pendingAction === "submit" ? "size-4 animate-spin" : "size-4"}
                 />
-                {submitted ? submissionT("phase.submitted") : t("run.submit")}
+                {submitted
+                  ? submissionT("phase.submitted")
+                  : submission.run.data && !submissionReady
+                    ? submissionT(`phase.${submissionPhase(submission.run.data.status)}`)
+                    : t("run.submit")}
               </DropdownMenuItem>
+              {submission.run.data?.external_pass_id != null ? (
+                <DropdownMenuItem asChild>
+                  <a
+                    href={`${TUF_WEB_URL}/passes/${submission.run.data.external_pass_id}`}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span aria-hidden="true" className="size-4" />
+                    <HugeiconsIcon
+                      aria-hidden="true"
+                      icon={ArrowUpRight01Icon}
+                      className="size-4"
+                    />
+                    {submissionT("viewPass")}
+                  </a>
+                </DropdownMenuItem>
+              ) : null}
             </>
           ) : null}
           {menuError ? (
@@ -302,6 +366,17 @@ export function RunActionsMenu({
         error={dialogError}
         onOpenChange={setRunDialogOpen}
         onConfirm={() => void deleteRun()}
+      />
+      <SubmissionGalleryDialog
+        open={galleryOpen}
+        run={submission.run.data}
+        locked={submission.run.data?.presentation != null}
+        initialSelection={attemptedPresentation}
+        accountKey={submissionAccountKey(submission.status.data)}
+        pending={pendingAction === "submit"}
+        error={menuError}
+        onOpenChange={setGalleryOpen}
+        onSubmit={(presentation) => void submitFromGallery(presentation)}
       />
     </>
   );

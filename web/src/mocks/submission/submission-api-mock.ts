@@ -15,6 +15,7 @@ export function createSubmissionApiMock(): SubmissionApi {
       external_pass_id: null,
       created_at: new Date().toISOString(),
       evidence_expires_at: null,
+      presentation: null,
     },
   ];
   const status = () => ({
@@ -52,9 +53,13 @@ export function createSubmissionApiMock(): SubmissionApi {
       if (!run) throw new Error("Run not found");
       return { ...run };
     },
-    async submit(id) {
+    async submit(id, presentation) {
       const run = runs.find((run) => run.run_id === id);
       if (!run) throw new Error("Run not found");
+      if (run.presentation !== null && presentation !== undefined) {
+        throw new Error("visual_selection_conflict");
+      }
+      if (run.presentation === null && presentation !== undefined) run.presentation = presentation;
       run.status = "validator_unavailable";
       run.reason = "validator_unavailable";
       return { ...run };

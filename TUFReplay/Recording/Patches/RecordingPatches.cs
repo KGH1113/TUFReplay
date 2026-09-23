@@ -218,26 +218,14 @@ public static class RecordingPatches
       case States.Countdown:
       case States.Checkpoint:
         recording.Session.BreakInputTimeline(newState.ToString().ToLowerInvariant());
-        if (!recording.Session.IsRecording)
-          return;
-
-        if (!RecordingGuard.CanRecord(out string reason))
-        {
-          recording.StopSession();
-          Main.Instance.Log("[Recording] Input capture skipped. reason=" + reason);
-          return;
-        }
-
-        if (!recording.PrepareRunForInputCapture())
-          return;
-        recording.Session.StartInputCapture();
-        RecordInputTracker.SetCaptureWindowActive(IsNativeInputCaptureAllowed());
-        recording.OnInputCaptureStarted();
-        ResetHitContextState();
+        EnsureInputCaptureStarted(recording);
         break;
 
       case States.PlayerControl:
-        RecordingFeature.Instance.OnGameplayStarted();
+        // OnMusicScheduled can enter PlayerControl directly (no countdown), including
+        // ResetCustomLevel retries that never call scnEditor.Play again.
+        if (EnsureInputCaptureStarted(recording))
+          recording.OnGameplayStarted();
         break;
 
       case States.Won:
@@ -250,6 +238,27 @@ public static class RecordingPatches
         RecordingFeature.Instance.OnRunFailed(_pendingHitMarginCapture);
         break;
     }
+  }
+
+  private static bool EnsureInputCaptureStarted(RecordingFeature recording)
+  {
+    if (!recording.Session.IsRecording)
+      return false;
+    if (recording.Session.IsCapturingInput)
+      return true;
+    if (!RecordingGuard.CanRecord(out string reason))
+    {
+      recording.StopSession();
+      Main.Instance.Log("[Recording] Input capture skipped. reason=" + reason);
+      return false;
+    }
+    if (!recording.PrepareRunForInputCapture())
+      return false;
+    recording.Session.StartInputCapture();
+    RecordInputTracker.SetCaptureWindowActive(IsNativeInputCaptureAllowed());
+    recording.OnInputCaptureStarted();
+    ResetHitContextState();
+    return true;
   }
 
   private static void UpdateNativeInputCaptureState(RecordingSession session, States newState)

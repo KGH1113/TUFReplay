@@ -47,6 +47,15 @@ pub async fn issue(
     identity: AccountIdentity,
     claims: RunClaims,
 ) -> Result<IssuedRun, IssuanceError> {
+    issue_with_id(ctx, identity, claims, Uuid::new_v4()).await
+}
+
+pub async fn issue_with_id(
+    ctx: &AppContext,
+    identity: AccountIdentity,
+    claims: RunClaims,
+    id: Uuid,
+) -> Result<IssuedRun, IssuanceError> {
     identity.require_can_submit()?;
     let store = ctx
         .shared_store
@@ -56,7 +65,6 @@ pub async fn issue(
     getrandom::fill(&mut bytes).map_err(|_| Error::Message("random source unavailable".into()))?;
     let token = URL_SAFE_NO_PAD.encode(bytes);
     let hash = Sha256::digest(token.as_bytes()).to_vec();
-    let id = Uuid::new_v4();
     let now = Utc::now();
     let settings = store.settings();
     let transaction = ctx.db.begin().await?;

@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+export const visualSelectionSchema = z.object({
+  keyviewer_id: z.string().min(1).nullable(),
+  overlay_id: z.string().min(1).nullable(),
+});
+
 export const submissionStatusSchema = z.object({
   connected: z.boolean(),
   configured: z.boolean().default(false),
@@ -26,6 +31,7 @@ export const submissionRunSchema = z.object({
   external_pass_id: z.number().int().positive().nullable(),
   created_at: z.string(),
   evidence_expires_at: z.string().nullable().optional(),
+  presentation: visualSelectionSchema.nullable().default(null),
 });
 export const submissionPageSchema = z.object({
   runs: z.array(submissionRunSchema),

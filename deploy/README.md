@@ -53,7 +53,7 @@ The gateway serves these files from `/home/kgh/tuf-replay-data/auto-submission/u
 - `/updates/auto-submission/latest.json`: current manifest, no cache.
 - `/updates/auto-submission/versions/<version>/TUFReplay.zip`: immutable package.
 
-There is no published update until the operator uploads and promotes one. The updater rejects cross-flavor packages and has no GitHub fallback for the auto channel. The web requires the auto mod flavor and submission protocol 1; its exact patch version is independent of the web deployment.
+There is no published update until the operator uploads and promotes one. The updater rejects cross-flavor packages and has no GitHub fallback for the auto channel. The web requires the auto mod flavor and submission protocol 2; its exact patch version is independent of the web deployment.
 
 ## TUF production integration
 
@@ -61,6 +61,6 @@ This repository's workflows do not access the TUF production server. TUF-side de
 
 The initial tester is `impl.dev` (player `7410`), account UUID `670cac2c-8175-46a6-87f7-b92741d4499f`. The official OAuth client ID is `1dc9ff206f5301c9e7ef4ba9b209c7c7`, with redirect `https://tufreplay-auto.impl1113.dev/oauth/callback`.
 
-TUF BE needs `AUTO_SUBMISSION_API_URL=https://tufreplay-auto.impl1113.dev`, matching internal tokens, `TUF_AUTO_SUBMISSION_OAUTH_CLIENT_ID`, `AUTO_SUBMISSION_TRUSTED_USER_IDS`, and the explicit `AUTO_SUBMISSION_ENABLED` rollout switch. Its default is off; an empty allowlist denies everyone. The app needs allowed scope `65537` before login can authorize submission.
+TUF BE needs `AUTO_SUBMISSION_API_URL=https://tufreplay-auto.impl1113.dev`, matching internal tokens, `TUF_AUTO_SUBMISSION_OAUTH_CLIENT_ID`, and the explicit `AUTO_SUBMISSION_ENABLED` rollout switch. Its default is off. Rust now also requires an active PostgreSQL `trusted_testers` row. After applying and populating the migration, set TUF BE `AUTO_SUBMISSION_TESTER_AUTHORITY=replay` to use that roster as the single tester source. Until then the default `environment` authority retains the old `AUTO_SUBMISSION_TRUSTED_USER_IDS` restriction in addition to Rust's DB check. The OAuth app still needs scope `65537`. See [tester administration rollout](trusted-testers-admin.md) for migration, restricted DB credentials and the localhost-only admin profile.
 
-The Rust setting `SUBMISSION_VALIDATION_MODE=trusted_tester` deliberately skips the unfinished gameplay validator for TUF-authorized testers and records that validation was skipped. It does not grant tester access itself. A ready Replay deployment therefore does not mean TUF-side activation or a real in-game submission has been verified.
+The Rust setting `SUBMISSION_VALIDATION_MODE=trusted_tester` deliberately skips the unfinished gameplay validator for authorized, active DB testers and records that validation was skipped. It does not grant tester access itself. A ready Replay deployment therefore does not mean TUF-side activation or a real in-game submission has been verified.

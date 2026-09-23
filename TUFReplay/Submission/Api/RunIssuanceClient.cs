@@ -12,10 +12,18 @@ namespace TUFReplay.Submission.Api;
 
 public sealed class RunIssuanceClient : IDisposable
 {
-  private readonly HttpClient _http = new HttpClient(new HttpClientHandler { AllowAutoRedirect = false })
+  private readonly HttpClient _http;
+
+  public RunIssuanceClient()
+    : this(new HttpClientHandler { AllowAutoRedirect = false }) { }
+
+  public RunIssuanceClient(HttpMessageHandler handler)
   {
-    Timeout = TimeSpan.FromMinutes(5),
-  };
+    _http = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)))
+    {
+      Timeout = TimeSpan.FromMinutes(5),
+    };
+  }
 
   public async Task<IssuedRun> Issue(
     SubmissionAccount account,
@@ -50,7 +58,7 @@ public sealed class RunIssuanceClient : IDisposable
     using var response = await _http
       .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation)
       .ConfigureAwait(false);
-    response.EnsureSuccessStatusCode();
+    await SubmissionRecordsClient.ThrowIfError(response, cancellation).ConfigureAwait(false);
     using var stream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
     var bytes = new byte[8192];
     int total = 0;

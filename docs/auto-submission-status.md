@@ -1,8 +1,11 @@
-# Auto submission 구현 상태 — 2026-09-15
+# Auto submission 구현 상태 — 2026-09-23
 
 [확정된 제품 계약](auto-submission-decisions.md)에 trusted tester 배포 조건을 추가했다. 최신 운영 준비와 검증 결과는 [테스터 배포 기록](auto-submission-trusted-testers-rollout-2026-09-15.md), 실행 절차는 [배포 안내](../deploy/README.md)를 참고한다.
 
 ## 현재 구현
+
+- 모드는 [재사용 레벨 세션 v2](auto-submission-implementation/11-reusable-level-session.md)를 사용한다. idle 연결은 run을 발급하지 않고, 시도마다 독립 UUID의 `run_start`를 보낸다. 첫 입력부터 제한된 버퍼에 기록하므로 실패 직후 바로 키를 눌러 재시작해도 REST 사전 발급 완료를 기다리지 않는다.
+- 테스터 자격은 Rust DB의 `trusted_testers.active`로 검사하며 별도 관리자 앱의 변경과 감사 이력을 보관한다. TUF BE를 `AUTO_SUBMISSION_TESTER_AUTHORITY=replay`로 전환하면 기존 env 명단을 읽지 않는다. 기본 `environment` 모드는 전환 중 기존 허용목록도 함께 적용한다. OAuth·계정 검사와 비상 OFF 스위치는 유지한다. [적용 순서](../deploy/trusted-testers-admin.md).
 
 - 기존 영상 제출을 유지하고 공개 PGU 난이도의 P1–P20/G1–G20을 지원한다. 최종 관리자 심사 단계는 없다.
 - 웹은 UI와 OAuth 브라우저 이동만 담당한다. 로그인·목록·설정·제출·삭제는 IPC로 모드에 요청하며 OAuth 토큰을 받지 않는다.
@@ -19,7 +22,7 @@
 ## 빌드와 배포 채널
 
 - `main`과 `dev` 웹은 표준 모드를 위한 독립 Compose 환경이다. `feat/auto-submission`은 `tufreplay-auto.impl1113.dev`에서 웹·Rust·데이터 저장소를 별도로 운영한다.
-- 모드 health에 `BuildFlavor`와 `AutoSubmissionProtocolVersion`을 포함한다. 자동 제출 웹은 `auto-submission` flavor와 제출 프로토콜 1을 확인하고, 각 제출 IPC 호출 직전에 다시 확인한다. 표준 모드는 제출 기능과 IPC를 초기화하지 않는다.
+- 모드 health에 `BuildFlavor`와 `AutoSubmissionProtocolVersion`을 포함한다. 자동 제출 웹은 `auto-submission` flavor와 제출 프로토콜 2를 확인하고, 각 제출 IPC 호출 직전에 다시 확인한다. 표준 모드는 제출 기능과 IPC를 초기화하지 않는다. 기존 v1 REST/WS와 evidence 포맷 v1은 호환용으로 유지한다.
 - 표준 버전은 GitHub Releases를 사용한다. 자동 제출 패키지는 홈 서버의 `/updates/auto-submission/latest.json`과 버전별 ZIP으로 배포하며 GitHub Release로 공개하지 않는다.
 - OAuth 앱에는 `https://tufreplay-auto.impl1113.dev/oauth/callback`이 등록되어 있다. OAuth scope 확대와 TUF 운영 allowlist 적용은 별도 운영 설정이다.
 
@@ -45,7 +48,7 @@
 4. TUF backend의 `AUTO_SUBMISSION_API_URL`, replay 서버의 `TUF_API_BASE_URL`을 설정한다.
 5. TUF OAuth 앱을 생성하고 그 ID를 backend의 `TUF_AUTO_SUBMISSION_OAUTH_CLIENT_ID`에 넣은 뒤 해당 앱의 허용 scope를 `65537` (User.Read.Public + User.Submission.Create)로 설정한다. 다른 앱은 제출 scope를 받을 수 없다.
 6. 모드 설정 `AutoSubmissionOAuthClientId`, `AutoSubmissionServerUrl`에 배포 값을 주입한다. 공식 앱 Client ID는 `1dc9ff206f5301c9e7ef4ba9b209c7c7`, 서버 origin은 `https://tufreplay-auto.impl1113.dev`다. `AutoSubmissionTufApiUrl`, `AutoSubmissionOAuthRedirectUri`는 대상 환경과 OAuth 앱의 등록 redirect URI에 맞춘다.
-7. TUF BE의 `AUTO_SUBMISSION_ENABLED`는 기본 false다. `AUTO_SUBMISSION_TRUSTED_USER_IDS`는 계정 UUID를 사용하며 빈 목록은 모두 거절한다. 초기 테스터 `impl.dev` (player `7410`)의 UUID는 `670cac2c-8175-46a6-87f7-b92741d4499f`다.
+7. TUF BE의 `AUTO_SUBMISSION_ENABLED`는 기본 false다. 기존 `environment` authority의 `AUTO_SUBMISSION_TRUSTED_USER_IDS`는 계정 UUID를 사용하며 빈 목록은 모두 거절한다. `replay` authority에서는 Rust DB의 활성 명단을 사용한다. 초기 테스터 `impl.dev` (player `7410`)의 UUID는 `670cac2c-8175-46a6-87f7-b92741d4499f`이며 새 migration이 이 계정을 자동 등록하지는 않는다.
 8. 웹 callback URL은 같은 웹 앱으로 연결되어야 한다. code/state는 IPC로 모드에 전달되며 주소창에서 제거된다. 토큰은 웹으로 전달하지 않는다.
 
 TUF → replay 변경 통보 경로는 `/internal/tuf/levels/{id}/changed`다. replay → TUF 호출은 `/v2/internal/auto-submission/*` 아래에 있다. 변경 알림은 인증된 계정 WS를 거쳐 AssetBundle toast에 표시한다. 파일 ID 변경만으로 저장된 플레이를 즉시 거절하지 않고 제출 시 현재 차트로 검증한다.
@@ -60,7 +63,7 @@ TUF → replay 변경 통보 경로는 `/internal/tuf/levels/{id}/changed`다. r
 - 등록 재시도는 run UUID 영수증을 먼저 조회한다. 응답 유실로 등록 여부가 불명확한 증거는 보관 만료로 삭제하지 않는다.
 - 검증 후 등록 사이에 공식 차트가 변경되면 수동 재시도에서 최신 차트를 다시 검증한다.
 - 제출된 증거는 pass가 유지되는 동안 보관한다. pass 숨김·삭제를 이유로 증거를 공개하거나 자동 제거하지 않는다.
-- 일일 바이트 제한과 분당 5회 발급 제한은 제거했다. 개별 run·청크·버퍼의 방어 상수는 아직 실게임 측정 전 임시 구현값이며 확정된 서비스 한도가 아니다.
+- 일일 바이트 제한과 기존 분당 5회 발급 제한은 제거했다. v2에는 계정당 레벨 연결 4개, 새 시도 120회/분의 abuse 방어 상한을 둔다. 개별 run·청크·버퍼를 포함한 방어 상수는 아직 실게임 측정 전 임시 구현값이며 확정된 서비스 한도가 아니다.
 
 ## 기존 기반 검증 (2026-09-08)과 남은 실환경 검증
 

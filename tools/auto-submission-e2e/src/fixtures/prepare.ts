@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { fixtureDir } from "./store";
-import { trimCsv, keyCount } from "./convert";
+import { trimCsv, keyCount, recordingWindow } from "./convert";
 import { requireSuccessfulClear } from "./eligibility";
 import type { Fixture } from "../types";
 
@@ -29,8 +29,9 @@ interface Row {
 export async function prepare() {
   const db = new Database(dbPath, { readonly: true });
   const rows = db
-    .query<Row, []>(`SELECT r.*, l.song, l.tuf_level_id, l.adofai_path
+    .query<Row, []>(`SELECT r.*, a.input_csv, a.hit_context_csv, a.metadata_json AS meta_json, l.song, l.tuf_level_id, l.adofai_path
     FROM runs r JOIN level_sessions s ON s.id=r.level_session_id JOIN levels l ON l.id=s.level_id
+    JOIN replay_artifacts a ON a.run_id=r.id
     WHERE r.result='cleared' AND r.start_tile=0 AND r.input_count>0 AND r.hit_context_count>0
     ORDER BY r.started_at_utc DESC`)
     .all();
@@ -45,16 +46,15 @@ export async function prepare() {
       if (seen.has(row.adofai_path)) throw new Error("same chart already selected");
       const meta = JSON.parse(row.meta_json);
       if (meta.noFailMode === true) throw new Error("NoFail metadata contradicts successful clear");
-      const won = meta.wonTimeUs;
-      if (!Number.isSafeInteger(won) || won <= 0) throw new Error("missing clear time");
-      const inputs = trimCsv(row.input_csv, 5, 0, won);
+      const { wonTimeUs: won, terminalTimeUs } = recordingWindow(meta);
+      const inputs = trimCsv(row.input_csv, 5, 0, terminalTimeUs);
       const hits = trimCsv(row.hit_context_csv, 13, 12, won);
       if (!inputs.length || !hits.length) throw new Error("no records before clear");
       const chart = Bun.file(row.adofai_path);
       if (!(await chart.exists())) throw new Error("local chart file missing");
       const bytes = new Uint8Array(await chart.arrayBuffer());
       const sha = createHash("sha256").update(bytes).digest("hex");
-      const keys = keyCount(inputs);
+      const keys = keyCount(trimCsv(row.input_csv, 5, 0, won));
       if (keys < 1 || keys > 64) throw new Error("fixture key count outside server contract");
       const target = join(fixtureDir, row.id);
       await mkdir(target, { recursive: true });
@@ -92,7 +92,7 @@ export async function prepare() {
         song: row.song || `Level ${row.tuf_level_id ?? "local"}`,
         levelId: row.tuf_level_id ?? 900000 + selected.length,
         startedAt: row.started_at_utc,
-        durationUs: won,
+        durationUs: terminalTimeUs,
         inputCount: inputs.length,
         hitCount: hits.length,
         chartSha: sha,

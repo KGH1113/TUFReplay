@@ -16,12 +16,14 @@ public sealed class EvidenceUploader
   private readonly EvidenceChunker _chunker;
   private readonly UploadRecoveryWindow _recovery;
   private readonly Action<UploadProgress> _progress;
+  private readonly bool _startFailedCapture;
 
   public EvidenceUploader(
     Func<IUploadConnection> connect,
     EvidenceCaptureBuffer capture,
     UploadRecoveryWindow recovery = null,
-    Action<UploadProgress> progress = null
+    Action<UploadProgress> progress = null,
+    bool startFailedCapture = false
   )
   {
     _connect = connect;
@@ -29,6 +31,7 @@ public sealed class EvidenceUploader
     _chunker = new EvidenceChunker(capture);
     _recovery = recovery ?? new UploadRecoveryWindow();
     _progress = progress;
+    _startFailedCapture = startFailedCapture;
   }
 
   public async Task Run(CancellationToken cancellation)
@@ -36,7 +39,7 @@ public sealed class EvidenceUploader
     while (true)
     {
       cancellation.ThrowIfCancellationRequested();
-      if (_capture.Failure != null)
+      if (_capture.Failure != null && !_startFailedCapture)
         throw new UploadRejectedException(_capture.Failure);
       try
       {

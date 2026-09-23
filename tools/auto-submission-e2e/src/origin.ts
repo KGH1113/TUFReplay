@@ -6,7 +6,7 @@ export function isAllowedOrigin(origin: string) {
   try {
     const url = new URL(origin);
     if (url.protocol !== "http:" || !loopbackHosts.has(url.hostname)) return false;
-    return url.port === String(uiPort) || url.port === "5152";
+    return url.port === String(uiPort) || url.port === "5152" || url.port === "5189";
   } catch {
     return false;
   }

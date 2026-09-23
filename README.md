@@ -29,13 +29,15 @@
 
 ## Overview
 
-TUF auto-submitted passes now have a TUFReplay embed implementation in the TUF frontend and web-adofai checkouts. See the [implementation, local setup and verification status](docs/tuf-replay-embed-implementation-2026-09-10.md). Browser/game E2E remains user-run.
+TUF auto-submitted passes embed web-adofai using a small record-ID contract. The player owns replay downloads, integrity checks, streaming archive extraction, temporary OPFS storage, loading/retry UI and playback controls; the TUF frontend only opens/closes the embed. Standalone player links also support beta testing. See the [replay delivery contract](docs/replay-delivery-contract.md). The [local game E2E runner](docs/local-full-e2e-commands.md) prepares a real login account and OAuth client, then starts the backend, submission workers, companion UI, TUF frontend, and web-adofai together from their local source checkouts. It uses actual game IPC and recorded clears; gameplay still needs a player. The gameplay simulator remains unavailable, so this local setup uses the explicit trusted-tester policy.
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
 
 Replay engine v2 preserves OS-native input, the resolved margin of every accepted hit, and its recorded timeline timestamp. Replays from the previous Skyhook-based engine remain visible as activity history after upgrading but are not playable. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
 ## Features
+
+Trusted tester membership is managed in PostgreSQL through a separate [local administrator app](tools/trusted-testers-admin/README.md). Rust checks active membership at account/upload/submission authorization; TUF retains OAuth, account and final registration checks. See the [rollout guide](deploy/trusted-testers-admin.md) before switching away from the legacy TUF environment allowlist.
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, saving activity runs only after native input is captured.
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
@@ -57,7 +59,11 @@ Replay engine v2 preserves OS-native input, the resolved margin of every accepte
 - Replays restore the recorded game input offset when available. Older records without that value keep the current game setting; input/hit timestamp differences are not used to guess calibration.
 - Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
 - Guides replay handoff from the web UI into ADOFAI with an acknowledged, persistent focus prompt; blocks duplicate replay launches, protects the editor play command during preparation, and waits briefly after focus stabilizes before playback starts.
-- Identifies TUFHelperLite-downloaded levels and optionally streams P/G auto-submission evidence through an authenticated account connection.
+- Identifies TUFHelperLite-downloaded levels and streams P/G auto-submission evidence through one authenticated, reusable WebSocket per opened level. Each attempt has its own `run_start` → evidence → `run_fail`/`run_complete` lifecycle. Bounded capture starts before server approval, so immediate retries never wait for REST issuance or network I/O; idle connections create no runs. See the [level session protocol](docs/auto-submission-implementation/11-reusable-level-session.md).
+- Registers saved Jipper Resourcepack, Jipper KeyViewer, DMNote, Impl DMNote, and ImplResourcePack visual presets through the companion web UI and authenticated mod IPC. Missing fonts/images can be attached during registration and are preserved in the preset bundle. DMNote imports the saved selected tab from multi-tab exports. Registration also accepts a separate CSS file, a fixed position and 10–400% keyviewer size on a 16:9 screen, and its global key-counter visibility setting (off by default). Submissions independently select at most one keyviewer and one overlay, with selections fixed for retries. See [the visual preset contract](docs/visual-presets-contract-2026-09-16.md) and [local E2E verification](docs/visual-presets-local-e2e-2026-09-16.md) for tested flows and remaining compatibility limits.
+- Jipper Resourcepack, Jipper KeyViewer, and ImplResourcePack are detected automatically from the game’s installed mods and saved settings; registration does not ask for their configuration files. Version-suffixed or renamed UMM folders are identified by mod metadata. DMNote and Impl DMNote use exported JSON files. Jipper KeyViewer is a separate keyviewer source from Jipper Resourcepack; ImplResourcePack is overlay-only. Jipper Resourcepack uses `jipper-resourcepack`; standalone Jipper KeyViewer uses `jipper-keyviewer`. See [additional source formats](docs/visual-sources-2026-09-17.md) for the import contract and rendering boundary. See [automatic import verification](docs/visual-import-verification-2026-09-17.md).
+- Visual snapshots include the original key/progress sprites, supported DMNote built-in fonts, pose images and attached CSS resources. The player uses source slice/tile geometry, TMP font metrics and portable CJK fallback chains. ImplResourcePack includes the game's original CJK font automatically; its default registration needs no attachments. See [source fidelity and automated verification](docs/visual-source-handoff-2026-09-21.md).
+- Preset registration runs as a background mod job. The companion shows saved-settings, image/font processing, validation and server-registration stages, including the current file and completed file count. Inspection and registration reuse one snapshot, so large CJK fonts are not rebuilt between them. Missing attachments pause registration before any server upload. No estimated percentage is shown.
 - Provides replay playback and the auto-submission capture, upload, review UI, and registration pipeline. The gameplay simulator is not implemented. The default mode remains `validator_unavailable`; the explicit `trusted_tester` rollout converts recorded clear results for TUF accounts on the backend allowlist and records that validation was skipped. Replay beta updates do not grant submission permission. See [implementation status and setup](docs/auto-submission-status.md).
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
 - Shows a one-time browser notice when saved runs use the previous replay engine and cannot be played by the current engine.
@@ -91,6 +97,7 @@ Reflection consumers should cache the resolved type and property getter, query t
   - `Recording/`: `Models`, `Sessions`, `Input`, `Activity`, `Microphone`, and `Patches`.
   - `Microphone/`: `Models`, `Devices`, `Capture`, `Playback`, `Processing`, `Timing`, `Recording`, `Repositories`, and `Ipc`.
   - `Calibration/`: `Models`, `Sessions`, `Analysis`, `Playback`, `Levels`, and `Ipc`.
+  - `Visual/`: visual-preset `Domain`, wire `Contracts`, use-case `Application`, source-independent `Importing`, external `Infrastructure`, per-mod `Sources`, IPC handlers, and the composition facade.
   - `Composition/`: the mod composition root and feature registry. This is separate from the fixed launcher assembly in `TUFReplay.Bootstrap/`.
   - `Shared/`: database, IPC, settings, native-input, and Unity primitives shared by multiple features.
 - `TUFReplay.Bootstrap/`: fixed launcher that selects and loads a versioned TUFReplay runtime.
@@ -163,6 +170,21 @@ Build only the macOS helper or validate the shell layer with:
 ./scripts/run.sh mac-helper
 ./scripts/run.sh check
 ```
+
+Run verification without installing the mod:
+
+```bash
+./scripts/run.sh mod-check
+./scripts/run.sh web-check
+./scripts/run.sh visual-check # Cross-repository visual source contract (requires sibling consumers)
+./scripts/run.sh visual-fixtures # Real source assets, after mod-check; JKV_SOURCE_ROOT may override the audit checkout
+# Set TUF_VISUAL_TEST_DATABASE_URL to an existing disposable database; this test recreates its tables.
+./scripts/run.sh visual-pipeline-check # Importer -> DB/API -> replay renderer and PNG pixel comparisons
+./scripts/run.sh server-check
+DATABASE_URL=postgres://USER@localhost:PORT/ISOLATED_TEST_DB ./scripts/run.sh server-check --integration
+```
+
+The server integration configuration recreates its database. Always give it an isolated test database, never a development or production database containing records to keep.
 
 `unity-ui` rebuilds the replay timeline and generic runtime notification prefabs with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel, uGUI toast/persistent-error UI, and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
 

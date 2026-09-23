@@ -46,6 +46,13 @@ public sealed class TUFReplayIpcFeature
       ipc.Register("submission.run.get", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Get);
       ipc.Register("submission.run.submit", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Submit);
       ipc.Register("submission.run.remove", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Remove);
+      ipc.Register("visual.presets.list", TUFReplay.Visual.Ipc.VisualIpcHandlers.List);
+      ipc.Register("visual.presets.remove", TUFReplay.Visual.Ipc.VisualIpcHandlers.Remove);
+      ipc.Register("visual.sources.get", TUFReplay.Visual.Ipc.VisualIpcHandlers.Sources);
+      ipc.Register("visual.presets.import", TUFReplay.Visual.Ipc.VisualIpcHandlers.Import);
+      ipc.Register("visual.presets.inspect", TUFReplay.Visual.Ipc.VisualIpcHandlers.Inspect);
+      ipc.Register("visual.presets.registration.start", TUFReplay.Visual.Ipc.VisualIpcHandlers.StartRegistration);
+      ipc.Register("visual.presets.registration.get", TUFReplay.Visual.Ipc.VisualIpcHandlers.RegistrationStatus);
       ipc.RegisterMainThread("submission.disabled.set", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.SetDisabled);
       ipc.RegisterMainThread("submission.status.get", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Status);
     }

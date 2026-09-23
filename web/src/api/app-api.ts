@@ -4,6 +4,7 @@ import type { HealthApi } from "@/api/health/health-api";
 import type { MicrophoneApi } from "@/api/microphone/microphone-api";
 import type { ReplayApi } from "@/api/replay/replay-api";
 import type { RunApi } from "@/api/run/run-api";
+import type { VisualApi } from "@/api/visual/visual-api";
 
 export interface AppApi {
   submission: import("@/api/submission/submission-api").SubmissionApi;
@@ -13,4 +14,5 @@ export interface AppApi {
   replay: ReplayApi;
   microphone: MicrophoneApi;
   calibration: CalibrationApi;
+  visual: VisualApi;
 }

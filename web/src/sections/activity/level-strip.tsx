@@ -3,6 +3,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { useTranslation } from "react-i18next";
 import { formatTime } from "@/models/activity/activity-date";
 import type { LevelCard, LevelMetadata } from "@/models/activity/activity-model";
+import { TUF_WEB_URL } from "@/shared/config/tuf-web-url";
 import { cn } from "@/shared/lib/cn";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
 
@@ -99,7 +100,7 @@ export function LevelStrip({
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <a
-                            href={`https://tuforums.com/levels/${metadata.levelId}`}
+                            href={`${TUF_WEB_URL}/levels/${metadata.levelId}`}
                             target="_blank"
                             rel="noopener noreferrer"
                             aria-label={t("metadata.openTufLevelLabel", {

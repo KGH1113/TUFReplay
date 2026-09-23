@@ -6,6 +6,7 @@ import { createMicrophoneApi } from "@/api/microphone/create-microphone-api";
 import { createReplayApi } from "@/api/replay/create-replay-api";
 import { createRunApi } from "@/api/run/create-run-api";
 import { createSubmissionApi } from "@/api/submission/create-submission-api";
+import { createVisualApi } from "@/api/visual/create-visual-api";
 import { getAdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 
 let apiPromise: Promise<AppApi> | null = null;
@@ -20,6 +21,7 @@ export function getProductionApi(): Promise<AppApi> {
       replay: createReplayApi(clients),
       microphone: createMicrophoneApi(clients),
       calibration: createCalibrationApi(clients),
+      visual: createVisualApi(clients),
     }))
     .catch((cause) => {
       apiPromise = null;

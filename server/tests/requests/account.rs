@@ -16,7 +16,7 @@ use uuid::Uuid;
 async fn denied_tester_can_view_and_delete_own_runs_but_cannot_issue_or_submit() {
     request::<App, _, _>(|mut request, ctx| async move {
         let owner = Uuid::new_v4().to_string();
-        let token = crate::support::authenticate_with_policy(&ctx, &owner, false);
+        let token = crate::support::authenticate_with_policy(&ctx, &owner, false).await;
         request.add_header(
             axum::http::header::AUTHORIZATION,
             format!("Bearer {token}")
@@ -76,7 +76,10 @@ async fn denied_tester_can_view_and_delete_own_runs_but_cannot_issue_or_submit()
 
         let get = request.get(&format!("/api/v1/runs/{run_id}")).await;
         assert_eq!(get.status_code(), 200, "{}", get.text());
-        assert_eq!(get.json::<serde_json::Value>()["run_id"], run_id.to_string());
+        assert_eq!(
+            get.json::<serde_json::Value>()["run_id"],
+            run_id.to_string()
+        );
 
         let delete = request.delete(&format!("/api/v1/runs/{run_id}")).await;
         assert_eq!(delete.status_code(), 200, "{}", delete.text());
@@ -97,10 +100,57 @@ async fn denied_tester_can_view_and_delete_own_runs_but_cannot_issue_or_submit()
             .await;
         assert_eq!(issue.status_code(), 401, "{}", issue.text());
 
-        let submit = request
-            .post(&format!("/api/v1/runs/{run_id}/submit"))
-            .await;
+        let submit = request.post(&format!("/api/v1/runs/{run_id}/submit")).await;
         assert_eq!(submit.status_code(), 401, "{}", submit.text());
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
+async fn local_membership_is_required_and_revocation_is_not_cached() {
+    request::<App, _, _>(|mut request, ctx| async move {
+        use sea_orm::{ConnectionTrait, DbBackend, Statement};
+        use tuf_replay_server::services::auth::authorize_grant;
+        let owner = Uuid::new_v4().to_string();
+        let token = crate::support::authenticate(&ctx, &owner).await;
+        request.add_header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {token}")
+                .parse::<axum::http::HeaderValue>()
+                .unwrap(),
+        );
+        assert!(authorize_grant(&ctx, &owner, Some(crate::support::GRANT))
+            .await
+            .is_ok());
+        crate::support::set_tester(&ctx, &owner, false).await;
+        assert!(authorize_grant(&ctx, &owner, Some(crate::support::GRANT))
+            .await
+            .is_err());
+        let denied: serde_json::Value = request.get("/api/v1/account").await.json();
+        assert_eq!(denied["can_submit"], false);
+        assert_eq!(denied["denial_reason"], "auto_submission_tester_required");
+        crate::support::set_tester(&ctx, &owner, true).await;
+        assert!(authorize_grant(&ctx, &owner, Some(crate::support::GRANT))
+            .await
+            .is_ok());
+        ctx.db
+            .execute_raw(Statement::from_sql_and_values(
+                DbBackend::Postgres,
+                "DELETE FROM trusted_testers WHERE user_id=$1",
+                [Uuid::parse_str(&owner).unwrap().into()],
+            ))
+            .await
+            .unwrap();
+        assert!(authorize_grant(&ctx, &owner, Some(crate::support::GRANT))
+            .await
+            .is_err());
+        // A local grant cannot override an OAuth/account denial.
+        crate::support::authenticate_with_policy(&ctx, &owner, false).await;
+        crate::support::set_tester(&ctx, &owner, true).await;
+        assert!(authorize_grant(&ctx, &owner, Some(crate::support::GRANT))
+            .await
+            .is_err());
     })
     .await;
 }

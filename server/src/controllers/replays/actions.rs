@@ -1,22 +1,78 @@
 use super::dtos::ReplayManifestResponse;
+use crate::models::visual_presets::VisualKind;
 use crate::services::replays::{self, PublishedReplay, ReplayFile};
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{
         header::{CACHE_CONTROL, CONTENT_DISPOSITION, CONTENT_LENGTH, CONTENT_TYPE, ETAG},
         HeaderValue,
     },
 };
 use loco_rs::prelude::*;
+use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-pub async fn manifest(State(ctx): State<AppContext>, Path(run_id): Path<Uuid>) -> Result<Response> {
+#[derive(Debug, Deserialize)]
+pub struct ManifestQuery {
+    pub format: Option<u32>,
+}
+
+pub async fn manifest(
+    State(ctx): State<AppContext>,
+    Path(run_id): Path<Uuid>,
+    Query(query): Query<ManifestQuery>,
+) -> Result<Response> {
     let replay = PublishedReplay::load(&ctx.db, run_id).await?;
-    let mut response = format::json(ReplayManifestResponse::from_replay(&replay))?;
+    let is_v3 = query.format == Some(3);
+    let mut response = if is_v3 {
+        let visuals = replays::published_visuals(&ctx.db, run_id).await?;
+        format::json(ReplayManifestResponse::from_replay_v3(&replay, &visuals))?
+    } else {
+        format::json(ReplayManifestResponse::from_replay(&replay))?
+    };
     response.headers_mut().insert(
         CACHE_CONTROL,
-        HeaderValue::from_static("public, max-age=31536000, immutable"),
+        if is_v3 {
+            HeaderValue::from_static("no-store")
+        } else {
+            HeaderValue::from_static("public, max-age=31536000, immutable")
+        },
     );
+    Ok(response)
+}
+
+pub async fn visual(
+    State(ctx): State<AppContext>,
+    Path((run_id, kind)): Path<(Uuid, String)>,
+) -> Result<Response> {
+    let kind = VisualKind::parse(&kind).ok_or(Error::NotFound)?;
+    // Revalidate the published replay before resolving its frozen visual
+    // selection. This keeps a bundle endpoint subject to the same evidence
+    // and publication checks as the manifest endpoint.
+    PublishedReplay::load(&ctx.db, run_id).await?;
+    let (_descriptor, bundle) = replays::published_visual(&ctx.db, run_id, kind).await?;
+    let bytes = u64::try_from(bundle.bytes)
+        .map_err(|_| Error::Message("visual bundle size is invalid".into()))?;
+    if bytes != bundle.bundle.len() as u64
+        || hex::encode(Sha256::digest(&bundle.bundle)) != bundle.sha256
+    {
+        return Err(Error::Message("visual bundle integrity is invalid".into()));
+    }
+    let mut response = Response::new(axum::body::Body::from(bundle.bundle));
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
+    headers.insert(
+        CONTENT_LENGTH,
+        HeaderValue::from_str(&bytes.to_string())
+            .map_err(|_| Error::Message("invalid visual bundle size".into()))?,
+    );
+    headers.insert(
+        ETAG,
+        HeaderValue::from_str(&format!("\"{}\"", bundle.sha256))
+            .map_err(|_| Error::Message("invalid visual bundle digest".into()))?,
+    );
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static("no-store"));
     Ok(response)
 }
 

@@ -1,0 +1,321 @@
+{
+  "Setting": {
+    "Size": 1.0,
+    "FontName": null
+  },
+  "Feature": {
+    "KeyViewer": {
+      "Setting": {
+        "KeyViewerStyle": 1,
+        "FootKeyViewerStyle": 2,
+        "key10": [
+          9,
+          49,
+          50,
+          101,
+          112,
+          61,
+          8,
+          92,
+          32,
+          44
+        ],
+        "key10Text": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "GhostKey10": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "key12": [
+          9,
+          49,
+          50,
+          101,
+          112,
+          61,
+          8,
+          92,
+          32,
+          99,
+          44,
+          46
+        ],
+        "key12Text": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "GhostKey12": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "key16": [
+          9,
+          49,
+          50,
+          101,
+          281,
+          106,
+          267,
+          265,
+          32,
+          99,
+          274,
+          273,
+          97,
+          4321,
+          266,
+          262
+        ],
+        "key16Text": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "GhostKey16": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "key20": [
+          9,
+          49,
+          50,
+          101,
+          112,
+          61,
+          8,
+          92,
+          32,
+          99,
+          44,
+          46,
+          301,
+          304,
+          13,
+          104,
+          301,
+          100,
+          303,
+          59
+        ],
+        "key20Text": [
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null
+        ],
+        "GhostKey20": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "footkey2": [
+          289,
+          284
+        ],
+        "footkey4": [
+          289,
+          284,
+          288,
+          283
+        ],
+        "footkey6": [
+          289,
+          284,
+          288,
+          283,
+          287,
+          282
+        ],
+        "footkey8": [
+          289,
+          285,
+          288,
+          284,
+          287,
+          283,
+          286,
+          282
+        ],
+        "footkey16": [
+          289,
+          285,
+          288,
+          284,
+          287,
+          283,
+          286,
+          282,
+          48,
+          54,
+          57,
+          53,
+          56,
+          52,
+          55,
+          51
+        ],
+        "YLocation": 584.2361,
+        "AutoSetupKeyLimit": false,
+        "Size": 1.0,
+        "useRain": true,
+        "useGhostRain": false,
+        "ShowTotalKpsKey16": true,
+        "rainSpeed": 100.0,
+        "rainHeight": 200.0,
+        "Background": {
+          "r": 1.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 0.1960784
+        },
+        "BackgroundClicked": {
+          "r": 1.0,
+          "g": 1.0,
+          "b": 1.0,
+          "a": 1.0
+        },
+        "Outline": {
+          "r": 1.0,
+          "g": 0.2431373,
+          "b": 0.2431373,
+          "a": 1.0
+        },
+        "OutlineClicked": {
+          "r": 1.0,
+          "g": 1.0,
+          "b": 1.0,
+          "a": 1.0
+        },
+        "Text": {
+          "r": 1.0,
+          "g": 1.0,
+          "b": 1.0,
+          "a": 1.0
+        },
+        "TextClicked": {
+          "r": 0.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 1.0
+        },
+        "RainColor": {
+          "r": 0.858823538,
+          "g": 0.125490174,
+          "b": 0.125490174,
+          "a": 1.0
+        },
+        "RainColor2": {
+          "r": 1.0,
+          "g": 1.0,
+          "b": 1.0,
+          "a": 1.0
+        },
+        "RainColor3": {
+          "r": 1.0,
+          "g": 0.0,
+          "b": 0.0,
+          "a": 1.0
+        }
+      },
+      "Enabled": true
+    }
+  }
+}

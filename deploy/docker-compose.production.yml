@@ -72,6 +72,8 @@ services:
       TUF_ARTIFACT_ROOT: /var/lib/tuf-replay/artifacts
       TUF_API_BASE_URL: https://api.tuforums.com
       TUF_WEB_ORIGIN: https://tuforums.com
+      REPLAY_PLAYER_ORIGIN: ${REPLAY_PLAYER_ORIGIN:-https://web-adofai.impl1113.dev}
+      REPLAY_BETA_ORIGIN: ${REPLAY_BETA_ORIGIN:-https://web-adofai.impl1113.dev}
       SUBMISSION_WEB_ORIGIN: https://tufreplay.impl1113.dev
       TUF_TO_AUTO_SUBMISSION_TOKEN: ${TUF_TO_AUTO_SUBMISSION_TOKEN:?TUF_TO_AUTO_SUBMISSION_TOKEN must be set}
       AUTO_SUBMISSION_TO_TUF_TOKEN: ${AUTO_SUBMISSION_TO_TUF_TOKEN:?AUTO_SUBMISSION_TO_TUF_TOKEN must be set}

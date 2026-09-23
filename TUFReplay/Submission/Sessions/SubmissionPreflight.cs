@@ -35,6 +35,10 @@ public sealed class SubmissionPreflight : IDisposable
           Volatile.Write(ref _ready, run);
       }
       catch (OperationCanceledException) { }
+      catch (SubmissionRequestException exception)
+      {
+        Volatile.Write(ref _error, exception.Code);
+      }
       catch (Exception)
       {
         Volatile.Write(ref _error, "level_preparation_failed");

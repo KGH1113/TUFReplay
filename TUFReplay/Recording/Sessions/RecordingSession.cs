@@ -167,6 +167,8 @@ public partial class RecordingSession
       long wonTimeUs = ToRecordTimeUs(wonSongPosition);
       if (_hasTimelineTime)
         wonTimeUs = Math.Max(_lastTimelineTimeUs, wonTimeUs);
+      RefreshNoFailModeLocked();
+      RefreshPitchLocked();
       Data.WonTimeUs = wonTimeUs;
       if (_evidenceSink != null && !TryCaptureSubmissionResult(Data, (int)Persistence.holdBehavior))
         AbortEvidenceLocked("submission_result_snapshot_failed");
@@ -257,11 +259,15 @@ public partial class RecordingSession
 
   private void RefreshNoFailModeLocked()
   {
+    if (Data.WonTimeUs.HasValue)
+      return;
     Data.NoFailMode = Data.NoFailMode || IsNoFailModeActive();
   }
 
   private void RefreshPitchLocked()
   {
+    if (Data.WonTimeUs.HasValue)
+      return;
     Data.LevelPitchPercent = GetLevelPitchPercent();
     Data.PitchSpeedMultiplier = GetPitchSpeedMultiplier();
     Data.EffectivePitch = GetEffectivePitch();

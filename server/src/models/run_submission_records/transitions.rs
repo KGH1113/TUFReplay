@@ -7,11 +7,19 @@ pub struct Transition<'a> {
 }
 
 use super::{ActiveModel, Column, Entity, Model};
+use crate::models::{run_visual_selections, visual_presets};
 use loco_rs::prelude::*;
-use sea_orm::{ActiveValue::Set, EntityTrait, QueryFilter};
-use sea_orm::{ConnectionTrait, DbBackend, Statement, Value};
+use sea_orm::{ActiveValue::Set, EntityTrait, FromQueryResult, QueryFilter};
+use sea_orm::{ConnectionTrait, DbBackend, Statement, TransactionTrait, Value};
 use serde_json::Value as Json;
 use uuid::Uuid;
+
+#[derive(Debug, FromQueryResult)]
+struct SubmissionLock {
+    id: i64,
+    requested_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    state: String,
+}
 
 impl Entity {
     pub async fn create(db: &impl ConnectionTrait, run_id: i64, owner: &str) -> Result<()> {
@@ -131,6 +139,65 @@ impl Entity {
         Ok(())
     }
 
+    /// Freeze the optional visual selection together with the existing
+    /// submission state transition. A bodyless retry leaves the frozen value
+    /// unchanged, while an explicit retry must match it by preset IDs.
+    pub async fn request_authorized_with_selection(
+        db: &DatabaseConnection,
+        run_id: i64,
+        owner: &str,
+        grant: Option<Uuid>,
+        requested_selection: Option<run_visual_selections::VisualSelection>,
+    ) -> Result<()> {
+        let transaction = db.begin().await?;
+        let locked = SubmissionLock::find_by_statement(sql(
+            "SELECT id,requested_at,state
+             FROM run_submission_records
+             WHERE run_session_id=$1 AND owner_id=$2
+             FOR UPDATE",
+            vec![run_id.into(), owner.into()],
+        ))
+        .one(&transaction)
+        .await?
+        .ok_or(Error::NotFound)?;
+
+        let frozen = run_visual_selections::lock_for_update(&transaction, locked.id).await?;
+        match frozen {
+            Some(frozen) => {
+                if requested_selection
+                    .as_ref()
+                    .is_some_and(|requested| *requested != frozen.selection())
+                {
+                    return Err(Error::BadRequest("visual_selection_conflict".into()));
+                }
+            }
+            None => {
+                let selection =
+                    requested_selection.unwrap_or(run_visual_selections::VisualSelection {
+                        keyviewer_id: None,
+                        overlay_id: None,
+                    });
+                // Records that already entered submission before this
+                // migration are permanently legacy-empty. The migration
+                // backfills these rows, and this guard covers an interrupted
+                // or manually repaired database as well.
+                if (selection.keyviewer_id.is_some() || selection.overlay_id.is_some())
+                    && (locked.requested_at.is_some() || locked.state == "submitted")
+                {
+                    return Err(Error::BadRequest("visual_selection_conflict".into()));
+                }
+                if selection.keyviewer_id.is_some() || selection.overlay_id.is_some() {
+                    validate_selection(&transaction, owner, &selection).await?;
+                }
+                run_visual_selections::insert(&transaction, locked.id, &selection).await?;
+            }
+        }
+
+        Self::request_authorized(&transaction, run_id, owner, grant).await?;
+        transaction.commit().await?;
+        Ok(())
+    }
+
     pub async fn transition(
         db: &impl ConnectionTrait,
         run_id: i64,
@@ -161,6 +228,29 @@ impl Entity {
             AND (lease_until IS NULL OR lease_until<NOW())",vec![run_id.into(),owner.into()]))
             .await?.rows_affected()==1)
     }
+}
+
+async fn validate_selection(
+    db: &impl ConnectionTrait,
+    owner: &str,
+    selection: &run_visual_selections::VisualSelection,
+) -> Result<()> {
+    for (id, kind) in [
+        (
+            selection.keyviewer_id,
+            visual_presets::VisualKind::Keyviewer,
+        ),
+        (selection.overlay_id, visual_presets::VisualKind::Overlay),
+    ] {
+        let Some(id) = id else { continue };
+        let Some(preset) = visual_presets::active_owned(db, owner, id).await? else {
+            return Err(crate::services::visuals::preset_not_found());
+        };
+        if preset.kind != kind.as_str() {
+            return Err(Error::BadRequest("visual_selection_conflict".into()));
+        }
+    }
+    Ok(())
 }
 
 pub(crate) fn sql(query: &str, values: Vec<Value>) -> Statement {

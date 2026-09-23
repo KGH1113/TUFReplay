@@ -6,6 +6,8 @@ Rust 서버와 C# sender가 독립적으로 구현되어도 동일한 byte strea
 
 ## 범위
 
+현재 모드의 연결 및 run 제어 계약은 [레벨 세션 v2](11-reusable-level-session.md)를 따른다. 아래 v1 경로는 호환용으로 남는다. v2 binary는 run UUID envelope로 기존 `TUFR` v1 frame을 감싸며 evidence manifest와 replay 파일 버전은 바꾸지 않는다.
+
 - `POST /api/v1/runs` 요청/응답 계약
 - `GET /api/v1/runs/{run_id}/stream` WebSocket 계약
 - JSON control frame과 binary chunk header
@@ -36,7 +38,7 @@ Rust 서버와 C# sender가 독립적으로 구현되어도 동일한 byte strea
 - run payload: 최대 128 MiB
 - heartbeat interval: 10초
 - active Redis TTL: 45초
-- hard duration: 6시간
+- hard duration: active run마다 6시간 (idle 레벨 세션의 수명 제한이 아님)
 - sealed Redis TTL: 24시간
 - sequence: run 전체에서 0부터 시작하는 단일 전역 번호
 - ACK: cumulative ACK
@@ -89,4 +91,3 @@ Rust 서버와 C# sender가 독립적으로 구현되어도 동일한 byte strea
 - wire format에 미정 필드나 암묵적 byte order가 없다.
 - 모든 terminal error는 stable code와 terminal 여부를 갖는다.
 - 이후 단계가 protocol 내부 구현을 몰라도 fixture와 state table만으로 개발 가능하다.
-

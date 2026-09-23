@@ -323,6 +323,14 @@ if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
     fail_deploy "Auto-submission database migration failed; migration output was withheld."
   fi
   DB_MIGRATION_APPLIED=1
+  initial_testers_file="$STATE_DIR/trusted-testers-bootstrap.txt"
+  if [[ -f "$initial_testers_file" ]]; then
+    if ! python3 deploy/scripts/bootstrap-trusted-testers.py "$initial_testers_file" |
+      compose exec -T postgres-production sh -c 'exec psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB"' >/dev/null 2>&1; then
+      fail_deploy "Initial tester roster could not be applied."
+    fi
+    mv "$initial_testers_file" "$initial_testers_file.applied"
+  fi
 fi
 
 STACK_TOUCHED=1

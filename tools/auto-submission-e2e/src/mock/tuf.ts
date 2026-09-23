@@ -1,7 +1,7 @@
 import { accessToken, grant, outgoingToken, owner, toolBase } from "../config";
 import { fixturePath, fixtures } from "../fixtures/store";
 import { catalogFileId } from "../local-tuf/catalog";
-import { localTuf } from "../local-tuf/config";
+import { localTuf, localTufBase } from "../local-tuf/config";
 import { forwardToLocalTuf } from "../local-tuf/forward";
 import {
 	localCatalogArchivePath,
@@ -11,15 +11,32 @@ import {
 import { log } from "../logs";
 import * as receipts from "./receipts";
 
+async function difficultyCatalog(): Promise<Array<{ id: number; type: string; name: string }>> {
+	if (!localTuf) return [{ id: 1, type: "PGU", name: "P1" }];
+	const response = await fetch(`${localTufBase}/v2/database/difficulties`, {
+		signal: AbortSignal.timeout(15000),
+		redirect: "error",
+	});
+	if (!response.ok) throw new Error("local_tuf_catalog_unavailable");
+	const values = await response.json();
+	if (
+		!Array.isArray(values) ||
+		values.some(
+			(entry) =>
+				!entry ||
+				!Number.isSafeInteger(entry.id) ||
+				typeof entry.type !== "string" ||
+				typeof entry.name !== "string",
+		)
+	)
+		throw new Error("local_tuf_catalog_unavailable");
+	return values;
+}
+
 export async function tuf(request: Request): Promise<Response> {
 	const url = new URL(request.url);
 	const body = request.method === "POST" ? await request.json() : undefined;
-	log(
-		"tuf",
-		`${request.method} ${url.pathname}${url.search}`,
-		body,
-		body?.run_id,
-	);
+	log("tuf", `${request.method} ${url.pathname}${url.search}`, body, body?.run_id);
 	const respond = (value: unknown, status = 200) => {
 		log("tuf", `${status} ${url.pathname}`, value, body?.run_id);
 		return Response.json(value, { status });
@@ -32,10 +49,7 @@ export async function tuf(request: Request): Promise<Response> {
 		return respond({ error: "unauthorized" }, 401);
 	if (localTuf && url.pathname.startsWith("/v2/internal/auto-submission/"))
 		return forwardToLocalTuf(request, body);
-	if (
-		url.pathname.endsWith("/identity") ||
-		url.pathname.endsWith("/authorization")
-	) {
+	if (url.pathname.endsWith("/identity") || url.pathname.endsWith("/authorization")) {
 		if (
 			body?.access_token !== undefined
 				? body.access_token !== accessToken
@@ -51,38 +65,55 @@ export async function tuf(request: Request): Promise<Response> {
 		});
 	}
 	const level = url.pathname.match(/^\/v2\/database\/levels\/byId\/(\d+)$/);
+	if (url.pathname === "/v2/database/difficulties") {
+		try {
+			return respond(await difficultyCatalog());
+		} catch {
+			return respond({ error: "local_tuf_catalog_unavailable" }, 503);
+		}
+	}
 	if (level) {
 		const levelId = Number(level[1]);
 		const item = items.find((f) => f.levelId === levelId);
 		const fileId = item && catalogFileId(item, localTuf);
-		if (item && !fileId)
-			return respond({ error: "local_tuf_fixture_not_synced" }, 503);
+		if (item && !fileId) return respond({ error: "local_tuf_fixture_not_synced" }, 503);
+		const snapshot = !item && localTuf ? await localCatalogSnapshot(levelId) : undefined;
+		const difficulty = localTuf
+			? (item?.difficulty ?? snapshot?.difficulty)
+			: { type: "PGU", name: "P1" };
+		let diffId: number | undefined;
+		try {
+			diffId = (await difficultyCatalog()).find(
+				(entry) => entry.type === difficulty?.type && entry.name === difficulty?.name,
+			)?.id;
+		} catch {
+			return respond({ error: "local_tuf_catalog_unavailable" }, 503);
+		}
+		if ((item || snapshot) && diffId === undefined)
+			return respond({ error: "local_tuf_difficulty_not_found" }, 503);
 		if (item)
 			return respond({
-					id: item.levelId,
-					// The local chart archive remains the recorded fixture. Registration still needs
-					// the current local TUF revision ID as immutable audit metadata.
-					fileId,
-					dlLink: `${toolBase}/archives/${item.id}.zip`,
-					difficulty: { type: "PGU", name: "P1" },
-					isHidden: false,
-					isDeleted: false,
-				});
-		const snapshot = localTuf && (await localCatalogSnapshot(levelId));
+				id: item.levelId,
+				// The local chart archive remains the recorded fixture. Registration still needs
+				// the current local TUF revision ID as immutable audit metadata.
+				fileId,
+				dlLink: `${toolBase}/archives/${item.id}.zip`,
+				diffId,
+				isHidden: false,
+				isDeleted: false,
+			});
 		return snapshot
 			? respond({
 					id: snapshot.levelId,
 					fileId: snapshot.fileId,
 					dlLink: localCatalogArchiveUrl(snapshot.levelId),
-					difficulty: snapshot.difficulty,
+					diffId,
 					isHidden: false,
 					isDeleted: false,
 				})
 			: respond({ error: "not_found" }, 404);
 	}
-	const catalogArchive = url.pathname.match(
-		/^\/catalog-archives\/(\d+)\.zip$/,
-	);
+	const catalogArchive = url.pathname.match(/^\/catalog-archives\/(\d+)\.zip$/);
 	if (catalogArchive) {
 		const levelId = Number(catalogArchive[1]);
 		const snapshot = localTuf && (await localCatalogSnapshot(levelId));
@@ -101,9 +132,7 @@ export async function tuf(request: Request): Promise<Response> {
 			headers: { "Content-Type": "application/zip" },
 		});
 	}
-	const receipt = url.pathname.match(
-		/^\/v2\/internal\/auto-submission\/receipts\/([a-f0-9-]+)$/,
-	);
+	const receipt = url.pathname.match(/^\/v2\/internal\/auto-submission\/receipts\/([a-f0-9-]+)$/);
 	if (receipt) {
 		const found = receipts.lookup(receipt[1]);
 		if (!found) return respond({ error: "not_found" }, 404);

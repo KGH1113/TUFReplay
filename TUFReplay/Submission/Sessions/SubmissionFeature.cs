@@ -15,10 +15,9 @@ public sealed class SubmissionFeature : IDisposable
   public SubmissionRecordsClient Records { get; } = new SubmissionRecordsClient();
   public SubmissionAccount Account => Authentication.Session?.Account;
   public bool CanSubmit => _account?.CanSubmit == true;
-  private readonly RunIssuanceClient _api = new RunIssuanceClient();
   private SubmissionAccount _account;
-  private SubmissionPreflight _preflight;
-  private SubmissionAttempt _attempt;
+  private TUFReplay.Submission.Transport.LevelSubmissionSession _transport;
+  private LevelSubmissionAttempt _attempt;
   private RecordingSession _session;
   private bool _clearPending;
   private string _path;
@@ -27,8 +26,6 @@ public sealed class SubmissionFeature : IDisposable
   private bool _disposed;
   private TUFReplay.Submission.Transport.LevelChangeListener _changes;
   private bool _pendingToast;
-  private bool _preflightReadyReported;
-  private bool _preflightFailureReported;
   private Task<SubmissionAccountIdentity> _identityRefresh;
   private CancellationTokenSource _identityRefreshCancellation;
   private SubmissionAccount _identityRefreshAccount;
@@ -43,7 +40,7 @@ public sealed class SubmissionFeature : IDisposable
       disabled = TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true,
       state = _account == null ? Authentication.State
       : !_account.CanSubmit ? "eligibility_" + _account.IdentityStatus
-      : _attempt?.State ?? (_preflight?.IsReady == true ? "ready" : _preflight?.Error ?? "preparing"),
+      : _attempt?.State ?? _transport?.State ?? "preparing",
       runId = _attempt?.RunId.ToString(),
       reason = _attempt?.Capture.Failure,
       username = _account?.Username,
@@ -63,10 +60,8 @@ public sealed class SubmissionFeature : IDisposable
       _session?.AbortEvidence("collection_disabled");
       _session = null;
       _clearPending = false;
-      _preflight?.Dispose();
-      _preflight = null;
-      if (_attempt?.Capture.CompletionMeta == null)
-        _attempt?.Dispose();
+      _transport?.Dispose();
+      _transport = null;
     }
     else
       Prepare();
@@ -91,10 +86,9 @@ public sealed class SubmissionFeature : IDisposable
     _identityRefreshAt = DateTimeOffset.MinValue;
     _submissionAuthorized = false;
     _session?.AbortEvidence("account_disconnected");
-    _attempt?.Dispose();
     _attempt = null;
-    _preflight?.Dispose();
-    _preflight = null;
+    _transport?.Dispose();
+    _transport = null;
     _account = null;
     _session = null;
     _clearPending = false;
@@ -108,13 +102,9 @@ public sealed class SubmissionFeature : IDisposable
     _session?.AbortEvidence("level_changed");
     _session = null;
     _clearPending = false;
-    if (_attempt?.Capture.CompletionMeta == null)
-    {
-      _attempt?.Dispose();
-      _attempt = null;
-    }
-    _preflight?.Dispose();
-    _preflight = null;
+    _attempt = null;
+    _transport?.Retire();
+    _transport = null;
     _path = path;
     _levelId = levelId;
     SubmissionDebugTelemetry.Publish(
@@ -150,32 +140,28 @@ public sealed class SubmissionFeature : IDisposable
       SubmissionDebugTelemetry.Publish("Capture skipped: auto submission disabled");
       return;
     }
-    if (_attempt != null && !_attempt.Finished)
+    if (_session == session)
       return;
-    if (_session == session && _attempt?.Finished == false)
-      return;
-    // A prepared server lease is mandatory before capture. Never upload a completed local replay.
-    if (_preflight?.IsReady != true)
+    // Attach bounded live capture before input; run_start approval never blocks Unity.
+    Prepare();
+    var attempt = _transport?.Begin();
+    if (attempt == null)
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: server run is not ready");
+      SubmissionDebugTelemetry.Publish("Capture skipped: level session unavailable or attempt queue full");
       return;
     }
-    var issued = _preflight.Take();
-    _preflight.Dispose();
-    _preflight = null;
-    if (issued == null)
-      return;
-    _attempt?.Dispose();
-    _attempt = new SubmissionAttempt(issued);
-    if (!session.AttachEvidence(_attempt.Capture))
+    if (!session.AttachEvidence(attempt.Capture))
     {
       SubmissionDebugTelemetry.Publish("Capture skipped: evidence could not attach before input");
-      _attempt.Dispose();
+      attempt.Capture.Invalidate("capture_attachment_failed");
       return;
     }
-    session.LinkSubmissionRun(issued.Id);
+    _attempt = attempt;
+    session.LinkSubmissionRun(attempt.RunId);
     _session = session;
-    SubmissionDebugTelemetry.Publish("Evidence capture attached to run " + issued.Id.ToString("N").Substring(0, 8));
+    SubmissionDebugTelemetry.Publish(
+      "Live capture attached; awaiting run_start for " + attempt.RunId.ToString("N").Substring(0, 8)
+    );
   }
 
   public void Clear(RecordingSession session)
@@ -183,7 +169,7 @@ public sealed class SubmissionFeature : IDisposable
     if (_session == session && _attempt != null)
     {
       _clearPending = true;
-      SubmissionDebugTelemetry.Publish("Won state detected; finishing evidence");
+      SubmissionDebugTelemetry.Publish("Won state detected; recording continues until editor return");
     }
   }
 
@@ -216,10 +202,7 @@ public sealed class SubmissionFeature : IDisposable
     if (_changes?.TakeChange() == true)
     {
       _pendingToast = true;
-      // Refresh future attempts. Submission validates against the current official chart.
-      _preflight?.Dispose();
-      _preflight = null;
-      _retryAt = DateTimeOffset.MinValue;
+      // Every run_start rechecks current catalog eligibility without issuing an idle run.
     }
     if (
       _pendingToast
@@ -229,28 +212,16 @@ public sealed class SubmissionFeature : IDisposable
       )
     )
       _pendingToast = false;
-    FinalizeClear(_session);
-    if (!_preflightReadyReported && _preflight?.IsReady == true)
-    {
-      _preflightReadyReported = true;
-      SubmissionDebugTelemetry.Publish("Server run issued; ready for a tile 0 start");
-    }
-    if (!_preflightFailureReported && _preflight?.Finished == true && _preflight.IsReady != true)
-    {
-      _preflightFailureReported = true;
-      SubmissionDebugTelemetry.Publish("Server run preparation failed: " + (_preflight.Error ?? "lease expired"));
-    }
     if (
       _account != null
       && _account.CanSubmit
-      && (_attempt == null || _attempt.Finished)
       && DateTimeOffset.UtcNow >= _retryAt
-      && (_preflight == null || (_preflight.Finished && !_preflight.IsReady))
+      && (_transport == null || _transport.Completion.IsCompleted)
     )
       Prepare();
   }
 
-  // Also called before recording teardown if editor return precedes the next Update.
+  // Called after input capture has drained and the recording termination is fixed.
   public void FinalizeClear(RecordingSession session)
   {
     if (!_clearPending || session == null || _session != session || _attempt == null)
@@ -267,9 +238,9 @@ public sealed class SubmissionFeature : IDisposable
 
   private void Prepare()
   {
+    if (_transport != null && !_transport.Completion.IsCompleted)
+      return;
     _retryAt = DateTimeOffset.UtcNow.AddSeconds(30);
-    _preflightReadyReported = false;
-    _preflightFailureReported = false;
     if (
       _disposed
       || _account == null
@@ -279,10 +250,9 @@ public sealed class SubmissionFeature : IDisposable
       || TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true
     )
       return;
-    SubmissionDebugTelemetry.Publish("Preparing server run for TUF #" + _levelId.Value);
-    _preflight?.Dispose();
-    _preflight = new SubmissionPreflight(
-      _api,
+    SubmissionDebugTelemetry.Publish("Opening reusable level session for TUF #" + _levelId.Value);
+    _transport?.Dispose();
+    _transport = new TUFReplay.Submission.Transport.LevelSubmissionSession(
       _account,
       _path,
       _levelId.Value,
@@ -369,10 +339,8 @@ public sealed class SubmissionFeature : IDisposable
     _session?.AbortEvidence("submission_permission_unavailable");
     _session = null;
     _clearPending = false;
-    _preflight?.Dispose();
-    _preflight = null;
-    if (_attempt != null && !_attempt.Finished)
-      _attempt.Dispose();
+    _transport?.Dispose();
+    _transport = null;
     _changes?.Dispose();
     _changes = null;
   }
@@ -381,7 +349,6 @@ public sealed class SubmissionFeature : IDisposable
   {
     _disposed = true;
     Disconnect();
-    _api.Dispose();
     Records.Dispose();
     Authentication.Dispose();
   }

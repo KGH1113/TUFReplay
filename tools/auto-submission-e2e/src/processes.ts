@@ -4,12 +4,14 @@ import {
 	incomingToken,
 	localTufBackendDir,
 	outgoingToken,
+	owner,
 	redisUrl,
 	root,
 	serverDir,
 	uiPort,
 } from "./config";
 import { log } from "./logs";
+import { seedTrustedTester } from "../../testing/trusted-tester-fixture";
 
 export function rustServer(options: { all?: boolean; redisUrl?: string } = {}) {
 	const child = Bun.spawn(
@@ -101,7 +103,10 @@ export async function ready(child: ReturnType<typeof rustServer>) {
 			const response = await fetch(`${apiBase}/_health`, {
 				signal: AbortSignal.timeout(1000),
 			});
-			if (response.ok) return;
+			if (response.ok) {
+				await seedTrustedTester(databaseUrl, owner);
+				return;
+			}
 		} catch {}
 		await Bun.sleep(250);
 	}

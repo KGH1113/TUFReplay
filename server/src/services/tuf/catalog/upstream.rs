@@ -3,6 +3,14 @@ use super::{CatalogError, TufCatalogRuntime};
 use std::path::Path;
 use tokio::io::AsyncWriteExt;
 
+#[derive(serde::Deserialize)]
+struct Difficulty {
+    id: i64,
+    #[serde(rename = "type")]
+    kind: String,
+    name: String,
+}
+
 impl TufCatalogRuntime {
     pub(super) async fn fetch_metadata(
         &self,
@@ -27,19 +35,37 @@ impl TufCatalogRuntime {
         if let Some(inner) = value.get("data").or_else(|| value.get("result")).cloned() {
             value = inner;
         }
-        let difficulty = value
-            .get("difficulty")
-            .ok_or(CatalogError::IneligibleDifficulty)?;
-        if !crate::domain::is_eligible_difficulty(
-            difficulty
-                .get("type")
-                .and_then(|v| v.as_str())
-                .unwrap_or(""),
-            difficulty
-                .get("name")
-                .and_then(|v| v.as_str())
-                .unwrap_or(""),
-        ) {
+        // Level responses expose an opaque diffId, not an embedded difficulty.
+        // Resolve the authoritative catalog entry before applying the P/G policy.
+        let difficulty_id = value
+            .get("diffId")
+            .and_then(serde_json::Value::as_i64)
+            .ok_or(CatalogError::UpstreamUnavailable)?;
+        let difficulties: Vec<Difficulty> = self
+            .client
+            .get(format!(
+                "{}/v2/database/difficulties",
+                self.settings.tuf_api_base_url.trim_end_matches('/')
+            ))
+            .header(reqwest::header::ACCEPT, "application/json")
+            .send()
+            .await
+            .and_then(reqwest::Response::error_for_status)
+            .map_err(|_| CatalogError::UpstreamUnavailable)?
+            .json()
+            .await
+            .map_err(|_| CatalogError::UpstreamUnavailable)?;
+        let mut matches = difficulties
+            .iter()
+            .filter(|entry| entry.id == difficulty_id);
+        let difficulty = matches.next().ok_or(CatalogError::UpstreamUnavailable)?;
+        if matches.next().is_some()
+            || difficulty.kind.trim().is_empty()
+            || difficulty.name.trim().is_empty()
+        {
+            return Err(CatalogError::UpstreamUnavailable);
+        }
+        if !crate::domain::is_eligible_difficulty(&difficulty.kind, &difficulty.name) {
             return Err(CatalogError::IneligibleDifficulty);
         }
         if value.get("isDeleted").and_then(|v| v.as_bool()) == Some(true)

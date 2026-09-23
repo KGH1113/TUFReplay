@@ -47,7 +47,7 @@ public partial class RecordingSession
       Data.SubmissionRunId = runId.ToString();
   }
 
-  /// <summary>Called after the winning hit postfix, so its resolved judgment is immutable.</summary>
+  /// <summary>Called after capture drains at recording termination; scoring stays bounded by Won.</summary>
   public string FinishEvidence(IRecordingEvidenceSink expected)
   {
     lock (_lock)
@@ -57,6 +57,11 @@ public partial class RecordingSession
       if (!Data.WonTimeUs.HasValue)
       {
         AbortEvidenceLocked("run_not_cleared");
+        return null;
+      }
+      if (!Data.TerminalTimeUs.HasValue || IsCapturingInput)
+      {
+        AbortEvidenceLocked("recording_not_terminated");
         return null;
       }
       if (Data.SubmissionResult == null)
@@ -82,12 +87,7 @@ public partial class RecordingSession
       }
       _evidenceSink = null;
       Data.SubmissionKeyCount = SubmissionKeyCount.Count(Data.Inputs, Data.WonTimeUs.Value);
-      return Data.ToActivityMetaJson(
-        _evidenceInputs,
-        _evidenceHits,
-        Data.WonTimeUs,
-        System.DateTime.UtcNow.ToString("O")
-      );
+      return Data.ToActivityMetaJson(_evidenceInputs, _evidenceHits, Data.TerminalTimeUs, Data.EndedAtUtc);
     }
   }
 
@@ -128,7 +128,7 @@ public partial class RecordingSession
         (int?)Data.JudgmentDifficulty ?? -1,
         Data.InputOverflowDropped,
         Data.InputUnmappedEvents,
-        (int)Persistence.holdBehavior
+        Data.WonTimeUs.HasValue ? _evidenceHoldBehavior : (int)Persistence.holdBehavior
       )
     );
   }

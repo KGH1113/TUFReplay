@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use axum::{routing::get, Json, Router};
+use axum::{http::StatusCode, routing::get, Json, Router};
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{Duration, Utc};
 use futures_util::{SinkExt, StreamExt};
@@ -75,6 +75,19 @@ fn archive_fixture() -> Vec<u8> {
 }
 
 async fn start_mock_catalog() -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+    start_catalog_with(
+        serde_json::json!({"id":42,"diffId":9021}),
+        StatusCode::OK,
+        serde_json::json!([{"id":9021,"type":"PGU","name":"G1"}]).to_string(),
+    )
+    .await
+}
+
+async fn start_catalog_with(
+    level: serde_json::Value,
+    difficulty_status: StatusCode,
+    difficulty_body: String,
+) -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
     let address = listener.local_addr().expect("mock address");
     let download_url = format!("http://{address}/archive.zip");
@@ -86,14 +99,31 @@ async fn start_mock_catalog() -> (String, Arc<AtomicUsize>, tokio::task::JoinHan
             "/v2/database/levels/byId/{id}",
             get(move || {
                 let download_url = download_url.clone();
+                let level = level.clone();
                 async move {
-                    Json(serde_json::json!({
-                        "id": 42,
-                        "difficulty": {"type":"PGU","name":"G1"},
+                    let mut metadata = serde_json::json!({
                         "fileId": "file-42",
                         "dlLink": download_url,
                         "updatedAt": "2026-09-03T00:00:00Z"
-                    }))
+                    });
+                    metadata
+                        .as_object_mut()
+                        .unwrap()
+                        .extend(level.as_object().unwrap().clone());
+                    Json(metadata)
+                }
+            }),
+        )
+        .route(
+            "/v2/database/difficulties",
+            get(move || {
+                let body = difficulty_body.clone();
+                async move {
+                    (
+                        difficulty_status,
+                        [("content-type", "application/json")],
+                        body,
+                    )
                 }
             }),
         )
@@ -118,10 +148,83 @@ async fn start_mock_catalog() -> (String, Arc<AtomicUsize>, tokio::task::JoinHan
 
 #[tokio::test]
 #[serial]
+async fn issuance_resolves_official_difficulty_ids_and_distinguishes_catalog_failures() {
+    request::<App, _, _>(|mut request, ctx| async move {
+        let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string()).await;
+        request.add_header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {ticket}").parse::<axum::http::HeaderValue>().unwrap(),
+        );
+        let ingest = ctx.shared_store.get::<RunIngestStore>().expect("ingest store");
+        let level = serde_json::json!({"id":8068,"diffId":2,"rating":{"averageDifficultyId":2}});
+        let list = serde_json::json!([{"id":2,"type":"PGU","name":"P2"}]);
+        let mut cases = vec![("real #8068/P2".to_owned(), level.clone(), StatusCode::OK, list.to_string(), 201)];
+        // IDs are opaque: even a large catalog ID may name an eligible P/G tier.
+        for name in ["P1", "P20", "G1", "G20"] {
+            cases.push((name.to_owned(), serde_json::json!({"id":8068,"diffId":9001}), StatusCode::OK,
+                serde_json::json!([{"id":9001,"type":"PGU","name":name}]).to_string(), 201));
+        }
+        for (kind, name) in [("SPECIAL", "P2"), ("LEGACY", "G1"), ("PGU", "U1"),
+            ("PGU", "P0"), ("PGU", "P21"), ("PGU", "G0"), ("PGU", "G21")] {
+            cases.push((format!("{kind}/{name}"), level.clone(), StatusCode::OK,
+                serde_json::json!([{"id":2,"type":kind,"name":name}]).to_string(), 422));
+        }
+        for malformed in [serde_json::Value::Null, serde_json::json!("2"), serde_json::json!(2.5),
+            serde_json::json!(true), serde_json::json!({"id":2})] {
+            cases.push((format!("invalid diffId: {malformed}"), serde_json::json!({"id":8068,"diffId":malformed}),
+                StatusCode::OK, list.to_string(), 503));
+        }
+        cases.push(("missing diffId must not use rating or embedded difficulty".to_owned(),
+            serde_json::json!({"id":8068,"rating":{"averageDifficultyId":2},"difficulty":{"type":"PGU","name":"P2"}}),
+            StatusCode::OK, list.to_string(), 503));
+        for malformed in [serde_json::json!({"data":list}), serde_json::Value::Null, serde_json::json!([]),
+            serde_json::json!([{"id":3,"type":"PGU","name":"P2"}]),
+            serde_json::json!([{"id":"2","type":"PGU","name":"P2"}]),
+            serde_json::json!([{"id":2,"name":"P2"}]),
+            serde_json::json!([{"id":2,"type":"PGU"}]),
+            serde_json::json!([{"id":2,"type":null,"name":"P2"}]),
+            serde_json::json!([{"id":2,"type":"PGU","name":2}]),
+            serde_json::json!([{"id":2,"type":"","name":"P2"}]),
+            serde_json::json!([{"id":2,"type":"PGU","name":""}]),
+            serde_json::json!([{"id":2,"type":"PGU","name":"P2"},{"id":2,"type":"PGU","name":"U1"}])] {
+            cases.push((format!("invalid catalog: {malformed}"), level.clone(), StatusCode::OK, malformed.to_string(), 503));
+        }
+        cases.push(("invalid catalog JSON".to_owned(), level.clone(), StatusCode::OK, "not JSON".into(), 503));
+        cases.push(("catalog HTTP failure".to_owned(), level, StatusCode::SERVICE_UNAVAILABLE, list.to_string(), 503));
+        for (label, level, status, body, expected) in cases {
+            let (base_url, downloads, mock) = start_catalog_with(level, status, body).await;
+            ctx.shared_store.insert(TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_api_base_url: base_url,
+                artifact_root: "unused-in-memory".to_owned(),
+                artifact_max_download_bytes: 1024 * 1024,
+                artifact_max_extracted_bytes: 1024 * 1024,
+                artifact_max_files: 20,
+                artifact_hydration_timeout_seconds: 10,
+                artifact_max_concurrent_hydrations: 2,
+            }).expect("catalog runtime"));
+            let mut input = valid_request();
+            input["tuf_level_id"] = 8068.into();
+            let response = request.post("/api/v1/runs").json(&input).await;
+            assert_eq!(response.status_code(), expected, "{label}: {}", response.text());
+            let result: serde_json::Value = response.json();
+            if expected == 201 {
+                let run_id = result["run_id"].as_str().unwrap().parse::<Uuid>().unwrap();
+                ingest.discard(run_id).await.expect("Redis cleanup");
+            } else {
+                assert_eq!(result["code"], if expected == 422 { "level_not_eligible" } else { "catalog_unavailable" }, "{label}");
+            }
+            assert_eq!(downloads.load(Ordering::SeqCst), 0, "{label}: preflight must not fetch chart bytes");
+            mock.abort();
+        }
+    }).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn issuance_does_not_download_or_pin_official_chart_originals() {
     request::<App, _, _>(|mut request, ctx| async move {
         let (base_url, downloads, mock) = start_mock_catalog().await;
-        let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string());
+        let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string()).await;
         request.add_header(
             axum::http::header::AUTHORIZATION,
             format!("Bearer {ticket}")
@@ -245,7 +348,7 @@ async fn websocket_reconnects_from_authoritative_ack_and_seals() {
     let (revision_id, chart_id) = canonical_level(&ctx.db).await;
     let run_id = Uuid::new_v4();
     let owner = Uuid::new_v4().to_string();
-    crate::support::authenticate(&ctx, &owner);
+    crate::support::authenticate(&ctx, &owner).await;
     let upload_token = URL_SAFE_NO_PAD.encode([7_u8; 32]);
     let token_hash = Sha256::digest(upload_token.as_bytes());
     let token_hash_hex = hex::encode(token_hash);
@@ -402,4 +505,257 @@ fn binary_chunk(kind: u8, sequence: u64, payload: &[u8]) -> Vec<u8> {
     bytes.extend(u32::try_from(payload.len()).expect("length").to_be_bytes());
     bytes.extend(payload);
     bytes
+}
+
+fn level_start(id: Uuid) -> serde_json::Value {
+    serde_json::json!({"type":"run_start", "run_id":id,
+        "client_game_version":"2.8.1", "client_mod_version":"session-test",
+        "client_tuf_file_id":"file-42", "client_level_relative_path":"level.adofai",
+        "last_acknowledged_sequence":-1})
+}
+
+fn level_chunk(id: Uuid, sequence: u64) -> Vec<u8> {
+    let mut frame = b"TUF2".to_vec();
+    frame.extend(id.as_bytes());
+    frame.extend(binary_chunk(0, sequence, b"1,1,1\n"));
+    frame
+}
+
+async fn connect_level(
+    url: &str,
+    token: &str,
+) -> tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>> {
+    let mut socket = connect(url, token).await;
+    send_json(
+        &mut socket,
+        serde_json::json!({"type":"session_hello","protocol_version":2}),
+    )
+    .await;
+    assert_eq!(receive_json(&mut socket).await["type"], "session_ready");
+    socket
+}
+
+#[tokio::test]
+#[serial]
+async fn reusable_level_socket_has_no_idle_runs_and_survives_immediate_restarts() {
+    use sea_orm::{EntityTrait, PaginatorTrait};
+    let boot = boot_test::<App>().await.unwrap();
+    let ctx = boot.app_context;
+    let owner = Uuid::new_v4().to_string();
+    let token = crate::support::authenticate(&ctx, &owner).await;
+    let store = ctx.shared_store.get::<RunIngestStore>().unwrap();
+    let (base_url, downloads, catalog) = start_mock_catalog().await;
+    ctx.shared_store.insert(
+        TufCatalogRuntime::new(TufCatalogSettings {
+            tuf_api_base_url: base_url,
+            artifact_root: "unused-in-memory".into(),
+            artifact_max_download_bytes: 1024 * 1024,
+            artifact_max_extracted_bytes: 1024 * 1024,
+            artifact_max_files: 20,
+            artifact_hydration_timeout_seconds: 10,
+            artifact_max_concurrent_hydrations: 2,
+        })
+        .unwrap(),
+    );
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!(
+        "ws://{}/api/v2/levels/42/runs/stream",
+        listener.local_addr().unwrap()
+    );
+    let router = boot.router.unwrap();
+    let server = tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    let count_before = tuf_replay_server::models::run_sessions::Entity::find()
+        .count(&ctx.db)
+        .await
+        .unwrap();
+    let mut socket = connect(&url, &token).await;
+    send_json(
+        &mut socket,
+        serde_json::json!({"type":"session_hello","protocol_version":2}),
+    )
+    .await;
+    assert_eq!(receive_json(&mut socket).await["type"], "session_ready");
+    for _ in 0..20 {
+        send_json(&mut socket, serde_json::json!({"type":"heartbeat"})).await;
+        assert_eq!(receive_json(&mut socket).await["type"], "heartbeat");
+    }
+    assert_eq!(
+        tuf_replay_server::models::run_sessions::Entity::find()
+            .count(&ctx.db)
+            .await
+            .unwrap(),
+        count_before
+    );
+    assert_eq!(downloads.load(Ordering::SeqCst), 0);
+    let mut previous = None;
+    for _ in 0..12 {
+        let id = Uuid::new_v4();
+        send_json(&mut socket, level_start(id)).await;
+        assert_eq!(receive_json(&mut socket).await["type"], "ready");
+        // Replayed fail from an older attempt must not detach this attempt.
+        if let Some(old) = previous {
+            send_json(
+                &mut socket,
+                serde_json::json!({"type":"run_fail", "run_id":old}),
+            )
+            .await;
+            assert_eq!(receive_json(&mut socket).await["type"], "failed");
+        }
+        socket
+            .send(Message::Binary(level_chunk(id, 0).into()))
+            .await
+            .unwrap();
+        assert_eq!(receive_json(&mut socket).await["acknowledged_sequence"], 0);
+        send_json(
+            &mut socket,
+            serde_json::json!({"type":"run_fail", "run_id":id}),
+        )
+        .await;
+        assert_eq!(receive_json(&mut socket).await["type"], "failed");
+        assert_eq!(
+            Model::find_by_pid(&ctx.db, id).await.unwrap().status,
+            "failed"
+        );
+        assert!(
+            store.receipt(id, None).await.is_err(),
+            "failed evidence must be released before the next start"
+        );
+        previous = Some(id);
+    }
+    let id = Uuid::new_v4();
+    send_json(&mut socket, level_start(id)).await;
+    assert_eq!(receive_json(&mut socket).await["type"], "ready");
+    socket
+        .send(Message::Binary(level_chunk(id, 0).into()))
+        .await
+        .unwrap();
+    // Deliberately leave the ACK unread and reconnect, keeping the stale socket open.
+    let mut resumed = connect(&url, &token).await;
+    send_json(
+        &mut resumed,
+        serde_json::json!({"type":"session_hello","protocol_version":2}),
+    )
+    .await;
+    assert_eq!(receive_json(&mut resumed).await["type"], "session_ready");
+    send_json(&mut resumed, level_start(id)).await;
+    assert_eq!(receive_json(&mut resumed).await["acknowledged_sequence"], 0);
+    assert_eq!(receive_json(&mut socket).await["acknowledged_sequence"], 0);
+    socket
+        .send(Message::Binary(level_chunk(id, 1).into()))
+        .await
+        .unwrap();
+    assert_eq!(receive_json(&mut socket).await["code"], "stream_conflict");
+    drop(socket);
+    send_json(&mut resumed, level_start(id)).await;
+    assert_eq!(receive_json(&mut resumed).await["acknowledged_sequence"], 0);
+    let mut conflict = level_start(id);
+    conflict["client_tuf_file_id"] = "changed-file".into();
+    send_json(&mut resumed, conflict).await;
+    assert_eq!(
+        receive_json(&mut resumed).await["code"],
+        "run_start_conflict"
+    );
+    resumed
+        .send(Message::Binary(level_chunk(Uuid::new_v4(), 1).into()))
+        .await
+        .unwrap();
+    assert_eq!(receive_json(&mut resumed).await["code"], "run_not_active");
+    let complete = serde_json::json!({"type":"run_complete","run_id":id,"final_sequence":0,"input_count":1,"hit_context_count":0});
+    send_json(&mut resumed, complete.clone()).await;
+    assert_eq!(receive_json(&mut resumed).await["type"], "sealed");
+    send_json(
+        &mut resumed,
+        serde_json::json!({"type":"run_fail","run_id":id}),
+    )
+    .await;
+    assert_eq!(
+        receive_json(&mut resumed).await["type"],
+        "sealed",
+        "late fail must not undo a complete"
+    );
+    send_json(&mut resumed, complete).await;
+    assert_eq!(receive_json(&mut resumed).await["type"], "sealed");
+    let mut wrong_level = connect_level(&url.replace("/42/", "/43/"), &token).await;
+    send_json(
+        &mut wrong_level,
+        serde_json::json!({"type":"run_fail","run_id":id}),
+    )
+    .await;
+    assert_eq!(
+        receive_json(&mut wrong_level).await["code"],
+        "run_not_found"
+    );
+    drop(wrong_level);
+    assert_eq!(
+        tuf_replay_server::models::run_sessions::Entity::find()
+            .count(&ctx.db)
+            .await
+            .unwrap(),
+        count_before + 13
+    );
+    let lost = Uuid::new_v4();
+    send_json(&mut resumed, level_start(lost)).await;
+    assert_eq!(receive_json(&mut resumed).await["type"], "ready");
+    resumed
+        .send(Message::Binary(level_chunk(lost, 0).into()))
+        .await
+        .unwrap();
+    assert_eq!(receive_json(&mut resumed).await["acknowledged_sequence"], 0);
+    drop(resumed);
+    let mut resumed = connect_level(&url, &token).await;
+    send_json(&mut resumed, level_start(lost)).await;
+    assert_eq!(receive_json(&mut resumed).await["acknowledged_sequence"], 0);
+    drop(resumed);
+    // Redis loss/TTL expiry must not silently recreate an issued run without its evidence.
+    store.discard(lost).await.unwrap();
+    let mut resumed = connect_level(&url, &token).await;
+    send_json(&mut resumed, level_start(lost)).await;
+    assert_eq!(
+        receive_json(&mut resumed).await["code"],
+        "run_evidence_expired"
+    );
+    let active = Uuid::new_v4();
+    send_json(&mut resumed, level_start(active)).await;
+    assert_eq!(receive_json(&mut resumed).await["type"], "ready");
+    // Revoke only local DB membership; the OAuth provider still permits this account.
+    crate::support::set_tester(&ctx, &owner, false).await;
+    let revoked = tokio::time::timeout(
+        std::time::Duration::from_secs(7),
+        receive_json(&mut resumed),
+    )
+    .await
+    .unwrap();
+    assert_eq!(revoked["code"], "submission_authorization_unavailable");
+    assert_eq!(
+        Model::find_by_pid(&ctx.db, active).await.unwrap().status,
+        "failed"
+    );
+    drop(resumed);
+    let other_token = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string()).await;
+    let mut other = connect_level(&url, &other_token).await;
+    send_json(&mut other, level_start(id)).await;
+    assert_eq!(receive_json(&mut other).await["code"], "run_owner_mismatch");
+    send_json(
+        &mut other,
+        serde_json::json!({"type":"run_fail","run_id":id}),
+    )
+    .await;
+    assert_eq!(receive_json(&mut other).await["code"], "run_not_found");
+    drop(other);
+    let mut unsupported = connect(&url, &other_token).await;
+    send_json(
+        &mut unsupported,
+        serde_json::json!({"type":"session_hello","protocol_version":1}),
+    )
+    .await;
+    assert_eq!(
+        receive_json(&mut unsupported).await["code"],
+        "unsupported_protocol"
+    );
+    drop(unsupported);
+    store.discard(id).await.unwrap();
+    server.abort();
+    catalog.abort();
 }

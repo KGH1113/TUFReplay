@@ -1,6 +1,9 @@
 use crate::domain::{EvidenceManifest, EvidenceStream, ValidatedResult};
 use crate::models::run_submission_records::queries;
+use crate::models::visual_presets::{self, VisualKind, VisualPresetBundle};
 use loco_rs::prelude::*;
+use serde::Serialize;
+use sha2::{Digest, Sha256};
 use std::path::Path;
 use uuid::Uuid;
 
@@ -72,6 +75,68 @@ pub struct PublishedReplay {
     pub external_pass_id: i64,
     pub manifest: EvidenceManifest,
     pub validation: ValidatedResult,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct VisualDescriptor {
+    pub preset_id: Uuid,
+    pub name: String,
+    pub source: String,
+    pub source_version: String,
+    pub url: String,
+    pub sha256: String,
+    pub bytes: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct PublishedVisuals {
+    pub keyviewer: Option<(VisualDescriptor, VisualPresetBundle)>,
+    pub overlay: Option<(VisualDescriptor, VisualPresetBundle)>,
+}
+
+pub async fn published_visuals(db: &DatabaseConnection, run_id: Uuid) -> Result<PublishedVisuals> {
+    Ok(PublishedVisuals {
+        keyviewer: visual_for_run(db, run_id, VisualKind::Keyviewer).await?,
+        overlay: visual_for_run(db, run_id, VisualKind::Overlay).await?,
+    })
+}
+
+pub async fn published_visual(
+    db: &DatabaseConnection,
+    run_id: Uuid,
+    kind: VisualKind,
+) -> Result<(VisualDescriptor, VisualPresetBundle)> {
+    visual_for_run(db, run_id, kind)
+        .await?
+        .ok_or(Error::NotFound)
+}
+
+async fn visual_for_run(
+    db: &DatabaseConnection,
+    run_id: Uuid,
+    kind: VisualKind,
+) -> Result<Option<(VisualDescriptor, VisualPresetBundle)>> {
+    let Some(bundle) = visual_presets::active_bundle_for_published_run(db, run_id, kind).await?
+    else {
+        return Ok(None);
+    };
+    let bytes = u64::try_from(bundle.bytes)
+        .map_err(|_| Error::Message("visual bundle size is invalid".into()))?;
+    if bytes != bundle.bundle.len() as u64
+        || hex::encode(Sha256::digest(&bundle.bundle)) != bundle.sha256
+    {
+        return Err(Error::Message("visual bundle integrity is invalid".into()));
+    }
+    let descriptor = VisualDescriptor {
+        preset_id: bundle.id,
+        name: bundle.name.clone(),
+        source: bundle.source.clone(),
+        source_version: bundle.source_version.clone(),
+        url: format!("/api/v1/replays/{run_id}/visuals/{}", kind.as_str()),
+        sha256: bundle.sha256.clone(),
+        bytes,
+    };
+    Ok(Some((descriptor, bundle)))
 }
 
 impl PublishedReplay {

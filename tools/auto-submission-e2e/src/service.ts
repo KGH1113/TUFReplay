@@ -6,6 +6,7 @@ import { executions, start, action } from "./executions";
 import { tuf } from "./mock/tuf";
 import { localTuf, localTufBase, localFrontendBase } from "./local-tuf/config";
 import { isAllowedOrigin } from "./origin";
+import { visualIpc } from "./visuals";
 
 function forbidden(error: string) {
   return Response.json({ error }, { status: 403 });
@@ -22,6 +23,8 @@ export function serve() {
       const origin = request.headers.get("origin");
       if (origin && !isAllowedOrigin(origin)) return forbidden("Invalid origin");
       try {
+        if (request.method === "POST" && url.pathname === "/harness/visual-ipc")
+          return await visualIpc(request);
         if (url.pathname.startsWith("/v2/") || url.pathname.startsWith("/archives/"))
           return await tuf(request);
         if (request.method === "GET" && url.pathname === "/harness/state")
@@ -42,7 +45,7 @@ export function serve() {
           /^\/harness\/runs\/([a-f0-9-]+)\/(submit|disconnect|reconnect|fail)$/,
         );
         if (request.method === "POST" && match)
-          return Response.json(await action(match[1], match[2]));
+          return Response.json(await action(match[1], match[2], request.headers.get("content-type")?.includes("application/json") ? await request.json() : undefined));
         return Response.json({ error: "not_found" }, { status: 404 });
       } catch (error) {
         log("tool", "Request failed", String(error));

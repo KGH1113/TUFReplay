@@ -7,6 +7,40 @@ use super::*;
 
 #[tokio::test]
 #[serial]
+async fn level_session_connection_and_attempt_budgets_are_per_account() {
+    let store = RunIngestStore::connect(settings(10, 64, 256))
+        .await
+        .unwrap();
+    let owner = Uuid::new_v4().to_string();
+    let ids: Vec<_> = (0..5).map(|_| Uuid::new_v4()).collect();
+    for id in &ids[..4] {
+        store.level_session_lease(&owner, *id).await.unwrap();
+    }
+    assert!(matches!(
+        store.level_session_lease(&owner, ids[4]).await,
+        Err(IngestError::AccountLimit)
+    ));
+    store.level_session_lease(&owner, ids[0]).await.unwrap();
+    store.release_level_session(&owner, ids[0]).await.unwrap();
+    store.level_session_lease(&owner, ids[4]).await.unwrap();
+    for id in &ids {
+        store.release_level_session(&owner, *id).await.unwrap();
+    }
+    for _ in 0..120 {
+        store.allow_run_start(&owner).await.unwrap();
+    }
+    assert!(matches!(
+        store.allow_run_start(&owner).await,
+        Err(IngestError::AccountLimit)
+    ));
+    store
+        .allow_run_start(&Uuid::new_v4().to_string())
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+#[serial]
 async fn only_one_play_streams_per_account_and_there_is_no_daily_byte_quota() {
     let store = RunIngestStore::connect(settings(10, 64, 256))
         .await

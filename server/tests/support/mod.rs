@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use loco_rs::prelude::*;
+use sea_orm::{ConnectionTrait, DbBackend, Statement};
 use std::sync::Arc;
 use tuf_replay_server::services::auth::{
     AccountIdentity, IdentityProvider, IdentityService, SubmissionDenialReason,
@@ -48,11 +49,12 @@ impl IdentityProvider for TestIdentity {
     }
 }
 
-pub fn authenticate(ctx: &AppContext, owner: &str) -> String {
-    authenticate_with_policy(ctx, owner, true)
+pub async fn authenticate(ctx: &AppContext, owner: &str) -> String {
+    authenticate_with_policy(ctx, owner, true).await
 }
 
-pub fn authenticate_with_policy(ctx: &AppContext, owner: &str, can_submit: bool) -> String {
+pub async fn authenticate_with_policy(ctx: &AppContext, owner: &str, can_submit: bool) -> String {
+    set_tester(ctx, owner, can_submit).await;
     let token = Uuid::new_v4().to_string();
     ctx.shared_store
         .insert(IdentityService(Arc::new(TestIdentity {
@@ -61,4 +63,17 @@ pub fn authenticate_with_policy(ctx: &AppContext, owner: &str, can_submit: bool)
             can_submit,
         })));
     token
+}
+
+pub async fn set_tester(ctx: &AppContext, owner: &str, active: bool) {
+    ctx.db
+        .execute_raw(Statement::from_sql_and_values(
+            DbBackend::Postgres,
+            "INSERT INTO trusted_testers (user_id,label,active,updated_at,updated_by)
+         VALUES ($1,'Fixture',$2,NOW(),'test') ON CONFLICT(user_id) DO UPDATE
+         SET active=EXCLUDED.active, updated_at=NOW(), updated_by='test'",
+            [Uuid::parse_str(owner).unwrap().into(), active.into()],
+        ))
+        .await
+        .unwrap();
 }

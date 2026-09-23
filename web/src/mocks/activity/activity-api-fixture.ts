@@ -85,6 +85,8 @@ function isClearRun(run: ActivityRun) {
   return (result === "cleared" || result === "completed") && run.StartTile === 0 && !run.NoFailMode;
 }
 
+const MOCK_SUBMISSION_RUN_ID = "68727984-2424-4a6d-a72b-919044143454";
+
 const levels = [
   createLevel(
     "level-5",
@@ -172,7 +174,7 @@ export function createActivityWireFixture(): ActivityWireFixture {
       ProtocolVersion: 7,
       ServerVersion: 1,
       BuildFlavor: TUFREPLAY_WEB_BUILD.flavor,
-      AutoSubmissionProtocolVersion: TUFREPLAY_WEB_BUILD.flavor === "auto-submission" ? 1 : 0,
+      AutoSubmissionProtocolVersion: TUFREPLAY_WEB_BUILD.flavor === "auto-submission" ? 2 : 0,
       ReplayEngineId: "tufreplay.replay.v2",
       ReplayFormatVersion: 1,
     }),
@@ -488,7 +490,7 @@ function createRun(
     MicrophoneChannels: hasMicrophoneRecording ? 1 : null,
     MicrophoneRecordingPermanent: false,
     MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
-    SubmissionRunId: null,
+    SubmissionRunId: cleared && tufLevelId === 871 ? MOCK_SUBMISSION_RUN_ID : null,
     ReplayPlayable: true,
     ReplayUnavailableReason: null,
   };

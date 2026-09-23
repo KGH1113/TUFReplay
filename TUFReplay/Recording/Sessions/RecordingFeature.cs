@@ -133,6 +133,7 @@ public partial class RecordingFeature
 
     Session.MarkTerminal();
     Session.StopInputCapture("editor");
+    FeatureRegistry.Submission?.FinalizeClear(Session);
     if (_calibrationRun)
     {
       if (!_clearReached)
@@ -291,12 +292,19 @@ public partial class RecordingFeature
       return false;
     if (!Session.IsRecording)
       return false;
-    if (!_runSaved)
+    if (!_runSaved && !_failed && !_clearReached)
     {
       FeatureRegistry.Submission?.Begin(Session);
       return true;
     }
 
+    // A failed attempt may have no activity draft (for example, a busy database).
+    // Its terminal state must still be replaced, regardless of persistence success.
+    if (_failedRunWaitingForHit)
+    {
+      _failedRunWaitingForHit = false;
+      CompleteFailedRun();
+    }
     int? tufLevelId = Session.TufLevelId;
     ResetRunState();
     RecordingPatches.ResetHitContextState();
@@ -351,8 +359,9 @@ public partial class RecordingFeature
     }
     if (Session.IsRecording && _clearReached && !_runSaved)
     {
-      Session.MarkTerminal();
       Session.StopInputCapture("session_stop_after_clear");
+      Session.MarkTerminal();
+      FeatureRegistry.Submission?.FinalizeClear(Session);
       SaveActivityRun("cleared", RecordingSession.GetLevelTileCount());
     }
 
