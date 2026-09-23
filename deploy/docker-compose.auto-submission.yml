@@ -23,6 +23,7 @@ services:
       postgres-production:
         condition: service_healthy
     networks:
+      - default
       - auto-submission-data
 
   tuf-replay-web:
