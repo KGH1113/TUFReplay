@@ -192,7 +192,7 @@ impl Model {
 
 impl NewRunSession {
     fn validate(&self) -> ModelResult<()> {
-        if self.protocol_version != 1 {
+        if !matches!(self.protocol_version, 1 | 2) {
             return Err(ModelError::Message(
                 "unsupported run protocol version".to_owned(),
             ));

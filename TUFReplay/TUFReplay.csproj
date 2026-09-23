@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
     <TargetFramework>netstandard2.1</TargetFramework>
@@ -12,6 +12,23 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Visual/Assets/Fonts/*.base64" LogicalName="TUFReplay.Visual.Assets.Fonts.%(Filename)" />
+    <EmbeddedResource
+      Include="Visual/Assets/Fonts/adofai-cjk.woff"
+      LogicalName="TUFReplay.Visual.Assets.Fonts.adofai-cjk.woff"
+    />
+    <None
+      Include="Visual/Assets/**/LICENSE.txt;Visual/Assets/**/*-LICENSE.txt"
+      CopyToOutputDirectory="PreserveNewest"
+    />
+    <EmbeddedResource
+      Include="Visual/Assets/Jipper/*.base64"
+      LogicalName="TUFReplay.Visual.Assets.Jipper.%(Filename)"
+    />
+    <EmbeddedResource
+      Include="../TUFReplay.Unity/Assets/Fonts/MAPLESTORY_OTF_BOLD.OTF"
+      LogicalName="TUFReplay.Visual.Assets.MAPLESTORY_OTF_BOLD.OTF"
+    />
     <Compile
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/ReplayTimelineView.cs"
       Link="Unity/ReplayTimeline/ReplayTimelineView.cs"

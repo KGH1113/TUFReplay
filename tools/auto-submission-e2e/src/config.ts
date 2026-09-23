@@ -18,11 +18,14 @@ if (!Number.isInteger(uiPort) || uiPort < 1024 || uiPort > 65535)
 export const uiBase = `http://127.0.0.1:${uiPort}`;
 export const owner = localTuf
 	? "00000000-0000-4000-8000-000000000041"
-	: "e2e-local-player";
+	: "00000000-0000-4000-8000-000000000040";
 export const grant = "00000000-0000-4000-8000-000000000042";
 export const accessToken = localTuf
 	? localAccessToken()
 	: "e2e-local-oauth-access-token";
+export function currentAccessToken(): string {
+	return localTuf ? localAccessToken() : accessToken;
+}
 export const incomingToken = "e2e-tuf-to-submission-local-only-0001";
 export const outgoingToken = "e2e-submission-to-tuf-local-only-0002";
 export const databaseUrl =

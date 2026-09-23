@@ -25,7 +25,7 @@ async fn reconciliation_enqueues_durable_work_and_worker_processes_it() {
     queue.setup().await.unwrap();
     ctx = ctx.into_builder().queue_provider(queue).build();
     let owner = Uuid::new_v4().to_string();
-    crate::support::authenticate(&ctx, &owner);
+    crate::support::authenticate(&ctx, &owner).await;
     let run = Model::create(
         &ctx.db,
         NewRunSession {

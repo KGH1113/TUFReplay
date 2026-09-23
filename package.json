@@ -7,6 +7,10 @@
     "tools/auto-submission-e2e"
   ],
   "scripts": {
+    "e2e:live:prepare": "bun tools/live-e2e/prepare.ts",
+    "e2e:live": "bun tools/live-e2e/start.ts",
+    "e2e:live:settings": "bun tools/live-e2e/settings.ts",
+    "e2e:live:verify-auth": "bun tools/live-e2e/verify-auth.ts",
     "e2e:prepare": "bun run --cwd tools/auto-submission-e2e prepare:fixtures",
     "e2e:reset": "bun run tools/auto-submission-e2e/src/reset.ts",
     "e2e:inspect": "bun run tools/auto-submission-e2e/src/test-lifecycle.ts",

@@ -10,12 +10,40 @@ use tuf_replay_server::models::run_sessions::{Model as Run, NewRunSession};
 use tuf_replay_server::models::run_submission_records::{
     ActiveModel as ActiveSubmission, Entity as Submissions,
 };
+use tuf_replay_server::models::{run_visual_selections, visual_presets};
+use tuf_replay_server::services::visuals;
 use uuid::Uuid;
 
 #[tokio::test]
 #[serial]
 async fn submitted_replay_is_public_and_internal_evidence_is_hidden() {
-    request::<App, _, _>(|request, ctx| async move {
+    assert_public_visual_roundtrip(None).await;
+}
+
+#[tokio::test]
+#[serial]
+#[ignore = "requires real source fixtures; run via visual-pipeline-check"]
+async fn real_importer_visuals_survive_registration_submission_and_public_api() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../build/visual-fixtures");
+    for name in [
+        "jipper-resourcepack-keyviewer",
+        "jipper-resourcepack-overlay",
+        "jipper-keyviewer",
+        "dmnote",
+        "impl-dmnote",
+        "impl-resourcepack",
+    ] {
+        let bundle = serde_json::from_slice(
+            &std::fs::read(root.join(format!("{name}.json")))
+                .expect("generate real importer fixtures first"),
+        )
+        .unwrap();
+        assert_public_visual_roundtrip(Some((bundle, name.to_owned()))).await;
+    }
+}
+
+async fn assert_public_visual_roundtrip(fixture: Option<(serde_json::Value, String)>) {
+    request::<App, _, _>(move |mut request, ctx| async move {
         let run_id = Uuid::new_v4();
         let owner = Uuid::new_v4().to_string();
         let run = create_run(&ctx, run_id).await;
@@ -72,12 +100,58 @@ async fn submitted_replay_is_public_and_internal_evidence_is_hidden() {
             is_x_perfect_mode: false,
         };
         let record = Submissions::record(&ctx.db, run.id).await.unwrap();
+        let record_id = record.id;
         let mut active: ActiveSubmission = record.into();
         active.state = Set("submitted".into());
         active.external_pass_id = Set(Some(77));
         active.manifest = Set(Some(serde_json::to_value(&manifest).unwrap()));
         active.validation = Set(Some(serde_json::to_value(validation).unwrap()));
         active.update(&ctx.db).await.unwrap();
+
+        let fallback = serde_json::json!({
+            "schema_version": 1,
+            "kind": "keyviewer",
+            "source": "dmnote",
+            "source_version": "2.0.2",
+            "viewport": {"width": 1920, "height": 1080},
+            "files": {
+                "preset.json": {
+                    "keys": {"4key": []},
+                    "keyPositions": {"4key": []}
+                }
+            },
+            "assets": []
+        });
+        let bundle = fixture
+            .as_ref()
+            .map(|(bundle, _)| bundle.clone())
+            .unwrap_or(fallback);
+        let kind = bundle["kind"].as_str().unwrap().to_owned();
+        let validated = visuals::validate_bundle(bundle.clone()).unwrap();
+        let token = crate::support::authenticate(&ctx, &owner).await;
+        request.add_header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"));
+        let registered = request
+            .post("/api/v1/visual-presets")
+            .json(&serde_json::json!({"name":"Public visual", "bundle":bundle}))
+            .await;
+        assert_eq!(registered.status_code(), 200, "{}", registered.text());
+        let preset_id = Uuid::parse_str(
+            registered.json::<serde_json::Value>()["preset"]["id"]
+                .as_str()
+                .unwrap(),
+        )
+        .unwrap();
+        request.clear_headers();
+        run_visual_selections::insert(
+            &ctx.db,
+            record_id,
+            &run_visual_selections::VisualSelection {
+                keyviewer_id: (kind == "keyviewer").then_some(preset_id),
+                overlay_id: (kind == "overlay").then_some(preset_id),
+            },
+        )
+        .await
+        .unwrap();
 
         let response = request.get(&format!("/api/v1/replays/{run_id}")).await;
         assert_eq!(response.status_code(), 200, "{}", response.text());
@@ -90,6 +164,59 @@ async fn submitted_replay_is_public_and_internal_evidence_is_hidden() {
         assert!(body.to_string().find("storage_key").is_none());
         assert!(body.to_string().find("server-timing").is_none());
         assert_eq!(body["files"].as_array().unwrap().len(), 3);
+
+        let response = request
+            .get(&format!("/api/v1/replays/{run_id}?format=3"))
+            .await;
+        assert_eq!(response.status_code(), 200, "{}", response.text());
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        let body: serde_json::Value = response.json();
+        assert_eq!(body["format_version"], 3);
+        assert_eq!(body["visuals"][&kind]["preset_id"], preset_id.to_string());
+        assert_eq!(
+            body["visuals"][if kind == "keyviewer" {
+                "overlay"
+            } else {
+                "keyviewer"
+            }],
+            serde_json::Value::Null
+        );
+        assert_eq!(
+            body["visuals"][&kind]["url"],
+            format!("/api/v1/replays/{run_id}/visuals/{kind}")
+        );
+
+        let response = request
+            .get(&format!("/api/v1/replays/{run_id}/visuals/{kind}"))
+            .await;
+        assert_eq!(response.status_code(), 200, "{}", response.text());
+        assert_eq!(response.headers()["cache-control"], "no-store");
+        assert_eq!(response.headers()["content-type"], "application/json");
+        assert_eq!(
+            response.headers()["etag"],
+            format!("\"{}\"", validated.sha256)
+        );
+        assert_eq!(response.as_bytes().as_ref(), validated.bytes.as_slice());
+        if let Some((_, name)) = &fixture {
+            let output = Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../build/visual-fixtures")
+                .join(format!("{name}.api.json"));
+            std::fs::write(output, response.as_bytes()).unwrap();
+        }
+
+        visual_presets::delete(&ctx.db, &owner, preset_id)
+            .await
+            .unwrap();
+        let response = request
+            .get(&format!("/api/v1/replays/{run_id}/visuals/{kind}"))
+            .await;
+        assert_eq!(response.status_code(), 404);
+        let response = request
+            .get(&format!("/api/v1/replays/{run_id}?format=3"))
+            .await;
+        assert_eq!(response.status_code(), 200);
+        let body: serde_json::Value = response.json();
+        assert_eq!(body["visuals"][&kind], serde_json::Value::Null);
 
         let response = request
             .get(&format!("/api/v1/replays/{run_id}/files/inputs.csv"))

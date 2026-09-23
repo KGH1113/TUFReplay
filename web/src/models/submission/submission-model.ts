@@ -3,11 +3,13 @@ import type {
   submissionPageSchema,
   submissionRunSchema,
   submissionStatusSchema,
+  visualSelectionSchema,
 } from "@/schemas/submission/submission-schema";
 
 export type SubmissionStatus = z.infer<typeof submissionStatusSchema>;
 export type SubmissionRun = z.infer<typeof submissionRunSchema>;
 export type SubmissionPage = z.infer<typeof submissionPageSchema>;
+export type VisualSelection = z.infer<typeof visualSelectionSchema>;
 
 export function hasSubmissionPermission(
   status: SubmissionStatus | undefined,
@@ -19,6 +21,29 @@ export function hasSubmissionPermission(
     status.accountStatus === "available" &&
     status.canSubmit === true
   );
+}
+
+export function submissionAccountKey(status: SubmissionStatus | undefined) {
+  if (status?.connected !== true) return null;
+  const username = status.username?.trim();
+  if (username) return `username:${username}`;
+  const nickname = status.nickname?.trim();
+  return nickname ? `nickname:${nickname}` : null;
+}
+
+/**
+ * Keeps a gallery choice available until the server confirms that the run has
+ * a fixed presentation. A failed request can therefore be retried with the
+ * same body, while a run that was fixed by a response that the client lost
+ * retries without sending a replacement presentation.
+ */
+export function submissionPresentationForRequest(
+  serverPresentation: VisualSelection | null | undefined,
+  selectedPresentation: VisualSelection | undefined,
+  attemptedPresentation: VisualSelection | null,
+) {
+  if (serverPresentation != null) return undefined;
+  return selectedPresentation ?? attemptedPresentation ?? undefined;
 }
 
 export function canSubmit(run: SubmissionRun) {

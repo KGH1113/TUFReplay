@@ -1,5 +1,7 @@
 # 9단계: 관측성, 용량 모델과 200-connection 부하 검증
 
+레벨 세션 v2에서는 idle 연결 부하와 실제 run ingest 부하를 분리해서 측정한다. 수시간 idle heartbeat 중 `run_sessions` row와 Redis run meta/chunk가 증가하지 않아야 하며, 연결당 만료 가능한 작은 lease만 유지한다. 단기 통합 테스트는 idle 중 DB run 미생성을 확인하지만, 200연결·수시간 측정 및 실게임 프레임 비용 검증을 대체하지 않는다. 현재 계약은 [11단계](11-reusable-level-session.md)를 참고한다.
+
 ## 목적
 
 WebSocket 200개가 지속되는 상황을 감으로 판단하지 않고 재현 가능한 부하 테스트와 SLO로 검증한다. ingest와 persistence 부하가 게임 중 ACK/reconnect 품질을 떨어뜨리지 않게 한다.
@@ -114,4 +116,3 @@ raw key event나 upload token을 telemetry에 넣지 않는다.
 7. 마지막으로 scale-out 필요성 판단
 
 단순히 DB pool이나 worker 수를 크게 늘리면 ingest latency가 악화될 수 있으므로 지표 없이 값을 올리지 않는다.
-

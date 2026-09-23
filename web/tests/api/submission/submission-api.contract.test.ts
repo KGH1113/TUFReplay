@@ -14,7 +14,7 @@ const compatibleHealth = {
   ReplayEngineId: "tufreplay.replay.v2",
   ReplayFormatVersion: 1,
   BuildFlavor: "auto-submission",
-  AutoSubmissionProtocolVersion: 1,
+  AutoSubmissionProtocolVersion: 2,
 };
 
 describe("auto submission boundaries", () => {
@@ -186,5 +186,58 @@ describe("auto submission boundaries", () => {
     compatible = false;
     await expect(api.submit("68727984-2424-4a6d-a72b-919044143454")).rejects.toThrow();
     expect(calls).not.toContain("submission.run.submit");
+  });
+
+  it("sends a presentation only for the first selection and omits it on retry", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const run = {
+      cursor: 1,
+      run_id: "68727984-2424-4a6d-a72b-919044143454",
+      tuf_level_id: 42,
+      chart_path: "main.adofai",
+      status: "evidence_ready",
+      reason: null,
+      external_pass_id: null,
+      created_at: "2026-09-11T00:00:00Z",
+      evidence_expires_at: null,
+      presentation: null,
+    };
+    const namespace = {
+      call: async (method: string, params: unknown) => {
+        calls.push({ method, params });
+        if (method === "health.get") return compatibleHealth;
+        if (method === "submission.status.get") {
+          return {
+            connected: true,
+            configured: true,
+            disabled: false,
+            state: "ready",
+            accountStatus: "available",
+            canSubmit: true,
+            denialReason: null,
+          };
+        }
+        if (method === "submission.run.submit") return run;
+        throw new Error(`unexpected method ${method}`);
+      },
+    };
+    const api = createSubmissionApi(
+      { namespace } as unknown as AdofaiIpcClients,
+      { takeOAuthCallback: () => null, prepareOAuthWindow: () => () => {} },
+      "auto-submission",
+    );
+
+    const selection = { keyviewer_id: "keyviewer-1", overlay_id: null };
+    await api.submit(run.run_id, selection);
+    await api.submit(run.run_id);
+
+    expect(calls).toContainEqual({
+      method: "submission.run.submit",
+      params: { runId: run.run_id, presentation: selection },
+    });
+    expect(calls).toContainEqual({
+      method: "submission.run.submit",
+      params: { runId: run.run_id },
+    });
   });
 });

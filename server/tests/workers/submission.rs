@@ -44,7 +44,7 @@ async fn concurrent_submit_recovers_committed_receipt_without_registering_again(
     )
     .await
     .unwrap();
-    crate::support::authenticate(ctx, &owner);
+    crate::support::authenticate(ctx, &owner).await;
     Records::create_authorized(&ctx.db, run.id, &owner, Some(crate::support::GRANT))
         .await
         .unwrap();
@@ -106,7 +106,7 @@ async fn revoked_tester_can_recover_an_already_committed_receipt() {
     let ctx = &boot.app_context;
     let id = Uuid::new_v4();
     let owner = Uuid::new_v4().to_string();
-    crate::support::authenticate(ctx, &owner);
+    crate::support::authenticate(ctx, &owner).await;
     let run = Model::create(
         &ctx.db,
         NewRunSession {
@@ -200,7 +200,7 @@ async fn revoked_tester_can_recover_an_already_committed_receipt() {
 
     // The pass was committed but its response was lost. Tester eligibility is
     // revoked before the worker retries the idempotent receipt lookup.
-    crate::support::authenticate_with_policy(ctx, &owner, false);
+    crate::support::authenticate_with_policy(ctx, &owner, false).await;
     let runtime = SubmissionRuntime {
         validator: Arc::new(tuf_replay_server::domain::UnavailableValidator),
         charts: Arc::new(TestCharts),
@@ -228,7 +228,7 @@ async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() 
 
     let id = Uuid::new_v4();
     let owner = Uuid::new_v4().to_string();
-    crate::support::authenticate(ctx, &owner);
+    crate::support::authenticate(ctx, &owner).await;
     let run = Model::create(
         &ctx.db,
         NewRunSession {

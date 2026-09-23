@@ -15,13 +15,18 @@ pub struct RunView {
     pub external_pass_id: Option<i64>,
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub evidence_expires_at: Option<chrono::DateTime<chrono::FixedOffset>>,
+    pub presentation: Option<serde_json::Value>,
 }
 
 const SELECT: &str = "SELECT s.id AS cursor,r.pid AS run_id,r.tuf_level_id,
     r.client_level_relative_path AS chart_path,
     CASE WHEN s.state='uploading' THEN r.status ELSE s.state END AS status,
-    s.reason,s.external_pass_id,r.created_at,s.evidence_expires_at
-    FROM run_submission_records s JOIN run_sessions r ON r.id=s.run_session_id";
+    s.reason,s.external_pass_id,r.created_at,s.evidence_expires_at,
+    CASE WHEN v.run_submission_record_id IS NULL THEN NULL ELSE
+        jsonb_build_object('keyviewer_id',v.keyviewer_id,'overlay_id',v.overlay_id)
+    END AS presentation
+    FROM run_submission_records s JOIN run_sessions r ON r.id=s.run_session_id
+    LEFT JOIN run_visual_selections v ON v.run_submission_record_id=s.id";
 
 pub async fn list(db: &DatabaseConnection, owner: &str, before: i64) -> Result<Vec<RunView>> {
     Ok(RunView::find_by_statement(sql(

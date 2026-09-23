@@ -84,7 +84,8 @@ impl Hooks for App {
     fn routes(ctx: &AppContext) -> AppRoutes {
         let routes = AppRoutes::with_default_routes()
             .add_route(controllers::account::routes())
-            .add_route(controllers::replays::routes());
+            .add_route(controllers::replays::routes())
+            .add_route(controllers::visual_presets::routes());
         if ingest_routes_enabled(&ctx.environment)
             || ctx
                 .shared_store
@@ -93,6 +94,7 @@ impl Hooks for App {
         {
             routes
                 .add_route(controllers::run_sessions::routes())
+                .add_route(controllers::run_sessions::level_session_routes())
                 .add_route(controllers::level_changes::routes())
                 .add_route(controllers::level_changes::internal_routes())
         } else {

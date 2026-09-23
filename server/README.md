@@ -1,6 +1,13 @@
 # TUFReplay auto-submission API
 
+공개 리플레이의 브라우저 다운로드 주체는 web-adofai다. 운영 CORS는
+`REPLAY_PLAYER_ORIGIN`(기본 `https://web-adofai.impl1113.dev`)과 선택적인
+`REPLAY_BETA_ORIGIN`을 허용한다. `TUF_WEB_ORIGIN`은 기존 TUF origin을 유지한다.
+설정 변경은 배포/서버 재시작 후 적용된다. [전달 계약](../docs/replay-delivery-contract.md)을 참조한다.
+
 Loco 1.1 / SeaORM 2 기반 API다. OAuth로 인증된 run 발급, WebSocket 증거 수신, 영속 저장, 제출 시 최신 공식 차트의 임시 확보, 검증과 TUF 등록을 담당한다.
+
+현재 모드는 `GET /api/v2/levels/{level_id}/runs/stream`을 레벨 단위로 재사용한다. `run_start`마다 독립 시도를 만들고 `run_fail`/`run_complete`로 끝내며 idle 연결은 run을 만들지 않는다. 기존 v1 REST 발급·run별 WS 및 제출·조회 API는 유지한다. [레벨 세션 v2 계약](../docs/auto-submission-implementation/11-reusable-level-session.md)을 참고한다.
 
 **게임플레이 시뮬레이터는 미구현이다.** 기본 검증기는 `validator_unavailable`을 반환하며 실제 pass를 승인하지 않는다. 기존 영상 제출을 대체하지 않는다.
 
@@ -43,4 +50,6 @@ cargo test
 
 작업 실행은 Loco의 Postgres 큐를 사용한다. 제출 상태의 재시도 시점·DB lease·TUF 등록 영수증은 중복 처리와 응답 유실 복구를 위해 모델과 서비스에 유지한다. Scheduler는 대기 작업을 큐에 넣고 Worker가 처리한다. 저장소는 `AppContext.storage`, DB는 `AppContext.db`를 사용한다. 과거 공식 차트의 다운로드·캐시·호환성 비교 경로는 제거했지만 기존 관련 DB 테이블과 데이터는 유지한다.
 
-계정 권한은 모드가 보낸 TUF OAuth access token을 TUF의 internal identity API에서 확인한다. 개별 업로드에는 별도의 run token을 쓰고, 연결 중과 제출 처리 중에도 OAuth grant 권한을 재확인한다. Loco SaaS starter의 자체 사용자/JWT 가입 기능은 사용하지 않는다.
+계정 권한은 모드가 보낸 TUF OAuth access token을 TUF의 internal identity API에서 확인한다. v2 레벨 연결은 OAuth로 인증하며 각 run의 owner·grant와 claims를 서버에서 확인한다. v1 개별 업로드의 별도 run token은 호환용으로 유지한다. 연결 중과 제출 처리 중에도 OAuth grant 권한을 재확인한다. Loco SaaS starter의 자체 사용자/JWT 가입 기능은 사용하지 않는다.
+
+테스터 자격은 PostgreSQL `trusted_testers.active`를 매 권한 확인에서 조회한다. row가 없거나 비활성이면 제출을 거절하며 OAuth/account 거절을 로컬 등록으로 덮어쓰지 않는다. 기존 기록 조회와 삭제에는 제출 자격을 요구하지 않는다. [관리 앱 배포 안내](../deploy/trusted-testers-admin.md)에 스키마, 감사 이력, 전용 DB 역할과 TUF 환경변수 방식의 전환 순서를 정리했다.

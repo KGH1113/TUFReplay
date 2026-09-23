@@ -1,4 +1,4 @@
-use crate::services::replays::{PublishedReplay, ReplayFile};
+use crate::services::replays::{PublishedReplay, PublishedVisuals, ReplayFile, VisualDescriptor};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -16,6 +16,14 @@ pub struct ReplayManifestResponse {
     pub evidence_digest: String,
     pub recorded_speed: f64,
     pub files: Vec<ReplayFileResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub visuals: Option<ReplayVisualsResponse>,
+}
+
+#[derive(Serialize)]
+pub struct ReplayVisualsResponse {
+    pub keyviewer: Option<VisualDescriptor>,
+    pub overlay: Option<VisualDescriptor>,
 }
 
 #[derive(Serialize)]
@@ -32,8 +40,33 @@ pub struct ReplayFileResponse {
 impl ReplayManifestResponse {
     #[must_use]
     pub fn from_replay(replay: &PublishedReplay) -> Self {
+        Self::from_replay_with_visuals(replay, 2, None)
+    }
+
+    #[must_use]
+    pub fn from_replay_v3(replay: &PublishedReplay, visuals: &PublishedVisuals) -> Self {
+        let keyviewer = visuals
+            .keyviewer
+            .as_ref()
+            .map(|(descriptor, _)| descriptor.clone());
+        let overlay = visuals
+            .overlay
+            .as_ref()
+            .map(|(descriptor, _)| descriptor.clone());
+        Self::from_replay_with_visuals(
+            replay,
+            3,
+            Some(ReplayVisualsResponse { keyviewer, overlay }),
+        )
+    }
+
+    fn from_replay_with_visuals(
+        replay: &PublishedReplay,
+        format_version: u32,
+        visuals: Option<ReplayVisualsResponse>,
+    ) -> Self {
         Self {
-            format_version: 2,
+            format_version,
             run_id: replay.run_id,
             tuf_level_id: replay.tuf_level_id,
             chart_path: replay.chart_path.clone(),
@@ -57,6 +90,7 @@ impl ReplayManifestResponse {
                     records: stream.records,
                 })
                 .collect(),
+            visuals,
         }
     }
 }

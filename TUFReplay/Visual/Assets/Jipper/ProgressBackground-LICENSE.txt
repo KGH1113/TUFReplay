@@ -1,0 +1,9 @@
+ProgressBackground.png provenance
+
+Unity built-in UI sprite "Background", fileID 10907, texture fileID 10906.
+The original JipperResourcePack ProgressBar.prefab references this Unity asset.
+Extracted without visual modification using AssetRipper headless from Unity
+6000.3.10f1 unity_builtin_extra. 32x32 pixels, border 10, pixels-per-unit 200.
+
+This is a Unity-provided asset, not a JipperResourcePack-authored PNG. The
+JipperResourcePack license does not replace the applicable Unity asset terms.

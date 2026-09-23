@@ -40,7 +40,7 @@ async fn persisted_evidence_survives_redis_removal_and_remains_unvalidated() {
     )
     .await
     .unwrap();
-    crate::support::authenticate(ctx, &owner);
+    crate::support::authenticate(ctx, &owner).await;
     Records::create_authorized(&ctx.db, run.id, &owner, Some(crate::support::GRANT))
         .await
         .unwrap();

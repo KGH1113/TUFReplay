@@ -1,4 +1,30 @@
 services:
+  trusted-testers-admin:
+    profiles: ["tester-admin"]
+    build:
+      context: ../tools/trusted-testers-admin
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    read_only: true
+    tmpfs: ["/tmp"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    ports:
+      - "127.0.0.1:4177:4177"
+    environment:
+      HOST: 0.0.0.0
+      PORT: "4177"
+      ALLOW_NON_LOOPBACK: "true"
+      DATABASE_URL: "postgres://trusted_testers_admin:${TRUSTED_TESTERS_DB_PASSWORD:-}@postgres-production:5432/tuf_replay_auto_submission"
+      ADMIN_USERNAME: ${TRUSTED_TESTERS_ADMIN_USERNAME:-operator}
+      ADMIN_PASSWORD: ${TRUSTED_TESTERS_ADMIN_PASSWORD:-}
+    depends_on:
+      postgres-production:
+        condition: service_healthy
+    networks:
+      - auto-submission-data
+
   tuf-replay-web:
     build:
       context: ..
@@ -97,6 +123,8 @@ services:
       TUF_ARTIFACT_ROOT: /var/lib/tuf-replay/artifacts
       TUF_API_BASE_URL: https://api.tuforums.com
       TUF_WEB_ORIGIN: https://tuforums.com
+      REPLAY_PLAYER_ORIGIN: ${REPLAY_PLAYER_ORIGIN:-https://web-adofai.impl1113.dev}
+      REPLAY_BETA_ORIGIN: ${REPLAY_BETA_ORIGIN:-https://web-adofai.impl1113.dev}
       SUBMISSION_WEB_ORIGIN: https://tufreplay-auto.impl1113.dev
       TUF_TO_AUTO_SUBMISSION_TOKEN: ${TUF_TO_AUTO_SUBMISSION_TOKEN:?TUF_TO_AUTO_SUBMISSION_TOKEN must be set}
       AUTO_SUBMISSION_TO_TUF_TOKEN: ${AUTO_SUBMISSION_TO_TUF_TOKEN:?AUTO_SUBMISSION_TO_TUF_TOKEN must be set}

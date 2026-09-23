@@ -1,0 +1,8 @@
+DungGeunMo / 둥근모꼴+Fixedsys — Public Domain
+Original bitmap: Jungtae Kim. Fixedsys Excelsior: Darien Gavin Valentine.
+Vector font: Kil Hyung-jin (CACTUS).
+Author's license declaration: https://cactus.tistory.com/193
+The author permits redistribution, modification and commercial use under public domain terms.
+The bundled WOFF is the unchanged file referenced by DMNote and Impl DMNote:
+https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_six@1.2/DungGeunMo.woff
+Its embedded name-table copyright declaration is "Public Domain".

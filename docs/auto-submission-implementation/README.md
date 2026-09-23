@@ -9,11 +9,11 @@
 
 실제 ADOFAI gameplay를 가상으로 재현하는 semantic validation은 이 로드맵의 범위 밖이다. 다만 evidence의 무결성 검사, 제출 가능 상태로의 전환 인터페이스, 나중에 validator를 연결할 job 경계는 포함한다.
 
-## 변하지 않는 설계
+## 현재 설계
 
 - PostgreSQL 모델은 `run_sessions`를 유지한다.
-- 발급 API는 `POST /api/v1/runs`를 유지한다.
-- WebSocket은 `GET /api/v1/runs/{run_id}/stream`을 유지한다.
+- 모드는 `GET /api/v2/levels/{level_id}/runs/stream` 연결을 레벨 단위로 재사용하고 시도마다 `run_start`를 보낸다. 레벨을 열거나 idle heartbeat를 보낼 때 run을 발급하지 않는다.
+- 기존 `POST /api/v1/runs`와 `GET /api/v1/runs/{run_id}/stream`은 이전 클라이언트와 도구 호환용으로 유지한다. 현재 모드는 이 사전 발급 경로를 사용하지 않는다.
 - 전송 상태의 authoritative store는 Redis다.
 - PostgreSQL은 lifecycle과 내구성 있는 evidence index를 관리한다.
 - `NativeInput`, `HitContext`, `MetaJson`은 기존 replay pipeline에서 다시 사용할 수 있는 바이트를 보존한다.
@@ -33,6 +33,9 @@
 8. [웹 submit UX](08-web-submit-ux.md)
 9. [관측성, 용량 모델과 200-connection 부하 검증](09-observability-and-load-testing.md)
 10. [실서버 배포와 단계적 출시](10-production-rollout.md)
+11. [재사용 레벨 세션과 즉시 재시작](11-reusable-level-session.md)
+
+11단계는 기존 문서의 run별 REST 사전 발급 및 소켓 생성 전제를 대체한다. 증거 바이트 포맷과 제출·목록·조회 API는 그대로 유지한다. 아래 성능 수치는 실게임 및 장시간 부하 검증 목표이며, 기능 테스트 통과만으로 달성했다고 보지 않는다.
 
 각 단계는 이전 단계의 완료 기준을 통과한 후 시작한다. 단, 5단계의 capture microbenchmark와 9단계의 부하 테스트 도구 준비는 서버 작업과 병렬로 선행할 수 있다.
 
@@ -45,4 +48,3 @@
 - 중복 chunk, 중복 complete, worker 재시도와 submit 재시도가 모두 idempotent하다.
 - 사용자는 게임 내에서 정상 플레이 흐름을 방해받지 않고 웹에서 `처리 중`, `제출 가능`, `제출 완료`, `제출 불가`를 이해할 수 있다.
 - 장애가 발생해도 게임 플레이와 로컬 replay 기록은 계속되며, 자동 제출 실패가 사용자 데이터 손상으로 이어지지 않는다.
-

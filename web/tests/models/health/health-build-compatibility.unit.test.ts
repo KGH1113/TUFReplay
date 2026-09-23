@@ -24,7 +24,7 @@ function healthWith(
     healthDtoSchema.parse({
       ...legacyHealthDto,
       BuildFlavor: "auto-submission",
-      AutoSubmissionProtocolVersion: 1,
+      AutoSubmissionProtocolVersion: 2,
       ...(values.buildFlavor === undefined ? {} : { BuildFlavor: values.buildFlavor }),
       ...(values.autoSubmissionProtocolVersion === undefined
         ? {}
@@ -81,12 +81,12 @@ describe("auto-submission web/mod compatibility", () => {
     expect(
       getAutoSubmissionCompatibility(
         "auto-submission",
-        healthWith({ autoSubmissionProtocolVersion: 2 }),
+        healthWith({ autoSubmissionProtocolVersion: 1 }),
       ),
     ).toEqual({ available: false, reason: "protocol_version" });
   });
 
-  test("accepts the auto flavor with protocol 1 regardless of mod patch version", () => {
+  test("accepts the auto flavor with protocol 2 regardless of mod patch version", () => {
     expect(
       getAutoSubmissionCompatibility(
         "auto-submission",

@@ -14,6 +14,7 @@ public sealed class EvidenceCaptureBuffer : IRecordingEvidenceSink
   private long _read;
   private string _failure;
   private string _completionMeta;
+  private int _terminal;
   public int Capacity => _records.Length;
   public string Failure => Volatile.Read(ref _failure);
   public string CompletionMeta => Volatile.Read(ref _completionMeta);
@@ -76,8 +77,13 @@ public sealed class EvidenceCaptureBuffer : IRecordingEvidenceSink
       Invalidate("missing_metadata");
       return;
     }
-    Interlocked.CompareExchange(ref _completionMeta, metadata, null);
+    if (Interlocked.CompareExchange(ref _terminal, 1, 0) == 0)
+      Volatile.Write(ref _completionMeta, metadata);
   }
 
-  public void Invalidate(string reason) => Interlocked.CompareExchange(ref _failure, reason, null);
+  public void Invalidate(string reason)
+  {
+    if (Interlocked.CompareExchange(ref _terminal, 2, 0) == 0)
+      Volatile.Write(ref _failure, reason);
+  }
 }

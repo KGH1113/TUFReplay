@@ -37,3 +37,19 @@ pub(super) struct CreateRunSessionResponse {
 pub(super) struct ErrorResponse {
     pub code: &'static str,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitRequest {
+    #[serde(default)]
+    pub presentation: Option<SubmitPresentation>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubmitPresentation {
+    #[serde(default)]
+    pub keyviewer_id: Option<Uuid>,
+    #[serde(default)]
+    pub overlay_id: Option<Uuid>,
+}

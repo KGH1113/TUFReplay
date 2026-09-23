@@ -15,6 +15,7 @@ internal static class SubmissionCaptureSuite
   public static void RunAll()
   {
     VerifySubmissionResultSnapshot();
+    VerifyPostClearEvidence();
     var buffer = new EvidenceCaptureBuffer(2);
     buffer.Write(Input(1));
     buffer.Write(Input(2));
@@ -112,6 +113,35 @@ internal static class SubmissionCaptureSuite
     }
     Require(rejected, "future ack rejected");
     Console.WriteLine("Submission capture, framing and retransmission tests passed.");
+  }
+
+  private static void VerifyPostClearEvidence()
+  {
+    // Exercise the recorder's actual enqueue path without starting Unity input capture.
+    var session = new TUFReplay.Recording.Sessions.RecordingSession();
+    var capture = new EvidenceCaptureBuffer();
+    var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+    typeof(TUFReplay.Recording.Sessions.RecordingSession).GetField("_evidenceSink", flags)!.SetValue(session, capture);
+    session.Data.WonTimeUs = 100;
+    session.Data.TerminalTimeUs = 300;
+    var addInput = typeof(TUFReplay.Recording.Sessions.RecordingSession).GetMethod("AddInputLocked", flags)!;
+    addInput.Invoke(session, new object[] { 100L, 1, RecordInputFlags.Down, 1, 0UL });
+    addInput.Invoke(session, new object[] { 200L, 1, (RecordInputFlags)0, 1, 0UL });
+    addInput.Invoke(session, new object[] { 250L, 2, RecordInputFlags.Down, 2, 0UL });
+    Require(capture.InputCount == 3, "evidence retains releases and new key presses after clear");
+    Require(
+      capture.TryRead(out _) && capture.TryRead(out var release) && release.Input.TimeUs == 200,
+      "post-clear release keeps its recorded timestamp"
+    );
+    Require(
+      TUFReplay.Recording.Capture.SubmissionKeyCount.Count(session.Data.Inputs, 100) == 1,
+      "post-clear rendering evidence does not change submitted key count"
+    );
+    var meta = JObject.Parse(session.Data.ToActivityMetaJson());
+    Require(
+      (long)meta["wonTimeUs"] == 100 && (long)meta["terminalTimeUs"] == 300,
+      "playback termination and scoring termination remain independent"
+    );
   }
 
   private static void VerifySubmissionResultSnapshot()

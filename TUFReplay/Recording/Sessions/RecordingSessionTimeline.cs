@@ -267,7 +267,7 @@ public partial class RecordingSession
     _lastTimelineTimeUs = timeUs;
     _hasTimelineTime = true;
     Data.Inputs.Add(new RecordedInput(timeUs, key, flags, nativeCode, nativeFlags));
-    if (_evidenceSink != null && (!Data.WonTimeUs.HasValue || timeUs <= Data.WonTimeUs.Value))
+    if (_evidenceSink != null)
     {
       _evidenceSink?.Write(new RecordedInput(timeUs, key, flags, nativeCode, nativeFlags));
       _evidenceInputs++;

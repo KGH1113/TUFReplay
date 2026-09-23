@@ -2,7 +2,9 @@
 
 ## 목적
 
-run 발급 시점에 서버가 최신 공식 TUF revision과 정확한 chart를 결정하고 pin한다. 외부 TUF API나 artifact 다운로드가 불안정해도 잘못된 revision으로 세션을 발급하지 않는다.
+현재 구현은 `run_start`마다 계정 권한과 공개 P/G eligibility만 확인한다. 공식 artifact는 플레이 시작에 다운로드하지 않으며, 제출 시점의 최신 공식 차트를 검증기에 전달한다. 설치 파일 ID와 경로는 client claim이다. REST 사전 발급을 기다리지 않고 승인 전부터 제한된 버퍼에 기록한다. 상세 계약은 [레벨 세션 v2](11-reusable-level-session.md)를 따른다.
+
+아래 revision pinning/hydration 항목은 초기 설계 기록이다. run 발급 때 공식 revision을 pin하고 준비되지 않은 첫 입력을 누락시키는 흐름은 현재 구현 요구사항에서 제외된다. archive 안전성 및 제출 시 hydration 검증은 계속 적용된다.
 
 ## 선행조건
 
@@ -73,4 +75,3 @@ cache hit은 빠른 요청이어야 하지만 cache miss는 공식 artifact 다�
 - cache hit 발급 p95 목표를 측정하고 운영 dashboard에 노출한다.
 - cache miss가 게임 main thread나 기존 WebSocket 처리량을 막지 않는다.
 - artifact와 DB row는 같은 content identity를 가리킨다.
-

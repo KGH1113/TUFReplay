@@ -6,7 +6,7 @@ import { defineConfig } from "vite";
 
 const tufApiProxy = {
   "/api/tuf": {
-    target: "https://api.tuforums.com",
+    target: process.env.VITE_TUF_API_PROXY_URL || "https://api.tuforums.com",
     changeOrigin: true,
     rewrite: (path: string) => path.replace(/^\/api\/tuf/, ""),
   },

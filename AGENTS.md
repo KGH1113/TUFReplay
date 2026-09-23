@@ -1,21 +1,56 @@
-# Before modifying the code...
-- **DO NOT MODIFY THE CODE UNTIL I SAYS TO.**
-- You are not the only one who modifies the code. Almost every code is modified by me. So please read the code often that I wrote.
+# TUFReplay Agent Instructions
 
-# README.md rule
-- IF you are new to this project 'cause the session started right before, read README.md to understand this project.
-- If there is outdated thing in README.md, edit README.md to bring up to date.
+These instructions apply to work performed in this repository. User requests take
+precedence over these instructions when they conflict.
 
-# Useful dev tool usage
-- You can use `ilspycmd` and `assetripper(headless)` to inspect ADOFAI's code. Use it unless you really don't need to.
-- Use `./scripts/run.sh` for building, packaging, checking, ext. instead of manually executing dotnet commands. Also maintain the scripts.
+## Before changing code
 
-# UI/UX
-- Use shadcn mcp server actively. and use shadcn components.
-- Read apple-design skill.
-- [Toss tech blog: 좋은 에러 메시지를 만드는 6가지 원칙](https://toss.tech/article/21021) read this blog for better error ux.
+- Do not modify source code until the user explicitly asks for a code change.
+- The worktree is shared with the user and other contributors. Inspect the relevant
+  files often and preserve unrelated existing changes.
+- Before implementing a feature in a new session, read `README.md` to understand the
+  repository and its current architecture.
+- If `README.md` is out of date, update it when the requested work changes the documented
+  behavior or workflow.
+- Follow SOLID principles and keep feature boundaries clear.
 
-# Extre rules
-- Always think about the performance and do not make ADOFAI laggy.
-- Read this if you are doing something with ADOFAI-IPC: [AdofaiIpc-Documentation](https://github.com/KGH1113/adofai-ipc/tree/main/docs)
-- Always think about SOLID principles
+## Repository workflow
+
+- Use `./scripts/run.sh` as the entry point for builds, packaging, checks, and related
+  workflows. Keep the scripts up to date when changing their behavior.
+- Use `ilspycmd` or `assetripper(headless)` to inspect ADOFAI code and assets when the
+  implementation depends on game behavior. Do not guess at runtime contracts that can be
+  inspected.
+- Use the repository's existing test and validation commands after changes. Match the
+  scope of verification to the affected component and report any checks that could not run.
+
+## ADOFAI and IPC
+
+- Read the [AdofaiIpc documentation](https://github.com/KGH1113/adofai-ipc/tree/main/docs)
+  before changing ADOFAI-IPC integration.
+- Keep game-thread work and recording/replay work efficient. Consider allocations,
+  blocking I/O, frame-time impact, and large-file behavior before implementing a change.
+
+## UI and UX
+
+- Use the project's shadcn components and shadcn MCP tooling for web UI work.
+- Read and apply the `apple-design` skill for interaction, motion, accessibility, and
+  visual hierarchy decisions.
+- Use the principles in [Toss's error-message guide](https://toss.tech/article/21021):
+  explain the situation, give the reason when useful, and tell the user what they can do
+  next. Prefer clear, user-facing language over implementation or error-code jargon.
+
+## Orchestration and delegation
+
+- For complex work, use the `astra-orchestrator` skill when its trigger conditions match.
+- If the user explicitly mentions `astra-orchestrator` or `$astra-orchestrator`, apply the
+  skill for that request even when the normal complexity trigger would not apply. Read the
+  skill instructions before taking task actions and follow its required delegation workflow.
+- The root agent owns architecture, decomposition, integration, and final verification.
+- Delegate bounded exploration, implementation, testing, review, or research tasks when
+  doing so materially improves the result. Do not delegate trivial work merely to create
+  parallel activity.
+- Give each implementation agent clear file or subsystem ownership. Do not let multiple
+  implementation agents edit the same files without explicit coordination.
+- Before finishing, inspect the final diff, integrate material findings, and verify the
+  requested behavior.

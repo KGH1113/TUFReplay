@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>테스터 관리 · TUFReplay</title>
+    <link rel="stylesheet" href="/app.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="brand"><span class="brand-mark" aria-hidden="true">T</span><span>TUFReplay <span class="brand-subtitle">운영</span></span></div>
+        <span class="private-badge"><span aria-hidden="true"></span> 비공개 관리 화면</span>
+      </header>
+
+      <section class="intro" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">자동 제출 베타</p>
+          <h1 id="page-title">테스터 관리</h1>
+          <p class="lead">TUF 계정의 제출 권한을 여기서 관리합니다. 이미 등록된 패스는 권한을 꺼도 유지됩니다.</p>
+        </div>
+        <button id="refresh" class="button button-secondary" type="button">목록 새로고침</button>
+      </section>
+
+      <p id="notice" class="notice" role="status" aria-live="polite"></p>
+
+      <section class="overview" aria-label="테스터 현황">
+        <div class="stat"><span>활성 테스터</span><strong id="active-count">—</strong></div>
+        <div class="stat"><span>비활성 계정</span><strong id="inactive-count">—</strong></div>
+        <div class="stat"><span>최근 변경</span><strong id="last-change">—</strong></div>
+      </section>
+
+      <div class="columns">
+        <section class="panel tester-panel" aria-labelledby="list-title">
+          <div class="panel-heading"><div><p class="eyebrow">권한 목록</p><h2 id="list-title">테스터</h2></div></div>
+          <div class="list-tools">
+            <label class="search"><span>계정 검색</span><input id="search" type="search" placeholder="이름 또는 UUID" autocomplete="off" /></label>
+            <div class="filters" role="group" aria-label="상태 필터">
+              <button class="filter selected" type="button" data-filter="all" aria-pressed="true">전체</button>
+              <button class="filter" type="button" data-filter="active" aria-pressed="false">활성</button>
+              <button class="filter" type="button" data-filter="inactive" aria-pressed="false">비활성</button>
+            </div>
+          </div>
+          <div id="tester-list" class="tester-list" aria-live="polite"><p class="empty">목록을 불러오는 중입니다.</p></div>
+        </section>
+
+        <aside class="side-column">
+          <section class="panel add-panel" aria-labelledby="add-title">
+            <p class="eyebrow">새 권한</p><h2 id="add-title">테스터 추가</h2>
+            <p class="muted">숫자 player ID가 아닌 TUF 계정의 UUID를 입력하세요.</p>
+            <form id="add-form">
+              <label><span>계정 UUID</span><input name="userId" type="text" inputmode="text" required maxlength="36" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" autocomplete="off" /></label>
+              <label><span>표시 이름 <small>선택</small></span><input name="label" type="text" maxlength="80" placeholder="테스터를 알아볼 이름" autocomplete="off" /></label>
+              <label><span>승인 사유</span><input name="reason" type="text" required maxlength="240" placeholder="예: 1차 베타 테스트" autocomplete="off" /></label>
+              <button class="button button-primary" type="submit">권한 추가</button>
+            </form>
+          </section>
+          <section class="panel history-panel" aria-labelledby="history-title">
+            <p class="eyebrow">변경 기록</p><h2 id="history-title">최근 이력</h2>
+            <ol id="event-list" class="event-list"><li class="empty">이력을 불러오는 중입니다.</li></ol>
+          </section>
+        </aside>
+      </div>
+    </main>
+
+    <dialog id="change-dialog" aria-labelledby="dialog-title">
+      <form id="change-form">
+        <p class="eyebrow">권한 변경</p><h2 id="dialog-title"></h2>
+        <p id="dialog-description" class="muted"></p>
+        <label><span>변경 사유</span><input name="reason" type="text" required maxlength="240" autocomplete="off" /></label>
+        <div class="dialog-actions"><button id="cancel-change" class="button button-secondary" type="button">취소</button><button id="confirm-change" class="button button-primary" type="submit">확인</button></div>
+      </form>
+    </dialog>
+  </body>
+</html>

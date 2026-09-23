@@ -49,7 +49,7 @@ export async function frames(item: Fixture, mode: Mode, maxBytes: number): Promi
   state(3, "CaptureStarted", firstTime);
   state(3, "GameplayStarted", 0);
   state(4, "RuntimeSettings", firstTime);
-  state(3, "Won", item.durationUs);
+  state(3, "Won", Number(item.meta.wonTimeUs));
   state(5, "RecorderHealth", item.durationUs);
   records.sort((a, b) => a.timeUs - b.timeUs);
   const result: Frame[] = [];

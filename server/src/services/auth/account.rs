@@ -19,10 +19,11 @@ pub fn require_service(ctx: &AppContext, headers: &HeaderMap) -> Result<()> {
 }
 
 pub async fn identity(ctx: &AppContext, headers: &HeaderMap) -> Result<AccountIdentity> {
-    IdentityService::get(ctx)?
+    let identity = IdentityService::get(ctx)?
         .0
         .identify(bearer(headers)?)
-        .await
+        .await?;
+    super::trusted_testers::apply(ctx, identity).await
 }
 
 pub async fn owner(ctx: &AppContext, headers: &HeaderMap) -> Result<String> {
@@ -39,5 +40,7 @@ pub async fn authorize_grant(
     if identity.owner_id != owner || identity.grant_id != grant {
         return Err(Error::Unauthorized("identity_mismatch".into()));
     }
-    identity.require_can_submit()
+    super::trusted_testers::apply(ctx, identity)
+        .await?
+        .require_can_submit()
 }

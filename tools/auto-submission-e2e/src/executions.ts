@@ -106,7 +106,7 @@ async function poll(run: Execution, targets: Set<string>, timeout: number) {
   }
   throw new Error("Server state polling timed out; inspect logs and retry after recovery");
 }
-export async function action(id: string, name: string) {
+export async function action(id: string, name: string, body?: unknown) {
   const run = execution(id);
   if (name === "fail") {
     const upload = uploads.get(id);
@@ -126,7 +126,7 @@ export async function action(id: string, name: string) {
     throw new Error("Submit requires saved evidence");
   run.phase = "submitting";
   try {
-    await request(`/api/v1/runs/${run.runId}/submit`, "POST");
+    await request(`/api/v1/runs/${run.runId}/submit`, "POST", body);
   } catch (error) {
     run.phase = "evidence_ready";
     throw error;

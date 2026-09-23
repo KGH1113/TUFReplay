@@ -2,6 +2,7 @@ import type { AppApi } from "@/api/app-api";
 import { createActivityWireFixture } from "@/mocks/activity/activity-api-fixture";
 import { createReplayApiMock } from "@/mocks/replay/replay-api-mock";
 import { createSubmissionApiMock } from "@/mocks/submission/submission-api-mock";
+import { createVisualApiMock } from "@/mocks/visual/visual-api-mock";
 import {
   mapActivityChart,
   mapActivityRun,
@@ -189,5 +190,6 @@ export function createMockApi(): AppApi {
         );
       },
     },
+    visual: createVisualApiMock(),
   };
 }

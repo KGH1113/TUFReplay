@@ -8,6 +8,8 @@ using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Build;
 using TUFReplay.Shared.Ipc;
+using TUFReplay.Visual.Composition;
+using TUFReplay.Visual.Infrastructure.Discovery;
 
 namespace TUFReplay.Composition;
 
@@ -20,6 +22,7 @@ public static class FeatureRegistry
   public static RecordingFeature Recording { get; private set; }
   public static ReplayFeature Replay { get; private set; }
   public static TUFReplay.Submission.Sessions.SubmissionFeature Submission { get; private set; }
+  public static VisualPresetFeature Visuals { get; private set; }
   public static MicrophoneRecordingFeature MicrophoneRecording { get; private set; }
   public static MicrophoneCalibrationFeature MicrophoneCalibration { get; private set; }
 
@@ -31,7 +34,10 @@ public static class FeatureRegistry
     Ipc = new TUFReplayIpcFeature();
     Recording = new RecordingFeature();
     if (TUFReplayBuildFlavor.Name == "auto-submission")
+    {
       Submission = new TUFReplay.Submission.Sessions.SubmissionFeature();
+      Visuals = new VisualPresetFeature(() => Submission?.Account, Submission.Records, VisualSourceRoots.Capture());
+    }
     Replay = new ReplayFeature();
     MicrophoneRecording = new MicrophoneRecordingFeature();
     MicrophoneCalibration = new MicrophoneCalibrationFeature();
@@ -62,6 +68,8 @@ public static class FeatureRegistry
   {
     Ipc?.Disable();
     TUFReplay.Submission.Debug.SubmissionDebugHud.Shutdown();
+    Visuals?.Dispose();
+    Visuals = null;
     Submission?.Dispose();
     Submission = null;
     MicrophonePermissionWarningCoordinator.Shutdown();

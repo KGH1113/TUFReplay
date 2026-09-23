@@ -13,9 +13,23 @@ interface LegacyIpcResponse {
 }
 
 export const adofaiIpcFetch = (async (...args: Parameters<typeof fetch>) => {
-  const response = await globalThis.fetch(...args);
   const input = args[0];
   const requestUrl = String(input instanceof Request ? input.url : input);
+  if (requestUrl.endsWith("/ipc")) {
+    const init = args[1];
+    const headers = new Headers(
+      init?.headers ?? (input instanceof Request ? input.headers : undefined),
+    );
+    if (
+      headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase() === "application/json"
+    ) {
+      // Mono's HttpListener otherwise decodes the UTF-8 body using its default
+      // encoding, replacing Korean names and preset text with question marks.
+      headers.set("content-type", "application/json; charset=utf-8");
+      args[1] = { ...init, headers };
+    }
+  }
+  const response = await globalThis.fetch(...args);
   if (!requestUrl.endsWith("/ipc")) return response;
 
   const text = await response.clone().text();

@@ -13,7 +13,7 @@ export interface Health {
   autoSubmissionProtocolVersion: number;
 }
 
-export const SUPPORTED_AUTO_SUBMISSION_PROTOCOL_VERSION = 1;
+export const SUPPORTED_AUTO_SUBMISSION_PROTOCOL_VERSION = 2;
 
 export type AutoSubmissionCompatibilityReason =
   | "web_build"

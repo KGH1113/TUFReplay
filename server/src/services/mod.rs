@@ -4,3 +4,4 @@ pub mod ingest;
 pub mod replays;
 pub mod submission;
 pub mod tuf;
+pub mod visuals;

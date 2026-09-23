@@ -1,11 +1,11 @@
-import { apiBase, accessToken } from "../config";
+import { apiBase, currentAccessToken } from "../config";
 import { log } from "../logs";
 
 export async function request(
   path: string,
   method = "GET",
   body?: unknown,
-  token = accessToken,
+  token = currentAccessToken(),
 ): Promise<any> {
   log("client", `${method} ${path}`, body);
   const response = await fetch(`${apiBase}${path}`, {
