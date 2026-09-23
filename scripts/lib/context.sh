@@ -8,10 +8,12 @@ TUFREPLAY_CONTEXT_LOADED=1
 TUFREPLAY_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TUFREPLAY_PROJECT_ROOT="$(cd "$TUFREPLAY_LIB_DIR/../.." && pwd)"
 
-if [ -f "$TUFREPLAY_PROJECT_ROOT/.env" ]; then
+TUFREPLAY_ENV_FILE="${TUFREPLAY_ENV_FILE:-$TUFREPLAY_PROJECT_ROOT/.env}"
+export TUFREPLAY_ENV_FILE
+if [ -f "$TUFREPLAY_ENV_FILE" ]; then
   set -a
   # shellcheck disable=SC1091
-  source "$TUFREPLAY_PROJECT_ROOT/.env"
+  source "$TUFREPLAY_ENV_FILE"
   set +a
 fi
 

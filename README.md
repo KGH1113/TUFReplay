@@ -142,6 +142,7 @@ Standard builds include a `Receive beta updates` toggle in the Unity Mod Manager
 
 Important environment variables:
 
+- `TUFREPLAY_ENV_FILE`: optional build environment file instead of the local `.env`; use `/dev/null` with explicit environment values for a reproducible release build.
 - `ADOFAI_DIR`: ADOFAI install directory.
 - `ADOFAI_MODS_DIR`: ADOFAI Mods directory.
 - `ADOFAI_MANAGED`: Unity managed assembly directory.
