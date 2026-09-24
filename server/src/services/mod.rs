@@ -1,5 +1,6 @@
 pub mod artifacts;
 pub mod auth;
+pub mod cdn;
 pub mod evidence;
 pub mod ingest;
 pub mod replays;

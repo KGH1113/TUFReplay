@@ -9,6 +9,10 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+// Reserved operator identity; never accepted from an API caller. These packaged
+// defaults can be referenced by every account without being globally public.
+pub const BUNDLED_DEFAULT_OWNER: &str = "tufreplay:bundled-defaults:v1";
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AssetReference {
@@ -70,12 +74,13 @@ pub async fn owned(
         .query_one_raw(statement(
             "SELECT 1 FROM visual_assets a WHERE a.sha256=$1 AND a.bytes=$2 AND a.media_type=$3
          AND (a.public_license IS NOT NULL OR EXISTS
-           (SELECT 1 FROM visual_asset_owners o WHERE o.sha256=a.sha256 AND o.owner_id=$4))",
+           (SELECT 1 FROM visual_asset_owners o WHERE o.sha256=a.sha256 AND o.owner_id IN ($4,$5)))",
             vec![
                 reference.sha256.clone().into(),
                 reference.bytes.into(),
                 reference.media_type.clone().into(),
                 owner.into(),
+                BUNDLED_DEFAULT_OWNER.into(),
             ],
         ))
         .await?;

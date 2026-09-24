@@ -40,6 +40,7 @@ getrandom = { version = "0.3" }
 hex = { version = "0.4" }
 redis = { version = "1", features = ["aio", "tokio-comp", "connection-manager"] }
 sha2 = { version = "0.10" }
+hmac = "0.12"
 thiserror = { version = "2" }
 reqwest = { version = "0.13.4", default-features = false, features = ["json", "stream", "rustls"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }

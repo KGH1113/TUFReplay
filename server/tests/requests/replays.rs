@@ -120,7 +120,10 @@ async fn assert_public_visual_roundtrip(fixture: Option<(serde_json::Value, Stri
                     "keyPositions": {"4key": []}
                 }
             },
-            "assets": []
+            "assets": [{
+                "path": "dot.png", "media_type": "image/png",
+                "data_base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jS1sAAAAASUVORK5CYII="
+            }]
         });
         let bundle = fixture
             .as_ref()
@@ -204,6 +207,35 @@ async fn assert_public_visual_roundtrip(fixture: Option<(serde_json::Value, Stri
             std::fs::write(output, response.as_bytes()).unwrap();
         }
 
+        ctx.shared_store.insert(
+            tuf_replay_server::services::cdn::CdnSigner::new("https://cdn.example", &"s".repeat(32)).unwrap(),
+        );
+        let response = request
+            .get(&format!("/api/v1/replays/{run_id}?format=3&asset_mode=objects&delivery=cdn"))
+            .await;
+        assert_eq!(response.status_code(), 200, "{}", response.text());
+        let cdn: serde_json::Value = response.json();
+        assert_eq!(cdn["delivery"]["origin"], "https://cdn.example");
+        let grants = cdn["delivery"]["urls"].as_object().unwrap();
+        assert!(!cdn["delivery"]["urls"].to_string().contains("server-timing"));
+        for file in cdn["files"].as_array().unwrap() {
+            let grant = grants[file["url"].as_str().unwrap()].as_str().unwrap();
+            assert!(grant.starts_with(&format!("https://cdn.example/objects/evidence/{run_id}/")));
+            assert!(grant.contains("&signature="));
+        }
+        let descriptor = &cdn["visuals"][&kind];
+        let route = descriptor["url"].as_str().unwrap();
+        assert!(grants[route].as_str().unwrap().starts_with("https://cdn.example/objects/visual-bundles/sha256/"));
+        let key = format!("visual-bundles/sha256/{}", descriptor["sha256"].as_str().unwrap());
+        let bytes: Vec<u8> = ctx.storage.download(Path::new(&key)).await.unwrap();
+        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(value["schema_version"], 2);
+        for asset in value["assets"].as_array().unwrap() {
+            let hash = asset["sha256"].as_str().unwrap();
+            let route = format!("/api/v1/replays/{run_id}/visuals/{kind}/assets/{hash}");
+            assert!(grants[&route].as_str().unwrap().starts_with(&format!("https://cdn.example/objects/visual-assets/sha256/{hash}?")));
+        }
+
         visual_presets::delete(&ctx.db, &owner, preset_id)
             .await
             .unwrap();
@@ -236,6 +268,13 @@ async fn assert_public_visual_roundtrip(fixture: Option<(serde_json::Value, Stri
 #[serial]
 async fn unfinished_replay_is_not_public() {
     request::<App, _, _>(|request, ctx| async move {
+        ctx.shared_store.insert(
+            tuf_replay_server::services::cdn::CdnSigner::new(
+                "https://cdn.example",
+                &"s".repeat(32),
+            )
+            .unwrap(),
+        );
         let run_id = Uuid::new_v4();
         let owner = Uuid::new_v4().to_string();
         let run = create_run(&ctx, run_id).await;
@@ -243,6 +282,12 @@ async fn unfinished_replay_is_not_public() {
             .await
             .unwrap();
         let response = request.get(&format!("/api/v1/replays/{run_id}")).await;
+        assert_eq!(response.status_code(), 404);
+        let response = request
+            .get(&format!(
+                "/api/v1/replays/{run_id}?format=3&asset_mode=objects&delivery=cdn"
+            ))
+            .await;
         assert_eq!(response.status_code(), 404);
     })
     .await;

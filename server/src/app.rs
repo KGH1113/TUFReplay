@@ -63,6 +63,12 @@ impl Hooks for App {
             let stores = crate::services::artifacts::ArtifactStores::from_env(
                 &settings.auto_submission.catalog.artifact_root,
             )?;
+            if let Some(signer) = crate::services::cdn::CdnSigner::from_env()? {
+                if stores.r2.is_none() {
+                    return Err(Error::Message("replay CDN requires R2 storage".into()));
+                }
+                ctx.shared_store.insert(signer);
+            }
             ctx.shared_store.insert(stores.clone());
             Box::new(stores)
         };
@@ -119,6 +125,7 @@ impl Hooks for App {
         tasks.register(tasks::migrate_artifacts::MigrateArtifacts);
         tasks.register(tasks::migrate_visual_assets::MigrateVisualAssets);
         tasks.register(tasks::publish_visual_asset::PublishVisualAsset);
+        tasks.register(tasks::seed_visual_assets::SeedVisualAssets);
         // tasks-inject (do not remove)
     }
 
