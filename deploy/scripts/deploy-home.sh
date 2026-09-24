@@ -331,7 +331,7 @@ if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
     chmod 0700 "$STATE_DIR/backups"
     backup_file="$STATE_DIR/backups/pre-r2-$DEPLOY_SHA.dump"
     if [[ ! -f "$backup_file" ]]; then
-      (umask 077; compose exec -T postgres-production sh -c 'exec pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_file.tmp")
+      (umask 077; compose exec -T postgres-production sh -c 'exec pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' </dev/null > "$backup_file.tmp")
       mv "$backup_file.tmp" "$backup_file"
     fi
   fi
@@ -478,14 +478,14 @@ compose ps
 # Only run data conversion after the new reader is healthy. A partially completed
 # conversion is resumable; it must not roll back to a binary that only reads v1.
 if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" && -f "$STATE_DIR/r2.env" ]]; then
-  if compose exec -T tuf-replay-server sh -c 'test "$TUF_REPLAY_STORAGE" = r2'; then
+  if compose exec -T tuf-replay-server sh -c 'test "$TUF_REPLAY_STORAGE" = r2' </dev/null; then
     migration_log="$STATE_DIR/r2-migration-$DEPLOY_SHA.log"
     (umask 077; : > "$migration_log")
-    if ! compose exec -T tuf-replay-server tuf_replay_server-cli task migrate_artifacts > "$migration_log" 2>&1; then
+    if ! compose exec -T tuf-replay-server tuf_replay_server-cli task migrate_artifacts </dev/null > "$migration_log" 2>&1; then
       echo "R2 artifact migration failed; new API remains healthy with local fallback. See protected host migration log." >&2
       exit 1
     fi
-    if ! compose exec -T tuf-replay-server tuf_replay_server-cli task migrate_visual_assets >> "$migration_log" 2>&1; then
+    if ! compose exec -T tuf-replay-server tuf_replay_server-cli task migrate_visual_assets </dev/null >> "$migration_log" 2>&1; then
       echo "Visual asset migration failed; new API retains both format readers. See protected host migration log." >&2
       exit 1
     fi

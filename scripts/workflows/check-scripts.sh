@@ -7,3 +7,4 @@ SCRIPTS_DIR="$(cd "$WORKFLOW_DIR/.." && pwd)"
 source "$SCRIPTS_DIR/lib/logging.sh"
 
 run_task "Validate shell scripts" "$SCRIPTS_DIR/tasks/validate/shell-scripts.sh"
+run_task "Verify SSH deployment stdin isolation" python3 "$SCRIPTS_DIR/../deploy/scripts/test-deploy-stdin.py"
