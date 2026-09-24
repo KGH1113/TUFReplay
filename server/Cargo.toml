@@ -48,7 +48,7 @@ bytes = "1.12.1"
 unicode-normalization = "0.1.25"
 tokio-util = { version = "0.7.19", features = ["io"] }
 futures-util = "0.3"
-opendal = { version = "0.58", default-features = false, features = ["services-s3", "services-fs", "services-memory"] }
+opendal = { version = "0.58", default-features = false, features = ["http-transport-reqwest", "services-s3", "services-fs", "services-memory"] }
 
 [[bin]]
 name = "tuf_replay_server-cli"

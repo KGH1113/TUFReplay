@@ -59,16 +59,12 @@ impl ArtifactStores {
                 "R2_ENDPOINT must be the account's HTTPS S3 endpoint".into(),
             ));
         }
-        let r2 = Operator::new(
-            services::S3::default()
-                .endpoint(&endpoint)
-                .region("auto")
-                .bucket(&required_env("R2_BUCKET")?)
-                .access_key_id(&required_env("R2_ACCESS_KEY_ID")?)
-                .secret_access_key(&required_env("R2_SECRET_ACCESS_KEY")?)
-                .disable_ec2_metadata(),
-        )
-        .map_err(StorageError::from)?;
+        let r2 = r2_operator(
+            &endpoint,
+            &required_env("R2_BUCKET")?,
+            &required_env("R2_ACCESS_KEY_ID")?,
+            &required_env("R2_SECRET_ACCESS_KEY")?,
+        )?;
         let primary = Arc::new(OpendalAdapter::new(r2.clone()));
         let local_fallback = match std::env::var("R2_LOCAL_FALLBACK").as_deref() {
             Ok("true") | Err(_) => true,
@@ -99,6 +95,28 @@ impl ArtifactStores {
         }
         Ok(&*self.primary)
     }
+}
+
+fn r2_operator(
+    endpoint: &str,
+    bucket: &str,
+    access_key: &str,
+    secret_key: &str,
+) -> Result<Operator> {
+    // Default features and constructor-based registration are disabled. Both API
+    // and maintenance CLI processes must install the HTTP transport explicitly.
+    opendal::install_default();
+    Operator::new(
+        services::S3::default()
+            .endpoint(endpoint)
+            .region("auto")
+            .bucket(bucket)
+            .access_key_id(access_key)
+            .secret_access_key(secret_key)
+            .disable_ec2_metadata(),
+    )
+    .map_err(StorageError::from)
+    .map_err(Into::into)
 }
 
 fn required_env(name: &str) -> Result<String> {
@@ -221,6 +239,36 @@ pub async fn verify_stream(stream: BytesStream, sha256: &str, bytes: u64) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn r2_operator_installs_http_transport_for_signed_object_requests() {
+        use axum::{http::HeaderMap, routing::put, Router};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let app = Router::new().route(
+            "/bucket/probe",
+            put(|headers: HeaderMap, body: Bytes| async move {
+                assert!(headers["authorization"]
+                    .to_str()
+                    .unwrap()
+                    .starts_with("AWS4-HMAC-SHA256 "));
+                assert_eq!(body.as_ref(), b"transport probe");
+            })
+            .get(|| async { "transport probe" }),
+        );
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let operator = r2_operator(&endpoint, "bucket", "test-key", "test-secret").unwrap();
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            operator.write("probe", "transport probe").await.unwrap();
+            assert_eq!(
+                operator.read("probe").await.unwrap().to_bytes().as_ref(),
+                b"transport probe"
+            );
+        })
+        .await;
+        server.abort();
+        result.unwrap();
+    }
 
     fn stores() -> ArtifactStores {
         let memory = || -> Arc<dyn StoreDriver> {
