@@ -11,6 +11,7 @@ Usage: ./scripts/run.sh <command>
 
 Commands:
   build       Build, test, and install the mod
+  mod-check   Build and test the mod without installing it
   package     Build the release package and metadata
   web-check   Run web tests, typecheck, Biome, and production build
   mac-helper  Build and verify the macOS microphone helper
@@ -24,6 +25,9 @@ command_name="${1:-help}"
 case "$command_name" in
   build)
     exec "$SCRIPTS_DIR/workflows/build-install.sh"
+    ;;
+  mod-check)
+    exec "$SCRIPTS_DIR/workflows/build-install.sh" --no-install
     ;;
   package)
     exec "$SCRIPTS_DIR/workflows/package-release.sh"
