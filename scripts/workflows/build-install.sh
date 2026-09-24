@@ -35,4 +35,8 @@ else
   log_skip "Run C# tests (macOS native SQLite test setup only)"
 fi
 
-run_task "Install mod" "$TASKS_DIR/install/mod.sh"
+if [[ "${1:-}" == "--no-install" ]]; then
+  log_skip "Install mod (verification only)"
+else
+  run_task "Install mod" "$TASKS_DIR/install/mod.sh"
+fi

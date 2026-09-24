@@ -33,6 +33,8 @@ TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records O
 
 Replay engine v2 preserves OS-native input, the resolved margin of every accepted hit, and its recorded timeline timestamp. Replays from the previous Skyhook-based engine remain visible as activity history after upgrading but are not playable. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
+New recordings keep hit timestamps nondecreasing even when the game song clock moves backward. Buffered native inputs retain their independently mapped timestamps and input ordering; recording a hit does not push an earlier buffered input forward. Clear and terminal times include both recorded inputs and hits. The song-relative time base and game input offset remain unchanged.
+
 ## Features
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, saving activity runs only after native input is captured.
@@ -158,7 +160,10 @@ Build only the macOS helper or validate the shell layer with:
 ./scripts/run.sh unity-ui
 ./scripts/run.sh mac-helper
 ./scripts/run.sh check
+./scripts/run.sh mod-check
 ```
+
+`mod-check` builds and runs the C# checks without installing the result into the game.
 
 `unity-ui` rebuilds the replay timeline and generic runtime notification prefabs with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel, uGUI toast/persistent-error UI, and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
 

@@ -48,6 +48,9 @@ internal static class ReplayNativeInputSuite
     TestNativeInputCsvRoundTrip();
     TestInputTimelineMath();
     TestFrozenGameplayStartAnchor();
+    TestRecordingHitClockRegression();
+    TestRecordingBufferedInputTiming();
+    TestRecordingTimelineBoundariesAndReset();
     TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
@@ -447,6 +450,61 @@ internal static class ReplayNativeInputSuite
       timelineWasAdvancing: false
     );
     Assert(Math.Abs(frozenStart - 12d) < 0.000001d, "A frozen PlayerControl interval leaked into the replay timeline.");
+  }
+
+  private static void TestRecordingHitClockRegression()
+  {
+    var timeline = new RecordingTimeline();
+    var payload = new RecordedRunPayload();
+    long[] observed = { 112_144_159L, 112_143_770L, 112_143_900L, 112_150_000L };
+    long[] expected = { 112_144_159L, 112_144_159L, 112_144_159L, 112_150_000L };
+    // Reproduce the observed 389 us regression without any intervening input.
+    for (int i = 0; i < observed.Length; i++)
+    {
+      payload.HitContexts.Add(
+        new RecordedHitContext
+        {
+          CurrentFloorID = 940 + i,
+          ResolvedHitMargin = 4,
+          TimeUs = timeline.RecordHit(observed[i]),
+        }
+      );
+    }
+    List<ReplayHitContext> parsed = ReplayHitContextParser.Parse(payload.ToHitContextCsvBytes());
+    Assert(parsed.Count == expected.Length, "Clock correction dropped or reordered hit contexts.");
+    for (int i = 0; i < expected.Length; i++)
+    {
+      Assert(parsed[i].TimeUs == expected[i], "Hit clock regression was not clamped until the clock caught up.");
+      Assert(parsed[i].CurrentFloorID == 940 + i && parsed[i].ResolvedHitMargin == 4, "Hit metadata changed.");
+    }
+  }
+
+  private static void TestRecordingBufferedInputTiming()
+  {
+    var timeline = new RecordingTimeline();
+    Assert(timeline.RecordInput(-10_000L) == -10_000L, "Negative pre-roll input was lost.");
+    Assert(timeline.RecordHit(20_000L) == 20_000L, "The first hit changed time.");
+    Assert(timeline.RecordInput(15_000L) == 15_000L, "A hit pushed an earlier buffered native input forward.");
+    Assert(timeline.RecordInput(14_000L) == 15_000L, "Buffered input ordering regressed.");
+    Assert(timeline.Clamp(16_000L) == 20_000L, "Delayed native input lowered the shared timeline floor.");
+    Assert(timeline.RecordHit(19_000L) == 20_000L, "A hit regressed after delayed native input.");
+    Assert(timeline.RecordInput(25_000L) == 25_000L, "Forward native input timing changed.");
+    Assert(timeline.RecordHit(24_000L) == 25_000L, "A hit preceded an already recorded later input.");
+  }
+
+  private static void TestRecordingTimelineBoundariesAndReset()
+  {
+    var timeline = new RecordingTimeline();
+    Assert(timeline.Clamp(-10_000L) == -10_000L, "An empty timeline lost its negative time.");
+    Assert(timeline.RecordHit(-1L) == 0L, "A hit kept a negative timestamp.");
+    timeline.RecordHit(30_000L);
+    Assert(timeline.RecordBoundary(29_000L) == 30_000L, "Clear/terminal time preceded the latest hit.");
+    Assert(timeline.RecordInput(28_000L) == 30_000L, "An input crossed a committed clear/terminal boundary.");
+    Assert(timeline.RecordInput(40_000L) == 40_000L, "Post-clear input stopped advancing.");
+    Assert(timeline.RecordBoundary(39_000L) == 40_000L, "Terminal time preceded the latest input.");
+    timeline.Reset();
+    Assert(timeline.RecordInput(-5_000L) == -5_000L, "A retry retained the prior input floor.");
+    Assert(timeline.RecordHit(1_000L) == 1_000L, "A retry retained the prior hit floor.");
   }
 
   private static void TestReplayLatenessHistogram()
