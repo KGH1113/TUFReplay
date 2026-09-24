@@ -111,7 +111,12 @@ services:
     restart: unless-stopped
     init: true
     stop_grace_period: 60s
+    env_file:
+      - path: ${R2_ENV_FILE:-/home/kgh/tuf-replay-data/auto-submission/r2.env}
+        required: false
     environment:
+      TUF_REPLAY_STORAGE: ${TUF_REPLAY_STORAGE:-local}
+      R2_LOCAL_FALLBACK: ${R2_LOCAL_FALLBACK:-true}
       LOCO_ENV: production
       HOST: https://tufreplay-auto.impl1113.dev
       BINDING: 0.0.0.0

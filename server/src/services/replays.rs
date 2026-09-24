@@ -94,29 +94,36 @@ pub struct PublishedVisuals {
     pub overlay: Option<(VisualDescriptor, VisualPresetBundle)>,
 }
 
-pub async fn published_visuals(db: &DatabaseConnection, run_id: Uuid) -> Result<PublishedVisuals> {
+pub async fn published_visuals(
+    ctx: &AppContext,
+    run_id: Uuid,
+    objects: bool,
+) -> Result<PublishedVisuals> {
     Ok(PublishedVisuals {
-        keyviewer: visual_for_run(db, run_id, VisualKind::Keyviewer).await?,
-        overlay: visual_for_run(db, run_id, VisualKind::Overlay).await?,
+        keyviewer: visual_for_run(ctx, run_id, VisualKind::Keyviewer, objects).await?,
+        overlay: visual_for_run(ctx, run_id, VisualKind::Overlay, objects).await?,
     })
 }
 
 pub async fn published_visual(
-    db: &DatabaseConnection,
+    ctx: &AppContext,
     run_id: Uuid,
     kind: VisualKind,
+    objects: bool,
 ) -> Result<(VisualDescriptor, VisualPresetBundle)> {
-    visual_for_run(db, run_id, kind)
+    visual_for_run(ctx, run_id, kind, objects)
         .await?
         .ok_or(Error::NotFound)
 }
 
 async fn visual_for_run(
-    db: &DatabaseConnection,
+    ctx: &AppContext,
     run_id: Uuid,
     kind: VisualKind,
+    objects: bool,
 ) -> Result<Option<(VisualDescriptor, VisualPresetBundle)>> {
-    let Some(bundle) = visual_presets::active_bundle_for_published_run(db, run_id, kind).await?
+    let Some(mut bundle) =
+        visual_presets::active_bundle_for_published_run(&ctx.db, run_id, kind).await?
     else {
         return Ok(None);
     };
@@ -127,14 +134,29 @@ async fn visual_for_run(
     {
         return Err(Error::Message("visual bundle integrity is invalid".into()));
     }
+    if !objects {
+        bundle.bundle = super::visual_assets::inline_legacy(ctx, &bundle.bundle).await?;
+    } else {
+        let mut value: serde_json::Value = serde_json::from_slice(&bundle.bundle)?;
+        if value["schema_version"] == 2 {
+            super::visual_assets::public_routes(ctx, &mut value).await?;
+            bundle.bundle = serde_json::to_vec(&value)?;
+        }
+    }
+    bundle.bytes = bundle.bundle.len() as i64;
+    bundle.sha256 = hex::encode(Sha256::digest(&bundle.bundle));
     let descriptor = VisualDescriptor {
         preset_id: bundle.id,
         name: bundle.name.clone(),
         source: bundle.source.clone(),
         source_version: bundle.source_version.clone(),
-        url: format!("/api/v1/replays/{run_id}/visuals/{}", kind.as_str()),
+        url: format!(
+            "/api/v1/replays/{run_id}/visuals/{}{}",
+            kind.as_str(),
+            if objects { "?asset_mode=objects" } else { "" }
+        ),
         sha256: bundle.sha256.clone(),
-        bytes,
+        bytes: bundle.bytes as u64,
     };
     Ok(Some((descriptor, bundle)))
 }

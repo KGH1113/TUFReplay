@@ -69,8 +69,14 @@ server {
     }
 }
 """ % (hostname, port)
+    legacy_config = config
+    config = config.replace(
+        "    server_name tufreplay-auto.impl1113.dev;\n",
+        "    server_name tufreplay-auto.impl1113.dev;\n    client_max_body_size 128m;\n",
+    )
     old_nginx = NGINX.read_text() if NGINX.exists() else None
-    if old_nginx is not None and old_nginx != config:
+    # Permit only the exact previous managed revision, never arbitrary edits.
+    if old_nginx is not None and old_nginx not in (config, legacy_config):
         raise SystemExit("Existing Nginx file differs from the fixed managed configuration.")
     had_link = ENABLED.is_symlink()
     tunnel_stat = TUNNEL.stat()

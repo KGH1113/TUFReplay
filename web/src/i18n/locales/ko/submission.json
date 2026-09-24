@@ -81,7 +81,7 @@
       "visual_source_unsupported": "선택한 비주얼 종류에서 이 소스를 사용할 수 없습니다.",
       "visual_bundle_invalid": "소스 설정을 가져오지 못했어요. 원본 설정을 확인하고 다시 시도해 주세요.",
       "visual_asset_missing": "참조한 이미지나 폰트를 찾지 못했어요. 소스 설정에 포함한 뒤 다시 시도해 주세요.",
-      "visual_payload_too_large": "이 비주얼 프리셋은 등록하기에 너무 큽니다.",
+      "visual_payload_too_large": "업로드 크기가 서버 제한을 초과했습니다. 프리셋의 이미지나 폰트 용량을 줄여 다시 시도해 주세요.",
       "visual_multiple_tabs": "DMNote 내보내기에 여러 탭이 들어 있습니다. 탭 하나만 내보낸 JSON 파일을 선택하세요.",
       "visual_selected_tab_missing": "파일에서 현재 선택 탭을 찾지 못했습니다. DMNote 또는 Impl DMNote에서 탭을 선택한 뒤 다시 내보내 주세요.",
       "visual_preset_not_found": "비주얼 프리셋이 더 이상 없습니다. 라이브러리를 새로고침하세요.",

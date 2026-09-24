@@ -60,11 +60,11 @@ impl Hooks for App {
         let driver = if matches!(ctx.environment, Environment::Test) {
             storage::drivers::mem::new()
         } else {
-            let root = settings.auto_submission.catalog.artifact_root;
-            std::fs::create_dir_all(&root).map_err(|error| {
-                Error::Message(format!("cannot create artifact root {root}: {error}"))
-            })?;
-            storage::drivers::local::new_with_prefix(&root)?
+            let stores = crate::services::artifacts::ArtifactStores::from_env(
+                &settings.auto_submission.catalog.artifact_root,
+            )?;
+            ctx.shared_store.insert(stores.clone());
+            Box::new(stores)
         };
         Ok(ctx
             .into_builder()
@@ -85,7 +85,8 @@ impl Hooks for App {
         let routes = AppRoutes::with_default_routes()
             .add_route(controllers::account::routes())
             .add_route(controllers::replays::routes())
-            .add_route(controllers::visual_presets::routes());
+            .add_route(controllers::visual_presets::routes())
+            .add_route(controllers::visual_assets::routes());
         if ingest_routes_enabled(&ctx.environment)
             || ctx
                 .shared_store
@@ -115,6 +116,9 @@ impl Hooks for App {
     fn register_tasks(tasks: &mut Tasks) {
         tasks.register(tasks::reconcile_submissions::ReconcileSubmissions);
         tasks.register(tasks::cleanup_evidence::CleanupEvidence);
+        tasks.register(tasks::migrate_artifacts::MigrateArtifacts);
+        tasks.register(tasks::migrate_visual_assets::MigrateVisualAssets);
+        tasks.register(tasks::publish_visual_asset::PublishVisualAsset);
         // tasks-inject (do not remove)
     }
 

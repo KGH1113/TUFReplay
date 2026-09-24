@@ -263,6 +263,12 @@ if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
     fail_deploy "Auto-submission host environment file permissions must be 600 or 400."
   fi
   python3 deploy/scripts/validate-auto-environment.py "$AUTO_ENV_FILE"
+  if [[ -f "$STATE_DIR/r2.env" ]]; then
+    if [[ "$(stat -c '%a' "$STATE_DIR/r2.env")" != "600" ]]; then
+      fail_deploy "R2 environment permissions must be 600."
+    fi
+    python3 deploy/scripts/check-r2.py "$STATE_DIR/r2.env"
+  fi
   mkdir -p "$AUTO_UPDATES_DIR"
   chmod 0755 "$AUTO_UPDATES_DIR"
 fi
@@ -319,6 +325,16 @@ if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" ]]; then
   STACK_TOUCHED=1
   compose up -d --wait postgres-production redis-ingest-production
   compose stop tuf-replay-server >/dev/null 2>&1 || true
+  # Retain an operator-owned backup before schema or object-reference migrations.
+  if [[ -f "$STATE_DIR/r2.env" ]]; then
+    mkdir -p "$STATE_DIR/backups"
+    chmod 0700 "$STATE_DIR/backups"
+    backup_file="$STATE_DIR/backups/pre-r2-$DEPLOY_SHA.dump"
+    if [[ ! -f "$backup_file" ]]; then
+      (umask 077; compose exec -T postgres-production sh -c 'exec pg_dump -Fc -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > "$backup_file.tmp")
+      mv "$backup_file.tmp" "$backup_file"
+    fi
+  fi
   if ! compose run --rm --no-deps tuf-replay-server db migrate </dev/null >/dev/null 2>&1; then
     fail_deploy "Auto-submission database migration failed; migration output was withheld."
   fi
@@ -458,3 +474,21 @@ trap - ERR
 rm -rf -- "$ROLLBACK_DIR"
 echo "Deployed $DEPLOY_ENVIRONMENT at $DEPLOY_SHA to 127.0.0.1:$PORT ($DOMAIN)."
 compose ps
+
+# Only run data conversion after the new reader is healthy. A partially completed
+# conversion is resumable; it must not roll back to a binary that only reads v1.
+if [[ "$DEPLOY_ENVIRONMENT" == "auto-submission" && -f "$STATE_DIR/r2.env" ]]; then
+  if compose exec -T tuf-replay-server sh -c 'test "$TUF_REPLAY_STORAGE" = r2'; then
+    migration_log="$STATE_DIR/r2-migration-$DEPLOY_SHA.log"
+    (umask 077; : > "$migration_log")
+    if ! compose exec -T tuf-replay-server tuf_replay_server-cli task migrate_artifacts > "$migration_log" 2>&1; then
+      echo "R2 artifact migration failed; new API remains healthy with local fallback. See protected host migration log." >&2
+      exit 1
+    fi
+    if ! compose exec -T tuf-replay-server tuf_replay_server-cli task migrate_visual_assets >> "$migration_log" 2>&1; then
+      echo "Visual asset migration failed; new API retains both format readers. See protected host migration log." >&2
+      exit 1
+    fi
+    echo "R2 artifact and visual asset migrations verified; local originals and database backup retained."
+  fi
+fi

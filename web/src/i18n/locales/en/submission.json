@@ -81,7 +81,7 @@
       "visual_source_unsupported": "This source is unavailable for the selected visual type.",
       "visual_bundle_invalid": "The source settings could not be imported. Check the original settings and try again.",
       "visual_asset_missing": "Referenced images or fonts are missing. Include them in the source setup and try again.",
-      "visual_payload_too_large": "This visual preset is too large to register.",
+      "visual_payload_too_large": "The upload exceeds the server limit. Reduce the preset image or font sizes and try again.",
       "visual_multiple_tabs": "This DMNote export contains multiple tabs. Export one tab and choose its JSON file.",
       "visual_selected_tab_missing": "The saved selected tab could not be found. Select a tab in DMNote or Impl DMNote and export the preset again.",
       "visual_preset_not_found": "This visual preset no longer exists. Reload the library.",

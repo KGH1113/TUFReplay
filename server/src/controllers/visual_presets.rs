@@ -46,7 +46,8 @@ pub async fn create(
         .get("bundle")
         .cloned()
         .ok_or_else(|| Error::BadRequest("visual_bundle_invalid".into()))?;
-    let validated = visuals::validate_bundle(bundle)?;
+    let mut validated = visuals::validate_bundle(bundle)?;
+    crate::services::visual_assets::externalize(&ctx, &owner, &mut validated).await?;
     let visual_kind = validated.kind;
     let visual_source = validated.source;
     let preset = visual_presets::create(

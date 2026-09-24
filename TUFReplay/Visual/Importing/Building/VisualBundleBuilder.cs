@@ -35,7 +35,8 @@ internal static class VisualBundleBuilder
       result.Files.Add(file.Key, file.Value);
     foreach (VisualAsset asset in assets.Assets)
       result.Assets.Add(asset);
-    string serialized = JsonConvert.SerializeObject(result, Formatting.None);
+    // Binary assets have separate per-file and aggregate limits and are uploaded separately.
+    string serialized = JsonConvert.SerializeObject(result.Files, Formatting.None);
     if (Encoding.UTF8.GetByteCount(serialized) > VisualImportLimits.MaxBundleBytes)
       throw new VisualImportException("visual_payload_too_large", "The visual preset exceeds the permitted size.");
     return result;
