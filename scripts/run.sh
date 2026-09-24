@@ -20,6 +20,7 @@ Commands:
   package     Build the release package and metadata
   web-check   Run web tests, typecheck, Biome, and production build
   server-check Check Rust formatting, all targets, and library tests
+  cdn-check   Check signed R2 edge delivery and cache authorization
   tester-admin-check Check the separate tester admin app and optional PostgreSQL integration
   mac-helper  Build and verify the macOS microphone helper
   unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
@@ -59,6 +60,9 @@ case "$command_name" in
     ;;
   server-check)
     exec bash "$SCRIPTS_DIR/tasks/verify/server.sh" "${@:2}"
+    ;;
+  cdn-check)
+    exec bun test "$SCRIPTS_DIR/../deploy/replay-cdn/worker.test.mjs"
     ;;
   tester-admin-check)
     exec bash "$SCRIPTS_DIR/tasks/verify/tester-admin.sh"

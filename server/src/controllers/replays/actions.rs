@@ -17,6 +17,7 @@ use uuid::Uuid;
 pub struct ManifestQuery {
     pub format: Option<u32>,
     pub asset_mode: Option<String>,
+    pub delivery: Option<String>,
 }
 
 pub async fn manifest(
@@ -33,7 +34,13 @@ pub async fn manifest(
             query.asset_mode.as_deref() == Some("objects"),
         )
         .await?;
-        format::json(ReplayManifestResponse::from_replay_v3(&replay, &visuals))?
+        let mut manifest = ReplayManifestResponse::from_replay_v3(&replay, &visuals);
+        if query.delivery.as_deref() == Some("cdn")
+            && query.asset_mode.as_deref() == Some("objects")
+        {
+            manifest.delivery = crate::services::cdn::delivery(&ctx, &replay, &visuals).await?;
+        }
+        format::json(manifest)?
     } else {
         format::json(ReplayManifestResponse::from_replay(&replay))?
     };

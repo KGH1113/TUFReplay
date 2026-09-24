@@ -253,6 +253,8 @@ Main and dev serve the companion web UI. The auto-submission environment also ru
 
 Auto-submission supports private R2 artifact storage with verified migration and local fallback. Visual preset images/fonts are uploaded separately as deduplicated SHA-256 objects; PostgreSQL retains metadata and references. Legacy inline presets and players remain supported. See [R2 deployment, migration and asset access](deploy/r2-storage.md).
 
+With CDN delivery enabled, the manifest API issues 15-minute signed object URLs for replay evidence, keyviewer/overlay JSON, images and fonts. The player downloads these bodies directly from the Cloudflare Worker/R2 path; the home server only authorizes and returns metadata. The Worker verifies every grant before serving its shared immutable object cache. Packaged default visual assets can be registered once through the operator task, eliminating per-account uploads without making private objects anonymously accessible.
+
 Web and API deployments run through GitHub Actions. Mod packages are built locally and uploaded by the operator. The workflows use Tailscale to reach the home server and require `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`. See [deployment setup and recovery](deploy/README.md) for the protected environment file, one-time routing bootstrap, and persistent data paths.
 
 Standard mod releases use GitHub Releases. Auto-submission builds use the separate home-server feed at `https://tufreplay-auto.impl1113.dev/updates/auto-submission/latest.json`; they are not published as GitHub Releases. Installing a different flavor requires installing that flavor's package. The auto-submission website requires an auto-submission mod with matching submission protocol support before enabling submission features.

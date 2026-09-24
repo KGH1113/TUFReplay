@@ -18,6 +18,8 @@ pub struct ReplayManifestResponse {
     pub files: Vec<ReplayFileResponse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub visuals: Option<ReplayVisualsResponse>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<crate::services::cdn::Delivery>,
 }
 
 #[derive(Serialize)]
@@ -91,6 +93,7 @@ impl ReplayManifestResponse {
                 })
                 .collect(),
             visuals,
+            delivery: None,
         }
     }
 }

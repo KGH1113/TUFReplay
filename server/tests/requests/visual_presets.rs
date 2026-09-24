@@ -410,3 +410,47 @@ async fn additional_visual_sources_roundtrip_through_database() {
     })
     .await;
 }
+
+#[tokio::test]
+#[serial]
+async fn bundled_defaults_are_reusable_without_becoming_public_or_exposing_user_assets() {
+    use bytes::Bytes;
+    use sha2::{Digest, Sha256};
+    use tuf_replay_server::services::visual_assets::{self, AssetReference, BUNDLED_DEFAULT_OWNER};
+    request::<App, _, _>(|request, ctx| async move {
+        for (owner, reusable, suffix) in
+            [(BUNDLED_DEFAULT_OWNER, true, 1), ("another-user", false, 2)]
+        {
+            let mut data = b"\x89PNG\r\n\x1a\n".to_vec();
+            data.push(suffix);
+            let reference = AssetReference {
+                sha256: hex::encode(Sha256::digest(&data)),
+                bytes: data.len() as i64,
+                media_type: "image/png".into(),
+            };
+            visual_assets::store(&ctx, owner, &reference, Bytes::from(data))
+                .await
+                .unwrap();
+            assert_eq!(
+                visual_assets::owned(&ctx.db, "new-user", &reference)
+                    .await
+                    .unwrap(),
+                reusable
+            );
+            assert!(visual_assets::find(&ctx.db, &reference.sha256)
+                .await
+                .unwrap()
+                .unwrap()
+                .public_license
+                .is_none());
+            let response = request
+                .get(&format!(
+                    "/api/v1/visual-assets/public/{}",
+                    reference.sha256
+                ))
+                .await;
+            assert_eq!(response.status_code(), 404);
+        }
+    })
+    .await;
+}

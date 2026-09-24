@@ -67,9 +67,55 @@ replays. Configure a CDN cache rule only for this public prefix, never the entir
 API or bucket. The route works as a shared HTTP cache origin without that rule.
 
 Bundled game/mod assets are not automatically made public based on their filenames.
-Until an asset's rights are reviewed, it remains in private storage and is still
-deduplicated for its owner. Public immutable caches are appropriate only for assets
+Until an asset's rights are reviewed, it remains in private storage. Public immutable caches are appropriate only for assets
 approved for permanent redistribution.
+
+The operator task `task seed_visual_assets directory:<Visual/Assets directory>`
+registers the eleven images/fonts shipped in the mod. Stage `TUFReplay/Visual/Assets`
+with `TUFReplay.Unity/Assets/Fonts/MAPLESTORY_OTF_BOLD.OTF` under its `Fonts` directory.
+It decodes the packaged base64
+files, verifies SHA-256 and media signatures, uploads each digest once, and records
+a reserved bundled-default owner. Accounts can then reference those defaults
+without uploading the same bytes. The MapleStory font, game's CJK font and Unity progress sprite
+retain private status; the eight assets with bundled redistribution licenses also
+record their license sources. The reserved owner cannot be assigned by a user API.
+
+## Direct CDN delivery
+
+`deploy/replay-cdn/worker.mjs` binds the private R2 bucket to the dedicated
+`tufreplay-cdn.impl1113.dev` domain. It exposes only GET/HEAD/OPTIONS and verifies an
+HMAC-SHA256 grant on every request before reading its cache or R2. Grants bind the
+exact object path and expire after 15 minutes. Internal cache entries are keyed
+by immutable object path; the browser response remains private/no-store. Range
+reads, CORS and content lengths are supported. Invalid/expired grants never reach
+R2, including after a valid request has populated the edge cache.
+
+Configure `/home/kgh/tuf-replay-data/auto-submission/cdn.env` with mode 600:
+
+```dotenv
+REPLAY_CDN_ORIGIN=https://tufreplay-cdn.impl1113.dev
+REPLAY_CDN_SIGNING_SECRET=<dedicated random secret of at least 32 characters>
+```
+
+Use `prepare-cdn-secret.py` on the home server and `sync-cdn-secret.py` from a
+Wrangler-authenticated operator machine to install the matching Worker secret.
+Deploy the Worker with `bunx wrangler deploy --config deploy/replay-cdn/wrangler.jsonc`.
+Update that config's bucket/domain and set `CLOUDFLARE_ACCOUNT_ID` for another account.
+Deploy the API through its existing workflow only after Worker verification.
+
+The new player requests `?format=3&asset_mode=objects&delivery=cdn`. After the normal
+publication checks, the API returns `delivery.origin`, `delivery.expires_at` and
+`delivery.urls` mapping its canonical routes to signed edge URLs. Evidence kinds
+remain allowlisted, excluding internal receipts. Selected keyviewer/overlay JSON
+is materialized once at `visual-bundles/sha256/<digest>`; image/font objects retain
+`visual-assets/sha256/<digest>`. PostgreSQL still holds ownership and preset metadata.
+The browser receives no S3 credentials, follows no redirects, omits credentials,
+and checks the downloaded lengths/hashes. Old players use the existing API routes.
+
+Run `./scripts/run.sh cdn-check` for cache authorization tests and
+`python3 /tmp/tuf-check-cdn.py` on the home server after installing
+`deploy/scripts/check-cdn.py` there. The latter checks actual R2 bytes, cache HIT,
+CORS, expiry and invalid signatures without printing grants or signing secrets.
 
 ## Future large private recordings
 

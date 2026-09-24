@@ -114,6 +114,8 @@ services:
     env_file:
       - path: ${R2_ENV_FILE:-/home/kgh/tuf-replay-data/auto-submission/r2.env}
         required: false
+      - path: /home/kgh/tuf-replay-data/auto-submission/cdn.env
+        required: false
     environment:
       TUF_REPLAY_STORAGE: ${TUF_REPLAY_STORAGE:-local}
       R2_LOCAL_FALLBACK: ${R2_LOCAL_FALLBACK:-true}

@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tuf-replay-cdn",
+  "main": "worker.mjs",
+  "compatibility_date": "2026-09-24",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [{ "pattern": "tufreplay-cdn.impl1113.dev", "custom_domain": true }],
+  "r2_buckets": [{ "binding": "REPLAY_BUCKET", "bucket_name": "tufreplay-private" }],
+  "observability": { "enabled": false }
+}

@@ -112,6 +112,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Check signed CDN delivery
+        run: ./scripts/run.sh cdn-check
+
       - name: Run web tests
         run: bun run web:test
 
