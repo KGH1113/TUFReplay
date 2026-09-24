@@ -16,8 +16,7 @@ public partial class RecordingSession
   private long _gameplayStateCaptureTicks;
   private bool _gameplayTimelineWasAdvancing;
   private double? _wonUnscaledTime;
-  private long _lastTimelineTimeUs;
-  private bool _hasTimelineTime;
+  private readonly RecordingTimeline _timeline = new RecordingTimeline();
 
   private void ObserveInputAnchorLocked(
     long captureTicks,
@@ -150,7 +149,7 @@ public partial class RecordingSession
       timeUs = ToRecordTimeUs(RecordingClock.CurrentSongPosition());
     }
 
-    return _hasTimelineTime ? Math.Max(_lastTimelineTimeUs, timeUs) : timeUs;
+    return _timeline.Clamp(timeUs);
   }
 
   private void MarkTerminalLocked()
@@ -158,9 +157,7 @@ public partial class RecordingSession
     if (Data.TerminalTimeUs.HasValue)
       return;
 
-    Data.TerminalTimeUs = CurrentTimelineTimeUsLocked();
-    _lastTimelineTimeUs = Data.TerminalTimeUs.Value;
-    _hasTimelineTime = true;
+    Data.TerminalTimeUs = _timeline.RecordBoundary(CurrentTimelineTimeUsLocked());
     Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
   }
 
@@ -262,10 +259,7 @@ public partial class RecordingSession
 
   private void AddInputLocked(long timeUs, int key, RecordInputFlags flags, int nativeCode = -1, ulong nativeFlags = 0)
   {
-    if (_hasTimelineTime)
-      timeUs = Math.Max(_lastTimelineTimeUs, timeUs);
-    _lastTimelineTimeUs = timeUs;
-    _hasTimelineTime = true;
+    timeUs = _timeline.RecordInput(timeUs);
     Data.Inputs.Add(new RecordedInput(timeUs, key, flags, nativeCode, nativeFlags));
     if (_evidenceSink != null)
     {
