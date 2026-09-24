@@ -67,8 +67,7 @@ public partial class RecordingSession
       _gameplayStateCaptureTicks = 0L;
       _gameplayTimelineWasAdvancing = false;
       _wonUnscaledTime = null;
-      _lastTimelineTimeUs = 0L;
-      _hasTimelineTime = false;
+      _timeline.Reset();
     }
 
     RecordInputTracker.Reset();
@@ -164,9 +163,7 @@ public partial class RecordingSession
         ready: true,
         forceSegmentBreak: false
       );
-      long wonTimeUs = ToRecordTimeUs(wonSongPosition);
-      if (_hasTimelineTime)
-        wonTimeUs = Math.Max(_lastTimelineTimeUs, wonTimeUs);
+      long wonTimeUs = _timeline.RecordBoundary(ToRecordTimeUs(wonSongPosition));
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
       Data.WonTimeUs = wonTimeUs;
@@ -174,8 +171,6 @@ public partial class RecordingSession
         AbortEvidenceLocked("submission_result_snapshot_failed");
       WriteEvidenceStateLocked(TUFReplay.Recording.Capture.RecordingStateKind.Won);
       _wonUnscaledTime = RecordingClock.CurrentUnscaledTime();
-      _lastTimelineTimeUs = wonTimeUs;
-      _hasTimelineTime = true;
       _previousInputAnchor = new InputTimelineAnchor(wonCaptureTicks, wonTimeUs, 1d);
       Data.InputDiscontinuities++;
       Data.InputLastDiscontinuity = "won";

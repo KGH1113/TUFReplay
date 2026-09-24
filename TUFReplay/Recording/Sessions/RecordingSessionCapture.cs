@@ -96,7 +96,7 @@ public partial class RecordingSession
     {
       if (!IsRecording)
         return;
-      hitContext.TimeUs = Math.Max(0L, CurrentTimelineTimeUsLocked());
+      hitContext.TimeUs = _timeline.RecordHit(CurrentTimelineTimeUsLocked());
       RefreshNoFailModeLocked();
       CommitEvidenceHitLocked();
       Data.HitContexts.Add(hitContext);

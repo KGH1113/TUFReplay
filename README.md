@@ -35,6 +35,8 @@ TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records O
 
 Replay engine v2 preserves OS-native input, the resolved margin of every accepted hit, and its recorded timeline timestamp. Replays from the previous Skyhook-based engine remain visible as activity history after upgrading but are not playable. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
 
+New recordings keep hit timestamps nondecreasing even when the game song clock moves backward. Buffered native inputs retain their independently mapped timestamps and input ordering; recording a hit does not push an earlier buffered input forward. Clear and terminal times include both recorded inputs and hits. The song-relative time base and game input offset remain unchanged.
+
 ## Features
 
 Trusted tester membership is managed in PostgreSQL through a separate [local administrator app](tools/trusted-testers-admin/README.md). Rust checks active membership at account/upload/submission authorization; TUF retains OAuth, account and final registration checks. See the [rollout guide](deploy/trusted-testers-admin.md) before switching away from the legacy TUF environment allowlist.
