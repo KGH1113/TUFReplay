@@ -101,6 +101,12 @@ pub async fn assemble(
         storage
             .rename(std::path::Path::new(&staged), std::path::Path::new(&key))
             .await?;
+        crate::services::artifacts::verify_stream(
+            storage.download_stream(std::path::Path::new(&key)).await?,
+            &digest,
+            sizes[kind],
+        )
+        .await?;
         streams.push(EvidenceStream {
             kind: kind as u8,
             storage_key: key,

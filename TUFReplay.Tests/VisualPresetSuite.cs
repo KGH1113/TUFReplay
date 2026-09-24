@@ -11,6 +11,7 @@ using TUFReplay.Submission.Api;
 using TUFReplay.Visual.Contracts;
 using TUFReplay.Visual.Domain;
 using TUFReplay.Visual.Importing;
+using TUFReplay.Visual.Infrastructure.Api;
 using TUFReplay.Visual.Infrastructure.Discovery;
 using TUFReplay.Visual.Infrastructure.FileSystem;
 using TUFReplay.Visual.Sources.DmNote;
@@ -39,6 +40,7 @@ internal static class VisualPresetSuite
       DmNotePlacementScaleValidation();
       DmNoteRejectsMultipleOrMissingAssets(root);
       AuthenticatedVisualRequestPreservesServerErrors();
+      VisualAssetsUploadOnceAndRetryUsesReferences();
       Console.WriteLine("Visual preset import tests passed.");
     }
     finally
@@ -599,6 +601,96 @@ internal static class VisualPresetSuite
     throw new InvalidOperationException("Expected the compact visual server error to be preserved.");
   }
 
+  private static void VisualAssetsUploadOnceAndRetryUsesReferences()
+  {
+    var handler = new AssetHandler();
+    var account = new SubmissionAccount(new Uri("https://example.test/"), _ => Task.FromResult("secret-token"));
+    using var client = new SubmissionRecordsClient(handler);
+    var gateway = new SubmissionVisualPresetGateway(client);
+    var body = new JObject
+    {
+      ["name"] = "Binary assets",
+      ["bundle"] = new JObject
+      {
+        ["schema_version"] = 1,
+        ["assets"] = new JArray(
+          new JObject
+          {
+            ["path"] = "one.png",
+            ["media_type"] = "image/png",
+            ["data_base64"] = Convert.ToBase64String(PngBytes()),
+          },
+          new JObject
+          {
+            ["path"] = "two.png",
+            ["media_type"] = "image/png",
+            ["data_base64"] = Convert.ToBase64String(PngBytes()),
+          }
+        ),
+      },
+    };
+    gateway.CreateAsync(account, body, CancellationToken.None).GetAwaiter().GetResult();
+    gateway.CreateAsync(account, body, CancellationToken.None).GetAwaiter().GetResult();
+    TestFixture.Assert(handler.Uploads == 1, "Identical assets must upload once, including retries.");
+    TestFixture.Assert(handler.Presets == 2, "Both presets must reference the uploaded asset.");
+    TestFixture.Assert(
+      body["bundle"]["assets"][0]["data_base64"] != null,
+      "Gateway must preserve the importer snapshot."
+    );
+  }
+
+  private sealed class AssetHandler : HttpMessageHandler
+  {
+    public int Uploads;
+    public int Presets;
+    private string _hash;
+
+    protected override async Task<HttpResponseMessage> SendAsync(
+      HttpRequestMessage request,
+      CancellationToken cancellationToken
+    )
+    {
+      TestFixture.Assert(
+        request.Headers.Authorization?.Parameter == "secret-token",
+        "Every asset request needs authentication."
+      );
+      JObject response;
+      if (request.RequestUri.AbsolutePath.EndsWith("/check", StringComparison.Ordinal))
+      {
+        var body = JObject.Parse(await request.Content.ReadAsStringAsync());
+        var refs = (JArray)body["assets"];
+        TestFixture.Assert(refs.Count == 1, "Duplicate bytes must share one asset check.");
+        _hash = (string)refs[0]["sha256"];
+        response = new JObject { ["missing"] = Uploads == 0 ? new JArray(_hash) : new JArray() };
+      }
+      else if (request.Method == HttpMethod.Put)
+      {
+        byte[] bytes = await request.Content.ReadAsByteArrayAsync();
+        TestFixture.Assert(bytes.SequenceEqual(PngBytes()), "Assets must be sent as raw binary bytes.");
+        TestFixture.Assert(
+          request.RequestUri.AbsolutePath.EndsWith(_hash, StringComparison.Ordinal),
+          "Upload hash must match its reference."
+        );
+        Uploads++;
+        response = new JObject();
+      }
+      else
+      {
+        string text = await request.Content.ReadAsStringAsync();
+        var bundle = JObject.Parse(text)["bundle"];
+        TestFixture.Assert(
+          !text.Contains("data_base64", StringComparison.Ordinal),
+          "Preset metadata must not contain binary assets."
+        );
+        TestFixture.Assert((int)bundle["schema_version"] == 2, "Object-backed presets require schema 2.");
+        TestFixture.Assert(bundle["assets"].Count() == 2, "Each logical asset path must retain its reference.");
+        Presets++;
+        response = new JObject { ["preset"] = new JObject { ["id"] = "test" } };
+      }
+      return new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(response.ToString()) };
+    }
+  }
+
   private sealed class RequestHandler : HttpMessageHandler
   {
     private readonly HttpStatusCode _status;
@@ -619,8 +711,11 @@ internal static class VisualPresetSuite
     {
       Request = request;
       Body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult();
+      string body = request.RequestUri.AbsolutePath.EndsWith("/visual-assets/check", StringComparison.Ordinal)
+        ? "{\"missing\":[]}"
+        : _body;
       return Task.FromResult(
-        new HttpResponseMessage(_status) { Content = new StringContent(_body), RequestMessage = request }
+        new HttpResponseMessage(_status) { Content = new StringContent(body), RequestMessage = request }
       );
     }
   }

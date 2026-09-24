@@ -1,7 +1,9 @@
+pub mod artifacts;
 pub mod auth;
 pub mod evidence;
 pub mod ingest;
 pub mod replays;
 pub mod submission;
 pub mod tuf;
+pub mod visual_assets;
 pub mod visuals;

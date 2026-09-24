@@ -53,6 +53,29 @@ class RoutingTests(unittest.TestCase):
         self.assertFalse(m.NGINX.exists())
         self.assertFalse(m.ENABLED.is_symlink())
 
+    def test_legacy_routes_upgrade_upload_limit_and_remain_idempotent(self):
+        m = self.module
+        m.main()
+        current = m.NGINX.read_text()
+        self.assertEqual(current.count("client_max_body_size 128m;"), 1)
+        legacy = current.replace("    client_max_body_size 128m;\n", "")
+        m.NGINX.write_text(legacy)
+        m.main()
+        self.assertEqual(m.NGINX.read_text(), current)
+        self.assertEqual(m.NGINX.with_suffix(".previous").read_text(), legacy)
+        m.main()
+        self.assertEqual(m.NGINX.read_text(), current)
+
+    def test_failed_upgrade_restores_legacy_routes(self):
+        m = self.module
+        m.main()
+        legacy = m.NGINX.read_text().replace("    client_max_body_size 128m;\n", "")
+        m.NGINX.write_text(legacy)
+        self.run.side_effect = RuntimeError("synthetic invalid config")
+        with self.assertRaises(RuntimeError):
+            m.main()
+        self.assertEqual(m.NGINX.read_text(), legacy)
+
     def test_dangling_foreign_link_is_rejected(self):
         m = self.module
         m.ENABLED.symlink_to(m.ENABLED.parent / "missing-foreign-config")

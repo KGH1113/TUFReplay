@@ -48,6 +48,87 @@ fn auth(request: &mut TestServer, token: &str) {
 
 #[tokio::test]
 #[serial]
+async fn inline_asset_migration_is_resumable_and_preserves_preset_identity() {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use loco_rs::{prelude::Task, task::Vars};
+    use tuf_replay_server::{
+        models::visual_presets as presets,
+        services::{visual_assets, visuals},
+        tasks::migrate_visual_assets::MigrateVisualAssets,
+    };
+    request::<App, _, _>(|_, ctx| async move {
+        let mut value = dmnote_bundle();
+        value["assets"] = json!([{"path":"image.png","media_type":"image/png","data_base64":STANDARD.encode(b"\x89PNG\r\n\x1a\n")}]);
+        let original = visuals::validate_bundle(value).unwrap();
+        let saved = presets::create(&ctx.db, "migration-owner", "Existing preset", original.kind, original.source,
+            &original.source_version, original.bytes.clone(), &original.sha256).await.unwrap();
+        for _ in 0..2 {
+            MigrateVisualAssets.run(&ctx, &Vars::default()).await.unwrap();
+            let stored = presets::active_bundle(&ctx.db, saved.id, original.kind).await.unwrap().unwrap();
+            assert_eq!(stored.name, "Existing preset");
+            assert_eq!(serde_json::from_slice::<Value>(&stored.bundle).unwrap()["schema_version"], 2);
+            let legacy = visual_assets::inline_legacy(&ctx, &stored.bundle).await.unwrap();
+            assert_eq!(serde_json::from_slice::<Value>(&legacy).unwrap(), serde_json::from_slice::<Value>(&original.bytes).unwrap());
+        }
+    }).await;
+}
+
+#[tokio::test]
+#[serial]
+async fn binary_assets_are_verified_deduplicated_and_owner_scoped() {
+    use bytes::Bytes;
+    use sha2::{Digest, Sha256};
+    use tuf_replay_server::services::visual_assets;
+    request::<App, _, _>(|mut request, ctx| async move {
+        let owner = Uuid::new_v4().to_string();
+        let token = crate::support::authenticate(&ctx, &owner).await;
+        auth(&mut request, &token);
+        let mut png = b"\x89PNG\r\n\x1a\n".to_vec();
+        png.resize(2_100_000, 0); // Exceeds Axum's default limit; the binary route has its own bound.
+        let data = Bytes::from(png);
+        let hash = hex::encode(Sha256::digest(&data));
+        let reference = json!({"sha256": hash, "bytes": data.len(), "media_type": "image/png"});
+        let checked = request.post("/api/v1/visual-assets/check").json(&json!({"assets":[reference]})).await;
+        assert_eq!(checked.json::<Value>()["missing"], json!([hash]));
+        let upload = request.put(&format!("/api/v1/visual-assets/{hash}"))
+            .content_type("image/png").bytes(data.clone()).await;
+        assert_eq!(upload.status_code(), 200, "{}", upload.text());
+        let checked = request.post("/api/v1/visual-assets/check").json(&json!({"assets":[reference]})).await;
+        assert_eq!(checked.json::<Value>()["missing"], json!([]));
+        assert_eq!(request.get(&format!("/api/v1/visual-assets/public/{hash}")).await.status_code(), 404);
+        let corrupt = request.put(&format!("/api/v1/visual-assets/{hash}"))
+            .content_type("image/png").bytes(Bytes::from_static(b"corrupt!")).await;
+        assert_eq!(corrupt.status_code(), 400);
+
+        let mut bundle = dmnote_bundle();
+        bundle["schema_version"] = json!(2);
+        bundle["assets"] = json!([{"path":"image.png", "sha256":hash,"bytes":data.len(),"media_type":"image/png"}]);
+        let saved = request.post("/api/v1/visual-presets").json(&json!({"name":"objects","bundle":bundle})).await;
+        assert_eq!(saved.status_code(), 200, "{}", saved.text());
+        let id = Uuid::parse_str(saved.json::<Value>()["preset"]["id"].as_str().unwrap()).unwrap();
+        let stored = tuf_replay_server::models::visual_presets::active_bundle(&ctx.db, id,
+            tuf_replay_server::models::visual_presets::VisualKind::Keyviewer).await.unwrap().unwrap();
+        let metadata: Value = serde_json::from_slice(&stored.bundle).unwrap();
+        assert_eq!(metadata["schema_version"], 2);
+        assert!(metadata["assets"][0].get("data_base64").is_none());
+        let legacy = visual_assets::inline_legacy(&ctx, &stored.bundle).await.unwrap();
+        assert_eq!(serde_json::from_slice::<Value>(&legacy).unwrap()["schema_version"], 1);
+
+        let other = Uuid::new_v4().to_string();
+        let other_token = crate::support::authenticate(&ctx, &other).await;
+        auth(&mut request, &other_token);
+        let checked = request.post("/api/v1/visual-assets/check").json(&json!({"assets":[reference]})).await;
+        assert_eq!(checked.json::<Value>()["missing"], json!([hash]));
+        assert_eq!(request.get(&format!("/api/v1/visual-assets/{hash}")).await.status_code(), 404);
+        let rejected = request.post("/api/v1/visual-presets").json(&json!({"name":"stolen","bundle":bundle})).await;
+        assert_eq!(rejected.status_code(), 400);
+        // Supplying the actual bytes proves possession; a guessed digest cannot claim ownership.
+        assert_eq!(request.put(&format!("/api/v1/visual-assets/{hash}")).content_type("image/png").bytes(data).await.status_code(), 200);
+    }).await;
+}
+
+#[tokio::test]
+#[serial]
 async fn legacy_source_migration_preserves_references_and_bundle_integrity() {
     use migration::{MigratorTrait, SchemaManager};
     use sea_orm::{ConnectionTrait, TransactionTrait};

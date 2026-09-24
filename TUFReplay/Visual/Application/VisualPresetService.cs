@@ -1,9 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Submission.Api;
 using TUFReplay.Visual.Application.Abstractions;
@@ -60,11 +58,6 @@ public sealed class VisualPresetService
       new VisualImportOptions { Uploads = uploads ?? Array.Empty<VisualAssetUpload>() }
     );
     var body = new JObject { ["name"] = cleanName, ["bundle"] = JObject.FromObject(bundle) };
-    if (Encoding.UTF8.GetByteCount(body.ToString(Formatting.None)) > VisualImportLimits.MaxRequestBytes)
-      throw new VisualImportException(
-        "visual_payload_too_large",
-        "The visual preset exceeds the permitted request size."
-      );
     if (!ReferenceEquals(account, _account()))
       throw new VisualImportException(
         "account_changed",
@@ -99,11 +92,6 @@ public sealed class VisualPresetService
 
     // Inspection and registration use the same snapshot, including large CJK fonts.
     var body = new JObject { ["name"] = cleanName, ["bundle"] = JObject.FromObject(bundle) };
-    if (Encoding.UTF8.GetByteCount(body.ToString(Formatting.None)) > VisualImportLimits.MaxRequestBytes)
-      throw new VisualImportException(
-        "visual_payload_too_large",
-        "The visual preset exceeds the permitted request size."
-      );
     cancellation.ThrowIfCancellationRequested();
     if (!ReferenceEquals(account, _account()))
       throw new VisualImportException(

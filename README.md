@@ -251,6 +251,8 @@ GitHub Actions deploys each branch to a separate Compose project on the home ser
 
 Main and dev serve the companion web UI. The auto-submission environment also runs the Rust API, worker, scheduler, PostgreSQL, Redis, and artifact storage. Separate deployment Compose files live under `deploy/`; the root `docker-compose.yml` remains available for local development. Each website exposes `/deployment.json` with its environment, build flavor, and deployed commit.
 
+Auto-submission supports private R2 artifact storage with verified migration and local fallback. Visual preset images/fonts are uploaded separately as deduplicated SHA-256 objects; PostgreSQL retains metadata and references. Legacy inline presets and players remain supported. See [R2 deployment, migration and asset access](deploy/r2-storage.md).
+
 Web and API deployments run through GitHub Actions. Mod packages are built locally and uploaded by the operator. The workflows use Tailscale to reach the home server and require `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`. See [deployment setup and recovery](deploy/README.md) for the protected environment file, one-time routing bootstrap, and persistent data paths.
 
 Standard mod releases use GitHub Releases. Auto-submission builds use the separate home-server feed at `https://tufreplay-auto.impl1113.dev/updates/auto-submission/latest.json`; they are not published as GitHub Releases. Installing a different flavor requires installing that flavor's package. The auto-submission website requires an auto-submission mod with matching submission protocol support before enabling submission features.

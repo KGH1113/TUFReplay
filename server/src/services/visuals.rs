@@ -56,7 +56,7 @@ pub fn validate_bundle(bundle: Value) -> Result<ValidatedBundle> {
         .get("schema_version")
         .and_then(Value::as_u64)
         .ok_or_else(|| Error::BadRequest("visual_bundle_invalid".into()))?;
-    if schema_version != 1 {
+    if schema_version != 1 && schema_version != 2 {
         return Err(Error::BadRequest("visual_bundle_invalid".into()));
     }
 
@@ -121,7 +121,7 @@ pub fn validate_bundle(bundle: Value) -> Result<ValidatedBundle> {
         source.is_dmnote(),
         false,
     )?;
-    let (sanitized_assets, asset_paths) = sanitize_assets(assets)?;
+    let (sanitized_assets, asset_paths) = sanitize_assets(assets, schema_version == 2)?;
     let mut references = Vec::new();
     collect_asset_references(
         source,
@@ -142,7 +142,7 @@ pub fn validate_bundle(bundle: Value) -> Result<ValidatedBundle> {
     }
 
     let mut sanitized = Map::new();
-    sanitized.insert("schema_version".into(), Value::from(1));
+    sanitized.insert("schema_version".into(), Value::from(schema_version));
     sanitized.insert("kind".into(), Value::from(kind.as_str()));
     sanitized.insert("source".into(), Value::from(source.as_str()));
     sanitized.insert("source_version".into(), Value::from(source_version.clone()));
@@ -292,7 +292,10 @@ fn validate_dmnote_tabs(files: &Map<String, Value>) -> Result<()> {
     Ok(())
 }
 
-fn sanitize_assets(assets: &[Value]) -> Result<(Vec<Value>, HashSet<String>)> {
+fn sanitize_assets(
+    assets: &[Value],
+    references_only: bool,
+) -> Result<(Vec<Value>, HashSet<String>)> {
     if assets.len() > MAX_ASSETS {
         return Err(Error::BadRequest("visual_payload_too_large".into()));
     }
@@ -313,6 +316,24 @@ fn sanitize_assets(assets: &[Value]) -> Result<(Vec<Value>, HashSet<String>)> {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .ok_or_else(|| Error::BadRequest("visual_bundle_invalid".into()))?;
+        if references_only {
+            validate_logical_path(path)?;
+            if is_executable_asset(path, media_type) {
+                continue;
+            }
+            let reference = super::visual_assets::reference_from_value(asset)?;
+            total = total
+                .checked_add(reference.bytes as usize)
+                .ok_or_else(|| Error::BadRequest("visual_payload_too_large".into()))?;
+            if total > MAX_TOTAL_ASSET_BYTES {
+                return Err(Error::BadRequest("visual_payload_too_large".into()));
+            }
+            if !paths.insert(path.to_owned()) {
+                return Err(Error::BadRequest("visual_bundle_invalid".into()));
+            }
+            result.push(serde_json::json!({"path":path,"media_type":reference.media_type,"sha256":reference.sha256,"bytes":reference.bytes}));
+            continue;
+        }
         let data = object
             .get("data_base64")
             .and_then(Value::as_str)
@@ -464,7 +485,7 @@ fn validate_logical_path(path: &str) -> Result<()> {
     Ok(())
 }
 
-fn validate_media(media_type: &str, data: &[u8]) -> Result<()> {
+pub fn validate_media(media_type: &str, data: &[u8]) -> Result<()> {
     let media_type = media_type.to_ascii_lowercase();
     let valid = match media_type.as_str() {
         "image/png" => data.starts_with(b"\x89PNG\r\n\x1a\n"),

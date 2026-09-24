@@ -21,6 +21,7 @@ public sealed class SubmissionRecordsClient : IDisposable
   public SubmissionRecordsClient(HttpMessageHandler handler)
   {
     _http = new HttpClient(handler ?? throw new ArgumentNullException(nameof(handler)));
+    _http.Timeout = Timeout.InfiniteTimeSpan;
   }
 
   public async Task<JObject> Send(
@@ -88,6 +89,36 @@ public sealed class SubmissionRecordsClient : IDisposable
 
   public void Dispose() => _http.Dispose();
 
+  public async Task UploadAsset(
+    SubmissionAccount account,
+    string sha256,
+    string mediaType,
+    byte[] bytes,
+    CancellationToken cancellation
+  )
+  {
+    if (account == null)
+      throw new InvalidOperationException("login_required");
+    if (bytes.Length == 0 || bytes.Length > VisualImportLimits.MaxDecodedAssetBytes)
+      throw new InvalidOperationException("visual_payload_too_large");
+    using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(3));
+    using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellation, timeout.Token);
+    using var request = new HttpRequestMessage(
+      HttpMethod.Put,
+      new Uri(account.Server, "api/v1/visual-assets/" + Uri.EscapeDataString(sha256))
+    );
+    request.Headers.Authorization = new AuthenticationHeaderValue(
+      "Bearer",
+      await account.AccessToken(linked.Token).ConfigureAwait(false)
+    );
+    request.Content = new ByteArrayContent(bytes);
+    request.Content.Headers.ContentType = new MediaTypeHeaderValue(mediaType);
+    using var response = await _http
+      .SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token)
+      .ConfigureAwait(false);
+    await ThrowIfError(response, linked.Token).ConfigureAwait(false);
+  }
+
   internal static async Task ThrowIfError(HttpResponseMessage response, CancellationToken cancellation)
   {
     if (response.IsSuccessStatusCode)
@@ -115,6 +146,13 @@ public sealed class SubmissionRecordsClient : IDisposable
 
   private static SubmissionRequestException CreateRequestException(HttpResponseMessage response, string body)
   {
+    // Reverse proxies may reject the body before the API can return JSON.
+    if (response.StatusCode == System.Net.HttpStatusCode.RequestEntityTooLarge)
+      return new SubmissionRequestException(
+        "visual_payload_too_large",
+        "The upload exceeds the server limit. Reduce the preset assets and try again.",
+        response.StatusCode
+      );
     string code = null;
     string message = null;
     string description = null;

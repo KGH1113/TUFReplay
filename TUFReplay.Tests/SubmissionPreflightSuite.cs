@@ -28,6 +28,7 @@ internal static class SubmissionPreflightSuite
           "catalog_unavailable"
         ),
         (HttpStatusCode.BadGateway, "upstream unavailable", "submission_request_failed"),
+        (HttpStatusCode.RequestEntityTooLarge, "<html>413 Request Entity Too Large</html>", "visual_payload_too_large"),
         (HttpStatusCode.OK, "not valid JSON", "level_preparation_failed"),
       }
     )

@@ -1,5 +1,7 @@
 # Home-server deployment
 
+For private R2 storage, asset deduplication, migration and recovery, see [R2 storage](r2-storage.md).
+
 Web and Rust deployments run only through GitHub Actions. Mod packages are built locally and uploaded by the operator; CI does not receive game DLLs or publish mod releases automatically.
 
 | Branch | Compose project | Public hostname | Loopback gateway |
