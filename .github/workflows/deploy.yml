@@ -101,6 +101,9 @@ jobs:
       - name: Check C# formatting
         run: dotnet csharpier check TUFReplay TUFReplay.Tests
 
+      - name: Check SSH deployment stdin isolation
+        run: python3 deploy/scripts/test-deploy-stdin.py
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
