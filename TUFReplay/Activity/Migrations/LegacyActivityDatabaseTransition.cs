@@ -34,8 +34,9 @@ public static class LegacyActivityDatabaseTransition
     using (SqliteConnection source = Open(mainPath))
     {
       ActivitySchema.ReadHeader(source, out applicationId, out version);
-      if (applicationId == ActivitySchema.ApplicationId && version == ActivitySchema.Version)
+      if (applicationId == ActivitySchema.ApplicationId && version >= 1 && version <= ActivitySchema.Version)
       {
+        ActivitySchema.Ensure(source);
         ActivitySchema.Validate(source);
         return;
       }

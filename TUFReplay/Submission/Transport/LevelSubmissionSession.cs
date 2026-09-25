@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Submission.Api;
 using TUFReplay.Submission.Catalog;
-using TUFReplay.Submission.Debug;
+using TUFReplay.Submission.Logging;
 using TUFReplay.Submission.Sessions;
 
 namespace TUFReplay.Submission.Transport;
@@ -100,7 +100,7 @@ public sealed class LevelSubmissionSession : IDisposable
             var uploader = new EvidenceUploader(
               () => new LevelRunConnection(this, attempt, level, _gameVersion, _modVersion),
               attempt.Capture,
-              progress: progress => SubmissionDebugTelemetry.Publish(attempt.RunId, progress),
+              progress: progress => SubmissionLog.Publish(attempt.RunId, progress),
               startFailedCapture: true
             );
             await uploader.Run(_stop.Token).ConfigureAwait(false);
@@ -110,7 +110,7 @@ public sealed class LevelSubmissionSession : IDisposable
           {
             attempt.Capture.Invalidate(error is UploadRejectedException ? error.Message : "level_session_unavailable");
             attempt.SetState("unavailable");
-            SubmissionDebugTelemetry.Publish("Attempt unavailable: " + (attempt.Capture.Failure ?? error.Message));
+            SubmissionLog.Publish("Attempt unavailable: " + (attempt.Capture.Failure ?? error.Message));
             if (!_stop.IsCancellationRequested && attempt.StartSent && !attempt.ServerTerminal)
               await Abandon(attempt, level).ConfigureAwait(false);
           }

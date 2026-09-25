@@ -94,7 +94,7 @@ CREATE INDEX idx_runs_level_index ON runs(level_session_id,run_index);
 CREATE INDEX idx_runs_start_tile ON runs(level_session_id,start_tile,run_index);
 CREATE UNIQUE INDEX idx_runs_submission_run_id ON runs(submission_run_id) WHERE submission_run_id IS NOT NULL;
 PRAGMA application_id = 1414874706;
-PRAGMA user_version = 1;";
+PRAGMA user_version = 2;";
     command.ExecuteNonQuery();
   }
 }

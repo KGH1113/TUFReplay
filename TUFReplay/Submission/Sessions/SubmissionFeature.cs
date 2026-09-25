@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Submission.Api;
-using TUFReplay.Submission.Debug;
+using TUFReplay.Submission.Logging;
 
 namespace TUFReplay.Submission.Sessions;
 
@@ -71,7 +71,7 @@ public sealed class SubmissionFeature : IDisposable
   {
     Disconnect();
     _account = account;
-    SubmissionDebugTelemetry.Publish("TUF account connected");
+    SubmissionLog.Publish("TUF account connected");
     _identityRefreshAt = DateTimeOffset.MinValue;
     StartIdentityRefresh();
   }
@@ -107,7 +107,7 @@ public sealed class SubmissionFeature : IDisposable
     _transport = null;
     _path = path;
     _levelId = levelId;
-    SubmissionDebugTelemetry.Publish(
+    SubmissionLog.Publish(
       levelId.HasValue ? "Level opened: TUF #" + levelId.Value : "Level opened: no TUF level identity"
     );
     WatchLevel();
@@ -121,23 +121,23 @@ public sealed class SubmissionFeature : IDisposable
     int startTile = RecordingSession.GetCurrentTile();
     if (startTile != 0)
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: run started at tile " + startTile);
+      SubmissionLog.Publish("Capture skipped: run started at tile " + startTile);
       return;
     }
-    SubmissionDebugTelemetry.Publish("Start tile 0 detected");
+    SubmissionLog.Publish("Start tile 0 detected");
     if (_account == null)
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: TUF login required");
+      SubmissionLog.Publish("Capture skipped: TUF login required");
       return;
     }
     if (!_account.CanSubmit)
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: trusted-tester submission access is unavailable");
+      SubmissionLog.Publish("Capture skipped: trusted-tester submission access is unavailable");
       return;
     }
     if (TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true)
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: auto submission disabled");
+      SubmissionLog.Publish("Capture skipped: auto submission disabled");
       return;
     }
     if (_session == session)
@@ -147,19 +147,19 @@ public sealed class SubmissionFeature : IDisposable
     var attempt = _transport?.Begin();
     if (attempt == null)
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: level session unavailable or attempt queue full");
+      SubmissionLog.Publish("Capture skipped: level session unavailable or attempt queue full");
       return;
     }
     if (!session.AttachEvidence(attempt.Capture))
     {
-      SubmissionDebugTelemetry.Publish("Capture skipped: evidence could not attach before input");
+      SubmissionLog.Publish("Capture skipped: evidence could not attach before input");
       attempt.Capture.Invalidate("capture_attachment_failed");
       return;
     }
     _attempt = attempt;
     session.LinkSubmissionRun(attempt.RunId);
     _session = session;
-    SubmissionDebugTelemetry.Publish(
+    SubmissionLog.Publish(
       "Live capture attached; awaiting run_start for " + attempt.RunId.ToString("N").Substring(0, 8)
     );
   }
@@ -169,7 +169,7 @@ public sealed class SubmissionFeature : IDisposable
     if (_session == session && _attempt != null)
     {
       _clearPending = true;
-      SubmissionDebugTelemetry.Publish("Won state detected; recording continues until editor return");
+      SubmissionLog.Publish("Won state detected; recording continues until editor return");
     }
   }
 
@@ -177,7 +177,7 @@ public sealed class SubmissionFeature : IDisposable
   {
     if (_session != session)
       return;
-    SubmissionDebugTelemetry.Publish("Run failed: " + reason);
+    SubmissionLog.Publish("Run failed: " + reason);
     session.AbortEvidence(reason);
     _session = null;
     _clearPending = false;
@@ -230,7 +230,7 @@ public sealed class SubmissionFeature : IDisposable
     var metadata = session.FinishEvidence(_attempt.Capture);
     if (metadata != null)
     {
-      SubmissionDebugTelemetry.Publish("Level evidence finalized; draining upload buffer");
+      SubmissionLog.Publish("Level evidence finalized; draining upload buffer");
       _attempt.Capture.Complete(metadata);
     }
     _session = null;
@@ -250,7 +250,7 @@ public sealed class SubmissionFeature : IDisposable
       || TUFReplay.Shared.Settings.TUFReplaySettingStore.Current?.AutoSubmissionDisabled == true
     )
       return;
-    SubmissionDebugTelemetry.Publish("Opening reusable level session for TUF #" + _levelId.Value);
+    SubmissionLog.Publish("Opening reusable level session for TUF #" + _levelId.Value);
     _transport?.Dispose();
     _transport = new TUFReplay.Submission.Transport.LevelSubmissionSession(
       _account,
@@ -307,14 +307,13 @@ public sealed class SubmissionFeature : IDisposable
     if (refresh.Status == TaskStatus.RanToCompletion)
     {
       account.ApplyIdentity(refresh.Result);
-      SubmissionDebugTelemetry.Publish("TUF account eligibility refreshed");
     }
     else
     {
       if (refresh.IsFaulted)
         _ = refresh.Exception;
       account.MarkIdentityUnavailable();
-      SubmissionDebugTelemetry.Publish("TUF account eligibility could not be confirmed");
+      SubmissionLog.Publish("TUF account eligibility could not be confirmed");
     }
     SyncSubmissionAuthorization();
   }
@@ -328,14 +327,14 @@ public sealed class SubmissionFeature : IDisposable
     _submissionAuthorized = canSubmit;
     if (canSubmit)
     {
-      SubmissionDebugTelemetry.Publish("Trusted-tester submission access confirmed");
+      SubmissionLog.Publish("Trusted-tester submission access confirmed");
       WatchLevel();
       Prepare();
       return;
     }
 
     if (_account != null)
-      SubmissionDebugTelemetry.Publish("Submission access unavailable; capture is paused");
+      SubmissionLog.Publish("Submission access unavailable; capture is paused");
     _session?.AbortEvidence("submission_permission_unavailable");
     _session = null;
     _clearPending = false;

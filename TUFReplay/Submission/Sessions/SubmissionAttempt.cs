@@ -3,7 +3,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using TUFReplay.Submission.Api;
 using TUFReplay.Submission.Capture;
-using TUFReplay.Submission.Debug;
+using TUFReplay.Submission.Logging;
 using TUFReplay.Submission.Transport;
 
 namespace TUFReplay.Submission.Sessions;
@@ -28,25 +28,25 @@ public sealed class SubmissionAttempt : IDisposable
         var uploader = new EvidenceUploader(
           () => new WebSocketUploadConnection(run.WebSocketUrl, run.UploadToken),
           Capture,
-          progress: progress => SubmissionDebugTelemetry.Publish(RunId, progress)
+          progress: progress => SubmissionLog.Publish(RunId, progress)
         );
         await uploader.Run(_cancellation.Token).ConfigureAwait(false);
         Volatile.Write(ref _state, "sealed");
       }
       catch (OperationCanceledException)
       {
-        SubmissionDebugTelemetry.Publish("Upload cancelled");
+        SubmissionLog.Publish("Upload cancelled");
         Volatile.Write(ref _state, "cancelled");
       }
       catch (UploadRejectedException error)
       {
-        SubmissionDebugTelemetry.Publish("Upload rejected: " + error.Message);
+        SubmissionLog.Publish("Upload rejected: " + error.Message);
         Capture.Invalidate(error.Message);
         Volatile.Write(ref _state, "unavailable");
       }
       catch (Exception)
       {
-        SubmissionDebugTelemetry.Publish("Upload failed");
+        SubmissionLog.Publish("Upload failed");
         Capture.Invalidate("upload_failed");
         Volatile.Write(ref _state, "unavailable");
       }

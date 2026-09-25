@@ -52,8 +52,6 @@ public static class FeatureRegistry
       MicrophoneCalibration.Enable();
       Recording.Enable();
       Replay.Enable();
-      if (Submission != null)
-        TUFReplay.Submission.Debug.SubmissionDebugHud.Initialize();
       MicrophonePermissionWarningCoordinator.Initialize();
       Ipc.Enable();
     }
@@ -67,7 +65,6 @@ public static class FeatureRegistry
   public static void Shutdown()
   {
     Ipc?.Disable();
-    TUFReplay.Submission.Debug.SubmissionDebugHud.Shutdown();
     Visuals?.Dispose();
     Visuals = null;
     Submission?.Dispose();
