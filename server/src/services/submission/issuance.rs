@@ -9,7 +9,7 @@ use crate::services::{
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use chrono::{Duration, Utc};
 use loco_rs::prelude::*;
-use sea_orm::TransactionTrait;
+use sea_orm::{ActiveModelTrait, ActiveValue::Set, IntoActiveModel, TransactionTrait};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -20,6 +20,8 @@ pub struct RunClaims {
     pub level_id: i64,
     pub file_id: String,
     pub chart_path: String,
+    pub submission_hash_version: i64,
+    pub submission_hash: String,
 }
 
 pub struct IssuedRun {
@@ -32,6 +34,8 @@ pub struct IssuedRun {
 
 #[derive(Debug, thiserror::Error)]
 pub enum IssuanceError {
+    #[error("{0}")]
+    Admission(&'static str),
     #[error(transparent)]
     Internal(#[from] loco_rs::Error),
     #[error(transparent)]
@@ -61,6 +65,20 @@ pub async fn issue_with_id(
         .shared_store
         .get::<RunIngestStore>()
         .ok_or_else(|| Error::Message("ingest unavailable".into()))?;
+    store
+        .allow_run_start(&identity.owner_id)
+        .await
+        .map_err(|_| IssuanceError::Admission("run_start_rate_exceeded"))?;
+    // No run row, Redis upload session or artifact exists until this succeeds.
+    let admission = tokio::time::timeout(
+        std::time::Duration::from_secs(8),
+        super::admission::check(ctx, &claims),
+    )
+    .await
+    .map_err(|_| IssuanceError::Admission("official_chart_unavailable"))?
+    .map_err(IssuanceError::Admission)?;
+    crate::services::auth::authorize_grant(ctx, &identity.owner_id, Some(identity.grant_id))
+        .await?;
     let mut bytes = [0_u8; 32];
     getrandom::fill(&mut bytes).map_err(|_| Error::Message("random source unavailable".into()))?;
     let token = URL_SAFE_NO_PAD.encode(bytes);
@@ -88,6 +106,9 @@ pub async fn issue_with_id(
         },
     )
     .await?;
+    let mut admitted = run.into_active_model();
+    admitted.chart_admission = Set(Some(serde_json::to_value(admission).map_err(Error::from)?));
+    let run = admitted.update(&transaction).await?;
     Records::create_authorized(
         &transaction,
         run.id,

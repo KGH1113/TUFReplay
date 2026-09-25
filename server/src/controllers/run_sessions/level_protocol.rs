@@ -17,6 +17,10 @@ pub enum Control {
         client_mod_version: String,
         client_tuf_file_id: String,
         client_level_relative_path: String,
+        #[serde(default)]
+        submission_gameplay_hash_version: i64,
+        #[serde(default)]
+        submission_gameplay_hash_hex: String,
         last_acknowledged_sequence: i64,
     },
     RunHeartbeat {

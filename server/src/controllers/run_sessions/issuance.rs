@@ -1,4 +1,4 @@
-use super::{dtos::*, errors::catalog_error_response, support::catalog_runtime};
+use super::dtos::*;
 use crate::services::{
     auth,
     ingest::IngestError,
@@ -18,12 +18,6 @@ pub async fn issue_run_session(
 ) -> Result<Response> {
     let identity = auth::identity(&ctx, &headers).await?;
     identity.require_can_submit()?;
-    if let Err(error) = catalog_runtime(&ctx)?
-        .require_eligible(params.tuf_level_id)
-        .await
-    {
-        return Ok(catalog_error_response(error));
-    }
     let issued = match issuance::issue(
         &ctx,
         identity,
@@ -34,11 +28,23 @@ pub async fn issue_run_session(
             level_id: params.tuf_level_id,
             file_id: params.client_tuf_file_id,
             chart_path: params.client_level_relative_path,
+            submission_hash_version: params.submission_gameplay_hash_version,
+            submission_hash: params.submission_gameplay_hash_hex,
         },
     )
     .await
     {
         Ok(issued) => issued,
+        Err(IssuanceError::Admission(code)) => {
+            let status = match code {
+                "catalog_unavailable" | "official_chart_unavailable" => {
+                    StatusCode::SERVICE_UNAVAILABLE
+                }
+                "run_start_rate_exceeded" => StatusCode::TOO_MANY_REQUESTS,
+                _ => StatusCode::UNPROCESSABLE_ENTITY,
+            };
+            return Ok((status, Json(ErrorResponse { code })).into_response());
+        }
         Err(IssuanceError::Ingest(IngestError::AccountLimit)) => {
             return Ok((
                 StatusCode::TOO_MANY_REQUESTS,
@@ -54,6 +60,7 @@ pub async fn issue_run_session(
                 IssuanceError::Model(error) => error.into(),
                 IssuanceError::Database(error) => error.into(),
                 IssuanceError::Ingest(error) => Error::Message(error.to_string()),
+                IssuanceError::Admission(code) => Error::BadRequest(code.into()),
             })
         }
     };

@@ -31,6 +31,7 @@ public sealed class SubmissionFeature : IDisposable
   private SubmissionAccount _identityRefreshAccount;
   private DateTimeOffset _identityRefreshAt;
   private bool _submissionAuthorized;
+  private Guid? _notifiedRejection;
 
   public object Status() =>
     new
@@ -42,7 +43,7 @@ public sealed class SubmissionFeature : IDisposable
       : !_account.CanSubmit ? "eligibility_" + _account.IdentityStatus
       : _attempt?.State ?? _transport?.State ?? "preparing",
       runId = _attempt?.RunId.ToString(),
-      reason = _attempt?.Capture.Failure,
+      reason = _attempt?.Failure,
       username = _account?.Username,
       nickname = _account?.Nickname,
       accountStatus = _account?.IdentityStatus ?? "unavailable",
@@ -144,20 +145,25 @@ public sealed class SubmissionFeature : IDisposable
       return;
     // Attach bounded live capture before input; run_start approval never blocks Unity.
     Prepare();
-    var attempt = _transport?.Begin();
+    // Snapshot the actual in-memory chart at every start, including editor edits and retries.
+    TUFReplay.Submission.Validation.RuntimeSubmissionGameplayHash.TryComputeCurrent(out var hash, out _);
+    session.Data.SubmissionGameplayHash = hash;
+    var attempt = _transport?.Begin(hash);
     if (attempt == null)
     {
       SubmissionLog.Publish("Capture skipped: level session unavailable or attempt queue full");
       return;
     }
+    _attempt = attempt;
+    if (attempt.Finished)
+      return;
     if (!session.AttachEvidence(attempt.Capture))
     {
       SubmissionLog.Publish("Capture skipped: evidence could not attach before input");
       attempt.Capture.Invalidate("capture_attachment_failed");
       return;
     }
-    _attempt = attempt;
-    session.LinkSubmissionRun(attempt.RunId);
+    session.LinkSubmissionRun(attempt.RunId, attempt.Link);
     _session = session;
     SubmissionLog.Publish(
       "Live capture attached; awaiting run_start for " + attempt.RunId.ToString("N").Substring(0, 8)
@@ -196,6 +202,30 @@ public sealed class SubmissionFeature : IDisposable
         Connect(Account);
     }
     CompleteIdentityRefresh();
+    if (_attempt?.State == "unavailable" && !_attempt.Approved && _notifiedRejection != _attempt.RunId)
+    {
+      string message = _attempt.Failure switch
+      {
+        "submission_chart_gameplay_mismatch" =>
+          "This chart differs from the official TUF chart. Download the official chart and start a new run.",
+        "level_revision_outdated" => "A newer official chart is available. Download it and start a new run.",
+        "official_chart_ambiguous" =>
+          "TUF has not confirmed which chart to use. Ask a TUF moderator to confirm the chart.",
+        "official_chart_unsupported" or "submission_chart_identity_missing_or_unsupported" =>
+          "This chart cannot be verified for automatic submission. Use a supported official chart.",
+        "chart_approval_required" => "Update the submission server and mod, then start a new run.",
+        "run_failed" or "level_changed" or "collection_disabled" or "account_disconnected" => null,
+        _ => "This run could not be prepared for submission. Check your connection and start a new run.",
+      };
+      if (
+        message == null
+        || TUFReplay.Replay.Timeline.ReplayTimelineHud.ShowNotificationToast(
+          "Automatic submission unavailable",
+          message
+        )
+      )
+        _notifiedRejection = _attempt.RunId;
+    }
     SyncSubmissionAuthorization();
     if (_account != null && _identityRefresh == null && DateTimeOffset.UtcNow >= _identityRefreshAt)
       StartIdentityRefresh();

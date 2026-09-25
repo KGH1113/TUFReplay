@@ -6,6 +6,7 @@ import { requireFreePorts } from "../auto-submission-e2e/src/ports";
 import { seedTrustedTester } from "../testing/trusted-tester-fixture";
 import { requireStorage, storageEnvironment } from "./storage";
 import { prepareObjectStorage } from "./maintenance";
+import { confirmedArchivePath } from "./official-chart";
 import {
 	assertBackendEnvironment,
 	backend,
@@ -35,9 +36,16 @@ for (const [name, path] of [["TUF backend", backend], ["TUF frontend", frontend]
 const deliveryResolver = Bun.file(`${editor}/src/web/replay-viewer/replay-delivery-url.resolver.ts`);
 if (!(await deliveryResolver.exists()) || !(await deliveryResolver.text()).includes("VITE_LOCAL_REPLAY_CDN_ORIGIN"))
   throw new Error("web-adofai checkout needs local CDN support (VITE_LOCAL_REPLAY_CDN_ORIGIN). Update it or select a current checkout with E2E_WEB_ADOFAI.");
-const charts: Array<{ levelId: number; archive: string }> = JSON.parse(
+const charts: Array<{ levelId: number; archive: string; metadata: unknown }> = JSON.parse(
 	await readFile(`${data}/charts.json`, "utf8"),
 );
+for (const chart of charts) {
+  try {
+    confirmedArchivePath(chart.metadata);
+  } catch {
+    throw new Error(`TUF #${chart.levelId}: official chart metadata is missing. Run bun run e2e:live:prepare again.`);
+  }
+}
 if (!(await Bun.file(`${data}/login.json`).exists()))
 	throw new Error("Run bun run e2e:live:prepare first");
 await requireFreePorts([3002, 3990, 5151, 5152, 5176, 5180, 5190]);

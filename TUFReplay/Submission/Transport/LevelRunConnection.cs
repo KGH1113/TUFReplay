@@ -76,6 +76,8 @@ internal sealed class LevelRunConnection : IUploadConnection
             client_mod_version = _modVersion,
             client_tuf_file_id = _level.FileId,
             client_level_relative_path = _level.RelativePath,
+            submission_gameplay_hash_version = TUFReplay.Submission.Validation.SubmissionGameplayHash.Version,
+            submission_gameplay_hash_hex = _attempt.GameplayHash,
             last_acknowledged_sequence = (long)message["last_acknowledged_sequence"],
           },
           deadline.Token
@@ -98,8 +100,12 @@ internal sealed class LevelRunConnection : IUploadConnection
     }
   }
 
-  public Task SendFrame(UploadFrame frame, CancellationToken cancellation) =>
-    _owner.Wire.SendFrame(frame.ForRun(_attempt.RunId), cancellation);
+  public Task SendFrame(UploadFrame frame, CancellationToken cancellation)
+  {
+    if (!_attempt.Approved)
+      throw new UploadRejectedException("chart_approval_required");
+    return _owner.Wire.SendFrame(frame.ForRun(_attempt.RunId), cancellation);
+  }
 
   public async Task<JObject> Receive(CancellationToken cancellation)
   {
@@ -107,6 +113,9 @@ internal sealed class LevelRunConnection : IUploadConnection
     JObject reply = await _owner.Wire.Receive(deadline.Token).ConfigureAwait(false);
     if ((string)reply["type"] == "error")
     {
+      // A definitive rejection must not be retried by the lost-response cleanup path.
+      _attempt.ServerTerminal = true;
+      _terminal = true;
       if ((string)reply["code"] == "run_failed")
       {
         _terminal = true;
@@ -119,6 +128,9 @@ internal sealed class LevelRunConnection : IUploadConnection
     string kind = (string)reply["type"];
     if (kind == "ready")
     {
+      if ((bool?)reply["chart_verified"] != true)
+        throw new UploadRejectedException("chart_approval_required");
+      _attempt.Link.Approve();
       _attempt.Approved = true;
       if (!_cleanup)
         _attempt.SetState("uploading");

@@ -22,15 +22,18 @@ public sealed class SubmissionPreflight : IDisposable
     string path,
     int levelId,
     string gameVersion,
-    string modVersion
+    string modVersion,
+    byte[] submissionGameplayHash = null
   )
   {
+    byte[] hash = submissionGameplayHash == null ? null : (byte[])submissionGameplayHash.Clone();
     _ = Task.Run(async () =>
     {
       try
       {
         var level = InstalledLevelReader.Read(path, levelId);
-        var run = await api.Issue(account, level, gameVersion, modVersion, _cancellation.Token).ConfigureAwait(false);
+        var run = await api.Issue(account, level, gameVersion, modVersion, _cancellation.Token, hash)
+          .ConfigureAwait(false);
         if (!_cancellation.IsCancellationRequested)
           Volatile.Write(ref _ready, run);
       }

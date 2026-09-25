@@ -12,7 +12,6 @@ use crate::{
         auth::{self, AccountIdentity},
         ingest::{lifecycle::RunStream, AppendOutcome, RunIngestStore},
         submission::issuance::{self, RunClaims},
-        tuf::catalog::CatalogError,
     },
 };
 use axum::{
@@ -99,6 +98,14 @@ async fn serve(
         return;
     }
     let mut active: Option<Model> = None;
+    // Warm only public official-chart bytes, never a player's run or evidence.
+    // A cold archive can finish while the first attempt's bounded check expires.
+    if let Ok(catalog) = support::catalog_runtime(ctx) {
+        tokio::spawn(async move {
+            use crate::domain::OfficialChartProvider;
+            let _ = catalog.acquire(level_id, "").await;
+        });
+    }
     let mut ticks = tokio::time::interval(Duration::from_secs(5));
     ticks.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut last_message = Instant::now();
@@ -139,6 +146,8 @@ async fn serve(
                     client_mod_version,
                     client_tuf_file_id,
                     client_level_relative_path,
+                    submission_gameplay_hash_version,
+                    submission_gameplay_hash_hex,
                     last_acknowledged_sequence,
                 }) => {
                     if active.as_ref().is_some_and(|run| run.pid != run_id) {
@@ -153,8 +162,10 @@ async fn serve(
                             level_id,
                             file_id: client_tuf_file_id,
                             chart_path: client_level_relative_path,
+                            submission_hash_version: submission_gameplay_hash_version,
+                            submission_hash: submission_gameplay_hash_hex,
                         };
-                        match start(ctx, store, identity, run_id, claims).await {
+                        match start(ctx, identity, run_id, claims).await {
                             Ok(model) => {
                                 let hash = hex::encode(&model.upload_token_hash);
                                 if model.status == "failed" {
@@ -168,7 +179,7 @@ async fn serve(
                                         match run(ctx, store, &model, &hash).open().await {
                                             Ok(ack) => {
                                                 active = Some(model);
-                                                json!({"type":"ready", "run_id":run_id, "acknowledged_sequence":ack, "max_chunk_bytes":store.settings().max_chunk_bytes, "heartbeat_interval_ms":store.settings().heartbeat_interval_ms})
+                                                json!({"type":"ready", "chart_verified":true, "run_id":run_id, "acknowledged_sequence":ack, "max_chunk_bytes":store.settings().max_chunk_bytes, "heartbeat_interval_ms":store.settings().heartbeat_interval_ms})
                                             }
                                             Err(_) => error(Some(run_id), "run_start_unavailable"),
                                         }
@@ -322,7 +333,6 @@ async fn owned(
 
 async fn start(
     ctx: &AppContext,
-    store: &RunIngestStore,
     identity: &AccountIdentity,
     id: Uuid,
     claims: RunClaims,
@@ -342,14 +352,6 @@ async fn start(
     {
         return Err("invalid_run_start");
     }
-    support::catalog_runtime(ctx)
-        .map_err(|_| "catalog_unavailable")?
-        .require_eligible(claims.level_id)
-        .await
-        .map_err(|cause| match cause {
-            CatalogError::IneligibleDifficulty => "level_not_eligible",
-            _ => "catalog_unavailable",
-        })?;
     if let Some(model) = owned(ctx, identity, id).await? {
         if model.protocol_version != level_protocol::VERSION
             || model.tuf_level_id != claims.level_id
@@ -357,19 +359,21 @@ async fn start(
             || model.client_level_relative_path != claims.chart_path
             || model.client_game_version != claims.game_version
             || model.client_mod_version != claims.mod_version
+            || model.chart_admission.as_ref()
+                .and_then(|v| serde_json::from_value::<crate::services::submission::admission::ChartAdmission>(v.clone()).ok())
+                .is_none_or(|admission| !admission.matches(&claims))
         {
             return Err("run_start_conflict");
         }
         return Ok(model);
     }
-    store
-        .allow_run_start(&identity.owner_id)
-        .await
-        .map_err(|_| "run_start_rate_exceeded")?;
     issuance::issue_with_id(ctx, identity.clone(), claims, id)
         .await
         .map(|issued| issued.run)
-        .map_err(|_| "run_start_unavailable")
+        .map_err(|error| match error {
+            issuance::IssuanceError::Admission(code) => code,
+            _ => "run_start_unavailable",
+        })
 }
 
 async fn terminal(

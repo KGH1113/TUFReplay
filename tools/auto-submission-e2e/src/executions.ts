@@ -50,6 +50,8 @@ export async function start(options: RunOptions) {
       client_installed_payload_hash_hex: item.chartSha,
       client_payload_hash_version: 1,
       client_level_relative_path: "main.adofai",
+      submission_gameplay_hash_version: item.meta.submissionGameplayHashVersion,
+      submission_gameplay_hash_hex: item.meta.submissionGameplayHashHex,
     });
     run.runId = issued.run_id;
     scenario(issued.run_id, options.scenario);

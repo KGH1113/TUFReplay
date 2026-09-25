@@ -83,6 +83,11 @@ pub async fn validate(
         return Ok(ValidationOutcome::Rejected("recorded_result_ineligible"));
     };
 
+    if let Err(reason) = super::admission::verify_evidence(run.chart_admission.as_ref(), &metadata)
+    {
+        return Ok(ValidationOutcome::Rejected(reason));
+    }
+
     // Acquisition resolves current TUF metadata and the current official chart
     // archive. Any upstream failure remains retryable through the worker path.
     let chart = match charts

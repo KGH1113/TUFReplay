@@ -41,10 +41,13 @@ public partial class RecordingSession
     }
   }
 
-  public void LinkSubmissionRun(System.Guid runId)
+  public void LinkSubmissionRun(System.Guid runId, TUFReplay.Submission.Sessions.SubmissionRunLink link)
   {
     lock (_lock)
+    {
       Data.SubmissionRunId = runId.ToString();
+      Data.SubmissionLink = link;
+    }
   }
 
   /// <summary>Called after capture drains at recording termination; scoring stays bounded by Won.</summary>

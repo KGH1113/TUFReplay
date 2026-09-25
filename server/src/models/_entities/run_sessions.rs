@@ -28,6 +28,7 @@ pub struct Model {
     pub client_tuf_file_id: String,
     #[sea_orm(column_type = "Text")]
     pub client_level_relative_path: String,
+    pub chart_admission: Option<Json>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

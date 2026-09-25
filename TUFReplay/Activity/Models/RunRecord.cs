@@ -40,6 +40,7 @@ public class RunRecord
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
   public string SubmissionRunId;
+  public TUFReplay.Submission.Sessions.SubmissionRunLink SubmissionLink;
   public bool ReplayPlayable;
   public string ReplayUnavailableReason;
   public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;
