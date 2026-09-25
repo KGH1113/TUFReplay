@@ -80,6 +80,7 @@ internal static class ReplayNativeInputSuite
     TestReplayPumpClockJumpPreservesBacklog();
     TestReplayPumpCatchUpYieldBoundary();
     TestReplayPumpPartialEmissionRetry();
+    ReplayNativeInputConcurrencySuite.RunAll();
     TestPreparedReplayDoesNotEmit();
     TestMiddleStartReplayInitializesFromPlayerControl();
   }
@@ -810,7 +811,7 @@ internal static class ReplayNativeInputSuite
     var emitter = new CapturingEmitter();
     var pumpScheduler = new ReplayInputScheduler(inputs);
     using var pump = new ReplayNativeInputPump(pumpScheduler, emitter);
-    Assert(pump.ResetTo(0, 1d, true) == 4, "Replay emitted more than the inferred initial held-key delta.");
+    pump.ResetTo(0, 1d, true);
     Assert(emitter.WaitForBatchCount(1), "Inferred initial held keys were not emitted at replay start.");
     Assert(emitter.Snapshot()[0].Length == 4, "Replay normalized unrelated CSV keys at startup.");
   }
@@ -1208,8 +1209,7 @@ internal static class ReplayNativeInputSuite
     var scheduler = new ReplayInputScheduler(inputs);
     using var pump = new ReplayNativeInputPump(scheduler, emitter);
 
-    int restored = pump.ResetTo(-3_000_000, 1d, true);
-    Assert(restored == 31, "Pre-roll state restore did not emit exactly the currently held keys.");
+    pump.ResetTo(-3_000_000, 1d, true);
     Assert(emitter.WaitForBatchCount(1), "Pre-roll held chord was not emitted.");
     NativeInputEmission[] held = emitter.Snapshot()[0];
     Assert(held.Length == 31, "Completed or released pre-roll presses leaked into the held chord.");
@@ -1296,6 +1296,7 @@ internal static class ReplayNativeInputSuite
     using var pump = new ReplayNativeInputPump(scheduler, emitter);
     pump.ResetTo(-10_000, 1d, true);
     Assert(emitter.WaitForCallCount(2), "Partial native emission was not retried.");
+    Assert(SpinWait.SpinUntil(() => pump.Snapshot.Emitted == 3, 1000), "Emission statistics were not published.");
     ReplayNativeInputStats stats = pump.Snapshot;
     Assert(stats.Emitted == 3 && stats.FailedEvents == 0, "Tail retry did not preserve every event.");
     Assert(stats.PartialRetries == 1, "Partial native emission retry was not counted.");
