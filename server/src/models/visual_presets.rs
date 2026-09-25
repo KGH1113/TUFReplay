@@ -111,7 +111,7 @@ pub async fn list(db: &DatabaseConnection, owner_id: &str) -> Result<Vec<VisualP
     Ok(VisualPresetMetadata::find_by_statement(statement(
         "SELECT id,name,kind,source,source_version,created_at
          FROM visual_presets
-         WHERE owner_id=$1 AND deleted_at IS NULL
+         WHERE owner_id=$1 AND deleted_at IS NULL AND hidden_at IS NULL
          ORDER BY created_at DESC,id DESC",
         vec![owner_id.into()],
     ))
@@ -170,7 +170,7 @@ pub async fn active_owned(
     Ok(VisualPresetMetadata::find_by_statement(statement(
         "SELECT id,name,kind,source,source_version,created_at
          FROM visual_presets
-         WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL",
+         WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL AND hidden_at IS NULL FOR SHARE",
         vec![id.into(), owner_id.into()],
     ))
     .one(db)
@@ -185,7 +185,7 @@ pub async fn active_bundle(
     Ok(VisualPresetBundle::find_by_statement(statement(
         "SELECT id,name,kind,source,source_version,bundle,sha256,bytes
          FROM visual_presets
-         WHERE id=$1 AND kind=$2 AND deleted_at IS NULL",
+         WHERE id=$1 AND kind=$2 AND deleted_at IS NULL AND hidden_at IS NULL",
         vec![id.into(), kind.as_str().into()],
     ))
     .one(db)
@@ -197,6 +197,18 @@ pub async fn active_bundle_for_published_run(
     run_id: Uuid,
     kind: VisualKind,
 ) -> Result<Option<VisualPresetBundle>> {
+    bundle_for_published_selection(db, run_id, kind, None).await
+}
+
+pub async fn bundle_for_published_selection(
+    db: &DatabaseConnection,
+    run_id: Uuid,
+    kind: VisualKind,
+    selection: Option<Option<Uuid>>,
+) -> Result<Option<VisualPresetBundle>> {
+    if selection == Some(None) {
+        return Ok(None);
+    }
     let selected_column = match kind {
         VisualKind::Keyviewer => "v.keyviewer_id",
         VisualKind::Overlay => "v.overlay_id",
@@ -207,12 +219,16 @@ pub async fn active_bundle_for_published_run(
              FROM run_submission_records s
              JOIN run_sessions r ON r.id=s.run_session_id
              JOIN run_visual_selections v ON v.run_submission_record_id=s.id
-             JOIN visual_presets p ON p.id={selected_column} AND p.owner_id=s.owner_id
+             JOIN visual_presets p ON p.id=COALESCE($3,{selected_column}) AND p.owner_id=s.owner_id
              WHERE r.pid=$1 AND s.state='submitted' AND s.external_pass_id IS NOT NULL
                AND s.manifest IS NOT NULL AND s.validation IS NOT NULL
-               AND p.kind=$2 AND p.deleted_at IS NULL",
+               AND p.kind=$2 AND p.deleted_at IS NULL AND p.hidden_at IS NULL",
         ),
-        vec![run_id.into(), kind.as_str().into()],
+        vec![
+            run_id.into(),
+            kind.as_str().into(),
+            selection.flatten().into(),
+        ],
     ))
     .one(db)
     .await?)

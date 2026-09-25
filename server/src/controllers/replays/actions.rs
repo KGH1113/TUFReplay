@@ -18,6 +18,19 @@ pub struct ManifestQuery {
     pub format: Option<u32>,
     pub asset_mode: Option<String>,
     pub delivery: Option<String>,
+    pub keyviewer_id: Option<String>,
+    pub overlay_id: Option<String>,
+    pub preset_id: Option<Uuid>,
+}
+
+fn selection(value: Option<&str>) -> Result<Option<Option<Uuid>>> {
+    match value {
+        None => Ok(None),
+        Some("none") => Ok(Some(None)),
+        Some(id) => Uuid::parse_str(id)
+            .map(|id| Some(Some(id)))
+            .map_err(|_| Error::BadRequest("visual_selection_invalid".into())),
+    }
 }
 
 pub async fn manifest(
@@ -28,10 +41,12 @@ pub async fn manifest(
     let replay = PublishedReplay::load(&ctx.db, run_id).await?;
     let is_v3 = query.format == Some(3);
     let mut response = if is_v3 {
-        let visuals = replays::published_visuals(
+        let visuals = replays::selected_visuals(
             &ctx,
             run_id,
             query.asset_mode.as_deref() == Some("objects"),
+            selection(query.keyviewer_id.as_deref())?,
+            selection(query.overlay_id.as_deref())?,
         )
         .await?;
         let mut manifest = ReplayManifestResponse::from_replay_v3(&replay, &visuals);
@@ -61,17 +76,19 @@ pub async fn visual(
     Query(query): Query<ManifestQuery>,
 ) -> Result<Response> {
     let kind = VisualKind::parse(&kind).ok_or(Error::NotFound)?;
-    // Revalidate the published replay before resolving its frozen visual
+    // Revalidate the published replay before resolving a default or viewer
     // selection. This keeps a bundle endpoint subject to the same evidence
     // and publication checks as the manifest endpoint.
     PublishedReplay::load(&ctx.db, run_id).await?;
-    let (_descriptor, bundle) = replays::published_visual(
+    let (_descriptor, bundle) = replays::selected_visual(
         &ctx,
         run_id,
         kind,
         query.asset_mode.as_deref() == Some("objects"),
+        query.preset_id.map(Some),
     )
-    .await?;
+    .await?
+    .ok_or(Error::NotFound)?;
     let bytes = u64::try_from(bundle.bytes)
         .map_err(|_| Error::Message("visual bundle size is invalid".into()))?;
     if bytes != bundle.bundle.len() as u64
@@ -134,13 +151,18 @@ pub async fn file(
 pub async fn visual_asset(
     State(ctx): State<AppContext>,
     Path((run_id, kind, sha256)): Path<(Uuid, String, String)>,
+    Query(query): Query<ManifestQuery>,
 ) -> Result<Response> {
     let kind = VisualKind::parse(&kind).ok_or(Error::NotFound)?;
     PublishedReplay::load(&ctx.db, run_id).await?;
-    let bundle =
-        crate::models::visual_presets::active_bundle_for_published_run(&ctx.db, run_id, kind)
-            .await?
-            .ok_or(Error::NotFound)?;
+    let bundle = crate::models::visual_presets::bundle_for_published_selection(
+        &ctx.db,
+        run_id,
+        kind,
+        query.preset_id.map(Some),
+    )
+    .await?
+    .ok_or(Error::NotFound)?;
     if bundle.bytes != bundle.bundle.len() as i64
         || hex::encode(Sha256::digest(&bundle.bundle)) != bundle.sha256
     {

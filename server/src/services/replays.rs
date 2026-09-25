@@ -99,9 +99,19 @@ pub async fn published_visuals(
     run_id: Uuid,
     objects: bool,
 ) -> Result<PublishedVisuals> {
+    selected_visuals(ctx, run_id, objects, None, None).await
+}
+
+pub async fn selected_visuals(
+    ctx: &AppContext,
+    run_id: Uuid,
+    objects: bool,
+    keyviewer: Option<Option<Uuid>>,
+    overlay: Option<Option<Uuid>>,
+) -> Result<PublishedVisuals> {
     Ok(PublishedVisuals {
-        keyviewer: visual_for_run(ctx, run_id, VisualKind::Keyviewer, objects).await?,
-        overlay: visual_for_run(ctx, run_id, VisualKind::Overlay, objects).await?,
+        keyviewer: selected_visual(ctx, run_id, VisualKind::Keyviewer, objects, keyviewer).await?,
+        overlay: selected_visual(ctx, run_id, VisualKind::Overlay, objects, overlay).await?,
     })
 }
 
@@ -111,19 +121,20 @@ pub async fn published_visual(
     kind: VisualKind,
     objects: bool,
 ) -> Result<(VisualDescriptor, VisualPresetBundle)> {
-    visual_for_run(ctx, run_id, kind, objects)
+    selected_visual(ctx, run_id, kind, objects, None)
         .await?
         .ok_or(Error::NotFound)
 }
 
-async fn visual_for_run(
+pub async fn selected_visual(
     ctx: &AppContext,
     run_id: Uuid,
     kind: VisualKind,
     objects: bool,
+    selection: Option<Option<Uuid>>,
 ) -> Result<Option<(VisualDescriptor, VisualPresetBundle)>> {
     let Some(mut bundle) =
-        visual_presets::active_bundle_for_published_run(&ctx.db, run_id, kind).await?
+        visual_presets::bundle_for_published_selection(&ctx.db, run_id, kind, selection).await?
     else {
         return Ok(None);
     };
@@ -145,6 +156,18 @@ async fn visual_for_run(
     }
     bundle.bytes = bundle.bundle.len() as i64;
     bundle.sha256 = hex::encode(Sha256::digest(&bundle.bundle));
+    let mut query = Vec::new();
+    if objects {
+        query.push("asset_mode=objects".to_string());
+    }
+    if selection.is_some() {
+        query.push(format!("preset_id={}", bundle.id));
+    }
+    let suffix = if query.is_empty() {
+        String::new()
+    } else {
+        format!("?{}", query.join("&"))
+    };
     let descriptor = VisualDescriptor {
         preset_id: bundle.id,
         name: bundle.name.clone(),
@@ -153,7 +176,7 @@ async fn visual_for_run(
         url: format!(
             "/api/v1/replays/{run_id}/visuals/{}{}",
             kind.as_str(),
-            if objects { "?asset_mode=objects" } else { "" }
+            suffix
         ),
         sha256: bundle.sha256.clone(),
         bytes: bundle.bytes as u64,
