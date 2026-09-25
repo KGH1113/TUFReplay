@@ -7,6 +7,9 @@ const nodes = {
   lastChange: document.querySelector("#last-change"),
   search: document.querySelector("#search"),
   addForm: document.querySelector("#add-form"),
+  lookupPlayer: document.querySelector("#lookup-player"),
+  playerResult: document.querySelector("#player-result"),
+  addTester: document.querySelector("#add-tester"),
   dialog: document.querySelector("#change-dialog"),
   changeForm: document.querySelector("#change-form"),
   dialogTitle: document.querySelector("#dialog-title"),
@@ -17,6 +20,8 @@ const nodes = {
 let data = { testers: [], events: [] };
 let filter = "all";
 let pendingChange = null;
+let verifiedPlayer = null;
+let lookupVersion = 0;
 const date = new Intl.DateTimeFormat("ko-KR", { dateStyle: "medium", timeStyle: "short" });
 
 function notice(message, error = false) {
@@ -125,6 +130,45 @@ function openChange(tester) {
   nodes.changeForm.elements.reason.focus();
 }
 
+function clearVerifiedPlayer() {
+  lookupVersion += 1;
+  verifiedPlayer = null;
+  nodes.lookupPlayer.disabled = false;
+  nodes.lookupPlayer.textContent = "계정 조회";
+  nodes.playerResult.hidden = true;
+  nodes.playerResult.replaceChildren();
+  nodes.addTester.disabled = true;
+}
+
+nodes.addForm.elements.playerId.addEventListener("input", clearVerifiedPlayer);
+nodes.lookupPlayer.addEventListener("click", async () => {
+  const input = nodes.addForm.elements.playerId;
+  if (!input.reportValidity()) return;
+  clearVerifiedPlayer();
+  const version = lookupVersion;
+  const playerId = input.value;
+  nodes.lookupPlayer.disabled = true;
+  nodes.lookupPlayer.textContent = "조회 중…";
+  try {
+    const player = await api(`/api/players/${encodeURIComponent(playerId)}`);
+    if (version !== lookupVersion) return;
+    verifiedPlayer = player;
+    nodes.playerResult.replaceChildren(
+      element("strong", "", `${player.playerName || "플레이어"} · ${player.username}`),
+      element("span", "", `플레이어 #${player.playerId} · TUF 계정 ${player.userId}`),
+    );
+    nodes.playerResult.hidden = false;
+    nodes.addTester.disabled = false;
+  } catch (error) {
+    if (version === lookupVersion) notice(error.message, true);
+  } finally {
+    if (version === lookupVersion) {
+      nodes.lookupPlayer.disabled = false;
+      nodes.lookupPlayer.textContent = "계정 조회";
+    }
+  }
+});
+
 document.querySelector("#refresh").addEventListener("click", () => void refresh());
 nodes.search.addEventListener("input", renderTesters);
 for (const button of document.querySelectorAll("[data-filter]")) {
@@ -141,21 +185,28 @@ for (const button of document.querySelectorAll("[data-filter]")) {
 
 nodes.addForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const submit = nodes.addForm.querySelector('button[type="submit"]');
+  const player = verifiedPlayer;
+  if (!player || String(player.playerId) !== nodes.addForm.elements.playerId.value) {
+    notice("플레이어 ID로 계정을 먼저 조회해 주세요.", true);
+    return;
+  }
+  const submit = nodes.addTester;
   submit.disabled = true;
   try {
     const form = new FormData(nodes.addForm);
-    await api("/api/testers", {
+    await api("/api/testers/by-player", {
       method: "POST",
-      body: JSON.stringify({ userId: form.get("userId"), label: form.get("label"), reason: form.get("reason") }),
+      body: JSON.stringify({ playerId: player.playerId, expectedUserId: player.userId, label: form.get("label"), reason: form.get("reason") }),
     });
     nodes.addForm.reset();
+    clearVerifiedPlayer();
     await refresh();
     notice("테스터 권한을 추가했습니다.");
   } catch (error) {
+    clearVerifiedPlayer();
     notice(error.message, true);
   } finally {
-    submit.disabled = false;
+    submit.disabled = !verifiedPlayer;
   }
 });
 

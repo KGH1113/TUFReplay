@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createAdminHandler } from "../src/http.controller";
+import { lookupLinkedPlayer } from "../src/player-lookup";
 import type { Tester, TesterEvent, TesterRepository } from "../src/testers.model";
 
 const id = "670cac2c-8175-46a6-87f7-b92741d4499f";
@@ -81,5 +82,49 @@ describe("trusted tester administration", () => {
     expect((await revoked.json()).active).toBe(false);
     expect(repository.events.at(-1)).toMatchObject({ action: "revoke", reason: "테스트 종료" });
     expect((await handler(request(`/api/testers/${id}/revoke`, "POST", { reason: "중복" }))).status).toBe(404);
+  });
+
+  test("looks up a player and grants only the confirmed linked account", async () => {
+    const repository = fakeRepository();
+    let linkedUserId = id;
+    const handler = createAdminHandler(repository, credentials, { html: "", css: "", javascript: "" }, async (playerId) => ({
+      playerId,
+      playerName: "Impl",
+      username: "impl.dev",
+      userId: linkedUserId,
+    }));
+    expect((await handler(new Request("http://127.0.0.1:4177/api/players/7410"))).status).toBe(401);
+    expect((await handler(request("/api/players/0"))).status).toBe(400);
+    expect(await (await handler(request("/api/players/7410"))).json()).toMatchObject({ userId: id, username: "impl.dev" });
+    expect((await handler(request("/api/testers/by-player", "POST", {
+      playerId: 7410, expectedUserId: id, reason: "첫 베타", label: "",
+    }, { Origin: "http://evil.test" }))).status).toBe(403);
+    linkedUserId = "11111111-1111-4111-8111-111111111111";
+    expect((await handler(request("/api/testers/by-player", "POST", {
+      playerId: 7410, expectedUserId: id, reason: "첫 베타", label: "",
+    }))).status).toBe(409);
+    expect(repository.testers).toHaveLength(0);
+    const granted = await handler(request("/api/testers/by-player", "POST", {
+      playerId: 7410, expectedUserId: linkedUserId, reason: "첫 베타", label: "",
+    }));
+    expect(granted.status).toBe(201);
+    expect(await granted.json()).toMatchObject({ userId: linkedUserId, label: "impl.dev" });
+  });
+
+  test("rejects a public response without a linked account or with mismatched IDs", async () => {
+    const fetchImpl = async () => new Response(JSON.stringify({ id: 7410, name: "Impl" }), { status: 200 });
+    await expect(lookupLinkedPlayer(7410, "https://api.tuforums.com", fetchImpl)).rejects.toMatchObject({ status: 404 });
+    const mismatchFetch = async () => new Response(JSON.stringify({
+      id: 7410,
+      user: { id, username: "impl.dev", playerId: 9999 },
+    }), { status: 200 });
+    await expect(lookupLinkedPlayer(7410, "https://api.tuforums.com", mismatchFetch)).rejects.toMatchObject({ status: 502 });
+    const validFetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(url)).toBe("https://api.tuforums.com/v2/database/players/7410");
+      expect(init?.redirect).toBe("error");
+      expect(new Headers(init?.headers).has("Authorization")).toBe(false);
+      return new Response(JSON.stringify({ id: 7410, name: "Impl", user: { id, username: "impl.dev", playerId: 7410 } }), { status: 200 });
+    };
+    expect(await lookupLinkedPlayer(7410, "https://api.tuforums.com", validFetch)).toMatchObject({ userId: id, playerId: 7410 });
   });
 });

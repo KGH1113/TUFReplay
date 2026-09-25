@@ -49,8 +49,13 @@ example `127.0.0.1:4177:4177`). The main deployment owns that Compose wiring,
 the database role, and the migration. Never expose the container port on all
 host interfaces.
 
-The UI lists up to 500 recently changed testers and 100 recent events. Adding
-an existing UUID reactivates it and records another `grant` event. Disabling an
+The UI lists up to 500 recently changed testers and 100 recent events. To add a
+tester, enter a numeric TUF player ID and look up its linked account through
+`https://api.tuforums.com/v2/database/players/{id}`. The app displays the account
+name and UUID for confirmation, then resolves the player again on submission.
+It stores only the linked TUF user UUID; a player without a linked account cannot
+be granted access. Adding an existing UUID reactivates it and records another
+`grant` event. Disabling an
 active tester records a `revoke` event; it does not delete existing passes.
 Every mutation requires a same-origin JSON request, a reason, and administrator
 credentials. All served content uses a restrictive Content Security Policy and

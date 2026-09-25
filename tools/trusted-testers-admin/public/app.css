@@ -69,6 +69,10 @@ input:focus { border-color: #82d9c0; }
 .empty { padding: 28px 8px; color: #95a4a8; font-size: .83rem; text-align: center; }
 #add-form { display: grid; gap: 15px; margin-top: 22px; }
 #add-form .button { margin-top: 5px; width: 100%; }
+.player-result { display: grid; gap: 5px; padding: 12px; border: 1px solid #3b6860; border-radius: 9px; background: #152e2a; overflow-wrap: anywhere; }
+.player-result[hidden] { display: none; }
+.player-result strong { color: #e7f7f0; font-size: .85rem; }
+.player-result span { color: #b4d3c8; font-size: .72rem; }
 .history-panel h2 { margin-bottom: 12px; }
 .event-list { list-style: none; margin: 0; padding: 0; }
 .event-list li:not(.empty) { display: grid; grid-template-columns: 8px 1fr; gap: 11px; padding: 11px 0; border-top: 1px solid #303b40; }

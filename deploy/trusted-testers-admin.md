@@ -27,7 +27,7 @@ GitHub Actions를 통한 기존 명단 전환은 호스트의 보호된 파일 `
 1. Rust migration `m20260923_000001_create_trusted_testers`를 적용한다. 초기 명단은 비어 있으며 운영 테스터를 자동 승인하지 않는다. 기존 migration 명령으로 실행한다.
 2. `deploy/auto-submission.env.example`의 관리자 설정에 서로 다른 임의의 DB 비밀번호와 관리자 비밀번호를 넣는다. DB 비밀번호는 URL-safe 32자 이상, 관리자 비밀번호는 24자 이상이다. 비밀 파일을 Git에 넣지 않는다.
 3. 아래 SQL을 DB owner 권한으로 한 번 적용해 전용 `trusted_testers_admin` 역할을 만든다. SQL은 테스터 두 테이블과 이벤트 ID sequence만 허용하고 DELETE·DDL·run/evidence 접근 권한을 부여하지 않는다. 기존에 같은 이름의 역할을 다른 용도로 사용했다면 재사용하지 말고 먼저 권한을 확인한다.
-4. `tester-admin` Compose profile로 관리자 앱을 시작하고 기존 테스터의 **TUF user UUID**를 등록한다. player 숫자 ID가 아니다. Rust DB 검사 활성화 전에 명단을 옮겨 놓아 전환 중 제출 중단을 피한다.
+4. `tester-admin` Compose profile로 관리자 앱을 시작하고 기존 테스터의 숫자 player ID로 연결된 TUF 계정을 조회·확인해 등록한다. 앱은 TUF user UUID만 DB에 저장한다. 연결된 TUF 계정이 없는 player는 등록할 수 없다. Rust DB 검사 활성화 전에 명단을 옮겨 놓아 전환 중 제출 중단을 피한다.
 5. DB 판정을 포함한 Rust 서버를 적용하고 활성·비활성 계정의 `/api/v1/account` 결과와 새 run 접근을 확인한다. TUF는 아직 기존 `environment` 설정으로 둘 수 있다.
 6. 새 TUF BE 코드를 적용하고 `AUTO_SUBMISSION_TESTER_AUTHORITY=replay`를 설정한다. 이 시점부터 기존 `AUTO_SUBMISSION_TRUSTED_USER_IDS`를 제거할 수 있다. 이후 명단 변경에는 서버 재시작이 필요 없다.
 
