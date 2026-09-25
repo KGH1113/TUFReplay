@@ -1,3 +1,4 @@
+pub mod admission;
 mod processing;
 pub mod reconciliation;
 mod trusted_tester;

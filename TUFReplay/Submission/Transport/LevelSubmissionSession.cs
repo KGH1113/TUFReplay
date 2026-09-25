@@ -65,7 +65,7 @@ public sealed class LevelSubmissionSession : IDisposable
     Completion = Task.Run(Work);
   }
 
-  public LevelSubmissionAttempt Begin()
+  public LevelSubmissionAttempt Begin(byte[] gameplayHash)
   {
     lock (_admission)
     {
@@ -76,7 +76,13 @@ public sealed class LevelSubmissionSession : IDisposable
         Interlocked.Decrement(ref _count);
         return null;
       }
-      var attempt = new LevelSubmissionAttempt();
+      var attempt = new LevelSubmissionAttempt(gameplayHash);
+      if (attempt.GameplayHash == null)
+      {
+        Interlocked.Decrement(ref _count);
+        attempt.Reject("submission_chart_identity_missing_or_unsupported");
+        return attempt;
+      }
       _queue.Enqueue(attempt);
       _wake.Release();
       return attempt;
@@ -108,9 +114,8 @@ public sealed class LevelSubmissionSession : IDisposable
           }
           catch (Exception error)
           {
-            attempt.Capture.Invalidate(error is UploadRejectedException ? error.Message : "level_session_unavailable");
-            attempt.SetState("unavailable");
-            SubmissionLog.Publish("Attempt unavailable: " + (attempt.Capture.Failure ?? error.Message));
+            attempt.Reject(error is UploadRejectedException ? error.Message : "level_session_unavailable");
+            SubmissionLog.Publish("Attempt unavailable: " + attempt.Failure);
             if (!_stop.IsCancellationRequested && attempt.StartSent && !attempt.ServerTerminal)
               await Abandon(attempt, level).ConfigureAwait(false);
           }

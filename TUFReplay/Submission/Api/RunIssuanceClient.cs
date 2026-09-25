@@ -30,7 +30,8 @@ public sealed class RunIssuanceClient : IDisposable
     InstalledLevelContext level,
     string gameVersion,
     string modVersion,
-    CancellationToken cancellation
+    CancellationToken cancellation,
+    byte[] submissionGameplayHash = null
   )
   {
     using var request = new HttpRequestMessage(HttpMethod.Post, new Uri(account.Server, "api/v1/runs"));
@@ -50,6 +51,10 @@ public sealed class RunIssuanceClient : IDisposable
           client_installed_payload_hash_hex = level.PayloadHash,
           client_payload_hash_version = 1,
           client_level_relative_path = level.RelativePath,
+          submission_gameplay_hash_version = TUFReplay.Submission.Validation.SubmissionGameplayHash.Version,
+          submission_gameplay_hash_hex = submissionGameplayHash?.Length == 32
+            ? BitConverter.ToString(submissionGameplayHash).Replace("-", "").ToLowerInvariant()
+            : null,
         }
       ),
       Encoding.UTF8,

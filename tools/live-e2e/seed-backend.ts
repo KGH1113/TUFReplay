@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { localCatalogPatch } from "./catalog-update.ts";
+import { confirmedArchivePath } from "./official-chart.ts";
 import {
 	assertBackendEnvironment,
 	backend,
@@ -16,6 +17,7 @@ import {
 assertBackendEnvironment(process.env);
 const load = (path: string) => import(pathToFileURL(`${backend}/${path}`).href);
 const { default: db } = await load("src/models/index.ts");
+const { default: CdnFile } = await load("src/models/cdn/CdnFile.ts");
 const { getPoolManagerInstance } = await load("src/config/db.ts");
 const { passwordUtils } = await load("src/misc/utils/auth/auth.ts");
 await mkdir(data, { recursive: true, mode: 0o700 });
@@ -81,7 +83,10 @@ try {
 	const transaction = await db.models.Level.sequelize.transaction();
 	try {
 		for (const chart of manifest) {
+			// Reject stale manifests produced by the installed-folder ZIP workflow.
+			confirmedArchivePath(chart.metadata);
 			const level = await db.models.Level.findByPk(chart.levelId, {
+				attributes: ["id", "song", "diffId", "fileId", "dlLink"],
 				transaction,
 				lock: transaction.LOCK.UPDATE,
 			});
@@ -98,6 +103,15 @@ try {
 				);
 			// Guarded by assertBackendEnvironment above. This fixture URL is not a
 			// CDN URL: preserve its installed identity explicitly, in the same write.
+			await CdnFile.upsert(
+				{
+					id: chart.fileId,
+					type: "LEVELZIP",
+					filePath: chart.archive,
+					metadata: chart.metadata,
+				},
+				{ transaction },
+			);
 			await level.update(patch, {
 				transaction,
 				hooks: false,

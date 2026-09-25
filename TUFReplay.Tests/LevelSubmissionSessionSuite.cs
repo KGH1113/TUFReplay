@@ -12,6 +12,8 @@ internal static class LevelSubmissionSessionSuite
 {
   public static void RunAll()
   {
+    ChartAdmission().GetAwaiter().GetResult();
+    LocalActivityAdmission();
     RapidRestart().GetAwaiter().GetResult();
     RecoverLostResponses().GetAwaiter().GetResult();
     ApprovalTimeout().GetAwaiter().GetResult();
@@ -30,6 +32,53 @@ internal static class LevelSubmissionSessionSuite
       timeout
     );
 
+  private static byte[] ChartHash => Enumerable.Repeat((byte)0x11, 32).ToArray();
+
+  private static async Task ChartAdmission()
+  {
+    var server = new Server();
+    using var session = Session(server);
+    var missing = session.Begin(null);
+    TestFixture.Assert(
+      missing.Finished && missing.Failure == "submission_chart_identity_missing_or_unsupported",
+      "Missing runtime identity must fail locally."
+    );
+    TestFixture.Assert(server.Runs.IsEmpty, "Missing identity must not create a server run.");
+    var edited = session.Begin(new byte[32]);
+    edited.Capture.Complete("{}"); // Failure must remain visible even after a very short clear.
+    await Wait(() => edited.Finished);
+    TestFixture.Assert(
+      edited.Failure == "submission_chart_gameplay_mismatch" && server.Runs.IsEmpty && server.Frames.IsEmpty,
+      "Edited charts must never upload or create runs."
+    );
+    var good = session.Begin(ChartHash);
+    good.Capture.Complete("{}");
+    await Wait(() => good.Finished);
+    TestFixture.Assert(
+      good.State == "sealed" && server.Runs.Count == 1,
+      "A new matching attempt can upload after a denied attempt."
+    );
+  }
+
+  private static void LocalActivityAdmission()
+  {
+    var id = Guid.NewGuid();
+    var pending = new TUFReplay.Submission.Sessions.SubmissionRunLink(id);
+    string stored = "unexpected";
+    pending.Save(value => stored = value, value => stored = value);
+    TestFixture.Assert(stored == null, "Unapproved activity must not expose a Submit run ID.");
+    pending.Approve();
+    TestFixture.Assert(stored == id.ToString(), "Late approval must link an already saved short run.");
+    var early = new TUFReplay.Submission.Sessions.SubmissionRunLink(id);
+    early.Approve();
+    early.Save(value => stored = value, _ => throw new Exception("Unexpected late update"));
+    early.Approve();
+    TestFixture.Assert(
+      stored == id.ToString(),
+      "Approval before activity persistence must remain linked and idempotent."
+    );
+  }
+
   private static async Task RapidRestart()
   {
     var server = new Server
@@ -37,7 +86,7 @@ internal static class LevelSubmissionSessionSuite
       Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
     };
     using var session = Session(server);
-    var attempts = Enumerable.Range(0, 6).Select(_ => session.Begin()).ToArray();
+    var attempts = Enumerable.Range(0, 6).Select(_ => session.Begin(ChartHash)).ToArray();
     foreach (var attempt in attempts)
       TestFixture.Assert(attempt != null, "Immediate starts must not wait for a server lease.");
     attempts[5].Capture.Write(new RecordedInput(1, 7, RecordInputFlags.Down));
@@ -60,7 +109,7 @@ internal static class LevelSubmissionSessionSuite
     );
     session.Retire();
     await session.Completion.WaitAsync(TimeSpan.FromSeconds(3));
-    TestFixture.Assert(session.Begin() == null, "A retired level cannot admit another run.");
+    TestFixture.Assert(session.Begin(ChartHash) == null, "A retired level cannot admit another run.");
   }
 
   private static async Task RecoverLostResponses()
@@ -72,7 +121,7 @@ internal static class LevelSubmissionSessionSuite
       LoseSeal = true,
     };
     using var session = Session(server);
-    var attempt = session.Begin();
+    var attempt = session.Begin(ChartHash);
     attempt.Capture.Write(new RecordedInput(1, 8, RecordInputFlags.Down));
     attempt.Capture.Complete("{}");
     await Wait(() => attempt.Finished);
@@ -90,7 +139,7 @@ internal static class LevelSubmissionSessionSuite
       Gate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously),
     };
     using var session = Session(server, TimeSpan.FromMilliseconds(80));
-    var attempt = session.Begin();
+    var attempt = session.Begin(ChartHash);
     attempt.Capture.Write(new RecordedInput(1, 7, RecordInputFlags.Down));
     await Wait(() => attempt.Finished);
     TestFixture.Assert(
@@ -115,9 +164,9 @@ internal static class LevelSubmissionSessionSuite
       "game",
       "mod"
     );
-    var attempts = Enumerable.Range(0, 8).Select(_ => session.Begin()).ToArray();
+    var attempts = Enumerable.Range(0, 8).Select(_ => session.Begin(ChartHash)).ToArray();
     TestFixture.Assert(
-      attempts.All(attempt => attempt != null) && session.Begin() == null,
+      attempts.All(attempt => attempt != null) && session.Begin(ChartHash) == null,
       "The complete attempt queue must be bounded."
     );
     for (int i = 0; i <= 8192; i++)
@@ -160,8 +209,8 @@ internal static class LevelSubmissionSessionSuite
       "game",
       "mod"
     );
-    var incomplete = session.Begin();
-    var completed = session.Begin();
+    var incomplete = session.Begin(ChartHash);
+    var completed = session.Begin(ChartHash);
     completed.Capture.Write(new RecordedInput(1, 7, RecordInputFlags.Down));
     completed.Capture.Complete("{}");
     session.Retire();
@@ -179,7 +228,7 @@ internal static class LevelSubmissionSessionSuite
     using var session = Session(server);
     await Wait(() => server.Connections >= 2 && session.State == "ready");
     TestFixture.Assert(server.Runs.IsEmpty, "Idle reconnects must not issue runs.");
-    var denied = session.Begin();
+    var denied = session.Begin(ChartHash);
     denied.Capture.Write(new RecordedInput(1, 7, RecordInputFlags.Down));
     await Wait(() => denied.Finished);
     TestFixture.Assert(
@@ -187,7 +236,7 @@ internal static class LevelSubmissionSessionSuite
       "A denied start must abandon its capture without sending evidence."
     );
     server.DenyStart = false;
-    var next = session.Begin();
+    var next = session.Begin(ChartHash);
     next.Capture.Write(new RecordedInput(2, 8, RecordInputFlags.Down));
     next.Capture.Complete("{}");
     await Wait(() => next.Finished);
@@ -260,6 +309,20 @@ internal static class LevelSubmissionSessionSuite
           break;
         case "run_start":
           Interlocked.Increment(ref _server.Starts);
+          if (
+            (int?)value["submission_gameplay_hash_version"] != 1
+            || (string)value["submission_gameplay_hash_hex"] != new string('1', 64)
+          )
+          {
+            response = new JObject
+            {
+              ["type"] = "error",
+              ["run_id"] = id,
+              ["code"] = "submission_chart_gameplay_mismatch",
+              ["terminal"] = true,
+            };
+            break;
+          }
           if (_server.DenyStart)
           {
             response = new JObject
@@ -311,6 +374,7 @@ internal static class LevelSubmissionSessionSuite
         ["acknowledged_sequence"] = _server.Runs[id],
         ["max_chunk_bytes"] = 65536,
         ["heartbeat_interval_ms"] = 10000,
+        ["chart_verified"] = true,
       };
 
     public Task SendFrame(UploadFrame frame, CancellationToken cancellation)

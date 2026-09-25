@@ -33,7 +33,8 @@ use tuf_replay_server::services::tuf::catalog::TufCatalogSettings;
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
 
-const CHART_BYTES: &[u8] = br#"{"pathData":"R"}"#;
+const CHART_BYTES: &[u8] =
+    br#"{"settings":{"version":17,"bpm":120},"angleData":[0,180],"actions":[]}"#;
 
 fn canonical_payload_hash() -> String {
     let path = b"level.adofai";
@@ -57,8 +58,17 @@ fn valid_request() -> serde_json::Value {
         "client_tuf_file_id": "file-42",
         "client_installed_payload_hash_hex": canonical_payload_hash(),
         "client_payload_hash_version": 1,
-        "client_level_relative_path": "level.adofai"
+        "client_level_relative_path": "level.adofai",
+        "submission_gameplay_hash_version": 1,
+        "submission_gameplay_hash_hex": submission_hash()
     })
+}
+
+fn submission_hash() -> String {
+    tuf_replay_server::domain::submission_gameplay_hash::compute_submission_gameplay_hash(
+        CHART_BYTES,
+    )
+    .unwrap()
 }
 
 fn archive_fixture() -> Vec<u8> {
@@ -88,10 +98,18 @@ async fn start_catalog_with(
     difficulty_status: StatusCode,
     difficulty_body: String,
 ) -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
+    start_catalog_archive(level, difficulty_status, difficulty_body, archive_fixture()).await
+}
+
+async fn start_catalog_archive(
+    level: serde_json::Value,
+    difficulty_status: StatusCode,
+    difficulty_body: String,
+    archive: Vec<u8>,
+) -> (String, Arc<AtomicUsize>, tokio::task::JoinHandle<()>) {
     let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind mock");
     let address = listener.local_addr().expect("mock address");
     let download_url = format!("http://{address}/archive.zip");
-    let archive = archive_fixture();
     let downloads = Arc::new(AtomicUsize::new(0));
     let route_downloads = Arc::clone(&downloads);
     let app = Router::new()
@@ -144,6 +162,95 @@ async fn start_catalog_with(
             .expect("serve mock catalog");
     });
     (format!("http://{address}"), downloads, server)
+}
+
+#[tokio::test]
+#[serial]
+async fn ambiguous_reference_and_missing_identity_never_create_submission_records() {
+    use sea_orm::{EntityTrait, PaginatorTrait};
+    request::<App, _, _>(|mut request, ctx| async move {
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        zip.start_file("normal.adofai", SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(CHART_BYTES).unwrap();
+        zip.start_file("EX.adofai", SimpleFileOptions::default())
+            .unwrap();
+        zip.write_all(br#"{"settings":{"version":17,"bpm":180},"angleData":[0,90],"actions":[]}"#)
+            .unwrap();
+        let archive = zip.finish().unwrap().into_inner();
+        let (base_url, downloads, mock) = start_catalog_archive(
+            serde_json::json!({"id":42,"diffId":1}),
+            StatusCode::OK,
+            serde_json::json!([{"id":1,"type":"PGU","name":"P1"}]).to_string(),
+            archive,
+        )
+        .await;
+        let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string()).await;
+        request.add_header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {ticket}"),
+        );
+        let root = tempfile::tempdir().unwrap();
+        ctx.shared_store.insert(
+            TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_api_base_url: base_url,
+                artifact_root: root.path().to_string_lossy().into(),
+                artifact_max_download_bytes: 1024 * 1024,
+                artifact_max_extracted_bytes: 1024 * 1024,
+                artifact_max_files: 20,
+                artifact_hydration_timeout_seconds: 5,
+                artifact_max_concurrent_hydrations: 2,
+            })
+            .unwrap(),
+        );
+        let before = tuf_replay_server::models::run_sessions::Entity::find()
+            .count(&ctx.db)
+            .await
+            .unwrap();
+        let records_before = tuf_replay_server::models::run_submission_records::Entity::find()
+            .count(&ctx.db)
+            .await
+            .unwrap();
+        let mut missing = valid_request();
+        missing
+            .as_object_mut()
+            .unwrap()
+            .remove("submission_gameplay_hash_hex");
+        let response = request.post("/api/v1/runs").json(&missing).await;
+        assert_eq!(response.status_code(), 422);
+        assert_eq!(
+            response.json::<serde_json::Value>()["code"],
+            "submission_chart_identity_missing_or_unsupported"
+        );
+        assert_eq!(downloads.load(Ordering::SeqCst), 0);
+        let response = request.post("/api/v1/runs").json(&valid_request()).await;
+        assert_eq!(response.status_code(), 422);
+        assert_eq!(
+            response.json::<serde_json::Value>()["code"],
+            "official_chart_ambiguous"
+        );
+        assert_eq!(
+            tuf_replay_server::models::run_sessions::Entity::find()
+                .count(&ctx.db)
+                .await
+                .unwrap(),
+            before
+        );
+        assert_eq!(
+            tuf_replay_server::models::run_submission_records::Entity::find()
+                .count(&ctx.db)
+                .await
+                .unwrap(),
+            records_before
+        );
+        assert_eq!(
+            std::fs::read_dir(root.path()).unwrap().count(),
+            0,
+            "No replay or persistent chart artifacts are saved for denied runs"
+        );
+        mock.abort();
+    })
+    .await;
 }
 
 #[tokio::test]
@@ -213,7 +320,7 @@ async fn issuance_resolves_official_difficulty_ids_and_distinguishes_catalog_fai
             } else {
                 assert_eq!(result["code"], if expected == 422 { "level_not_eligible" } else { "catalog_unavailable" }, "{label}");
             }
-            assert_eq!(downloads.load(Ordering::SeqCst), 0, "{label}: preflight must not fetch chart bytes");
+            assert_eq!(downloads.load(Ordering::SeqCst), usize::from(expected == 201), "{label}: only eligible levels may fetch official bytes");
             mock.abort();
         }
     }).await;
@@ -221,7 +328,7 @@ async fn issuance_resolves_official_difficulty_ids_and_distinguishes_catalog_fai
 
 #[tokio::test]
 #[serial]
-async fn issuance_does_not_download_or_pin_official_chart_originals() {
+async fn issuance_checks_loaded_chart_before_persisting_a_run() {
     request::<App, _, _>(|mut request, ctx| async move {
         let (base_url, downloads, mock) = start_mock_catalog().await;
         let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string()).await;
@@ -270,27 +377,39 @@ async fn issuance_does_not_download_or_pin_official_chart_originals() {
         assert_eq!(run.level_revision_id, None);
         assert_eq!(run.level_revision_chart_id, None);
         assert_eq!(run.client_level_relative_path, "level.adofai");
+        assert_eq!(
+            run.chart_admission.as_ref().unwrap()["gameplay_hash"],
+            submission_hash()
+        );
         ingest.discard(run_id).await.expect("Redis cleanup");
 
         let mut outdated = valid_request();
         outdated["client_tuf_file_id"] = "file-41".into();
         let response = request.post("/api/v1/runs").json(&outdated).await;
-        assert_eq!(response.status_code(), 201);
+        assert_eq!(response.status_code(), 422);
+        assert_eq!(
+            response.json::<serde_json::Value>()["code"],
+            "level_revision_outdated"
+        );
 
         let mut mismatch = valid_request();
-        mismatch["client_installed_payload_hash_hex"] = "00".repeat(32).into();
+        mismatch["submission_gameplay_hash_hex"] = "00".repeat(32).into();
         let response = request.post("/api/v1/runs").json(&mismatch).await;
-        assert_eq!(response.status_code(), 201);
+        assert_eq!(response.status_code(), 422);
+        assert_eq!(
+            response.json::<serde_json::Value>()["code"],
+            "submission_chart_gameplay_mismatch"
+        );
 
         let mut unknown_chart = valid_request();
         unknown_chart["client_level_relative_path"] = "other.adofai".into();
         let response = request.post("/api/v1/runs").json(&unknown_chart).await;
-        // The claim is checked against actual official bytes only on submit.
+        // Client filenames do not select the official reference. Matching gameplay is allowed.
         assert_eq!(response.status_code(), 201);
         assert_eq!(
             downloads.load(Ordering::SeqCst),
-            0,
-            "pre-play issuance must never download an archive"
+            1,
+            "official bytes are cached across starts without trusting client filenames"
         );
 
         let mut old_contract = valid_request();
@@ -375,6 +494,12 @@ async fn websocket_reconnects_from_authoritative_ack_and_seals() {
     .await
     .expect("create PostgreSQL session");
     let run = Model::find_by_pid(&ctx.db, run_id).await.unwrap();
+    use sea_orm::IntoActiveModel;
+    let mut admitted = run.clone().into_active_model();
+    admitted.chart_admission = Set(Some(
+        serde_json::json!({"file_id":run.client_tuf_file_id,"hash_version":1,"gameplay_hash":submission_hash()}),
+    ));
+    admitted.update(&ctx.db).await.unwrap();
     tuf_replay_server::models::run_submission_records::Entity::create_authorized(
         &ctx.db,
         run.id,
@@ -511,6 +636,7 @@ fn level_start(id: Uuid) -> serde_json::Value {
     serde_json::json!({"type":"run_start", "run_id":id,
         "client_game_version":"2.8.1", "client_mod_version":"session-test",
         "client_tuf_file_id":"file-42", "client_level_relative_path":"level.adofai",
+        "submission_gameplay_hash_version":1,"submission_gameplay_hash_hex":submission_hash(),
         "last_acknowledged_sequence":-1})
 }
 
@@ -588,7 +714,46 @@ async fn reusable_level_socket_has_no_idle_runs_and_survives_immediate_restarts(
             .unwrap(),
         count_before
     );
-    assert_eq!(downloads.load(Ordering::SeqCst), 0);
+    // An idle connection may warm the reference, but never creates a run.
+    assert!(downloads.load(Ordering::SeqCst) <= 1);
+    // Denied starts never allocate a run, Redis evidence stream, or append any bytes.
+    for (field, value, code) in [
+        (
+            "submission_gameplay_hash_hex",
+            serde_json::json!("0".repeat(64)),
+            "submission_chart_gameplay_mismatch",
+        ),
+        (
+            "submission_gameplay_hash_version",
+            serde_json::json!(99),
+            "submission_chart_identity_missing_or_unsupported",
+        ),
+        (
+            "client_tuf_file_id",
+            serde_json::json!("old-file"),
+            "level_revision_outdated",
+        ),
+    ] {
+        let rejected = Uuid::new_v4();
+        let mut start = level_start(rejected);
+        start[field] = value;
+        send_json(&mut socket, start).await;
+        assert_eq!(receive_json(&mut socket).await["code"], code);
+        assert!(Model::find_by_pid(&ctx.db, rejected).await.is_err());
+        assert!(store.receipt(rejected, None).await.is_err());
+        socket
+            .send(Message::Binary(level_chunk(rejected, 0).into()))
+            .await
+            .unwrap();
+        assert_eq!(receive_json(&mut socket).await["code"], "run_not_active");
+    }
+    assert_eq!(
+        tuf_replay_server::models::run_sessions::Entity::find()
+            .count(&ctx.db)
+            .await
+            .unwrap(),
+        count_before
+    );
     let mut previous = None;
     for _ in 0..12 {
         let id = Uuid::new_v4();
@@ -641,6 +806,13 @@ async fn reusable_level_socket_has_no_idle_runs_and_survives_immediate_restarts(
     assert_eq!(receive_json(&mut resumed).await["type"], "session_ready");
     send_json(&mut resumed, level_start(id)).await;
     assert_eq!(receive_json(&mut resumed).await["acknowledged_sequence"], 0);
+    let mut changed_hash = level_start(id);
+    changed_hash["submission_gameplay_hash_hex"] = serde_json::json!("0".repeat(64));
+    send_json(&mut resumed, changed_hash).await;
+    assert_eq!(
+        receive_json(&mut resumed).await["code"],
+        "run_start_conflict"
+    );
     assert_eq!(receive_json(&mut socket).await["acknowledged_sequence"], 0);
     socket
         .send(Message::Binary(level_chunk(id, 1).into()))

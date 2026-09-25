@@ -12,6 +12,31 @@ public static class RunRepository
 {
   public static void Save(RunRecord r)
   {
+    if (r.SubmissionLink == null)
+      SaveCore(r);
+    else
+      r.SubmissionLink.Save(
+        id =>
+        {
+          r.SubmissionRunId = id;
+          SaveCore(r);
+        },
+        id => UpdateSubmissionLink(r.Id, id)
+      );
+  }
+
+  private static void UpdateSubmissionLink(string localRunId, string submissionRunId)
+  {
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "UPDATE runs SET submission_run_id=@submission WHERE id=@id AND submission_run_id IS NULL";
+    q.Parameters.AddWithValue("@id", localRunId);
+    q.Parameters.AddWithValue("@submission", submissionRunId);
+    q.ExecuteNonQuery();
+  }
+
+  private static void SaveCore(RunRecord r)
+  {
     JudgmentCounts judgments = r.JudgmentCounts ?? new JudgmentCounts();
     using SqliteConnection c = DatabaseStore.OpenConnection();
     using SqliteTransaction transaction = c.BeginTransaction();

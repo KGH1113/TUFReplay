@@ -20,6 +20,10 @@ pub struct CreateRunSessionRequest {
     pub client_payload_hash_version: i64,
     #[validate(length(min = 1, max = 1024))]
     pub client_level_relative_path: String,
+    #[serde(default)]
+    pub submission_gameplay_hash_version: i64,
+    #[serde(default)]
+    pub submission_gameplay_hash_hex: String,
 }
 
 #[derive(Debug, Serialize)]

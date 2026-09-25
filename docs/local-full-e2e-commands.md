@@ -20,7 +20,7 @@ rtk proxy bun run e2e:live:prepare
 
 `prepare`는 전용 로컬 계정 `local-game-tester`, OAuth client `tuf-replay-local-game`, PostgreSQL `tuf_replay_local_game`을 준비한다. 비밀번호는 `tools/live-e2e/.data/login.json`에만 저장한다. OAuth grant나 토큰을 미리 발급하지 않는다. Backend `.env`는 `NODE_ENV=development`, `DB_HOST=127.0.0.1`, `DB_PORT=3307`, `DB_DATABASE=tuf_web_test`여야 한다.
 
-기본 차트는 설치된 TUFHelperLite 차트 #8068 Merry Christmas EX(P2), #3072 The Limit Does Not Exist(P16)다. 원본 폴더를 보존한 채 ZIP을 만들고, 로컬 카탈로그의 file ID 및 P/G 난이도와 일치하는지 확인한 후 해당 레벨의 다운로드 주소만 로컬 ZIP 서버로 바꾼다. 다른 차트는 `bun run e2e:live:prepare <level-id> ...`로 지정한다. 먼저 로컬 카탈로그와 게임에 동일한 차트가 있어야 한다.
+기본 차트는 설치된 TUFHelperLite 차트 #8068 Merry Christmas EX(P2), #3072 The Limit Does Not Exist(P16)다. 설치 정보의 file ID가 운영 TUF와 일치하는지 확인한 뒤 공식 원본 ZIP과 `/cdn/{fileId}/metadata`를 함께 다운로드한다. 로컬 설치 폴더를 재압축하지 않으며, 확정된 채보가 원본 ZIP 경로에 존재하는지 검사한다. 전용 로컬 DB의 `cdn_files` 메타데이터와 레벨 다운로드 주소를 함께 준비하므로 EX/일반 채보 선택이 운영과 일치한다. 다른 차트는 `bun run e2e:live:prepare <level-id> ...` 또는 `./scripts/run.sh live-infra charts <level-id> ...`로 지정한다. 먼저 로컬 카탈로그와 게임에 동일한 차트가 있어야 한다. 이전 버전의 준비 데이터를 사용 중이면 준비 명령을 한 번 다시 실행해야 한다.
 
 로컬 ZIP 주소를 저장할 때 CDN 주소에서 file ID를 추출하는 backend 훅은 이 전용 DB의 준비 작업에서만 건너뛰고, 설치된 file ID를 주소와 함께 보존한다. 이전 준비 스크립트로 인해 **해당 레벨의 정확한 로컬 ZIP 주소 + null file ID**가 남은 경우 재실행으로 복구된다. 실제로 서로 다른 file ID는 자동 덮어쓰기하지 않는다. 차트들의 카탈로그 갱신은 하나의 트랜잭션으로 처리한다.
 

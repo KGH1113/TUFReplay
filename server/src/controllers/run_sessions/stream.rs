@@ -76,6 +76,16 @@ async fn handle_socket(
             return;
         }
     }
+    // A pre-upgrade token may recover a sealed receipt, but cannot upload more
+    // evidence without a chart admission. All new REST sessions are checked at issuance.
+    if Model::find_by_pid(&ctx.db, run_id)
+        .await
+        .ok()
+        .is_none_or(|run| run.chart_admission.is_none())
+    {
+        let _ = send_error(&mut socket, "chart_approval_required", true).await;
+        return;
+    }
     let run = RunStream {
         ctx: &ctx,
         store: &store,

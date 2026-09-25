@@ -15,12 +15,12 @@
 | 클라이언트 → 서버 | 추가 필드 | 서버 응답 |
 | --- | --- | --- |
 | `heartbeat` | 없음 | `heartbeat` |
-| `run_start` | `run_id`, `client_game_version`, `client_mod_version`, `client_tuf_file_id`, `client_level_relative_path`, `last_acknowledged_sequence` | `ready` 또는 이미 완료된 `sealed` |
+| `run_start` | `run_id`, `client_game_version`, `client_mod_version`, `client_tuf_file_id`, `client_level_relative_path`, `submission_gameplay_hash_version`, `submission_gameplay_hash_hex`, `last_acknowledged_sequence` | 채보 검증을 통과한 `ready` 또는 이미 완료된 `sealed` |
 | `run_heartbeat` | `run_id` | `ack` |
 | `run_fail` | `run_id` | `failed`, 이미 완료되었으면 `sealed` |
 | `run_complete` | `run_id`, `final_sequence`, `input_count`, `hit_context_count` | `sealed` |
 
-`ready`에는 `run_id`, `acknowledged_sequence`, `max_chunk_bytes`, `heartbeat_interval_ms`가 포함된다. `ack`/`sealed`는 `run_id`와 `acknowledged_sequence`, `nack`은 `run_id`와 `expected_sequence`를 포함한다. 클라이언트 ACK 초기값은 -1이고 실제 resume 위치는 서버 ACK를 따른다. 서버는 알 수 없는 control 필드와 메시지 형식을 거절한다.
+`ready`에는 `chart_verified: true`, `run_id`, `acknowledged_sequence`, `max_chunk_bytes`, `heartbeat_interval_ms`가 포함된다. 모드는 명시적인 채보 승인 없이 전송하지 않는다. `ack`/`sealed`는 `run_id`와 `acknowledged_sequence`, `nack`은 `run_id`와 `expected_sequence`를 포함한다. 클라이언트 ACK 초기값은 -1이고 실제 resume 위치는 서버 ACK를 따른다. 서버는 알 수 없는 control 필드와 메시지 형식을 거절한다.
 
 Binary envelope는 다음과 같다.
 
@@ -50,7 +50,7 @@ Binary envelope는 다음과 같다.
 
 1. 레벨을 열면 idle 연결을 준비한다. 실패해도 로컬 기록 및 게임은 계속된다.
 2. 시도가 시작되면 UUID와 capture buffer를 즉시 붙여 첫 입력부터 보존한다. 이전 시도 정리 중이어도 queue에 독립 시도로 등록한다.
-3. worker가 `run_start`를 보낸다. 서버는 매번 현재 계정 grant, 제출 권한, 레벨 eligibility 및 기존 UUID의 소유자와 claims를 확인한다. 최초 요청만 run과 submission record를 생성한다.
+3. 모드는 플레이 시작 시 메모리의 실제 채보 해시를 다시 계산하고 worker가 `run_start`에 포함한다. 서버는 신규 시도의 현재 계정 grant, 제출 권한, 공식 파일 ID·채보 선택·해시를 검사한다. 통과한 최초 요청만 run과 submission record를 생성하며 거절된 시도는 evidence를 저장하지 않는다. 재연결은 기존 UUID의 소유자·grant와 승인된 불변 해시를 확인한다. 자세한 계약은 [채보 사전 검증](../submission-chart-identity.md)을 따른다.
 4. `ready` 이후에만 evidence를 보낸다. 시작 응답 유실은 같은 UUID의 `run_start`로 복구하며, ACK 유실은 기존 journal에서 바이트가 동일한 frame을 재전송한다.
 5. fail이면 worker가 `run_fail` 영수증을 받은 뒤 다음 시도를 전송한다. 게임 스레드는 이 통신을 기다리지 않는다. 승인 전에 이미 실패한 시도도 승인 가능하면 start/fail로 독립 처리한다.
 6. clear 후 editor 복귀에서 capture를 마감한다. 모든 evidence를 drain/ACK한 뒤 `run_complete`를 보내고 `sealed`를 받아야 업로드 완료다. 완료 응답 유실은 같은 UUID로 terminal receipt를 다시 받는다.
@@ -88,7 +88,7 @@ overflow, 시작 거절, timeout은 해당 시도의 자동 제출만 중단한�
 ## 검증
 
 - `LevelSubmissionSessionSuite`: 같은 소켓의 즉시 반복 실패/재시작, 승인 전 첫 입력 보존, start/ACK/seal 응답 유실, 승인 timeout, capture/시도 queue 상한, terminal 승자, 레벨 변경 시 queued capture 정리와 완료 시도 drain, idle 재연결 및 승인 거절 후 새 시도 복구.
-- Rust integration `reusable_level_socket_has_no_idle_runs_and_survives_immediate_restarts`: idle 중 DB run 미생성, archive 미다운로드, 반복 시도 독립성, Redis 실패 evidence 정리, ACK 복구, 이전 연결 fencing, 중복 control과 claims 충돌, UUID 격리, seal 뒤 fail, 레벨/소유자 범위, Redis 상태 소실, protocol mismatch 및 권한 철회.
+- Rust integration `reusable_level_socket_has_no_idle_runs_and_survives_immediate_restarts`: idle 중 DB run 미생성(공식 archive 캐시는 준비 가능), 승인 거절 시 DB·Redis run 미생성 및 binary 거절, 반복 시도 독립성, Redis 실패 evidence 정리, ACK 복구, 이전 연결 fencing, 승인 해시를 포함한 claims 충돌, UUID 격리, seal 뒤 fail, 레벨/소유자 범위, Redis 상태 소실, protocol mismatch 및 권한 철회.
 - 기존 v1 API, 제출, persistence, auth 및 Redis 한도 테스트를 함께 유지한다.
 
 검사 진입점:

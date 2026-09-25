@@ -58,6 +58,7 @@ public class RecordedRunPayload
   public SubmissionResultSnapshot SubmissionResult;
   public byte[] GameplayHash;
   public byte[] SubmissionGameplayHash;
+  public TUFReplay.Submission.Sessions.SubmissionRunLink SubmissionLink;
   public int? GameplayHashVersion;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();

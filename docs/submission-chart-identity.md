@@ -5,6 +5,53 @@ match the official chart selected by the server. This is an additional check in
 the trusted-tester adapter; it is not an independent simulation or proof of the
 actual chart or input used by a potentially modified client.
 
+## Admission before upload
+
+Every `run_start` and REST issuance request now requires
+`submission_gameplay_hash_version: 1` and a lowercase 64-character
+`submission_gameplay_hash_hex`. The mod computes this from the in-memory game
+chart at each attempt's input-capture boundary, including editor changes that
+were never saved to disk. The immutable per-attempt hash is reused only when
+reconnecting that same run.
+
+The server checks official eligibility, selects the official original, requires
+the current file ID and compares its submission hash **before** inserting a run,
+submission record, or Redis upload session. Missing/unsupported hashes, ambiguous
+official selection, mismatch, outdated files, and unavailable references fail
+closed. No input/hit chunks or per-run artifacts are uploaded for those attempts.
+Ordinary authentication/rate-limit/connection state and shared official-chart
+cache are independent of player evidence.
+
+A level socket may warm the public official reference without creating a run.
+The admission lookup has an eight-second deadline; the client's ten-second
+approval window and 8,192-record buffer remain bounded. A cold archive may finish
+warming for a later attempt. The client sends evidence only after `ready` carries
+`chart_verified: true`, so a new mod cannot silently upload to an old server that
+does not implement admission. The game thread never waits for a network response;
+runtime hashing itself happens synchronously on the game thread before native
+input capture starts.
+
+Successful admission is stored atomically with the run as `chart_admission`.
+Reconnect claims must match it; final trusted-tester validation checks uploaded
+metadata against it before checking the current official reference again.
+Old unsealed REST sessions without admission cannot resume upload. Previously
+sealed evidence and published replays are preserved.
+
+Local activity only exposes a submission run ID after approval. If a short clear
+is saved first, a synchronized late-approval callback links that existing local
+record; denial leaves Submit disabled. A preflight rejection remains observable
+even if capture already completed. The game displays a rejection notification,
+and normal local replay recording remains independent.
+
+Deploy the server migration and updated mod together. Existing clients without
+the new hash fields are rejected before run creation; this is intentional.
+
+The local E2E preparer downloads the official original ZIP together with its
+metadata and seeds both `levels` and `cdn_files` in the dedicated local TUF DB.
+It never constructs the server's reference from an edited installed folder.
+Re-run `./scripts/run.sh live-infra charts` for manifests created by the older
+preparer; startup rejects manifests that lack official metadata.
+
 ## Selecting the official original
 
 The public level response provides `fileId` and `dlLink`, but no authoritative

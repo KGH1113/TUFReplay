@@ -225,7 +225,7 @@ async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() 
 #[tokio::test]
 #[serial]
 async fn trusted_tester_never_registers_missing_or_changed_chart_identity() {
-    for identity in ["mismatch", "missing", "unsupported"] {
+    for identity in ["mismatch", "missing", "unsupported", "admission_mismatch"] {
         exercise_trusted_submission(identity).await;
     }
 }
@@ -302,6 +302,16 @@ async fn exercise_trusted_submission(identity: &str) {
             "speed": 99.0
         }
     });
+    if identity == "admission_mismatch" {
+        use sea_orm::{ActiveModelTrait, ActiveValue::Set, IntoActiveModel};
+        let mut admitted = run.clone().into_active_model();
+        // The evidence matches the current official chart, but not the chart that
+        // this particular run was admitted with. Final validation must reject it.
+        admitted.chart_admission = Set(Some(
+            serde_json::json!({"file_id":"client-file", "hash_version":1,"gameplay_hash":"b".repeat(64)}),
+        ));
+        admitted.update(&ctx.db).await.unwrap();
+    }
     match identity {
         "mismatch" => metadata["submissionGameplayHashHex"] = serde_json::json!("0".repeat(64)),
         "missing" => {

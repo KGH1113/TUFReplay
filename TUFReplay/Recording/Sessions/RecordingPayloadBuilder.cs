@@ -20,6 +20,7 @@ public static class RecordingPayloadBuilder
     run.InputCount = data.Inputs.Count;
     run.HitContextCount = data.HitContexts.Count;
     run.SubmissionRunId = data.SubmissionRunId;
+    run.SubmissionLink = data.SubmissionLink;
     run.ReplayArtifact = null;
     run.ReplayUnavailableReason = null;
     if (!data.TryCreateArtifact(run.Id, out ReplayArtifact artifact))
