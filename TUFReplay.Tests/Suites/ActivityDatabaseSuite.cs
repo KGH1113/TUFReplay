@@ -13,9 +13,72 @@ internal static class ActivityDatabaseSuite
   internal static void RunAll(string root)
   {
     TestFreshSchemaAndAtomicArtifact(root);
+    TestV1SchemaUpgrade(root);
+    TestMissingCurrentTableIsReported(root);
     TestLegacyV15Import(root);
     TestLegacyDatabaseReset(root);
     TestUnsupportedDatabasesArePreserved(root);
+  }
+
+  private static void TestV1SchemaUpgrade(string root)
+  {
+    foreach (bool missingColumn in new[] { true, false })
+    {
+      string directory = Path.Combine(root, missingColumn ? "v1-before-submission" : "v1-with-submission");
+      Directory.CreateDirectory(directory);
+      string main = Path.Combine(directory, "tufreplay.sqlite");
+      CreateCurrentDatabase(main);
+      using (SqliteConnection connection = OpenUnpooled(main))
+      using (SqliteCommand command = connection.CreateCommand())
+      {
+        InsertParents(connection);
+        command.CommandText =
+          "INSERT INTO runs(id,level_session_id,run_index,started_at_utc,result) "
+          + "VALUES('retained-run','level-session',0,'2026-01-01T00:00:00Z','cleared')";
+        command.ExecuteNonQuery();
+        command.CommandText = "DROP INDEX idx_runs_submission_run_id";
+        command.ExecuteNonQuery();
+        if (missingColumn)
+        {
+          command.CommandText = "ALTER TABLE runs DROP COLUMN submission_run_id";
+          command.ExecuteNonQuery();
+        }
+        command.CommandText = "PRAGMA user_version=1";
+        command.ExecuteNonQuery();
+      }
+
+      LegacyActivityDatabaseTransition.EnsureCurrent(main, main + ".migrating", main + ".backup");
+      LegacyActivityDatabaseTransition.EnsureCurrent(main, main + ".migrating", main + ".backup");
+
+      Assert(ReadUserVersion(main) == ActivitySchema.Version, "Schema v1 was not upgraded.");
+      Assert(CountRows(main, "runs") == 1, "Schema v1 upgrade lost a recorded run.");
+      using SqliteConnection upgraded = OpenUnpooled(main);
+      using SqliteCommand check = upgraded.CreateCommand();
+      check.CommandText = "SELECT submission_run_id FROM runs WHERE id='retained-run'";
+      Assert(check.ExecuteScalar() == DBNull.Value, "Schema v1 upgrade did not add the submission column.");
+      check.CommandText = "SELECT 1 FROM sqlite_master WHERE type='index' AND name='idx_runs_submission_run_id'";
+      Assert(check.ExecuteScalar() != null, "Schema v1 upgrade did not restore the submission index.");
+      Assert(!File.Exists(main + ".backup"), "Schema v1 upgrade unexpectedly replaced the database.");
+    }
+  }
+
+  private static void TestMissingCurrentTableIsReported(string root)
+  {
+    string main = Path.Combine(root, "missing-current-table.sqlite");
+    CreateCurrentDatabase(main);
+    using (SqliteConnection connection = OpenUnpooled(main))
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "DROP TABLE replay_artifacts";
+      command.ExecuteNonQuery();
+    }
+
+    AssertThrows<InvalidOperationException>(
+      () => LegacyActivityDatabaseTransition.EnsureCurrent(main, main + ".migrating", main + ".backup"),
+      "A current database with a missing table was accepted."
+    );
+    Assert(ReadUserVersion(main) == ActivitySchema.Version, "Incomplete database header changed.");
+    Assert(!File.Exists(main + ".backup"), "Incomplete database was unexpectedly replaced.");
   }
 
   private static void TestFreshSchemaAndAtomicArtifact(string root)
