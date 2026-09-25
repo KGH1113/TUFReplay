@@ -28,6 +28,7 @@ export function SubmissionGalleryDialog({
   error,
   onOpenChange,
   onSubmit,
+  onCloseAutoFocus,
 }: {
   open: boolean;
   run: SubmissionRun | undefined;
@@ -38,6 +39,7 @@ export function SubmissionGalleryDialog({
   error: string;
   onOpenChange: (open: boolean) => void;
   onSubmit: (selection: VisualSelection | undefined) => void;
+  onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { t } = useTranslation("submission");
   const titleRef = useRef<HTMLHeadingElement>(null);
@@ -79,6 +81,7 @@ export function SubmissionGalleryDialog({
         }}
         onEscapeKeyDown={(event) => pending && event.preventDefault()}
         onPointerDownOutside={(event) => pending && event.preventDefault()}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         <DialogHeader className="shrink-0 space-y-3 px-6 pb-6 pt-7 sm:px-8 sm:pt-8">
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">

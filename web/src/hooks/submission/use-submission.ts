@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useApiPromise } from "@/api/app-api-provider";
 import type { VisualSelection } from "@/models/submission/submission-model";
 import { hasSubmissionPermission } from "@/models/submission/submission-model";
+import { isSubmissionProcessing } from "@/models/submission/submission-progress";
 import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { submissionKeys } from "@/state/submission/submission-queries";
 import { visualKeys } from "@/state/visual/visual-queries";
@@ -61,9 +62,10 @@ export function useSubmissionRun(id: string | null, enabled: boolean) {
     enabled: enabled && id !== null && status.data?.connected === true,
     retry: false,
     refetchInterval: (query) =>
-      ["issued", "streaming", "uploading", "sealed", "validation_pending", "registering"].includes(
-        query.state.data?.status ?? "",
-      )
+      enabled &&
+      (!query.state.data ||
+        query.state.status === "error" ||
+        isSubmissionProcessing(query.state.data.status))
         ? 2000
         : false,
   });

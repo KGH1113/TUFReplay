@@ -1,5 +1,6 @@
 import {
   ArrowLeft01Icon,
+  ArrowRight01Icon,
   ArrowUpRight01Icon,
   Delete02Icon,
   Download01Icon,
@@ -11,9 +12,10 @@ import {
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { SubmissionGalleryDialog } from "@/components/submission/submission-gallery-dialog";
+import { SubmissionProgressDialog } from "@/components/submission/submission-progress-dialog";
 import { useSubmissionRun } from "@/hooks/submission/use-submission";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
@@ -23,9 +25,9 @@ import {
   canSubmit,
   hasSubmissionPermission,
   submissionAccountKey,
-  submissionPhase,
   submissionPresentationForRequest,
 } from "@/models/submission/submission-model";
+import { submissionProgress } from "@/models/submission/submission-progress";
 import { TUF_WEB_URL } from "@/shared/config/tuf-web-url";
 import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { Button } from "@/shared/ui/button";
@@ -72,15 +74,19 @@ export function RunActionsMenu({
   const [menuError, setMenuError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const [galleryOpen, setGalleryOpen] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [attemptedPresentation, setAttemptedPresentation] = useState<VisualSelection | null>(null);
   const busy = pendingAction !== null;
   const submission = useSubmissionRun(
     run.submissionRunId,
-    (menuOpen || galleryOpen) && !disabled && run.submissionRunId !== null,
+    (menuOpen || galleryOpen || progressOpen) && !disabled && run.submissionRunId !== null,
   );
-  const submitted =
-    submission.run.data?.status === "submitted" || submission.run.data?.external_pass_id != null;
+  const progress = submissionProgress(submission.run.data);
   const submissionReady =
+    !disabled &&
+    !submission.run.isError &&
+    progress.phase !== "submitted" &&
     hasSubmissionPermission(submission.status.data, submission.status.isError) &&
     submission.run.data !== undefined &&
     canSubmit(submission.run.data);
@@ -149,6 +155,7 @@ export function RunActionsMenu({
     if (submission.run.data?.presentation === null) {
       setMenuError("");
       setMenuOpen(false);
+      setProgressOpen(false);
       setGalleryOpen(true);
       return;
     }
@@ -176,12 +183,12 @@ export function RunActionsMenu({
     setMenuError("");
     try {
       await submission.submit.mutateAsync(nextPresentation);
-      setGalleryOpen(false);
-      setMenuOpen(true);
     } catch {
       setMenuError(submissionT("requestFailed"));
     } finally {
       setPendingAction(null);
+      setGalleryOpen(false);
+      setProgressOpen(true);
     }
   };
 
@@ -196,6 +203,7 @@ export function RunActionsMenu({
       >
         <DropdownMenuTrigger asChild>
           <Button
+            ref={menuTriggerRef}
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -204,7 +212,13 @@ export function RunActionsMenu({
             <HugeiconsIcon aria-hidden="true" icon={MoreVerticalIcon} className="size-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-fit min-w-0 whitespace-nowrap">
+        <DropdownMenuContent
+          align="end"
+          className="w-fit min-w-0 whitespace-nowrap"
+          onCloseAutoFocus={(event) => {
+            if (progressOpen || galleryOpen) event.preventDefault();
+          }}
+        >
           {run.hasMicrophoneRecording ? (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>
@@ -283,23 +297,34 @@ export function RunActionsMenu({
             <>
               <DropdownMenuSeparator />
               <DropdownMenuItem
-                disabled={disabled || busy || submitted || !submissionReady}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  void submitRun();
+                disabled={
+                  disabled || (busy && pendingAction !== "submit") || run.submissionRunId === null
+                }
+                onSelect={() => {
+                  setMenuError("");
+                  setProgressOpen(true);
                 }}
               >
                 <span aria-hidden="true" className="size-4" />
                 <HugeiconsIcon
                   aria-hidden="true"
-                  icon={pendingAction === "submit" ? Loading03Icon : Upload04Icon}
-                  className={pendingAction === "submit" ? "size-4 animate-spin" : "size-4"}
+                  icon={
+                    progress.processing || pendingAction === "submit" ? Loading03Icon : Upload04Icon
+                  }
+                  className={
+                    progress.processing || pendingAction === "submit"
+                      ? "size-4 animate-spin motion-reduce:animate-none"
+                      : "size-4"
+                  }
                 />
-                {submitted
-                  ? submissionT("phase.submitted")
-                  : submission.run.data && !submissionReady
-                    ? submissionT(`phase.${submissionPhase(submission.run.data.status)}`)
-                    : t("run.submit")}
+                {submission.run.data
+                  ? submissionT(`progress.heading.${progress.phase}`)
+                  : submissionT("progress.title")}
+                <HugeiconsIcon
+                  aria-hidden="true"
+                  icon={ArrowRight01Icon}
+                  className="ml-auto size-4"
+                />
               </DropdownMenuItem>
               {submission.run.data?.external_pass_id != null ? (
                 <DropdownMenuItem asChild>
@@ -344,6 +369,27 @@ export function RunActionsMenu({
         </DropdownMenuContent>
       </DropdownMenu>
 
+      <SubmissionProgressDialog
+        open={progressOpen}
+        run={submission.run.data}
+        runIndex={run.runIndex}
+        ready={submissionReady}
+        pending={pendingAction === "submit"}
+        queryFailed={submission.run.isError || submission.status.isError}
+        disconnected={submission.status.data?.connected === false}
+        refreshing={submission.run.isFetching || submission.status.isFetching}
+        error={menuError}
+        onOpenChange={setProgressOpen}
+        onSubmit={() => void submitRun()}
+        onRefresh={() => {
+          void submission.status.refetch();
+          void submission.run.refetch();
+        }}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (!galleryOpen) menuTriggerRef.current?.focus();
+        }}
+      />
       <ConfirmDeleteDialog
         open={recordingDialogOpen}
         title={microphoneT("recording.deleteTitle")}
@@ -377,6 +423,10 @@ export function RunActionsMenu({
         error={menuError}
         onOpenChange={setGalleryOpen}
         onSubmit={(presentation) => void submitFromGallery(presentation)}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          if (!progressOpen) menuTriggerRef.current?.focus();
+        }}
       />
     </>
   );
