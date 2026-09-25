@@ -1,0 +1,15 @@
+{
+  "name": "tuf-replay-local-infra",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "aws4fetch": "1.0.20",
+    "esbuild": "0.25.12",
+    "miniflare": "4.20260730.0",
+    "s3rver": "3.7.1"
+  },
+  "overrides": {
+    "undici": "7.29.0",
+    "sharp": "0.35.4"
+  }
+}

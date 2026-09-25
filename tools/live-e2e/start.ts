@@ -4,6 +4,8 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { requireFreePorts } from "../auto-submission-e2e/src/ports";
 import { seedTrustedTester } from "../testing/trusted-tester-fixture";
+import { requireStorage, storageEnvironment } from "./storage";
+import { prepareObjectStorage } from "./maintenance";
 import {
 	assertBackendEnvironment,
 	backend,
@@ -23,12 +25,23 @@ const backendEnv = requireBackend("dotenv").parse(
 	await readFile(`${backend}/.env`),
 );
 assertBackendEnvironment(backendEnv);
+await requireStorage();
+const storageEnv = storageEnvironment();
+for (const [name, path] of [["TUF backend", backend], ["TUF frontend", frontend], ["web-adofai", editor]]) {
+  const revision = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { cwd: path });
+  const status = Bun.spawnSync(["git", "status", "--porcelain"], { cwd: path });
+  console.log(`${name}: ${path} (${revision.stdout.toString().trim() || "unknown revision"}${status.stdout.length ? ", with local edits" : ""})`);
+}
+const deliveryResolver = Bun.file(`${editor}/src/web/replay-viewer/replay-delivery-url.resolver.ts`);
+if (!(await deliveryResolver.exists()) || !(await deliveryResolver.text()).includes("VITE_LOCAL_REPLAY_CDN_ORIGIN"))
+  throw new Error("web-adofai checkout needs local CDN support (VITE_LOCAL_REPLAY_CDN_ORIGIN). Update it or select a current checkout with E2E_WEB_ADOFAI.");
 const charts: Array<{ levelId: number; archive: string }> = JSON.parse(
 	await readFile(`${data}/charts.json`, "utf8"),
 );
 if (!(await Bun.file(`${data}/login.json`).exists()))
 	throw new Error("Run bun run e2e:live:prepare first");
 await requireFreePorts([3002, 3990, 5151, 5152, 5176, 5180, 5190]);
+await prepareObjectStorage();
 await mkdir(`${data}/logs`, { recursive: true, mode: 0o700 });
 let stopping = false;
 const children: Array<{ process: ChildProcess; exited: Promise<void> }> = [];
@@ -155,6 +168,7 @@ try {
 		["cargo", "run", "--", "start", "--all", "--environment", "local-game"],
 		join(root, "server"),
 		{
+			...storageEnv,
 			TUF_TO_AUTO_SUBMISSION_TOKEN: incomingToken,
 			AUTO_SUBMISSION_TO_TUF_TOKEN: outgoingToken,
 			SCHEDULER_CONFIG: "config/scheduler.yaml",
@@ -178,6 +192,7 @@ try {
       VITE_AUTO_SUBMISSION_API_URL: "http://127.0.0.1:5151",
       VITE_TUF_API_URL: "http://127.0.0.1:3002",
       VITE_REPLAY_CDN_PROXY_URL: "http://127.0.0.1:5190/__tuf-replay-cdn",
+      VITE_LOCAL_REPLAY_CDN_ORIGIN: storageEnv.REPLAY_CDN_ORIGIN,
 		},
 	);
 	start(

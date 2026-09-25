@@ -62,8 +62,11 @@ impl Hooks for App {
         } else {
             let stores = crate::services::artifacts::ArtifactStores::from_env(
                 &settings.auto_submission.catalog.artifact_root,
+                ctx.environment.to_string() == "local-game",
             )?;
-            if let Some(signer) = crate::services::cdn::CdnSigner::from_env()? {
+            if let Some(signer) = crate::services::cdn::CdnSigner::from_env(
+                ctx.environment.to_string() == "local-game",
+            )? {
                 if stores.r2.is_none() {
                     return Err(Error::Message("replay CDN requires R2 storage".into()));
                 }

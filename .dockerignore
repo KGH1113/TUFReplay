@@ -24,5 +24,6 @@ server/
 scripts/
 docs/
 tools/auto-submission-e2e/**
+tools/live-e2e/.data
 !tools/auto-submission-e2e/package.json
 deploy/host/

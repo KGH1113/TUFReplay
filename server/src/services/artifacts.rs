@@ -23,7 +23,7 @@ pub struct ArtifactStores {
 }
 
 impl ArtifactStores {
-    pub fn from_env(root: &str) -> Result<Self> {
+    pub fn from_env(root: &str, local_game: bool) -> Result<Self> {
         std::fs::create_dir_all(root)?;
         let local: Arc<dyn StoreDriver> = Arc::new(OpendalAdapter::new(
             Operator::new(services::Fs::default().root(root)).map_err(StorageError::from)?,
@@ -37,20 +37,25 @@ impl ArtifactStores {
                 local_fallback: false,
             });
         }
-        if mode != "r2" {
+        if mode != "r2" && !(mode == "s3-local" && local_game) {
             return Err(Error::Message(
-                "TUF_REPLAY_STORAGE must be local or r2".into(),
+                "TUF_REPLAY_STORAGE must be local or r2 (s3-local requires local-game)".into(),
             ));
         }
         let endpoint = required_env("R2_ENDPOINT")?;
         let url = reqwest::Url::parse(&endpoint)
             .map_err(|_| Error::Message("invalid R2_ENDPOINT".into()))?;
-        if url.scheme() != "https"
+        let valid_host = if mode == "s3-local" {
+            is_local_http_origin(&url)
+        } else {
+            url.scheme() == "https"
+                && url
+                    .host_str()
+                    .is_some_and(|h| h.ends_with(".r2.cloudflarestorage.com"))
+        };
+        if !valid_host
             || !url.username().is_empty()
             || url.password().is_some()
-            || !url
-                .host_str()
-                .is_some_and(|h| h.ends_with(".r2.cloudflarestorage.com"))
             || url.path() != "/"
             || url.query().is_some()
             || url.fragment().is_some()
@@ -95,6 +100,17 @@ impl ArtifactStores {
         }
         Ok(&*self.primary)
     }
+}
+
+/// HTTP emulation is only accepted by callers explicitly running local-game.
+pub(crate) fn is_local_http_origin(url: &reqwest::Url) -> bool {
+    url.scheme() == "http"
+        && matches!(url.host_str(), Some("127.0.0.1" | "[::1]"))
+        && url.username().is_empty()
+        && url.password().is_none()
+        && url.path() == "/"
+        && url.query().is_none()
+        && url.fragment().is_none()
 }
 
 fn r2_operator(
@@ -239,6 +255,43 @@ pub async fn verify_stream(stream: BytesStream, sha256: &str, bytes: u64) -> Res
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires the Docker Desktop live-infra object store"]
+    async fn local_s3_multipart_roundtrip() {
+        let endpoint =
+            std::env::var("LOCAL_OBJECT_STORE").unwrap_or_else(|_| "http://127.0.0.1:9000".into());
+        assert!(is_local_http_origin(
+            &reqwest::Url::parse(&endpoint).unwrap()
+        ));
+        let operator = r2_operator(&endpoint, "tuf-replay-local", "S3RVER", "S3RVER").unwrap();
+        let stores = ArtifactStores {
+            primary: Arc::new(OpendalAdapter::new(operator.clone())),
+            r2: Some(operator.clone()),
+            local_fallback: false,
+            ..stores()
+        };
+        let key = format!("local-check/{}", uuid::Uuid::new_v4());
+        let path = Path::new(&key);
+        let bytes = Bytes::from(vec![37u8; 17 * 1024 * 1024]);
+        let hash = hex::encode(Sha256::digest(&bytes));
+        let chunks: Vec<_> = bytes
+            .chunks(1024 * 1024)
+            .map(|chunk| Ok(Bytes::copy_from_slice(chunk)))
+            .collect();
+        let result = async {
+            stores
+                .upload_stream(
+                    path,
+                    BytesStream::from_body_stream(futures_util::stream::iter(chunks)),
+                )
+                .await?;
+            verify_stream(stores.get_stream(path).await?, &hash, bytes.len() as u64).await
+        }
+        .await;
+        operator.delete(&key).await.unwrap();
+        result.unwrap();
+    }
 
     #[tokio::test]
     async fn r2_operator_installs_http_transport_for_signed_object_requests() {
