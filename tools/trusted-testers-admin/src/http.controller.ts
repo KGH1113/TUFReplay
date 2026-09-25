@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { InputError, parseText, parseUserId, type TesterRepository } from "./testers.model";
+import { lookupLinkedPlayer, parsePlayerId, PlayerLookupError, type LinkedPlayer } from "./player-lookup";
 
 export interface AdminAssets {
   html: string;
@@ -60,6 +61,7 @@ export function createAdminHandler(
   repository: TesterRepository,
   credentials: AdminCredentials,
   assets: AdminAssets,
+  resolvePlayer: (playerId: number) => Promise<LinkedPlayer> = lookupLinkedPlayer,
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
@@ -93,6 +95,22 @@ export function createAdminHandler(
       if (request.method === "GET" && url.pathname === "/api/testers") {
         return json(await repository.list());
       }
+      const playerLookup = /^\/api\/players\/([^/]+)$/.exec(url.pathname);
+      if (request.method === "GET" && playerLookup) {
+        return json(await resolvePlayer(parsePlayerId(playerLookup[1])));
+      }
+      if (request.method === "POST" && url.pathname === "/api/testers/by-player") {
+        const body = await input(request);
+        const playerId = parsePlayerId(body.playerId);
+        const expectedUserId = parseUserId(body.expectedUserId);
+        const label = parseText(body.label, "표시 이름", 80, false);
+        const reason = parseText(body.reason, "승인 사유", 240, true);
+        const player = await resolvePlayer(playerId);
+        if (player.userId !== expectedUserId) {
+          return json({ error: "연결된 계정이 변경됐습니다. 플레이어를 다시 조회해 주세요." }, 409);
+        }
+        return json(await repository.grant(player.userId, label || player.username, credentials.username, reason), 201);
+      }
       if (request.method === "POST" && url.pathname === "/api/testers") {
         const body = await input(request);
         const userId = parseUserId(body.userId);
@@ -112,6 +130,7 @@ export function createAdminHandler(
       return json({ error: "페이지를 찾지 못했습니다." }, 404);
     } catch (error) {
       if (error instanceof InputError) return json({ error: error.message }, 400);
+      if (error instanceof PlayerLookupError) return json({ error: error.message }, error.status);
       // Do not send SQL text, database URLs, or stack traces to the browser.
       return json({ error: "변경을 저장하지 못했습니다. 잠시 후 다시 시도해 주세요." }, 500);
     }

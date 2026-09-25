@@ -49,12 +49,14 @@
         <aside class="side-column">
           <section class="panel add-panel" aria-labelledby="add-title">
             <p class="eyebrow">새 권한</p><h2 id="add-title">테스터 추가</h2>
-            <p class="muted">숫자 player ID가 아닌 TUF 계정의 UUID를 입력하세요.</p>
+            <p class="muted">플레이어 숫자 ID로 연결된 TUF 계정을 확인한 뒤 권한을 추가합니다.</p>
             <form id="add-form">
-              <label><span>계정 UUID</span><input name="userId" type="text" inputmode="text" required maxlength="36" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" spellcheck="false" autocomplete="off" /></label>
+              <label><span>플레이어 ID</span><input name="playerId" type="text" inputmode="numeric" pattern="[1-9][0-9]*" required maxlength="16" placeholder="예: 7410" spellcheck="false" autocomplete="off" /></label>
+              <button id="lookup-player" class="button button-secondary" type="button">계정 조회</button>
+              <div id="player-result" class="player-result" role="status" aria-live="polite" hidden></div>
               <label><span>표시 이름 <small>선택</small></span><input name="label" type="text" maxlength="80" placeholder="테스터를 알아볼 이름" autocomplete="off" /></label>
               <label><span>승인 사유</span><input name="reason" type="text" required maxlength="240" placeholder="예: 1차 베타 테스트" autocomplete="off" /></label>
-              <button class="button button-primary" type="submit">권한 추가</button>
+              <button id="add-tester" class="button button-primary" type="submit" disabled>확인한 계정에 권한 추가</button>
             </form>
           </section>
           <section class="panel history-panel" aria-labelledby="history-title">
