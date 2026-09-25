@@ -12,6 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource
+      Include="../server/contracts/submission-gameplay-v1.json"
+      LogicalName="TUFReplay.Submission.GameplayV1"
+    />
     <EmbeddedResource Include="Visual/Assets/Fonts/*.base64" LogicalName="TUFReplay.Visual.Assets.Fonts.%(Filename)" />
     <EmbeddedResource
       Include="Visual/Assets/Fonts/adofai-cjk.woff"

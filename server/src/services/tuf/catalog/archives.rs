@@ -10,10 +10,28 @@ use std::{
 };
 use zip::ZipArchive;
 
+#[cfg(test)]
 pub(super) fn process_archive(
     archive_path: &Path,
     extract_root: &Path,
     settings: &TufCatalogSettings,
+) -> Result<ProcessedRevision, CatalogError> {
+    extract_archive(archive_path, extract_root, settings, true)
+}
+
+pub(super) fn process_original_archive(
+    archive_path: &Path,
+    extract_root: &Path,
+    settings: &TufCatalogSettings,
+) -> Result<ProcessedRevision, CatalogError> {
+    extract_archive(archive_path, extract_root, settings, false)
+}
+
+fn extract_archive(
+    archive_path: &Path,
+    extract_root: &Path,
+    settings: &TufCatalogSettings,
+    flatten: bool,
 ) -> Result<ProcessedRevision, CatalogError> {
     fs::create_dir_all(extract_root).map_err(|_| CatalogError::UnsafeArchive)?;
     let archive_file = File::open(archive_path).map_err(|_| CatalogError::UnsafeArchive)?;
@@ -65,7 +83,9 @@ pub(super) fn process_archive(
         }
     }
 
-    flatten_leaf_files(extract_root, extract_root)?;
+    if flatten {
+        flatten_leaf_files(extract_root, extract_root)?;
+    }
     let mut files = collect_files(extract_root)?;
     files.sort_by(|left, right| {
         ordinal_cmp(

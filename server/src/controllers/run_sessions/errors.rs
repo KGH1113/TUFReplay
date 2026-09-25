@@ -5,6 +5,13 @@ use axum::{http::StatusCode, response::IntoResponse, Json};
 use loco_rs::prelude::*;
 pub(super) fn catalog_error_response(error: CatalogError) -> Response {
     let (status, code) = match error {
+        CatalogError::AmbiguousChart => {
+            (StatusCode::UNPROCESSABLE_ENTITY, "official_chart_ambiguous")
+        }
+        CatalogError::UnsupportedChart => (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "official_chart_unsupported",
+        ),
         CatalogError::IneligibleDifficulty => {
             (StatusCode::UNPROCESSABLE_ENTITY, "level_not_eligible")
         }

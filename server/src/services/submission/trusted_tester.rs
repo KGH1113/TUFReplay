@@ -1,3 +1,4 @@
+use crate::domain::submission_gameplay_hash::SUBMISSION_GAMEPLAY_HASH_VERSION;
 use crate::{
     domain::{
         EvidenceManifest, OfficialChartProvider, ResultProvenance, ValidatedResult,
@@ -84,10 +85,23 @@ pub async fn validate(
 
     // Acquisition resolves current TUF metadata and the current official chart
     // archive. Any upstream failure remains retryable through the worker path.
-    let chart = charts
+    let chart = match charts
         .acquire(run.tuf_level_id, &run.client_level_relative_path)
         .await
-        .map_err(|_| Error::Message("official_chart_unavailable".into()))?;
+    {
+        Ok(chart) => chart,
+        Err(reason) if reason == "official_chart_ambiguous" => {
+            return Ok(ValidationOutcome::Rejected("official_chart_ambiguous"))
+        }
+        Err(reason) if reason == "official_chart_unsupported" => {
+            return Ok(ValidationOutcome::Rejected("official_chart_unsupported"))
+        }
+        Err(_) => return Err(Error::Message("official_chart_unavailable".into())),
+    };
+
+    if let Err(reason) = verify_submission_chart(&metadata, &chart.submission_gameplay_hash) {
+        return Ok(ValidationOutcome::Rejected(reason));
+    }
 
     Ok(ValidationOutcome::Accepted(Box::new(build_result(
         &manifest.digest,
@@ -95,6 +109,32 @@ pub async fn validate(
         snapshot,
         claims,
     ))))
+}
+
+fn verify_submission_chart(
+    metadata: &serde_json::Value,
+    expected: &str,
+) -> std::result::Result<(), &'static str> {
+    if metadata
+        .get("submissionGameplayHashVersion")
+        .and_then(|v| v.as_u64())
+        != Some(SUBMISSION_GAMEPLAY_HASH_VERSION.into())
+    {
+        return Err("submission_chart_identity_missing_or_unsupported");
+    }
+    let claimed = metadata
+        .get("submissionGameplayHashHex")
+        .and_then(|v| v.as_str())
+        .filter(|s| {
+            s.len() == 64
+                && s.bytes()
+                    .all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c))
+        })
+        .ok_or("submission_chart_identity_invalid")?;
+    if claimed != expected {
+        return Err("submission_chart_gameplay_mismatch");
+    }
+    Ok(())
 }
 
 fn build_result(
@@ -117,8 +157,8 @@ fn build_result(
         validation_contract_version: 2,
         validation_status: ValidationStatus::SkippedTrustedTester,
         result_provenance: ResultProvenance::RecordedGameResult,
-        validator_version: "trusted-tester-adapter-v1".into(),
-        rules_version: "recorded-game-result-v1".into(),
+        validator_version: "trusted-tester-adapter-v2".into(),
+        rules_version: "recorded-game-result-submission-chart-v1".into(),
         evidence_digest: evidence_digest.into(),
         official_file_id: chart.file_id,
         chart_sha256: chart.sha256,
@@ -311,7 +351,29 @@ fn leading_digits(value: &str) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::submission_gameplay_hash::compute_submission_gameplay_hash;
     use serde_json::json;
+
+    #[test]
+    fn submission_identity_is_mandatory_and_distinct_from_activity_hash() {
+        let bytes = br#"{"settings":{"version":17,"bpm":120},"angleData":[0,180],"actions":[]}"#;
+        let hash = compute_submission_gameplay_hash(bytes).unwrap();
+        let mut metadata = json!({"gameplayHashVersion":4,"gameplayHashHex":hash});
+        assert_eq!(
+            verify_submission_chart(&metadata, &hash),
+            Err("submission_chart_identity_missing_or_unsupported")
+        );
+        metadata["submissionGameplayHashVersion"] = json!(1);
+        metadata["submissionGameplayHashHex"] = json!(hash);
+        assert_eq!(verify_submission_chart(&metadata, &hash), Ok(()));
+        metadata["submissionGameplayHashHex"] = json!("a".repeat(64));
+        assert_eq!(
+            verify_submission_chart(&metadata, &hash),
+            Err("submission_chart_gameplay_mismatch")
+        );
+        metadata["submissionGameplayHashVersion"] = json!(2);
+        assert!(verify_submission_chart(&metadata, &hash).is_err());
+    }
 
     #[test]
     fn version_and_game_mode_come_from_existing_recorded_metadata() {

@@ -7,6 +7,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <None
+      Include="../server/contracts/submission-gameplay-v1-vectors.json"
+      Link="submission-gameplay-v1-vectors.json"
+      CopyToOutputDirectory="PreserveNewest"
+    />
     <Reference Include="TUFReplay">
       <HintPath>$(TUFReplayDll)</HintPath>
     </Reference>

@@ -19,6 +19,8 @@ pub struct TufCatalogRuntime {
     pub(super) client: Client,
     pub(super) settings: Arc<TufCatalogSettings>,
     pub(super) hydration_slots: Arc<Semaphore>,
+    pub(super) chart_cache:
+        Arc<tokio::sync::Mutex<Vec<(i64, TufMetadata, crate::domain::OfficialChart)>>>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -33,6 +35,10 @@ pub enum CatalogError {
     LevelInstallationMismatch,
     #[error("the selected chart does not exist in the canonical revision")]
     ChartNotFound,
+    #[error("official_chart_ambiguous")]
+    AmbiguousChart,
+    #[error("official_chart_unsupported")]
+    UnsupportedChart,
     #[error("the upstream TUF revision changed repeatedly during hydration")]
     CatalogUnstable,
     #[error("the same TUF revision identity resolved to conflicting content")]
@@ -51,10 +57,11 @@ pub enum CatalogError {
     Database(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct TufMetadata {
     pub(super) file_id: String,
     pub(super) download_url: String,
+    pub(super) confirmed_chart_path: Option<String>,
 }
 
 #[derive(Debug)]

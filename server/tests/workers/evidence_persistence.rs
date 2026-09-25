@@ -108,6 +108,7 @@ async fn persisted_evidence_survives_redis_removal_and_remains_unvalidated() {
         UnavailableValidator
             .validate(
                 &tuf_replay_server::domain::OfficialChart {
+                    submission_gameplay_hash: "b".repeat(64),
                     file_id: "unused".into(),
                     sha256: "a".repeat(64),
                     gameplay_hash_version: 1,

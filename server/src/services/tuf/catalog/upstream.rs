@@ -84,9 +84,42 @@ impl TufCatalogRuntime {
             return Err(CatalogError::UpstreamUnavailable);
         }
         Ok(TufMetadata {
+            confirmed_chart_path: self.fetch_confirmed_chart_path(&file_id).await?,
             file_id,
             download_url,
         })
+    }
+
+    async fn fetch_confirmed_chart_path(
+        &self,
+        file_id: &str,
+    ) -> Result<Option<String>, CatalogError> {
+        let mut url = reqwest::Url::parse(&format!(
+            "{}/cdn/",
+            self.settings.tuf_api_base_url.trim_end_matches('/')
+        ))
+        .map_err(|_| CatalogError::UpstreamUnavailable)?;
+        url.path_segments_mut()
+            .map_err(|_| CatalogError::UpstreamUnavailable)?
+            .push(file_id)
+            .push("metadata");
+        let response = self
+            .client
+            .get(url)
+            .send()
+            .await
+            .map_err(|_| CatalogError::UpstreamUnavailable)?;
+        // Older catalogs may lack metadata. Only semantic unanimity may be used then.
+        if response.status() == reqwest::StatusCode::NOT_FOUND {
+            return Ok(None);
+        }
+        let value: serde_json::Value = response
+            .error_for_status()
+            .map_err(|_| CatalogError::UpstreamUnavailable)?
+            .json()
+            .await
+            .map_err(|_| CatalogError::UpstreamUnavailable)?;
+        confirmed_chart_path(&value["metadata"])
     }
 
     pub(super) async fn download_archive(
@@ -134,6 +167,34 @@ impl TufCatalogRuntime {
             .map_err(|error| CatalogError::Storage(error.to_string()))?;
         Ok(())
     }
+}
+
+pub(super) fn confirmed_chart_path(
+    metadata: &serde_json::Value,
+) -> Result<Option<String>, CatalogError> {
+    if metadata.get("pathConfirmed").and_then(|v| v.as_bool()) != Some(true) {
+        return Ok(None);
+    }
+    let target = metadata
+        .get("targetLevel")
+        .and_then(|v| v.as_str())
+        .ok_or(CatalogError::ChartNotFound)?;
+    let files = metadata
+        .get("levelFiles")
+        .and_then(|v| v.as_object())
+        .ok_or(CatalogError::ChartNotFound)?;
+    // Map the confirmed storage path back to its original ZIP entry. A basename
+    // or TUFHelper-flattened client path is never an authority for selection.
+    let mut matches = files
+        .iter()
+        .filter(|(_, entry)| entry.get("path").and_then(|v| v.as_str()) == Some(target));
+    let (path, _) = matches.next().ok_or(CatalogError::ChartNotFound)?;
+    if matches.next().is_some() {
+        return Err(CatalogError::AmbiguousChart);
+    }
+    crate::models::level_revision_charts::normalize_relative_chart_path(path)
+        .map(Some)
+        .map_err(|_| CatalogError::ChartNotFound)
 }
 
 pub(super) fn canonical_download_url(value: &str) -> Result<String, CatalogError> {

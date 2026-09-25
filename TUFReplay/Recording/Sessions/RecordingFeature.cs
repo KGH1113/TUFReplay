@@ -11,6 +11,7 @@ using TUFReplay.Recording.Patches;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Transport;
 using TUFReplay.Shared.Unity;
+using TUFReplay.Submission.Validation;
 
 namespace TUFReplay.Recording.Sessions;
 
@@ -29,6 +30,7 @@ public partial class RecordingFeature
   private RunRecord _currentRun;
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
+  private byte[] _submissionGameplayHash;
   private bool _microphoneCaptureStarted;
   private MicrophoneTimelineAnchor? _microphoneTimelineAnchor;
   private PendingMicrophoneDisposition _pendingEditorRecording;
@@ -231,7 +233,7 @@ public partial class RecordingFeature
       _calibrationRun = true;
       RecordingPatches.ResetHitContextState();
       CaptureGameplayHash();
-      Session.Start(null, true, _gameplayHash, _gameplayHashVersion);
+      Session.Start(null, true, _gameplayHash, _gameplayHashVersion, _submissionGameplayHash);
       Main.Instance.Log("[Recording] Calibration level opened in transient recording mode.");
       return;
     }
@@ -279,7 +281,13 @@ public partial class RecordingFeature
 
     CaptureGameplayHash();
     RecordingPatches.ResetHitContextState();
-    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
+    Session.Start(
+      tufLevelId,
+      Settings == null || Settings.AutoRecord,
+      _gameplayHash,
+      _gameplayHashVersion,
+      _submissionGameplayHash
+    );
     FeatureRegistry.Submission?.SetLevel(levelPath, tufLevelId);
     if (Session.IsRecording)
       FeatureRegistry.MicrophoneRecording?.ArmForLevel();
@@ -312,7 +320,8 @@ public partial class RecordingFeature
       tufLevelId,
       _calibrationRun || Settings == null || Settings.AutoRecord,
       _gameplayHash,
-      _gameplayHashVersion
+      _gameplayHashVersion,
+      _submissionGameplayHash
     );
 
     Main.Instance.Log("[Recording] Prepared retry run. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
@@ -327,6 +336,9 @@ public partial class RecordingFeature
 
   private void CaptureGameplayHash()
   {
+    _submissionGameplayHash = null;
+    if (!RuntimeSubmissionGameplayHash.TryComputeCurrent(out _submissionGameplayHash, out string submissionError))
+      Main.Instance.Log("[Recording] Submission chart identity unavailable. reason=" + submissionError);
     _gameplayHash = null;
     _gameplayHashVersion = null;
     if (GameplayChartHash.TryComputeCurrent(out byte[] hash, out string error))
@@ -341,6 +353,7 @@ public partial class RecordingFeature
 
   public void StopSession()
   {
+    _submissionGameplayHash = null;
     if (_failedRunWaitingForHit)
     {
       _failedRunWaitingForHit = false;

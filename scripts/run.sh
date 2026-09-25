@@ -19,7 +19,7 @@ Commands:
   visual-font-assets Rebuild the bundled CJK WOFF from a local original game font
   package     Build the release package and metadata
   web-check   Run web tests, typecheck, Biome, and production build
-  server-check Check Rust formatting, all targets, and library tests
+  server-check Check Rust formatting, all targets, and library tests (--format / --clippy)
   cdn-check   Check signed R2 edge delivery and cache authorization
   tester-admin-check Check the separate tester admin app and optional PostgreSQL integration
   mac-helper  Build and verify the macOS microphone helper
