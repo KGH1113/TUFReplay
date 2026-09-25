@@ -12,7 +12,7 @@ const preset = {
 };
 
 describe("visual preset IPC API", () => {
-  it("validates and forwards list, source, import, and remove calls", async () => {
+  it("validates and forwards list, source, import, rename, and remove calls", async () => {
     const calls: { method: string; params: unknown }[] = [];
     const namespace = {
       call: async (method: string, params: unknown) => {
@@ -32,6 +32,7 @@ describe("visual preset IPC API", () => {
           };
         }
         if (method === "visual.presets.import") return { preset };
+        if (method === "visual.presets.rename") return { preset: { ...preset, name: "새 이름" } };
         if (method === "visual.presets.remove") return { deleted: true };
         throw new Error(`unexpected method ${method}`);
       },
@@ -52,6 +53,10 @@ describe("visual preset IPC API", () => {
         presetJson: '{"tabs":[{"name":"main"}]}',
       }),
     ).resolves.toEqual(preset);
+    await expect(api.renamePreset("visual-preset-1", " 새 이름 ")).resolves.toEqual({
+      ...preset,
+      name: "새 이름",
+    });
     await expect(api.removePreset("visual-preset-1")).resolves.toBeUndefined();
 
     expect(calls).toContainEqual({ method: "visual.presets.list", params: {} });
@@ -64,6 +69,10 @@ describe("visual preset IPC API", () => {
         source: "dmnote",
         presetJson: '{"tabs":[{"name":"main"}]}',
       },
+    });
+    expect(calls).toContainEqual({
+      method: "visual.presets.rename",
+      params: { id: "visual-preset-1", name: "새 이름" },
     });
     expect(calls).toContainEqual({
       method: "visual.presets.remove",

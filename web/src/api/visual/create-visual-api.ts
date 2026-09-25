@@ -98,6 +98,15 @@ export function createVisualApi(clients: AdofaiIpcClients): VisualApi {
         visualRemoveResponseSchema,
       );
     },
+    async renamePreset(id: string, name: string) {
+      const response = await callAdofaiIpc(
+        clients.namespace,
+        "visual.presets.rename",
+        { id, name: name.trim() },
+        visualPresetResponseSchema,
+      );
+      return response.preset;
+    },
   };
 }
 

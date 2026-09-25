@@ -48,6 +48,7 @@ public sealed class TUFReplayIpcFeature
       ipc.Register("submission.run.remove", TUFReplay.Submission.Ipc.SubmissionIpcHandlers.Remove);
       ipc.Register("visual.presets.list", TUFReplay.Visual.Ipc.VisualIpcHandlers.List);
       ipc.Register("visual.presets.remove", TUFReplay.Visual.Ipc.VisualIpcHandlers.Remove);
+      ipc.Register("visual.presets.rename", TUFReplay.Visual.Ipc.VisualIpcHandlers.Rename);
       ipc.Register("visual.sources.get", TUFReplay.Visual.Ipc.VisualIpcHandlers.Sources);
       ipc.Register("visual.presets.import", TUFReplay.Visual.Ipc.VisualIpcHandlers.Import);
       ipc.Register("visual.presets.inspect", TUFReplay.Visual.Ipc.VisualIpcHandlers.Inspect);

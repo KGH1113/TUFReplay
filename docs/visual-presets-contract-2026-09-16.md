@@ -3,14 +3,15 @@
 Delivery update (2026-09-23): web-adofai now downloads and validates visual bundles.
 The TUF frontend sends record IDs only and no longer enumerates sources or transfers
 bundle buffers. The [protocol-3 contract](replay-delivery-contract.md) supersedes
-the host-download portions of this historical implementation record.
+the host-download portions of this historical implementation record. Registered
+preset names became editable on 2026-09-25; the bundle snapshot remains immutable.
 
 This document supersedes the options in the earlier investigation with the user's decisions on 2026-09-16. Application implementation is authorized. Upstream source may be inspected for behavior, algorithms, constants and layout, but must not be copied into this project.
 
 ## Product invariants
 
 - One optional keyviewer and one optional overlay per submission, independently selected. No combination presets, remembered selection, defaults, preview, placement editing, viewer configuration or speed control.
-- Sources: JipperResourcePack (both kinds), DMNote, Impl DMNote and standalone Jipper KeyViewer (keyviewer only), and ImplResourcePack (overlay only). See [additional source formats and rendering boundary](visual-sources-2026-09-17.md). Read only current saved settings. A registration always creates a fresh immutable snapshot with a separately supplied name unique among that owner's active presets (across both kinds).
+- Sources: JipperResourcePack (both kinds), DMNote, Impl DMNote and standalone Jipper KeyViewer (keyviewer only), and ImplResourcePack (overlay only). See [additional source formats and rendering boundary](visual-sources-2026-09-17.md). Read only current saved settings. A registration always creates a fresh immutable bundle snapshot with a separately supplied name unique among that owner's active presets (across both kinds). The owner may later change only the display name; the preset ID and bundle remain fixed.
 - Gallery artwork is the first grapheme of the name. Both selections initially empty. Empty means nothing is drawn; no generic keyviewer fallback.
 - JS/plugins and sound are silently excluded. Unsupported optional fields are ignored without import warnings. Missing referenced images/fonts fail import. DMNote multi-tab exports import only the saved selected tab (updated 2026-09-17); missing/stale selection fails with an instruction to select a tab and export again. Single-tab exports without selection remain supported. Stored bundles contain only one tab. Non-key visual elements and CSS appearance are in scope.
 - Original layout/quirks should be approximated as closely as possible, proportional fit of the complete reference viewport. No quality reduction controls. Target 1920×1080 at 60Hz.
@@ -50,18 +51,20 @@ The stored bundle is source data, not executable renderer code. Independent sour
 
 - `GET /api/v1/visual-presets` → `{ presets: VisualPreset[] }`, current owner only; metadata only.
 - `POST /api/v1/visual-presets` body `{ name: string, bundle: VisualBundle }` → `{ preset: VisualPreset }`.
-- `DELETE /api/v1/visual-presets/{id}` → `{ deleted: true }`, owner scoped, tombstone snapshot. No update endpoint.
+- `PATCH /api/v1/visual-presets/{id}` body `{ name: string }` → `{ preset: VisualPreset }`, owner scoped. Changes only the display name, preserving the preset ID and bundle bytes/hash. Existing replay descriptors use the current name on their next load.
+- `DELETE /api/v1/visual-presets/{id}` → `{ deleted: true }`, owner scoped, tombstone snapshot.
 - Existing `POST /api/v1/runs/{id}/submit` gains optional `{ presentation: VisualSelection }`.
 - Run DTO includes `presentation: VisualSelection | null`: null means selection is not fixed yet; an object means a fixed selection, including two empty slots. The web gallery opens only for the first selection; retries omit presentation and preserve the server's fixed selection.
 - Missing body/presentation: keep existing fixed selection, or fix both null for first submission. Explicit selection validates ownership/kind/active state and compares against frozen selection on retries. Pre-migration requested/submitted records are fixed empty. Serialize selection fixation and existing state transition with DB row lock + transaction.
 
-Error identifiers: `visual_name_required`, `visual_name_taken`, `visual_source_unsupported`, `visual_bundle_invalid`, `visual_asset_missing`, `visual_payload_too_large`, `visual_multiple_tabs`, `visual_preset_not_found`, `visual_selection_conflict`.
+Error identifiers: `visual_name_required`, `visual_name_too_long`, `visual_name_taken`, `visual_source_unsupported`, `visual_bundle_invalid`, `visual_asset_missing`, `visual_payload_too_large`, `visual_multiple_tabs`, `visual_preset_not_found`, `visual_selection_conflict`.
 
 Resource limits are safety bounds, not quality adaptation: 64 MiB request/bundle, 32 MiB decoded individual asset, 128 MiB aggregate decoded assets, 4096 assets, 32768 JSON nodes (to be reconciled with real fixture structure). Validate finite viewport dimensions, JSON depth, filenames, media signatures and supported non-executable image/font types. Never fetch arbitrary asset URLs on server or browser.
 
 ## IPC (mod-owned auth)
 
 - `visual.presets.list` → list API response.
+- `visual.presets.rename { id, name }` → `{ preset }`. The mod authenticates the owner and forwards the name-only PATCH; it does not reimport or upload bundle assets.
 - `visual.presets.remove { id }` → delete response.
 - `visual.sources.get` → installed/supported sources and versions (DMNote web import always listed).
 - `visual.presets.import { name, kind, source, presetJson? }`: Jipper Resourcepack, Jipper KeyViewer, and ImplResourcePack automatically read the detected installed mod’s current saved settings. Configuration JSON uploads for these sources are rejected; DMNote and Impl DMNote supply exported JSON. The mod bundles/sanitizes settings and referenced assets and sends the authenticated POST. Missing images/fonts can still be attached through `assetsJson`. Large I/O stays off Unity main thread. Return `{ preset }`.

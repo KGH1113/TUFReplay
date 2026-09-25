@@ -99,4 +99,15 @@ public sealed class SubmissionVisualPresetGateway : IVisualPresetGateway
       cancellation: cancellation
     );
   }
+
+  public Task<JObject> RenameAsync(SubmissionAccount account, string id, string name, CancellationToken cancellation)
+  {
+    return _records.Send(
+      account,
+      HttpMethod.Patch,
+      "api/v1/visual-presets/" + Uri.EscapeDataString(id),
+      new JObject { ["name"] = name },
+      cancellation
+    );
+  }
 }

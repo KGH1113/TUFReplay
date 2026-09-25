@@ -37,7 +37,10 @@ pub fn validate_name(value: Option<&Value>) -> Result<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .ok_or_else(|| Error::BadRequest("visual_name_required".into()))?;
-    if name.chars().count() > 80 || name.chars().any(char::is_control) {
+    if name.chars().count() > 80 {
+        return Err(Error::BadRequest("visual_name_too_long".into()));
+    }
+    if name.chars().any(char::is_control) {
         return Err(Error::BadRequest("visual_name_required".into()));
     }
     Ok(name.to_owned())

@@ -61,6 +61,9 @@ public sealed class VisualPresetFeature : IDisposable
   public Task<JObject> RemoveAsync(string id, CancellationToken cancellation = default) =>
     _presets.RemoveAsync(id, cancellation);
 
+  public Task<JObject> RenameAsync(string id, string name, CancellationToken cancellation = default) =>
+    _presets.RenameAsync(id, name, cancellation);
+
   public Task<JObject> ImportAsync(
     string name,
     VisualKind kind,

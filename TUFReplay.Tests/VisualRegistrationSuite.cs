@@ -95,6 +95,26 @@ internal static class VisualRegistrationSuite
       stages.SequenceEqual(new[] { "reading_settings", "processing_assets", "validating", "uploading" }),
       "Progress must follow actual settings, assets, validation and server work."
     );
+    JObject renamed = await service.RenameAsync(" registered ", " 새 이름 ");
+    TestFixture.Assert(
+      (string)renamed["preset"]["name"] == "새 이름"
+        && gateway.RenameCalls == 1
+        && gateway.RenamedId == "registered"
+        && adapter.Calls == 1,
+      "Renaming must use the existing account and preset ID without rebuilding its bundle."
+    );
+    try
+    {
+      await service.RenameAsync("registered", " ");
+      throw new Exception("Empty rename must be rejected before reaching the server.");
+    }
+    catch (VisualImportException error)
+    {
+      TestFixture.Assert(
+        error.Code == "visual_name_required" && gateway.RenameCalls == 1,
+        "Rename must validate the name."
+      );
+    }
     adapter.Missing = true;
     result = await service.RegisterAsync(
       account,
@@ -156,6 +176,8 @@ internal static class VisualRegistrationSuite
   private sealed class Gateway : IVisualPresetGateway
   {
     public int Calls;
+    public int RenameCalls;
+    public string RenamedId;
 
     public Task<JObject> CreateAsync(SubmissionAccount account, JObject body, CancellationToken cancellation)
     {
@@ -165,6 +187,18 @@ internal static class VisualRegistrationSuite
 
     public Task<JObject> ListAsync(SubmissionAccount account, CancellationToken cancellation) =>
       throw new NotSupportedException();
+
+    public Task<JObject> RenameAsync(SubmissionAccount account, string id, string name, CancellationToken cancellation)
+    {
+      RenameCalls++;
+      RenamedId = id;
+      return Task.FromResult(
+        new JObject
+        {
+          ["preset"] = new JObject { ["id"] = id, ["name"] = name },
+        }
+      );
+    }
 
     public Task<JObject> RemoveAsync(SubmissionAccount account, string id, CancellationToken cancellation) =>
       throw new NotSupportedException();

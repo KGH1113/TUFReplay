@@ -20,6 +20,15 @@ public static class VisualIpcHandlers
     return Execute(() => FeatureRegistry.Visuals?.RemoveAsync(id).GetAwaiter().GetResult());
   }
 
+  public static object Rename(IpcRequest request)
+  {
+    if (!IpcParams.TryRequiredString(request, "id", out string id))
+      return Error("visual_preset_not_found", "The visual preset was not found.");
+    if (!IpcParams.TryRequiredString(request, "name", out string name))
+      return Error("visual_name_required", "Enter a name for the visual preset.");
+    return Execute(() => FeatureRegistry.Visuals?.RenameAsync(id, name).GetAwaiter().GetResult());
+  }
+
   public static object Sources(IpcRequest request)
   {
     if (FeatureRegistry.Visuals == null)
