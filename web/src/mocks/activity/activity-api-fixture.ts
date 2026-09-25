@@ -190,6 +190,7 @@ export function createActivityWireFixture(): ActivityWireFixture {
       return {
         Id: id,
         TufLevelId: level.session.TufLevelId,
+        RelativeLevelPath: level.session.RelativeLevelPath,
         Song: level.session.Song,
         Author: level.session.Author,
         Artist: level.session.Artist,
@@ -414,6 +415,7 @@ function createLevel(
       LevelGroupId: `mock-tuf-${tufLevelId}`,
       AppSessionId: appSessionId,
       TufLevelId: tufLevelId,
+      RelativeLevelPath: `${id}.adofai`,
       Song: null,
       Author: null,
       Artist: null,

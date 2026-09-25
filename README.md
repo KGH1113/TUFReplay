@@ -48,6 +48,7 @@ Trusted tester membership is managed in PostgreSQL through a separate [local adm
 
 - Records OS-native keyboard state changes and hit contexts for every custom `.adofai` run, saving activity runs only after native input is captured.
 - Suspends native keyboard capture and replay emission while the UnityModManager window is open.
+- Schedules replay input on a dedicated worker without making Unity wait for native input emission. Pause, focus loss, seek, and stop commands invalidate pending input; accepted key presses are released by the worker before it restores a new playback state. Shutdown completes asynchronously so Windows keyboard hooks can continue receiving game-thread messages.
 - Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
 - Stores each run's judgment difficulty and judgment system. Legacy and non-competitive runs keep the classic Perfect bucket, while modern competitive runs preserve Perfect−, X-Perfect, and Perfect+ separately.
 - Stores lean activity records, replay payloads, immutable level revisions, and recorder timezone context in SQLite. Level files themselves are never copied into the database; visits point to a shared level row containing its source, local path, and gameplay hash.
@@ -76,7 +77,7 @@ Trusted tester membership is managed in PostgreSQL through a separate [local adm
 - Each run's submission menu opens a progress dialog that distinguishes transfer, server storage, readiness, validation, and TUF registration. Evidence readiness waits for the user's preset selection and submission; closing the dialog does not cancel server processing. Progress reflects server states without estimated percentages.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
 - Shows a one-time browser notice when saved runs use the previous replay engine and cannot be played by the current engine.
-- Groups revisions of the same TUF level or local level path into one web activity card. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
+- Groups revisions of the same `.adofai` path into one web activity card, keeping different files in one TUFHelperLite download separate. The card shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
 - Counts a run as a clear only when it starts at tile zero, reaches the clear terminal state, and does not use No-Fail mode.
 
 ## Runtime

@@ -4,6 +4,7 @@ export interface ActivityLevelSessionOverview {
   LevelGroupId: string;
   AppSessionId: string;
   TufLevelId: number | null;
+  RelativeLevelPath: string | null;
   Song: string | null;
   Author: string | null;
   Artist: string | null;
@@ -21,6 +22,7 @@ export interface ActivityLevelSessionOverview {
 export interface ActivityLogicalLevelOverview {
   Id: string;
   TufLevelId: number | null;
+  RelativeLevelPath: string | null;
   Song: string | null;
   Author: string | null;
   Artist: string | null;

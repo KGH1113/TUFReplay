@@ -29,6 +29,7 @@ public sealed class ActivityLogicalLevelOverviewDto
 {
   public string Id;
   public int? TufLevelId;
+  public string RelativeLevelPath;
   public string Song;
   public string Author;
   public string Artist;
@@ -48,6 +49,7 @@ public sealed class ActivityLogicalLevelOverviewDto
     {
       Id = level.Id,
       TufLevelId = level.TufLevelId,
+      RelativeLevelPath = LevelDisplayPath.RelativeToLevelFolder(level.TufLevelId, level.LevelPath),
       Song = level.Song,
       Author = level.Author,
       Artist = level.Artist,
@@ -71,6 +73,7 @@ public sealed class ActivityLevelSessionOverviewDto
   public string LevelGroupId;
   public string AppSessionId;
   public int? TufLevelId;
+  public string RelativeLevelPath;
   public string Song;
   public string Author;
   public string Artist;
@@ -92,6 +95,7 @@ public sealed class ActivityLevelSessionOverviewDto
       LevelGroupId = LevelGroupIdentity.Create(s.TufLevelId, s.LevelPath),
       AppSessionId = s.AppSessionId,
       TufLevelId = s.TufLevelId,
+      RelativeLevelPath = LevelDisplayPath.RelativeToLevelFolder(s.TufLevelId, s.LevelPath),
       Song = s.Song,
       Author = s.Author,
       Artist = s.Artist,

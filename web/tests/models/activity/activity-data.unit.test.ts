@@ -29,6 +29,7 @@ const visit = (
   levelGroupId: levelGroupId,
   appSessionId: appSessionId,
   tufLevelId: 7,
+  relativeLevelPath: "song.adofai",
   song: "Same level",
   author: "Creator",
   artist: "artist",
@@ -144,6 +145,22 @@ describe("activity data", () => {
       runCount: 5,
       hiddenRunCount: 0,
     });
+    expect(day.runCount).toBe(5);
+  });
+
+  test("keeps different chart files under the same TUF ID on separate cards", () => {
+    const app = session("app", "2026-01-01T01:00:00Z");
+    const first = visit("first", "first-level", app.id, app.startedAtUtc, 2, "first-file");
+    const second = visit("second", "second-level", app.id, app.startedAtUtc, 3, "second-file");
+    second.relativeLevelPath = "EX/Merry Christmas EX.adofai";
+    app.levelSessions = [first, second];
+
+    const [day] = groupSessionsByDay([app], "UTC");
+    expect(day.levelSessions).toHaveLength(2);
+    expect(day.levelSessions.map((level) => level.relativeLevelPath)).toEqual([
+      "song.adofai",
+      "EX/Merry Christmas EX.adofai",
+    ]);
     expect(day.runCount).toBe(5);
   });
 
