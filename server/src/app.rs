@@ -94,6 +94,7 @@ impl Hooks for App {
         let routes = AppRoutes::with_default_routes()
             .add_route(controllers::account::routes())
             .add_route(controllers::replays::routes())
+            .add_route(controllers::pass_visuals::routes())
             .add_route(controllers::visual_presets::routes())
             .add_route(controllers::visual_assets::routes());
         if ingest_routes_enabled(&ctx.environment)
@@ -107,6 +108,7 @@ impl Hooks for App {
                 .add_route(controllers::run_sessions::level_session_routes())
                 .add_route(controllers::level_changes::routes())
                 .add_route(controllers::level_changes::internal_routes())
+                .add_route(controllers::pass_visuals::internal_routes())
         } else {
             routes
         }

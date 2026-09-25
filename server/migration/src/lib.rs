@@ -14,6 +14,7 @@ mod m20260916_000001_create_visual_presets;
 mod m20260917_000001_extend_visual_sources;
 mod m20260923_000001_create_trusted_testers;
 mod m20260924_000001_visual_asset_objects;
+mod m20260925_000001_pass_visual_visibility;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -31,6 +32,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260917_000001_extend_visual_sources::Migration),
             Box::new(m20260923_000001_create_trusted_testers::Migration),
             Box::new(m20260924_000001_visual_asset_objects::Migration),
+            Box::new(m20260925_000001_pass_visual_visibility::Migration),
             // inject-above (do not remove this comment)
         ]
     }

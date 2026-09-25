@@ -236,6 +236,73 @@ async fn assert_public_visual_roundtrip(fixture: Option<(serde_json::Value, Stri
             assert!(grants[&route].as_str().unwrap().starts_with(&format!("https://cdn.example/objects/visual-assets/sha256/{hash}?")));
         }
 
+        if fixture.is_none() {
+            use tuf_replay_server::models::pass_visuals::{self, Defaults};
+            let options_route = format!("/api/v1/replays/{run_id}/visual-options");
+            let response = request.get(&options_route).await;
+            assert_eq!(response.status_code(), 200);
+            assert_eq!(response.headers()["cache-control"], "no-store");
+            assert_eq!(response.json::<serde_json::Value>()["presets"].as_array().unwrap().len(), 1);
+            let internal = format!("/internal/tuf/replays/{run_id}/visuals?owner_id={owner}&pass_id=77");
+            assert_eq!(request.get(&internal).await.status_code(), 401);
+            request.add_header(axum::http::header::AUTHORIZATION, format!("Bearer {token}"));
+            assert_eq!(request.get(&internal).await.status_code(), 401);
+            request.clear_headers();
+            let defaults = Defaults { keyviewer_id: Some(preset_id), overlay_id: None };
+            assert!(pass_visuals::save_defaults(&ctx.db, run_id, 78, &owner, &defaults).await.is_err());
+            assert!(pass_visuals::save_defaults(&ctx.db, run_id, 77, "another-owner", &defaults).await.is_err());
+            assert!(pass_visuals::save_defaults(&ctx.db, run_id, 77, &owner,
+                &Defaults { keyviewer_id: None, overlay_id: Some(preset_id) }).await.is_err());
+            let foreign = visual_presets::create(&ctx.db, "another-owner", "Foreign", validated.kind,
+                validated.source, &validated.source_version, validated.bytes.clone(), &validated.sha256).await.unwrap();
+            assert!(pass_visuals::save_defaults(&ctx.db, run_id, 77, &owner,
+                &Defaults { keyviewer_id: Some(foreign.id), overlay_id: None }).await.is_err());
+            assert!(pass_visuals::set_hidden(&ctx.db, run_id, 77, &owner, foreign.id, true).await.is_err());
+            let explicit = request.get(&format!("/api/v1/replays/{run_id}?format=3&asset_mode=objects&delivery=cdn&keyviewer_id={preset_id}&overlay_id=none")).await;
+            assert_eq!(explicit.status_code(), 200, "{}", explicit.text());
+            let explicit: serde_json::Value = explicit.json();
+            let url = format!("/api/v1/replays/{run_id}/visuals/keyviewer?asset_mode=objects&preset_id={preset_id}");
+            assert_eq!(explicit["visuals"]["keyviewer"]["url"], url);
+            assert!(explicit["delivery"]["urls"][&url].is_string());
+            assert_eq!(request.get(&url).await.status_code(), 200);
+            let off: serde_json::Value = request.get(&format!("/api/v1/replays/{run_id}?format=3&keyviewer_id=none")).await.json();
+            assert!(off["visuals"]["keyviewer"].is_null());
+            let foreign_selection: serde_json::Value = request.get(&format!("/api/v1/replays/{run_id}?format=3&keyviewer_id={}", foreign.id)).await.json();
+            assert!(foreign_selection["visuals"]["keyviewer"].is_null());
+            assert_eq!(request.get(&format!("/api/v1/replays/{run_id}?format=3&keyviewer_id=invalid")).await.status_code(), 400);
+            // Viewer selection never changes the saved pass default.
+            assert_eq!(pass_visuals::public_options(&ctx.db, run_id).await.unwrap().defaults.keyviewer_id, Some(preset_id));
+            let before = Submissions::record(&ctx.db, run.id).await.unwrap();
+            let another_run_id = Uuid::new_v4();
+            let another_run = create_run(&ctx, another_run_id).await;
+            Submissions::create_authorized(&ctx.db, another_run.id, &owner, Some(crate::support::GRANT)).await.unwrap();
+            let mut another: ActiveSubmission = Submissions::record(&ctx.db, another_run.id).await.unwrap().into();
+            another.state = Set("submitted".into());
+            another.external_pass_id = Set(Some(78));
+            another.manifest = Set(before.manifest.clone());
+            another.validation = Set(before.validation.clone());
+            another.update(&ctx.db).await.unwrap();
+            pass_visuals::save_defaults(&ctx.db, another_run_id, 78, &owner, &defaults).await.unwrap();
+            pass_visuals::set_hidden(&ctx.db, run_id, 77, &owner, preset_id, true).await.unwrap();
+            let public = pass_visuals::public_options(&ctx.db, run_id).await.unwrap();
+            assert!(public.presets.is_empty());
+            assert_eq!(public.defaults.keyviewer_id, None);
+            assert_eq!(pass_visuals::public_options(&ctx.db, another_run_id).await.unwrap().defaults.keyviewer_id, None);
+            let own = pass_visuals::owner_options(&ctx.db, run_id, 77, &owner).await.unwrap();
+            assert!(own.presets[0].is_hidden);
+            assert!(visual_presets::list(&ctx.db, &owner).await.unwrap().is_empty());
+            assert!(visual_presets::active_owned(&ctx.db, &owner, preset_id).await.unwrap().is_none());
+            assert!(pass_visuals::save_defaults(&ctx.db, run_id, 77, &owner, &defaults).await.is_err());
+            assert_eq!(request.get(&url).await.status_code(), 404);
+            pass_visuals::set_hidden(&ctx.db, run_id, 77, &owner, preset_id, false).await.unwrap();
+            assert_eq!(pass_visuals::public_options(&ctx.db, run_id).await.unwrap().defaults.keyviewer_id, None);
+            assert_eq!(pass_visuals::public_options(&ctx.db, another_run_id).await.unwrap().defaults.keyviewer_id, None);
+            pass_visuals::save_defaults(&ctx.db, run_id, 77, &owner, &defaults).await.unwrap();
+            let after = Submissions::record(&ctx.db, run.id).await.unwrap();
+            assert_eq!(before.manifest, after.manifest);
+            assert_eq!(before.validation, after.validation);
+        }
+
         visual_presets::delete(&ctx.db, &owner, preset_id)
             .await
             .unwrap();
