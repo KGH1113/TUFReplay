@@ -1,3 +1,4 @@
+mod adofai_json;
 pub mod eligibility;
 pub mod evidence;
 pub mod gameplay_hash;
