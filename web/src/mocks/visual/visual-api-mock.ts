@@ -61,5 +61,20 @@ export function createVisualApiMock(): VisualApi {
       if (!presets.some((preset) => preset.id === id)) throw new Error("visual_preset_not_found");
       presets = presets.filter((preset) => preset.id !== id);
     },
+    async renamePreset(id, name) {
+      const preset = presets.find((item) => item.id === id);
+      if (!preset) throw new Error("visual_preset_not_found");
+      const cleanName = name.trim();
+      if (!cleanName) throw new Error("visual_name_required");
+      if (
+        presets.some(
+          (item) => item.id !== id && item.name.toLowerCase() === cleanName.toLowerCase(),
+        )
+      )
+        throw new Error("visual_name_taken");
+      const renamed = { ...preset, name: cleanName };
+      presets = presets.map((item) => (item.id === id ? renamed : item));
+      return { ...renamed };
+    },
   };
 }

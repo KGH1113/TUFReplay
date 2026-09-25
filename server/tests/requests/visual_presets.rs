@@ -214,6 +214,124 @@ async fn visual_presets_are_owner_scoped_and_tombstoned() {
 
 #[tokio::test]
 #[serial]
+async fn renaming_presets_keeps_their_identity_assets_and_owner_boundary() {
+    use tuf_replay_server::models::visual_presets::{self, VisualKind};
+
+    request::<App, _, _>(|mut request, ctx| async move {
+        let owner = Uuid::new_v4().to_string();
+        let token = crate::support::authenticate(&ctx, &owner).await;
+        auth(&mut request, &token);
+
+        let keyviewer = request
+            .post("/api/v1/visual-presets")
+            .json(&json!({"name":"Keys", "bundle":dmnote_bundle()}))
+            .await;
+        assert_eq!(keyviewer.status_code(), 200, "{}", keyviewer.text());
+        let keyviewer_id = keyviewer.json::<Value>()["preset"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let overlay = request
+            .post("/api/v1/visual-presets")
+            .json(&json!({"name":"Overlay", "bundle":jipper_overlay_bundle()}))
+            .await;
+        assert_eq!(overlay.status_code(), 200, "{}", overlay.text());
+        let overlay_id = overlay.json::<Value>()["preset"]["id"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let id = Uuid::parse_str(&keyviewer_id).unwrap();
+        let before = visual_presets::active_bundle(&ctx.db, id, VisualKind::Keyviewer)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let renamed = request
+            .patch(&format!("/api/v1/visual-presets/{keyviewer_id}"))
+            .json(&json!({"name":"  새 키뷰어  "}))
+            .await;
+        assert_eq!(renamed.status_code(), 200, "{}", renamed.text());
+        let renamed: Value = renamed.json();
+        assert_eq!(renamed["preset"]["id"], keyviewer_id);
+        assert_eq!(renamed["preset"]["name"], "새 키뷰어");
+        let after = visual_presets::active_bundle(&ctx.db, id, VisualKind::Keyviewer)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after.bundle, before.bundle);
+        assert_eq!(after.sha256, before.sha256);
+        assert_eq!(after.bytes, before.bytes);
+
+        let duplicate = request
+            .patch(&format!("/api/v1/visual-presets/{overlay_id}"))
+            .json(&json!({"name":"새 키뷰어"}))
+            .await;
+        assert_eq!(duplicate.status_code(), 400);
+        assert!(duplicate.text().contains("visual_name_taken"));
+        let invalid = request
+            .patch(&format!("/api/v1/visual-presets/{overlay_id}"))
+            .json(&json!({"name":"  "}))
+            .await;
+        assert_eq!(invalid.status_code(), 400);
+        let too_long = request
+            .patch(&format!("/api/v1/visual-presets/{overlay_id}"))
+            .json(&json!({"name":"x".repeat(81)}))
+            .await;
+        assert_eq!(too_long.status_code(), 400);
+        assert!(too_long.text().contains("visual_name_too_long"));
+        let renamed_overlay = request
+            .patch(&format!("/api/v1/visual-presets/{overlay_id}"))
+            .json(&json!({"name":"새 오버레이"}))
+            .await;
+        assert_eq!(
+            renamed_overlay.status_code(),
+            200,
+            "{}",
+            renamed_overlay.text()
+        );
+        assert_eq!(
+            renamed_overlay.json::<Value>()["preset"]["name"],
+            "새 오버레이"
+        );
+
+        let other = Uuid::new_v4().to_string();
+        let other_token = crate::support::authenticate(&ctx, &other).await;
+        auth(&mut request, &other_token);
+        let hidden = request
+            .patch(&format!("/api/v1/visual-presets/{keyviewer_id}"))
+            .json(&json!({"name":"Not mine"}))
+            .await;
+        assert_eq!(hidden.status_code(), 404);
+
+        let owner_token = crate::support::authenticate(&ctx, &owner).await;
+        auth(&mut request, &owner_token);
+        let listed: Value = request.get("/api/v1/visual-presets").await.json();
+        let names: Vec<&str> = listed["presets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|preset| preset["name"].as_str())
+            .collect();
+        assert!(names.contains(&"새 키뷰어"));
+        assert!(names.contains(&"새 오버레이"));
+        assert_eq!(
+            request
+                .delete(&format!("/api/v1/visual-presets/{keyviewer_id}"))
+                .await
+                .status_code(),
+            200
+        );
+        let deleted = request
+            .patch(&format!("/api/v1/visual-presets/{keyviewer_id}"))
+            .json(&json!({"name":"After deletion"}))
+            .await;
+        assert_eq!(deleted.status_code(), 404);
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn visual_import_rejects_missing_assets_and_multiple_dmnote_tabs() {
     request::<App, _, _>(|mut request, ctx| async move {
         let owner = Uuid::new_v4().to_string();

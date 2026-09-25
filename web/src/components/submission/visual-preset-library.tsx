@@ -1,4 +1,4 @@
-import { Delete02Icon, Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { Delete02Icon, Edit01Icon, Loading03Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -7,6 +7,7 @@ import type { VisualPresetImport } from "@/api/visual/visual-api";
 import { DmnotePlacementEditor } from "@/components/submission/dmnote-placement-editor";
 import { VisualKindTabs } from "@/components/submission/visual-kind-tabs";
 import { VisualPresetCard } from "@/components/submission/visual-preset-card";
+import { VisualPresetRenameDialog } from "@/components/submission/visual-preset-rename-dialog";
 import { VisualRegistrationProgressView } from "@/components/submission/visual-registration-progress";
 import { useDmnoteRegistration } from "@/hooks/visual/use-dmnote-registration";
 import { useVisualLibrary } from "@/hooks/visual/use-visual-library";
@@ -52,14 +53,27 @@ export function VisualPresetLibrary({
   const [activeKind, setActiveKind] = useState<VisualKind>("keyviewer");
   const [registrationKind, setRegistrationKind] = useState<VisualKind | null>(null);
   const [presetToDelete, setPresetToDelete] = useState<VisualPreset | null>(null);
+  const [presetToRename, setPresetToRename] = useState<VisualPreset | null>(null);
   const library = useVisualLibrary(!disabled, registrationKind !== null, accountKey);
   const presets = library.presets.data?.presets ?? [];
 
   useEffect(() => {
-    if (!disabled || library.importPreset.isPending || library.removePreset.isPending) return;
+    if (
+      !disabled ||
+      library.importPreset.isPending ||
+      library.removePreset.isPending ||
+      library.renamePreset.isPending
+    )
+      return;
     setRegistrationKind(null);
     setPresetToDelete(null);
-  }, [disabled, library.importPreset.isPending, library.removePreset.isPending]);
+    setPresetToRename(null);
+  }, [
+    disabled,
+    library.importPreset.isPending,
+    library.removePreset.isPending,
+    library.renamePreset.isPending,
+  ]);
 
   const closeRegistration = () => {
     if (!library.importPreset.isPending) {
@@ -69,6 +83,22 @@ export function VisualPresetLibrary({
   };
   const closeDelete = () => {
     if (!library.removePreset.isPending) setPresetToDelete(null);
+  };
+  const closeRename = () => {
+    if (!library.renamePreset.isPending) {
+      library.renamePreset.reset();
+      setPresetToRename(null);
+    }
+  };
+
+  const renamePreset = async (name: string) => {
+    if (!presetToRename) return;
+    try {
+      await library.renamePreset.mutateAsync({ id: presetToRename.id, name });
+      setPresetToRename(null);
+    } catch {
+      // Keep the entered name and show the server's reason in the dialog.
+    }
   };
 
   const deletePreset = async () => {
@@ -130,6 +160,11 @@ export function VisualPresetLibrary({
               <PresetKindSection
                 kind={kind}
                 presets={presets.filter((preset) => preset.kind === kind)}
+                disabled={disabled}
+                onRename={(preset) => {
+                  library.renamePreset.reset();
+                  setPresetToRename(preset);
+                }}
                 onDelete={setPresetToDelete}
               />
             </TabsContent>
@@ -160,6 +195,20 @@ export function VisualPresetLibrary({
         onOpenChange={(open) => !open && closeDelete()}
         onConfirm={() => void deletePreset()}
       />
+      <VisualPresetRenameDialog
+        preset={presetToRename}
+        pending={library.renamePreset.isPending}
+        error={
+          library.renamePreset.error
+            ? visualErrorCode(library.renamePreset.error) === "handler_not_found"
+              ? t("visual.renameRequiresUpdate")
+              : visualErrorText(library.renamePreset.error, t("visual.renameFailed"), t)
+            : ""
+        }
+        onOpenChange={(open) => !open && closeRename()}
+        onSave={(name) => void renamePreset(name)}
+        onEdit={() => library.renamePreset.reset()}
+      />
     </section>
   );
 }
@@ -167,10 +216,14 @@ export function VisualPresetLibrary({
 function PresetKindSection({
   kind,
   presets,
+  disabled,
+  onRename,
   onDelete,
 }: {
   kind: VisualKind;
   presets: VisualPreset[];
+  disabled: boolean;
+  onRename: (preset: VisualPreset) => void;
   onDelete: (preset: VisualPreset) => void;
 }) {
   const { t } = useTranslation("submission");
@@ -192,16 +245,30 @@ function PresetKindSection({
               key={preset.id}
               preset={preset}
               action={
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 text-muted-foreground hover:text-destructive"
-                  aria-label={t("visual.deleteTitle", { name: preset.name })}
-                  onClick={() => onDelete(preset)}
-                >
-                  <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
-                </Button>
+                <span className="flex shrink-0 items-center gap-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-foreground"
+                    disabled={disabled}
+                    aria-label={t("visual.renameAction", { name: preset.name })}
+                    onClick={() => onRename(preset)}
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={Edit01Icon} className="size-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-muted-foreground hover:text-destructive"
+                    disabled={disabled}
+                    aria-label={t("visual.deleteTitle", { name: preset.name })}
+                    onClick={() => onDelete(preset)}
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
+                  </Button>
+                </span>
               }
             />
           ))}

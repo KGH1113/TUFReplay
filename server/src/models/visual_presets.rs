@@ -6,7 +6,7 @@
 
 use chrono::{DateTime, FixedOffset};
 use loco_rs::prelude::*;
-use sea_orm::{DbBackend, FromQueryResult, Statement, Value};
+use sea_orm::{DbBackend, FromQueryResult, SqlErr, Statement, Value};
 use serde::Serialize;
 use uuid::Uuid;
 
@@ -216,6 +216,27 @@ pub async fn active_bundle_for_published_run(
     ))
     .one(db)
     .await?)
+}
+
+pub async fn rename(
+    db: &DatabaseConnection,
+    owner_id: &str,
+    id: Uuid,
+    name: &str,
+) -> Result<Option<VisualPresetMetadata>> {
+    let row = VisualPresetMetadata::find_by_statement(statement(
+        "UPDATE visual_presets SET name=$3
+         WHERE id=$1 AND owner_id=$2 AND deleted_at IS NULL
+         RETURNING id,name,kind,source,source_version,created_at",
+        vec![id.into(), owner_id.into(), name.into()],
+    ))
+    .one(db)
+    .await
+    .map_err(|error| match error.sql_err() {
+        Some(SqlErr::UniqueConstraintViolation(_)) => Error::BadRequest("visual_name_taken".into()),
+        _ => error.into(),
+    })?;
+    Ok(row)
 }
 
 pub async fn delete(db: &DatabaseConnection, owner_id: &str, id: Uuid) -> Result<bool> {

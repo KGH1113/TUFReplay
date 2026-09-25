@@ -17,7 +17,7 @@ pub fn routes() -> Routes {
             "",
             post(create).layer(DefaultBodyLimit::max(visuals::MAX_REQUEST_BYTES)),
         )
-        .add("/{id}", delete(remove))
+        .add("/{id}", delete(remove).patch(rename))
 }
 
 pub async fn list(State(ctx): State<AppContext>, headers: HeaderMap) -> Result<Response> {
@@ -75,4 +75,24 @@ pub async fn remove(
         return Err(visuals::preset_not_found());
     }
     format::json(serde_json::json!({"deleted":true}))
+}
+
+pub async fn rename(
+    State(ctx): State<AppContext>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    body: Bytes,
+) -> Result<Response> {
+    if body.len() > 1024 {
+        return Err(Error::BadRequest("visual_name_too_long".into()));
+    }
+    let owner = auth::owner(&ctx, &headers).await?;
+    let id = Uuid::parse_str(&id).map_err(|_| visuals::preset_not_found())?;
+    let object: Value = serde_json::from_slice(&body)
+        .map_err(|_| Error::BadRequest("visual_name_required".into()))?;
+    let name = visuals::validate_name(object.get("name"))?;
+    let preset = visual_presets::rename(&ctx.db, &owner, id, &name)
+        .await?
+        .ok_or_else(visuals::preset_not_found)?;
+    format::json(serde_json::json!({"preset": preset}))
 }

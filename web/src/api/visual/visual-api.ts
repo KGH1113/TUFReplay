@@ -28,5 +28,6 @@ export interface VisualApi {
     input: VisualPresetImport,
     onProgress?: VisualRegistrationReporter,
   ): Promise<VisualRegistrationResult>;
+  renamePreset(id: string, name: string): Promise<VisualPreset>;
   removePreset(id: string): Promise<void>;
 }

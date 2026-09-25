@@ -92,5 +92,17 @@ export function useVisualLibrary(
       void cache.invalidateQueries({ queryKey: visualKeys.presets(accountKey) });
     },
   });
-  return { presets, sources, importPreset, inspectPreset, removePreset };
+  const renamePreset = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      if (currentAccountKey.current !== accountKey || accountKey === null)
+        throw new Error("visual_account_changed");
+      const renamed = await (await api).visual.renamePreset(id, name);
+      if (currentAccountKey.current !== accountKey) throw new Error("visual_account_changed");
+      return renamed;
+    },
+    onSuccess: () => {
+      void cache.invalidateQueries({ queryKey: visualKeys.presets(accountKey) });
+    },
+  });
+  return { presets, sources, importPreset, inspectPreset, removePreset, renamePreset };
 }

@@ -36,6 +36,16 @@ public sealed class VisualPresetService
     return _gateway.RemoveAsync(_account(), id.Trim(), cancellation);
   }
 
+  public Task<JObject> RenameAsync(string id, string name, CancellationToken cancellation = default)
+  {
+    if (string.IsNullOrWhiteSpace(id))
+      throw new VisualImportException("visual_preset_not_found", "The visual preset was not found.");
+    SubmissionAccount account = _account();
+    if (account == null)
+      throw new VisualImportException("login_required", "Sign in before renaming a visual preset.");
+    return _gateway.RenameAsync(account, id.Trim(), ValidateName(name), cancellation);
+  }
+
   public Task<JObject> ImportAsync(
     string name,
     VisualKind kind,
@@ -106,8 +116,10 @@ public sealed class VisualPresetService
   private static string ValidateName(string name)
   {
     string value = name?.Trim();
-    if (string.IsNullOrWhiteSpace(value) || value.Length > VisualImportLimits.MaxNameLength)
+    if (string.IsNullOrWhiteSpace(value))
       throw new VisualImportException("visual_name_required", "Enter a name for the visual preset.");
+    if (value.Length > VisualImportLimits.MaxNameLength)
+      throw new VisualImportException("visual_name_too_long", "Visual preset names must be 80 characters or fewer.");
     return value;
   }
 }
