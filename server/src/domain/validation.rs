@@ -170,11 +170,13 @@ impl GameplayValidator for UnavailableValidator {
 }
 
 /// Owned only for the duration of validation; never persisted as an artifact.
+#[derive(Clone)]
 pub struct OfficialChart {
     pub file_id: String,
     pub sha256: String,
     pub gameplay_hash_version: u32,
     pub gameplay_hash: String,
+    pub submission_gameplay_hash: String,
     pub bytes: Vec<u8>,
 }
 

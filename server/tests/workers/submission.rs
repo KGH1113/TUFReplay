@@ -219,6 +219,18 @@ async fn revoked_tester_can_recover_an_already_committed_receipt() {
 #[tokio::test]
 #[serial]
 async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() {
+    exercise_trusted_submission("matching").await;
+}
+
+#[tokio::test]
+#[serial]
+async fn trusted_tester_never_registers_missing_or_changed_chart_identity() {
+    for identity in ["mismatch", "missing", "unsupported"] {
+        exercise_trusted_submission(identity).await;
+    }
+}
+
+async fn exercise_trusted_submission(identity: &str) {
     let boot = boot_test::<App>().await.unwrap();
     let ctx = &boot.app_context;
     let mut settings = tuf_replay_server::settings::Settings::get(ctx).unwrap();
@@ -258,8 +270,10 @@ async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() 
         .await
         .unwrap();
 
-    let metadata = serde_json::json!({
+    let mut metadata = serde_json::json!({
         "metadataVersion": 1,
+        "submissionGameplayHashVersion": 1,
+        "submissionGameplayHashHex": tuf_replay_server::domain::submission_gameplay_hash::compute_submission_gameplay_hash(CURRENT_CHART).unwrap(),
         "submissionRunId": id.to_string(),
         "wonTimeUs": 8_000_000,
         "noFailMode": false,
@@ -287,8 +301,19 @@ async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() 
             "judgments": [0, 0, 0, 0, 99, 0, 0, 0, 0],
             "speed": 99.0
         }
-    })
-    .to_string();
+    });
+    match identity {
+        "mismatch" => metadata["submissionGameplayHashHex"] = serde_json::json!("0".repeat(64)),
+        "missing" => {
+            metadata
+                .as_object_mut()
+                .unwrap()
+                .remove("submissionGameplayHashVersion");
+        }
+        "unsupported" => metadata["submissionGameplayHashVersion"] = serde_json::json!(99),
+        _ => {}
+    }
+    let metadata = metadata.to_string();
     let streams = vec![
         persist_stream(ctx, id, 0, b"0,32,3,0,0\n", 1).await,
         persist_stream(ctx, id, 1, b"0,0,0,0,0,0,0,0,0,0,0,3,0\n", 1).await,
@@ -334,6 +359,12 @@ async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() 
         .unwrap();
 
     let record = Records::record(&ctx.db, run.id).await.unwrap();
+    if identity != "matching" {
+        assert_eq!(record.state, "validation_rejected");
+        assert_eq!(record.external_pass_id, None);
+        assert_eq!(registrar.calls.load(Ordering::SeqCst), 0);
+        return;
+    }
     assert_eq!(record.state, "submitted");
     assert_eq!(record.external_pass_id, Some(991));
     assert_eq!(charts.0.load(Ordering::SeqCst), 1);
@@ -348,7 +379,7 @@ async fn trusted_tester_builds_v2_result_from_bounded_persisted_game_metadata() 
         result.result_provenance,
         ResultProvenance::RecordedGameResult
     );
-    assert_eq!(result.validator_version, "trusted-tester-adapter-v1");
+    assert_eq!(result.validator_version, "trusted-tester-adapter-v2");
     assert_eq!(result.speed, 1.25);
     assert_eq!(result.key_count, 4);
     assert_eq!(result.judgments, [0, 1, 2, 3, 4, 5, 6, 7, 0]);
@@ -400,6 +431,7 @@ impl OfficialChartProvider for TestCharts {
     async fn acquire(&self, _: i64, _: &str) -> Result<OfficialChart, String> {
         Ok(OfficialChart {
             file_id: "test-file".into(),
+            submission_gameplay_hash: "c".repeat(64),
             sha256: "b".repeat(64),
             gameplay_hash_version: 1,
             gameplay_hash: "c".repeat(64),
@@ -428,6 +460,8 @@ impl PassRegistrar for CommittedReceipt {
 }
 
 struct CurrentChart(AtomicUsize);
+const CURRENT_CHART: &[u8] =
+    br#"{"settings":{"version":17,"bpm":120},"angleData":[0,180],"actions":[]}"#;
 
 #[async_trait::async_trait]
 impl OfficialChartProvider for CurrentChart {
@@ -437,10 +471,11 @@ impl OfficialChartProvider for CurrentChart {
         self.0.fetch_add(1, Ordering::SeqCst);
         Ok(OfficialChart {
             file_id: "current-tuf-file".into(),
+            submission_gameplay_hash: tuf_replay_server::domain::submission_gameplay_hash::compute_submission_gameplay_hash(CURRENT_CHART).unwrap(),
             sha256: "d".repeat(64),
             gameplay_hash_version: 1,
             gameplay_hash: "e".repeat(64),
-            bytes: b"current official chart".to_vec(),
+            bytes: CURRENT_CHART.to_vec(),
         })
     }
 }

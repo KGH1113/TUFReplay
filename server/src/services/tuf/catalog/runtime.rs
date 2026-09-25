@@ -29,6 +29,7 @@ impl TufCatalogRuntime {
             client,
             settings: Arc::new(settings),
             hydration_slots: Arc::new(Semaphore::new(slots)),
+            chart_cache: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         })
     }
 }

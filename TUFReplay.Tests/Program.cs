@@ -17,6 +17,7 @@ internal static class Program
       ReplayNativeInputSuite.RunAll();
       VisualPresetSuite.RunAll();
       SubmissionCaptureSuite.RunAll();
+      SubmissionGameplayHashSuite.RunAll();
       SubmissionPreflightSuite.RunAll(root);
       SubmissionUploadSuite.RunAll();
       SubmissionRecoverySuite.RunAll();

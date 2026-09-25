@@ -81,3 +81,86 @@ fn rejects_case_colliding_archive_paths() {
         Err(CatalogError::UnsafeArchive)
     ));
 }
+
+#[test]
+fn authoritative_path_uses_original_zip_entries_and_never_client_basename() {
+    use super::upstream::confirmed_chart_path;
+    use serde_json::json;
+    let mut metadata = json!({
+        "pathConfirmed":true, "targetLevel":"levels/id/levelEX.adofai",
+        "targetLevelRelativePath":"levelEX.adofai",
+        "levelFiles":{
+            "Merry Christmas/levelEX.adofai":{"path":"levels/id/levelEX.adofai"},
+            "Merry Christmas/level.adofai":{"path":"levels/id/level.adofai"}
+        }
+    });
+    assert_eq!(
+        confirmed_chart_path(&metadata).unwrap().as_deref(),
+        Some("Merry Christmas/levelEX.adofai")
+    );
+    metadata["pathConfirmed"] = json!(false);
+    assert_eq!(confirmed_chart_path(&metadata).unwrap(), None);
+    metadata["pathConfirmed"] = json!(true);
+    metadata["levelFiles"]["other/levelEX.adofai"] = json!({"path":"levels/id/levelEX.adofai"});
+    assert!(matches!(
+        confirmed_chart_path(&metadata),
+        Err(CatalogError::AmbiguousChart)
+    ));
+}
+
+#[test]
+fn unconfirmed_archives_require_one_gameplay_identity() {
+    use super::{
+        archives::process_original_archive, types::TufMetadata,
+        validation_chart::select_official_chart,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let archive = tmp.path().join("level.zip");
+    let original = br#"{"settings":{"version":17,"bpm":120,"trackColor":"ff0000"},"angleData":[0,180,90],"actions":[{"floor":0,"eventType":"MoveCamera"}]}"#;
+    let visual = br#"{"settings":{"version":17,"bpm":120,"trackColor":"00ff00"},"angleData":[0,180,90],"actions":[]}"#;
+    let excerpt = br#"{"settings":{"version":17,"bpm":120},"angleData":[0,180],"actions":[]}"#;
+    let mut metadata = TufMetadata {
+        file_id: "id".into(),
+        download_url: "unused".into(),
+        confirmed_chart_path: None,
+    };
+    write_zip(
+        &archive,
+        &[
+            ("full/main.adofai", original),
+            ("nodeco/main.adofai", visual),
+        ],
+    );
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("same"), &test_settings()).unwrap();
+    assert!(select_official_chart(revision, &metadata).is_ok());
+    write_zip(
+        &archive,
+        &[
+            ("full/main.adofai", original),
+            ("excerpt/main.adofai", excerpt),
+        ],
+    );
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("ambiguous"), &test_settings())
+            .unwrap();
+    assert!(matches!(
+        select_official_chart(revision, &metadata),
+        Err(CatalogError::AmbiguousChart)
+    ));
+    metadata.confirmed_chart_path = Some("full/main.adofai".into());
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("confirmed"), &test_settings())
+            .unwrap();
+    assert_eq!(
+        select_official_chart(revision, &metadata).unwrap().bytes,
+        original
+    );
+    metadata.confirmed_chart_path = Some("main.adofai".into());
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("basename"), &test_settings()).unwrap();
+    assert!(matches!(
+        select_official_chart(revision, &metadata),
+        Err(CatalogError::ChartNotFound)
+    ));
+}

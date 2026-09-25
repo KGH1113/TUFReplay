@@ -10,6 +10,7 @@ COPY migration/Cargo.toml ./migration/Cargo.toml
 COPY migration/src ./migration/src
 COPY src ./src
 COPY config ./config
+COPY contracts ./contracts
 
 RUN cargo build --locked --release --bin tuf_replay_server-cli
 

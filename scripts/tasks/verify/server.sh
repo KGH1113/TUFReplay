@@ -9,6 +9,14 @@ source "$TASK_DIR/../../lib/guards.sh"
 
 require_command cargo
 cd "$TUFREPLAY_PROJECT_ROOT/server"
+if [[ "${1:-}" == "--format" ]]; then
+  cargo fmt --all
+  exit
+fi
+if [[ "${1:-}" == "--clippy" ]]; then
+  cargo clippy --all-targets -- -D warnings
+  exit
+fi
 cargo fmt --all -- --check
 cargo check --all-targets
 if [[ "${1:-}" == "--integration" ]]; then

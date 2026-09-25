@@ -1,0 +1,31 @@
+[
+  {
+    "name": "original",
+    "chart": {
+      "settings": {"version": 17, "bpm": 120, "offset": -25, "trackColor": "ff0000"},
+      "angleData": [0, 90, 450, 999, -90, 180],
+      "actions": [
+        {"floor": 0, "eventType": "MoveCamera", "zoom": 200},
+        {"floor": 1, "eventType": "Twirl"},
+        {"floor": 2, "eventType": "SetSpeed", "speedType": "Multiplier", "bpmMultiplier": 2, "angleOffset": 15},
+        {"floor": 3, "eventType": "Hold", "duration": 2},
+        {"floor": 4, "eventType": "MultiPlanet", "planets": "ThreePlanets"},
+        {"floor": 5, "eventType": "Pause", "duration": 2.5, "countdownTicks": 2, "angleCorrectionDir": "Forward"},
+        {"floor": 5, "eventType": "AutoPlayTiles", "enabled": false, "safetyTiles": true},
+        {"floor": 6, "eventType": "Multitap", "taps": 3},
+        {"floor": 6, "eventType": "ScaleMargin", "scale": 80}
+      ],
+      "decorations": [{"eventType": "AddDecoration", "decorationImage": "star.png"}]
+    },
+    "sha256": "9d7b74ea1bcea572fe30edf7114bac5d99e01d4e90f04e42734cbf141393aa84"
+  },
+  {
+    "name": "free-roam-defaults",
+    "chart": {
+      "settings": {"version": 17},
+      "angleData": [0, 180, 0],
+      "actions": [{"floor": 1, "eventType": "FreeRoam"}, {"floor": 2, "eventType": "FreeRoamTwirl"}, {"floor": 2, "eventType": "FreeRoamRemove"}, {"floor": 2, "eventType": "FreeRoamWarning"}]
+    },
+    "sha256": "82e26d7782bcf4a36162f42c8bdeb7742abda6580c040721c4ed8c88119655a3"
+  }
+]

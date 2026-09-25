@@ -42,7 +42,13 @@ public partial class RecordingSession
     }
   }
 
-  public void Start(int? tufLevelId, bool autoRecord, byte[] gameplayHash = null, int? gameplayHashVersion = null)
+  public void Start(
+    int? tufLevelId,
+    bool autoRecord,
+    byte[] gameplayHash = null,
+    int? gameplayHashVersion = null,
+    byte[] submissionGameplayHash = null
+  )
   {
     lock (_lock)
     {
@@ -52,6 +58,7 @@ public partial class RecordingSession
       IsCapturingInput = false;
       Data = new RecordedRunPayload
       {
+        SubmissionGameplayHash = submissionGameplayHash == null ? null : (byte[])submissionGameplayHash.Clone(),
         TufLevelId = tufLevelId,
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         NoFailMode = IsNoFailModeActive(),

@@ -1,0 +1,37 @@
+{
+  "version": 1,
+  "enums": {
+    "speedType": {"0":"Bpm", "1":"Multiplier"},
+    "planets": {"2":"TwoPlanets", "3":"ThreePlanets"},
+    "angleCorrectionDir": {"-1":"Backward", "0":"None", "1":"Forward"},
+    "shape": {"0":"Square"}
+  },
+  "settings": [
+    ["bpm", "float", 100],
+    ["offset", "int", 0],
+    ["countdownTicks", "int", 4],
+    ["separateCountdownTime", "bool", true]
+  ],
+  "events": {
+    "SetSpeed": [["speedType", "string", "Bpm"], ["beatsPerMinute", "float", 100], ["bpmMultiplier", "float", 1], ["angleOffset", "float", 0]],
+    "Twirl": [],
+    "Hold": [["duration", "int", 0]],
+    "MultiPlanet": [["planets", "string", "TwoPlanets"]],
+    "Pause": [["duration", "float", 1], ["countdownTicks", "int", 0], ["angleCorrectionDir", "string", "Backward"]],
+    "AutoPlayTiles": [["enabled", "bool", true], ["safetyTiles", "bool", false]],
+    "ScaleMargin": [["scale", "float", 100]],
+    "Multitap": [["taps", "int", 2]],
+    "FreeRoam": [["duration", "int", 16], ["shape", "string", "Square"], ["size", "vector", [4, 4]], ["positionOffset", "vector", [0, 0]], ["countdownTicks", "int", 4], ["angleCorrectionDir", "string", "Backward"]],
+    "FreeRoamTwirl": [["position", "vector", [1, 0]]],
+    "FreeRoamRemove": [["position", "vector", [1, 0]], ["size", "vector", [1, 1]]],
+    "FreeRoamWarning": [["position", "vector", [1, 0]]]
+  },
+  "visualEvents": [
+    "Checkpoint", "MoveCamera", "CustomBackground", "ChangeTrack", "ColorTrack", "AnimateTrack", "RecolorTrack", "MoveTrack",
+    "AddDecoration", "AddText", "SetText", "Flash", "SetHitsound", "SetFilter", "SetFilterAdvanced", "SetPlanetRotation",
+    "HallOfMirrors", "ShakeScreen", "MoveDecorations", "PositionTrack", "RepeatEvents", "Bloom", "SetHoldSound",
+    "SetConditionalEvents", "ScreenTile", "ScreenScroll", "EditorComment", "Bookmark", "PlaySound", "Hide",
+    "ScaleRadius", "TileDimensions", "ScalePlanets", "SetFloorIcon", "AddObject", "SetObject", "SetDefaultText",
+    "AddParticle", "SetParticle", "EmitParticle"
+  ]
+}

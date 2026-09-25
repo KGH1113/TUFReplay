@@ -57,6 +57,7 @@ public class RecordedRunPayload
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public SubmissionResultSnapshot SubmissionResult;
   public byte[] GameplayHash;
+  public byte[] SubmissionGameplayHash;
   public int? GameplayHashVersion;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
@@ -120,6 +121,12 @@ public class RecordedRunPayload
         inputNativePlatform = NativeInputPlatformName(),
         inputCount = inputCount ?? Inputs.Count,
         gameplayHashVersion = GameplayHashVersion,
+        submissionGameplayHashVersion = SubmissionGameplayHash == null
+          ? (int?)null
+          : TUFReplay.Submission.Validation.SubmissionGameplayHash.Version,
+        submissionGameplayHashHex = SubmissionGameplayHash == null
+          ? null
+          : System.BitConverter.ToString(SubmissionGameplayHash).Replace("-", "").ToLowerInvariant(),
         gameplayHashHex = GameplayHash == null
           ? null
           : System.BitConverter.ToString(GameplayHash).Replace("-", "").ToLowerInvariant(),
