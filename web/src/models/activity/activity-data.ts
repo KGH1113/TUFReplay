@@ -117,6 +117,7 @@ function createLevelCard(
     visibleRunCount: canOpen ? visit.runCount : 0,
     hiddenRunCount,
     tufLevelId: visit.tufLevelId,
+    relativeLevelPath: visit.relativeLevelPath,
     song: visit.song,
     author: visit.author,
     artist: visit.artist,

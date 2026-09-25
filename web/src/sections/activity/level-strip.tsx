@@ -6,6 +6,7 @@ import type { LevelCard, LevelMetadata } from "@/models/activity/activity-model"
 import { TUF_WEB_URL } from "@/shared/config/tuf-web-url";
 import { cn } from "@/shared/lib/cn";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
+import { RelativeLevelPath } from "./relative-level-path";
 
 export function LevelStrip({
   levelSessions,
@@ -127,6 +128,14 @@ export function LevelStrip({
                   <p className="truncate text-xs text-muted-foreground" title={creator}>
                     {t("metadata.chartBy", { creator })}
                   </p>
+                  {session.relativeLevelPath && (
+                    <div className="mt-0.5 min-w-0">
+                      <RelativeLevelPath
+                        key={session.relativeLevelPath}
+                        path={session.relativeLevelPath}
+                      />
+                    </div>
+                  )}
                   <div className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground">
                     <span>
                       {session.runCount} {t("counts.runs", { count: session.runCount })}
