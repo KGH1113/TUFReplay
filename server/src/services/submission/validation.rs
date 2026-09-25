@@ -18,6 +18,16 @@ enum ComputedValidation {
     Error,
 }
 
+pub(super) fn chart_failure(reason: &str) -> Result<ValidationOutcome> {
+    match reason {
+        "official_chart_ambiguous" => Ok(ValidationOutcome::Rejected("official_chart_ambiguous")),
+        "official_chart_unsupported" => {
+            Ok(ValidationOutcome::Rejected("official_chart_unsupported"))
+        }
+        _ => Err(Error::Message("official_chart_unavailable".into())),
+    }
+}
+
 pub async fn validate(
     ctx: &AppContext,
     run: &Model,
@@ -44,20 +54,24 @@ pub async fn validate(
             if !validator.available() {
                 ComputedValidation::Outcome(ValidationOutcome::Unavailable)
             } else {
-                let chart = runtime
+                match runtime
                     .charts
                     .acquire(run.tuf_level_id, &run.client_level_relative_path)
                     .await
-                    .map_err(|_| Error::Message("official_chart_unavailable".into()))?;
-                expected_chart = Some(ExpectedChartIdentity {
-                    file_id: chart.file_id.clone(),
-                    sha256: chart.sha256.clone(),
-                    gameplay_hash_version: chart.gameplay_hash_version,
-                    gameplay_hash: chart.gameplay_hash.clone(),
-                });
-                match validator.validate(&chart, manifest).await {
-                    Ok(outcome) => ComputedValidation::Outcome(outcome),
-                    Err(_) => ComputedValidation::Error,
+                {
+                    Ok(chart) => {
+                        expected_chart = Some(ExpectedChartIdentity {
+                            file_id: chart.file_id.clone(),
+                            sha256: chart.sha256.clone(),
+                            gameplay_hash_version: chart.gameplay_hash_version,
+                            gameplay_hash: chart.gameplay_hash.clone(),
+                        });
+                        match validator.validate(&chart, manifest).await {
+                            Ok(outcome) => ComputedValidation::Outcome(outcome),
+                            Err(_) => ComputedValidation::Error,
+                        }
+                    }
+                    Err(reason) => ComputedValidation::Outcome(chart_failure(&reason)?),
                 }
             }
         }
@@ -104,4 +118,21 @@ pub async fn validate(
     )
     .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deterministic_chart_failures_do_not_enter_transient_retries() {
+        for reason in ["official_chart_unsupported", "official_chart_ambiguous"] {
+            assert!(
+                matches!(chart_failure(reason), Ok(ValidationOutcome::Rejected(actual)) if actual == reason)
+            );
+        }
+        for reason in ["official_chart_timeout", "TUF catalog is unavailable"] {
+            assert!(chart_failure(reason).is_err());
+        }
+    }
 }

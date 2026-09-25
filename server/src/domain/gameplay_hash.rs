@@ -52,8 +52,8 @@ struct GameplayEvent<'a> {
 
 pub fn compute_gameplay_hash(bytes: &[u8]) -> Result<String, GameplayHashError> {
     let text = std::str::from_utf8(bytes).map_err(|_| GameplayHashError::InvalidJson)?;
-    let chart: Value = json5::from_str(text.trim_start_matches('\u{feff}'))
-        .map_err(|_| GameplayHashError::InvalidJson)?;
+    let chart: Value =
+        super::adofai_json::parse(text).map_err(|_| GameplayHashError::InvalidJson)?;
     let chart = chart.as_object().ok_or(GameplayHashError::InvalidData)?;
     let settings = object(chart, "settings")?;
     let base_bpm = number(settings, "bpm", None)? as f32;

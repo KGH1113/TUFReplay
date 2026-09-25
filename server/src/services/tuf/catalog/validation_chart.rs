@@ -101,7 +101,7 @@ pub(super) fn select_official_chart(
         file_id: metadata.file_id.clone(),
         sha256: hex::encode(Sha256::digest(&bytes)),
         gameplay_hash_version: GAMEPLAY_HASH_VERSION,
-        gameplay_hash: compute_gameplay_hash(&bytes).map_err(|_| CatalogError::UnsafeArchive)?,
+        gameplay_hash: compute_gameplay_hash(&bytes).map_err(|_| CatalogError::UnsupportedChart)?,
         submission_gameplay_hash,
         bytes,
     })
@@ -116,6 +116,9 @@ impl OfficialChartProvider for TufCatalogRuntime {
         )
         .await
         .map_err(|_| "official_chart_timeout".to_owned())?
-        .map_err(|error| error.to_string())
+        .map_err(|error| {
+            tracing::warn!(level_id, error = %error, "official chart acquisition failed");
+            error.to_string()
+        })
     }
 }

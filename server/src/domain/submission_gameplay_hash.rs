@@ -67,8 +67,7 @@ impl Writer {
 
 pub fn compute_submission_gameplay_hash(bytes: &[u8]) -> Result<String> {
     let text = std::str::from_utf8(bytes).map_err(|_| SubmissionHashError)?;
-    let chart: Value =
-        json5::from_str(text.trim_start_matches('\u{feff}')).map_err(|_| SubmissionHashError)?;
+    let chart: Value = super::adofai_json::parse(text).map_err(|_| SubmissionHashError)?;
     let settings = chart
         .get("settings")
         .filter(|s| s.is_object())

@@ -90,13 +90,7 @@ pub async fn validate(
         .await
     {
         Ok(chart) => chart,
-        Err(reason) if reason == "official_chart_ambiguous" => {
-            return Ok(ValidationOutcome::Rejected("official_chart_ambiguous"))
-        }
-        Err(reason) if reason == "official_chart_unsupported" => {
-            return Ok(ValidationOutcome::Rejected("official_chart_unsupported"))
-        }
-        Err(_) => return Err(Error::Message("official_chart_unavailable".into())),
+        Err(reason) => return super::validation::chart_failure(&reason),
     };
 
     if let Err(reason) = verify_submission_chart(&metadata, &chart.submission_gameplay_hash) {

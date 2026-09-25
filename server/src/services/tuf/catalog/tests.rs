@@ -164,3 +164,54 @@ fn unconfirmed_archives_require_one_gameplay_identity() {
         Err(CatalogError::ChartNotFound)
     ));
 }
+
+#[test]
+fn native_json_compatibility_preserves_official_bytes_and_hashes() {
+    use super::{
+        archives::process_original_archive, types::TufMetadata,
+        validation_chart::select_official_chart,
+    };
+    use crate::domain::{
+        compute_gameplay_hash, submission_gameplay_hash::compute_submission_gameplay_hash,
+    };
+    let tmp = tempfile::tempdir().unwrap();
+    let archive = tmp.path().join("level.zip");
+    let canonical = r#"{"settings":{"version":17,"bpm":120,"useLegacyFlash":"Disabled"},"angleData":[0,180],"actions":[],"decorations":[{"eventType":"AddText","decText":"Thanks!\r\n"}]}"#;
+    let native = canonical
+        .replace("\"Disabled\"}", "\"Disabled\", ,}")
+        .replace("Thanks!\\r", "Thanks!\r");
+    write_zip(
+        &archive,
+        &[
+            ("main.adofai", native.as_bytes()),
+            ("backup.adofai", canonical.as_bytes()),
+        ],
+    );
+    let metadata = TufMetadata {
+        file_id: "id".into(),
+        download_url: "unused".into(),
+        confirmed_chart_path: Some("main.adofai".into()),
+    };
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("valid"), &test_settings()).unwrap();
+    let chart = select_official_chart(revision, &metadata).unwrap();
+    assert_eq!(chart.bytes, native.as_bytes());
+    assert_eq!(
+        chart.gameplay_hash,
+        compute_gameplay_hash(canonical.as_bytes()).unwrap()
+    );
+    assert_eq!(
+        chart.submission_gameplay_hash,
+        compute_submission_gameplay_hash(canonical.as_bytes()).unwrap()
+    );
+    write_zip(
+        &archive,
+        &[("main.adofai", b"{\"settings\":{\"bpm\":,120}}")],
+    );
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("invalid"), &test_settings()).unwrap();
+    assert!(matches!(
+        select_official_chart(revision, &metadata),
+        Err(CatalogError::UnsupportedChart)
+    ));
+}
