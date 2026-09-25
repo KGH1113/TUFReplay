@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
+using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Migrations;
 using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Repositories;
@@ -13,9 +14,64 @@ internal static class ActivityDatabaseSuite
   internal static void RunAll(string root)
   {
     TestFreshSchemaAndAtomicArtifact(root);
+    TestTufFilesStaySeparate(root);
     TestLegacyV15Import(root);
     TestLegacyDatabaseReset(root);
     TestUnsupportedDatabasesArePreserved(root);
+  }
+
+  private static void TestTufFilesStaySeparate(string root)
+  {
+    string path = Path.Combine(root, "tuf-path-identity.sqlite");
+    SetDatabasePath(path);
+    using (SqliteConnection connection = Database.OpenConnection())
+      ActivitySchema.Ensure(connection);
+
+    string folder = Path.Combine(root, "downloads", "tuf-8068");
+    string firstPath = Path.Combine(folder, "Merry Christmas.adofai");
+    string secondPath = Path.Combine(folder, "EX", "Merry Christmas EX.adofai");
+    byte[] hash = new byte[GameplayChartHash.Version4Size];
+    var first = new LevelRecord
+    {
+      SourceKind = LevelSourceKind.Tuf,
+      TufLevelId = 8068,
+      LevelPath = firstPath,
+      GameplayHash = hash,
+      GameplayHashVersion = GameplayChartHash.Version,
+      FirstSeenAtUtc = "2026-01-01T00:00:00Z",
+      LastSeenAtUtc = "2026-01-01T00:00:00Z",
+    };
+    var second = new LevelRecord
+    {
+      SourceKind = LevelSourceKind.Tuf,
+      TufLevelId = 8068,
+      LevelPath = secondPath,
+      GameplayHash = hash,
+      GameplayHashVersion = GameplayChartHash.Version,
+      FirstSeenAtUtc = first.FirstSeenAtUtc,
+      LastSeenAtUtc = first.LastSeenAtUtc,
+    };
+
+    string firstId = LevelRepository.ResolveOrCreate(first);
+    string secondId = LevelRepository.ResolveOrCreate(second);
+    Assert(firstId != secondId, "TUF charts with the same ID and hash were merged across file paths.");
+    Assert(firstId == LevelRepository.ResolveOrCreate(first), "The same TUF file did not retain its identity.");
+    Assert(LevelGroupIdentity.Create(8068, firstPath) != LevelGroupIdentity.Create(8068, secondPath),
+      "TUF chart cards were grouped by forum ID alone.");
+    Assert(LevelDisplayPath.RelativeToLevelFolder(8068, secondPath) == "EX/Merry Christmas EX.adofai",
+      "The displayed TUF chart path is not relative to its downloaded level folder.");
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "UPDATE levels SET identity_key=@legacy WHERE id=@id";
+      command.Parameters.AddWithValue("@legacy",
+        "tuf:8068:" + GameplayChartHash.Version + ":" + Convert.ToBase64String(hash));
+      command.Parameters.AddWithValue("@id", firstId);
+      command.ExecuteNonQuery();
+    }
+    Assert(LevelRepository.ResolveOrCreate(first) == firstId,
+      "A matching TUF chart recorded before path-aware identity was duplicated.");
   }
 
   private static void TestFreshSchemaAndAtomicArtifact(string root)
