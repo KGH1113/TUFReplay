@@ -25,6 +25,7 @@ export const levelSessionDtoSchema = z
     LevelGroupId: z.string(),
     AppSessionId: z.string(),
     TufLevelId: z.number().int().nullable(),
+    RelativeLevelPath: z.string().nullish(),
     Song: z.string().nullable(),
     Author: z.string().nullable(),
     Artist: z.string().nullable(),
@@ -44,6 +45,7 @@ export const logicalLevelDtoSchema = z
   .object({
     Id: z.string(),
     TufLevelId: z.number().int().nullable(),
+    RelativeLevelPath: z.string().nullish(),
     Song: z.string().nullable(),
     Author: z.string().nullable(),
     Artist: z.string().nullable(),

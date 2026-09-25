@@ -25,6 +25,7 @@ public static class LevelRepository
   public static string ResolveOrCreate(SqliteConnection connection, SqliteTransaction transaction, LevelRecord level)
   {
     string identityKey = BuildIdentityKey(level);
+    PromoteMatchingLegacyIdentity(connection, transaction, level, identityKey);
     string candidateId = Guid.NewGuid().ToString("N");
     using SqliteCommand command = connection.CreateCommand();
     command.Transaction = transaction;
@@ -235,11 +236,33 @@ FROM levels WHERE id=@id LIMIT 1";
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
       canonicalPath = canonicalPath.ToUpperInvariant();
     string source = level.SourceKind == LevelSourceKind.Tuf ? "tuf:" + level.TufLevelId : "local";
-    string pathIdentity =
-      level.SourceKind == LevelSourceKind.Tuf ? string.Empty : canonicalPath.Length + ":" + canonicalPath + ":";
+    string pathIdentity = canonicalPath.Length + ":" + canonicalPath + ":";
     string hash = GameplayChartHash.IsSupported(level.GameplayHashVersion, level.GameplayHash)
       ? level.GameplayHashVersion.Value + ":" + Convert.ToBase64String(level.GameplayHash)
       : "unknown:" + (level.Id ?? Guid.NewGuid().ToString("N"));
     return source + ":" + pathIdentity + hash;
+  }
+
+  private static void PromoteMatchingLegacyIdentity(
+    SqliteConnection connection,
+    SqliteTransaction transaction,
+    LevelRecord level,
+    string identityKey
+  )
+  {
+    if (level.SourceKind != LevelSourceKind.Tuf || !level.TufLevelId.HasValue ||
+        !GameplayChartHash.IsSupported(level.GameplayHashVersion, level.GameplayHash))
+      return;
+
+    string legacyKey = "tuf:" + level.TufLevelId.Value + ":" + level.GameplayHashVersion.Value +
+      ":" + Convert.ToBase64String(level.GameplayHash);
+    using SqliteCommand command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = @"UPDATE OR IGNORE levels SET identity_key=@new
+WHERE identity_key=@legacy AND adofai_path=@path";
+    command.Parameters.AddWithValue("@new", identityKey);
+    command.Parameters.AddWithValue("@legacy", legacyKey);
+    command.Parameters.AddWithValue("@path", level.LevelPath);
+    command.ExecuteNonQuery();
   }
 }

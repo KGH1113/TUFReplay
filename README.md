@@ -60,7 +60,7 @@ New recordings keep hit timestamps nondecreasing even when the game song clock m
 - Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
-- Groups revisions of the same TUF level or local level path into one web activity card. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
+- Groups revisions of the same `.adofai` path into one web activity card, keeping different files in one TUFHelperLite download separate. The card shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
 - Counts a run as a clear only when it starts at tile zero, reaches the clear terminal state, and does not use No-Fail mode.
 
 ## Runtime

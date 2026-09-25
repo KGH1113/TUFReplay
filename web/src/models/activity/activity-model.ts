@@ -58,6 +58,7 @@ export function mapLevelSession(dto: LevelSessionDto) {
     levelGroupId: dto.LevelGroupId,
     appSessionId: dto.AppSessionId,
     tufLevelId: dto.TufLevelId,
+    relativeLevelPath: dto.RelativeLevelPath ?? null,
     song: dto.Song,
     author: dto.Author,
     artist: dto.Artist,
@@ -77,6 +78,7 @@ export function mapLogicalLevel(dto: LogicalLevelDto) {
   return {
     id: dto.Id,
     tufLevelId: dto.TufLevelId,
+    relativeLevelPath: dto.RelativeLevelPath ?? null,
     song: dto.Song,
     author: dto.Author,
     artist: dto.Artist,
