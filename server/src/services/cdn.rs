@@ -25,9 +25,14 @@ pub struct Delivery {
 
 impl CdnSigner {
     pub fn new(origin: &str, secret: &str) -> Result<Self> {
+        Self::configured(origin, secret, false)
+    }
+
+    fn configured(origin: &str, secret: &str, local_game: bool) -> Result<Self> {
         let url = reqwest::Url::parse(origin)
             .map_err(|_| Error::Message("invalid REPLAY_CDN_ORIGIN".into()))?;
-        if url.scheme() != "https"
+        if !(url.scheme() == "https"
+            || (local_game && super::artifacts::is_local_http_origin(&url)))
             || url.host_str().is_none()
             || !url.username().is_empty()
             || url.password().is_some()
@@ -44,13 +49,15 @@ impl CdnSigner {
         })
     }
 
-    pub fn from_env() -> Result<Option<Self>> {
+    pub fn from_env(local_game: bool) -> Result<Option<Self>> {
         match (
             std::env::var("REPLAY_CDN_ORIGIN").ok(),
             std::env::var("REPLAY_CDN_SIGNING_SECRET").ok(),
         ) {
             (None, None) => Ok(None),
-            (Some(origin), Some(secret)) => Self::new(&origin, &secret).map(Some),
+            (Some(origin), Some(secret)) => {
+                Self::configured(&origin, &secret, local_game).map(Some)
+            }
             _ => Err(Error::Message(
                 "replay CDN configuration is incomplete".into(),
             )),
@@ -152,6 +159,22 @@ pub async fn delivery(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn http_emulation_is_scoped_to_local_game_and_loopback() {
+        let secret = "s".repeat(32);
+        assert!(CdnSigner::configured("http://127.0.0.1:8787", &secret, true).is_ok());
+        assert!(CdnSigner::configured("http://127.0.0.1:8787", &secret, false).is_err());
+        for origin in [
+            "http://cdn.example",
+            "http://localhost.evil",
+            "http://192.168.1.1",
+            "http://127.0.0.1/path",
+            "http://user@127.0.0.1",
+        ] {
+            assert!(CdnSigner::configured(origin, &secret, true).is_err());
+        }
+    }
 
     #[test]
     fn grants_bind_path_expiration_and_reject_non_object_paths() {

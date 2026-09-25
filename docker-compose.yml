@@ -1,4 +1,42 @@
 services:
+  replay-objects:
+    build:
+      context: .
+      dockerfile: tools/live-e2e/infra/Dockerfile
+    image: tuf-replay-local-infra
+    command: ["node", "s3.mjs"]
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:${REPLAY_OBJECTS_PORT:-9000}:9000"
+    volumes:
+      - tuf-replay-local-objects:/data
+    healthcheck:
+      test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:9000/'); process.exit(r.status === 403 ? 0 : 1)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  replay-cdn:
+    build:
+      context: .
+      dockerfile: tools/live-e2e/infra/Dockerfile
+    image: tuf-replay-local-infra
+    restart: unless-stopped
+    init: true
+    depends_on:
+      replay-objects:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${REPLAY_CDN_PORT:-8787}:8787"
+    volumes:
+      - tuf-replay-local-cdn-cache:/data
+    healthcheck:
+      test: ["CMD", "node", "--input-type=module", "-e", "const r = await fetch('http://127.0.0.1:8787/__health'); process.exit(r.ok ? 0 : 1)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   postgres:
     image: postgres:17-alpine
     environment:
@@ -40,5 +78,7 @@ services:
       - "127.0.0.1:${TUF_REPLAY_WEB_PORT:-4174}:4173"
 
 volumes:
+  tuf-replay-local-objects:
+  tuf-replay-local-cdn-cache:
   tuf-replay-postgres:
   tuf-replay-redis:

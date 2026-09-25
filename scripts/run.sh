@@ -21,6 +21,7 @@ Commands:
   web-check   Run web tests, typecheck, Biome, and production build
   server-check Check Rust formatting, all targets, and library tests (--format / --clippy)
   cdn-check   Check signed R2 edge delivery and cache authorization
+  live-infra  Manage persistent local object storage/CDN (up|stop|status|check)
   tester-admin-check Check the separate tester admin app and optional PostgreSQL integration
   mac-helper  Build and verify the macOS microphone helper
   unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
@@ -63,6 +64,9 @@ case "$command_name" in
     ;;
   cdn-check)
     exec bun test "$SCRIPTS_DIR/../deploy/replay-cdn/worker.test.mjs"
+    ;;
+  live-infra)
+    exec bash "$SCRIPTS_DIR/tasks/verify/live-infra.sh" "${@:2}"
     ;;
   tester-admin-check)
     exec bash "$SCRIPTS_DIR/tasks/verify/tester-admin.sh"

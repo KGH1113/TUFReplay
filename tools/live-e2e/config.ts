@@ -1,12 +1,15 @@
 import { homedir } from "node:os";
+import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const root = fileURLToPath(new URL("../../", import.meta.url));
 export const data = join(root, "tools/live-e2e/.data");
-export const backend = resolve(root, "../tuf-backend");
-export const frontend = resolve(root, "../t21c-web-frontend");
-export const editor = resolve(root, "../adofai-web-editor");
+const repositories = existsSync(join(data, "repositories.json"))
+  ? JSON.parse(readFileSync(join(data, "repositories.json"), "utf8")) : {};
+export const backend = resolve(root, process.env.E2E_TUF_BACKEND || repositories.backend || "../tuf-backend");
+export const frontend = resolve(root, process.env.E2E_TUF_FRONTEND || repositories.frontend || "../t21c-web-frontend");
+export const editor = resolve(root, process.env.E2E_WEB_ADOFAI || repositories.editor || "../adofai-web-editor");
 export const game =
 	process.env.ADOFAI_DIR ||
 	join(

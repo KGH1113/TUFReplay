@@ -29,6 +29,9 @@
 
 ## Overview
 
+For persistent Docker Desktop object storage and local CDN testing with
+`bun run e2e:live`, see [the local infrastructure guide](docs/local-replay-storage.md).
+
 TUF auto-submitted passes embed web-adofai using a small record-ID contract. The player owns replay downloads, integrity checks, streaming archive extraction, temporary OPFS storage, loading/retry UI and playback controls; the TUF frontend only opens/closes the embed. Standalone player links also support beta testing. See the [replay delivery contract](docs/replay-delivery-contract.md). The [local game E2E runner](docs/local-full-e2e-commands.md) prepares a real login account and OAuth client, then starts the backend, submission workers, companion UI, TUF frontend, and web-adofai together from their local source checkouts. It uses actual game IPC and recorded clears; gameplay still needs a player. The gameplay simulator remains unavailable, so this local setup uses the explicit trusted-tester policy.
 
 TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.

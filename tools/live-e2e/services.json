@@ -1,0 +1,4 @@
+{
+  "objectStore": "http://127.0.0.1:9000",
+  "replayCdn": "http://127.0.0.1:8787"
+}
