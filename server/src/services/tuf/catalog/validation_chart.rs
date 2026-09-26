@@ -9,8 +9,7 @@ use sha2::{Digest, Sha256};
 use std::{fs::File, io::Read, time::Duration};
 
 impl TufCatalogRuntime {
-    /// Issuance checks public metadata only. Installed file identity is a claim,
-    /// not proof, and does not cause a pre-play archive download.
+    /// Check public eligibility; admission separately acquires the official chart.
     pub async fn require_eligible(&self, level_id: i64) -> Result<(), CatalogError> {
         self.fetch_metadata(level_id).await.map(|_| ())
     }

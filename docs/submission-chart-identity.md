@@ -52,6 +52,15 @@ It never constructs the server's reference from an edited installed folder.
 Re-run `./scripts/run.sh live-infra charts` for manifests created by the older
 preparer; startup rejects manifests that lack official metadata.
 
+The local runner serves the matching `/cdn/{fileId}/metadata` response alongside
+the official ZIP on port 5152. `tuf_metadata_base_url` selects that service; TUF
+catalog, identity and registration requests continue to use port 3002. The local
+TUF API does not mount the separate CDN service's routes, so seeding `cdn_files`
+alone is insufficient. When `tuf_metadata_base_url` is omitted, production keeps
+using the TUF API origin for metadata as before. Restart `bun run e2e:live` after
+changing this configuration and record a new run; rejected historical attempts
+have no uploaded evidence to recover.
+
 ## Selecting the official original
 
 The public level response provides `fileId` and `dlLink`, but no authoritative

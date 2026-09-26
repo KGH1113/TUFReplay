@@ -42,6 +42,7 @@ settings:
     max_session_bytes: 134217728
     heartbeat_interval_ms: 10000
     tuf_api_base_url: http://127.0.0.1:3002
+    tuf_metadata_base_url: http://127.0.0.1:5152
     artifact_root: ../tools/live-e2e/.data/storage
     artifact_max_download_bytes: 536870912
     artifact_max_extracted_bytes: 2147483648
