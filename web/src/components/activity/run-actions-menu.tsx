@@ -17,6 +17,7 @@ import { useTranslation } from "react-i18next";
 import { SubmissionGalleryDialog } from "@/components/submission/submission-gallery-dialog";
 import { SubmissionProgressDialog } from "@/components/submission/submission-progress-dialog";
 import { useSubmissionRun } from "@/hooks/submission/use-submission";
+import { isClearRun } from "@/models/activity/activity-data";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
@@ -27,7 +28,7 @@ import {
   submissionAccountKey,
   submissionPresentationForRequest,
 } from "@/models/submission/submission-model";
-import { submissionProgress } from "@/models/submission/submission-progress";
+import { canContinueSubmission, submissionProgress } from "@/models/submission/submission-progress";
 import { TUF_WEB_URL } from "@/shared/config/tuf-web-url";
 import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 import { Button } from "@/shared/ui/button";
@@ -78,11 +79,14 @@ export function RunActionsMenu({
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [attemptedPresentation, setAttemptedPresentation] = useState<VisualSelection | null>(null);
   const busy = pendingAction !== null;
+  const hasSubmissionRecording = isClearRun(run) && run.submissionRunId !== null;
   const submission = useSubmissionRun(
     run.submissionRunId,
-    (menuOpen || galleryOpen || progressOpen) && !disabled && run.submissionRunId !== null,
+    (menuOpen || galleryOpen || progressOpen) && !disabled && hasSubmissionRecording,
   );
   const progress = submissionProgress(submission.run.data);
+  const showSubmit = hasSubmissionRecording && canContinueSubmission(submission.run.data);
+  const showPass = hasSubmissionRecording && submission.run.data?.external_pass_id != null;
   const submissionReady =
     !disabled &&
     !submission.run.isError &&
@@ -293,43 +297,43 @@ export function RunActionsMenu({
               {microphoneT("recording.label")}
             </DropdownMenuItem>
           )}
-          {TUFREPLAY_WEB_BUILD.flavor === "auto-submission" ? (
+          {TUFREPLAY_WEB_BUILD.flavor === "auto-submission" && (showSubmit || showPass) ? (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem
-                disabled={
-                  disabled || (busy && pendingAction !== "submit") || run.submissionRunId === null
-                }
-                onSelect={() => {
-                  setMenuError("");
-                  setProgressOpen(true);
-                }}
-              >
-                <span aria-hidden="true" className="size-4" />
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={
-                    progress.processing || pendingAction === "submit" ? Loading03Icon : Upload04Icon
-                  }
-                  className={
-                    progress.processing || pendingAction === "submit"
-                      ? "size-4 animate-spin motion-reduce:animate-none"
-                      : "size-4"
-                  }
-                />
-                {submission.run.data
-                  ? submissionT(`progress.heading.${progress.phase}`)
-                  : submissionT("progress.title")}
-                <HugeiconsIcon
-                  aria-hidden="true"
-                  icon={ArrowRight01Icon}
-                  className="ml-auto size-4"
-                />
-              </DropdownMenuItem>
-              {submission.run.data?.external_pass_id != null ? (
+              {showSubmit ? (
+                <DropdownMenuItem
+                  disabled={disabled || (busy && pendingAction !== "submit")}
+                  onSelect={() => {
+                    setMenuError("");
+                    setProgressOpen(true);
+                  }}
+                >
+                  <span aria-hidden="true" className="size-4" />
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={
+                      progress.processing || pendingAction === "submit"
+                        ? Loading03Icon
+                        : Upload04Icon
+                    }
+                    className={
+                      progress.processing || pendingAction === "submit"
+                        ? "size-4 animate-spin motion-reduce:animate-none"
+                        : "size-4"
+                    }
+                  />
+                  {submissionT("progress.submit")}
+                  <HugeiconsIcon
+                    aria-hidden="true"
+                    icon={ArrowRight01Icon}
+                    className="ml-auto size-4"
+                  />
+                </DropdownMenuItem>
+              ) : null}
+              {showPass ? (
                 <DropdownMenuItem asChild>
                   <a
-                    href={`${TUF_WEB_URL}/passes/${submission.run.data.external_pass_id}`}
+                    href={`${TUF_WEB_URL}/passes/${submission.run.data?.external_pass_id}`}
                     target="_blank"
                     rel="noreferrer"
                   >
