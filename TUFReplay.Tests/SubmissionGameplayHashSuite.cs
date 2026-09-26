@@ -32,6 +32,15 @@ internal static class SubmissionGameplayHashSuite
       visual["actions"] = new JArray(
         ((JArray)visual["actions"]).Where(e => !SubmissionGameplayHash.IsVisualEvent((string)e["eventType"]))
       );
+      ((JArray)visual["actions"]).Add(
+        new JObject
+        {
+          ["floor"] = 0,
+          ["eventType"] = "SetFrameRate",
+          ["enabled"] = true,
+          ["frameRate"] = 29,
+        }
+      );
       if (Hash(visual) != original)
         throw new Exception("Visual-only edit changed submission identity.");
       var modified = (JObject)chart.DeepClone();
