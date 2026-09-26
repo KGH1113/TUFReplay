@@ -11,8 +11,7 @@ public static class LevelGroupIdentity
   public static string Create(int? tufLevelId, string levelPath)
   {
     string identity;
-    string canonicalPath =
-      LevelPathIdentity.Canonicalize(levelPath, requireExists: false) ?? levelPath ?? string.Empty;
+    string canonicalPath = LevelPathIdentity.Canonicalize(levelPath, requireExists: false) ?? levelPath ?? string.Empty;
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
       canonicalPath = canonicalPath.ToUpperInvariant();
     identity = tufLevelId.HasValue

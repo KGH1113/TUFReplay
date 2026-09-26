@@ -15,9 +15,11 @@ internal static class SubmissionLog
 
   internal static void Publish(Guid runId, UploadProgress progress)
   {
-    if (progress.Kind == UploadProgressKind.FrameSent
+    if (
+      progress.Kind == UploadProgressKind.FrameSent
       || progress.Kind == UploadProgressKind.Acknowledged
-      || progress.Kind == UploadProgressKind.HelloSent)
+      || progress.Kind == UploadProgressKind.HelloSent
+    )
       return;
 
     string run = runId.ToString("N").Substring(0, 8);
