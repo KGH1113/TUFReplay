@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { SubmissionRun } from "@/models/submission/submission-model";
 import {
+  canContinueSubmission,
   isSubmissionProcessing,
   submissionProgress,
   submissionReason,
@@ -20,6 +21,41 @@ const recording: SubmissionRun = {
 };
 
 describe("submission progress", () => {
+  it("keeps loading, active and retryable submissions accessible without offering terminal runs", () => {
+    expect(canContinueSubmission(undefined)).toBe(true);
+    for (const status of [
+      "issued",
+      "streaming",
+      "sealed",
+      "evidence_ready",
+      "validation_pending",
+      "registering",
+      "validation_error",
+      "registration_error",
+      "validator_unavailable",
+    ]) {
+      expect(canContinueSubmission({ ...recording, status })).toBe(true);
+    }
+    for (const status of [
+      "validation_rejected",
+      "registration_rejected",
+      "evidence_invalid",
+      "expired",
+      "submitted",
+      "future_state",
+    ]) {
+      expect(canContinueSubmission({ ...recording, status })).toBe(false);
+    }
+    expect(
+      canContinueSubmission({
+        ...recording,
+        status: "evidence_ready",
+        evidence_expires_at: "2000-01-01T00:00:00Z",
+      }),
+    ).toBe(false);
+    expect(canContinueSubmission({ ...recording, external_pass_id: 123 })).toBe(false);
+  });
+
   it("marks transfer complete when sealed, but does not claim storage is complete", () => {
     expect(submissionProgress(recording)).toEqual({
       phase: "saving",

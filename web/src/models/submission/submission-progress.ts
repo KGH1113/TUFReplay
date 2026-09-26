@@ -1,4 +1,11 @@
-import type { SubmissionRun } from "@/models/submission/submission-model";
+import { canSubmit, type SubmissionRun } from "@/models/submission/submission-model";
+
+/** Keep pending/retryable submissions reachable, but hide terminally unavailable actions. */
+export function canContinueSubmission(run: SubmissionRun | undefined) {
+  if (!run) return true;
+  const progress = submissionProgress(run);
+  return progress.phase !== "submitted" && (progress.processing || canSubmit(run));
+}
 
 export const submissionSteps = [
   "uploading",
