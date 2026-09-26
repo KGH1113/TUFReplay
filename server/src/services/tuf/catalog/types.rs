@@ -64,7 +64,7 @@ pub enum CatalogError {
 pub(super) struct TufMetadata {
     pub(super) file_id: String,
     pub(super) download_url: String,
-    pub(super) confirmed_chart_path: Option<String>,
+    pub(super) target_chart_path: Option<String>,
 }
 
 #[derive(Debug)]

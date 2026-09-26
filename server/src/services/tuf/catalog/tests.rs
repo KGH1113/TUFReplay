@@ -42,11 +42,11 @@ fn local_official_selection_matches_recorded_runtime_hashes() {
     let metadata = TufMetadata {
         file_id: fixture["fileId"].as_str().unwrap().into(),
         download_url: "unused".into(),
-        confirmed_chart_path: super::upstream::confirmed_chart_path(&fixture["metadata"]).unwrap(),
+        target_chart_path: super::upstream::target_chart_path(&fixture["metadata"]).unwrap(),
     };
     assert!(
-        metadata.confirmed_chart_path.is_some(),
-        "fixture must have a confirmed chart"
+        metadata.target_chart_path.is_some(),
+        "fixture must have a target chart"
     );
     let tmp = tempfile::tempdir().unwrap();
     let mut settings = test_settings();
@@ -136,8 +136,8 @@ fn rejects_case_colliding_archive_paths() {
 }
 
 #[test]
-fn authoritative_path_uses_original_zip_entries_and_never_client_basename() {
-    use super::upstream::confirmed_chart_path;
+fn target_path_uses_original_zip_entries_even_when_unconfirmed() {
+    use super::upstream::target_chart_path;
     use serde_json::json;
     let mut metadata = json!({
         "pathConfirmed":true, "targetLevel":"levels/id/levelEX.adofai",
@@ -148,21 +148,45 @@ fn authoritative_path_uses_original_zip_entries_and_never_client_basename() {
         }
     });
     assert_eq!(
-        confirmed_chart_path(&metadata).unwrap().as_deref(),
+        target_chart_path(&metadata).unwrap().as_deref(),
         Some("Merry Christmas/levelEX.adofai")
     );
     metadata["pathConfirmed"] = json!(false);
-    assert_eq!(confirmed_chart_path(&metadata).unwrap(), None);
-    metadata["pathConfirmed"] = json!(true);
+    assert_eq!(
+        target_chart_path(&metadata).unwrap().as_deref(),
+        Some("Merry Christmas/levelEX.adofai")
+    );
+    metadata["targetLevel"] = json!("levels/id/level.adofai");
+    assert_eq!(
+        target_chart_path(&metadata).unwrap().as_deref(),
+        Some("Merry Christmas/level.adofai")
+    );
+    metadata["targetLevel"] = json!("levels/id/levelEX.adofai");
     metadata["levelFiles"]["other/levelEX.adofai"] = json!({"path":"levels/id/levelEX.adofai"});
     assert!(matches!(
-        confirmed_chart_path(&metadata),
+        target_chart_path(&metadata),
         Err(CatalogError::AmbiguousChart)
+    ));
+    metadata["levelFiles"]
+        .as_object_mut()
+        .unwrap()
+        .remove("other/levelEX.adofai");
+    metadata["targetLevel"] = json!("levels/id/missing.adofai");
+    assert!(matches!(
+        target_chart_path(&metadata),
+        Err(CatalogError::ChartNotFound)
+    ));
+    metadata.as_object_mut().unwrap().remove("targetLevel");
+    assert_eq!(target_chart_path(&metadata).unwrap(), None);
+    metadata["pathConfirmed"] = json!(true);
+    assert!(matches!(
+        target_chart_path(&metadata),
+        Err(CatalogError::ChartNotFound)
     ));
 }
 
 #[test]
-fn unconfirmed_archives_require_one_gameplay_identity() {
+fn archives_without_a_target_require_unanimity_but_unconfirmed_target_selects() {
     use super::{
         archives::process_original_archive, types::TufMetadata,
         validation_chart::select_official_chart,
@@ -175,7 +199,7 @@ fn unconfirmed_archives_require_one_gameplay_identity() {
     let mut metadata = TufMetadata {
         file_id: "id".into(),
         download_url: "unused".into(),
-        confirmed_chart_path: None,
+        target_chart_path: None,
     };
     write_zip(
         &archive,
@@ -201,7 +225,15 @@ fn unconfirmed_archives_require_one_gameplay_identity() {
         select_official_chart(revision, &metadata),
         Err(CatalogError::AmbiguousChart)
     ));
-    metadata.confirmed_chart_path = Some("full/main.adofai".into());
+    metadata.target_chart_path = super::upstream::target_chart_path(&serde_json::json!({
+        "pathConfirmed": false,
+        "targetLevel": "levels/id/full/main.adofai",
+        "levelFiles": {
+            "full/main.adofai": {"path": "levels/id/full/main.adofai"},
+            "excerpt/main.adofai": {"path": "levels/id/excerpt/main.adofai"}
+        }
+    }))
+    .unwrap();
     let revision =
         process_original_archive(&archive, &tmp.path().join("confirmed"), &test_settings())
             .unwrap();
@@ -209,7 +241,7 @@ fn unconfirmed_archives_require_one_gameplay_identity() {
         select_official_chart(revision, &metadata).unwrap().bytes,
         original
     );
-    metadata.confirmed_chart_path = Some("main.adofai".into());
+    metadata.target_chart_path = Some("main.adofai".into());
     let revision =
         process_original_archive(&archive, &tmp.path().join("basename"), &test_settings()).unwrap();
     assert!(matches!(
@@ -242,7 +274,7 @@ fn confirmed_legacy_original_accepts_tufplay_color_variant() {
     let metadata = TufMetadata {
         file_id: "id".into(),
         download_url: "unused".into(),
-        confirmed_chart_path: Some("official.adofai".into()),
+        target_chart_path: Some("official.adofai".into()),
     };
     let selected = select_official_chart(revision, &metadata).unwrap();
     assert_eq!(
@@ -283,7 +315,7 @@ fn native_json_compatibility_preserves_official_bytes_and_hashes() {
     let metadata = TufMetadata {
         file_id: "id".into(),
         download_url: "unused".into(),
-        confirmed_chart_path: Some("main.adofai".into()),
+        target_chart_path: Some("main.adofai".into()),
     };
     let revision =
         process_original_archive(&archive, &tmp.path().join("valid"), &test_settings()).unwrap();

@@ -84,16 +84,13 @@ impl TufCatalogRuntime {
             return Err(CatalogError::UpstreamUnavailable);
         }
         Ok(TufMetadata {
-            confirmed_chart_path: self.fetch_confirmed_chart_path(&file_id).await?,
+            target_chart_path: self.fetch_target_chart_path(&file_id).await?,
             file_id,
             download_url,
         })
     }
 
-    async fn fetch_confirmed_chart_path(
-        &self,
-        file_id: &str,
-    ) -> Result<Option<String>, CatalogError> {
+    async fn fetch_target_chart_path(&self, file_id: &str) -> Result<Option<String>, CatalogError> {
         let mut url = reqwest::Url::parse(&format!(
             "{}/cdn/",
             self.settings
@@ -124,7 +121,7 @@ impl TufCatalogRuntime {
             .json()
             .await
             .map_err(|_| CatalogError::UpstreamUnavailable)?;
-        confirmed_chart_path(&value["metadata"])
+        target_chart_path(&value["metadata"])
     }
 
     pub(super) async fn download_archive(
@@ -174,22 +171,27 @@ impl TufCatalogRuntime {
     }
 }
 
-pub(super) fn confirmed_chart_path(
+pub(super) fn target_chart_path(
     metadata: &serde_json::Value,
 ) -> Result<Option<String>, CatalogError> {
-    if metadata.get("pathConfirmed").and_then(|v| v.as_bool()) != Some(true) {
-        return Ok(None);
-    }
-    let target = metadata
+    let confirmed = metadata.get("pathConfirmed").and_then(|v| v.as_bool()) == Some(true);
+    let Some(target) = metadata
         .get("targetLevel")
         .and_then(|v| v.as_str())
-        .ok_or(CatalogError::ChartNotFound)?;
+        .filter(|path| !path.is_empty())
+    else {
+        return if confirmed {
+            Err(CatalogError::ChartNotFound)
+        } else {
+            Ok(None)
+        };
+    };
     let files = metadata
         .get("levelFiles")
         .and_then(|v| v.as_object())
         .ok_or(CatalogError::ChartNotFound)?;
-    // Map the confirmed storage path back to its original ZIP entry. A basename
-    // or TUFHelper-flattened client path is never an authority for selection.
+    // Map TUF's target storage path back to its original ZIP entry, even when
+    // pathConfirmed is false. Never select by basename or flattened client path.
     let mut matches = files
         .iter()
         .filter(|(_, entry)| entry.get("path").and_then(|v| v.as_str()) == Some(target));
