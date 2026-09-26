@@ -27,5 +27,14 @@
       "actions": [{"floor": 1, "eventType": "FreeRoam"}, {"floor": 2, "eventType": "FreeRoamTwirl"}, {"floor": 2, "eventType": "FreeRoamRemove"}, {"floor": 2, "eventType": "FreeRoamWarning"}]
     },
     "sha256": "82e26d7782bcf4a36162f42c8bdeb7742abda6580c040721c4ed8c88119655a3"
+  },
+  {
+    "name": "legacy-sprite-path",
+    "chart": {
+      "settings": {"version": 2},
+      "pathData": "RUT!",
+      "actions": []
+    },
+    "sha256": "52c1079a456c0a334f83e72afea90227f021888334ccf9a850023ddd3711832e"
   }
 ]

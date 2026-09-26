@@ -17,7 +17,8 @@ internal static class SubmissionGameplayHashSuite
             SubmissionGameplayHash.Compute(
               (JObject)value["settings"],
               (JArray)value["angleData"],
-              (JArray)value["actions"]
+              (JArray)value["actions"],
+              (string)value["pathData"]
             )
           )
           .ToLowerInvariant();
@@ -47,6 +48,13 @@ internal static class SubmissionGameplayHashSuite
       );
       if (Hash(modified) == original)
         throw new Exception("Autoplay edit accepted.");
+      if (chart["pathData"] != null)
+      {
+        modified = (JObject)chart.DeepClone();
+        modified["pathData"] = (string)modified["pathData"] + "R";
+        if (Hash(modified) == original)
+          throw new Exception("Legacy path edit accepted.");
+      }
     }
     Console.WriteLine("Submission gameplay cross-language vectors passed.");
   }

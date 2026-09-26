@@ -14,8 +14,8 @@ internal static class RuntimeSubmissionGameplayHash
     try
     {
       LevelData level = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
-      if (level == null || level.isOldLevel)
-        throw new InvalidDataException("Legacy sprite charts are not supported.");
+      if (level == null)
+        throw new InvalidDataException("No chart is loaded.");
       var settings = new JObject
       {
         ["bpm"] = level.bpm,
@@ -53,7 +53,12 @@ internal static class RuntimeSubmissionGameplayHash
         }
         actions.Add(encoded);
       }
-      hash = SubmissionGameplayHash.Compute(settings, new JArray(level.angleData), actions);
+      hash = SubmissionGameplayHash.Compute(
+        settings,
+        new JArray(level.angleData),
+        actions,
+        level.isOldLevel ? level.pathData : null
+      );
       return true;
     }
     catch (Exception exception)

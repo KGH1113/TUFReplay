@@ -77,17 +77,22 @@ pub fn compute_submission_gameplay_hash(bytes: &[u8]) -> Result<String> {
         .map(integer)
         .transpose()?
         .unwrap_or(0);
-    if version < 5
-        || settings
-            .get("legacySpriteTiles")
-            .map(boolean)
-            .transpose()?
-            .unwrap_or(false)
-    {
-        return Err(SubmissionHashError);
-    }
+    let legacy = chart["pathData"].is_string()
+        && (version < 5
+            || settings
+                .get("legacySpriteTiles")
+                .map(boolean)
+                .transpose()?
+                .unwrap_or(false));
+    // LevelData.Decode keeps pathData for legacy sprite levels, but migrates it
+    // into angleData for modern levels. Mirror that choice in the hash stream.
+    let legacy_path = if legacy {
+        Some(chart["pathData"].as_str().ok_or(SubmissionHashError)?)
+    } else {
+        None
+    };
     let angles = if let Some(path) = chart["pathData"].as_str() {
-        migrate_path(path)?
+        migrate_path(path, legacy)
     } else {
         chart["angleData"]
             .as_array()
@@ -106,8 +111,11 @@ pub fn compute_submission_gameplay_hash(bytes: &[u8]) -> Result<String> {
     writer.text("tuf-submission-gameplay");
     writer.int(SUBMISSION_GAMEPLAY_HASH_VERSION as i32);
     writer.fields(settings, &CONTRACT["settings"], "")?;
-    writer.int(angles.len() as i32);
-    for angle in &angles {
+    writer.int(legacy_path.map_or(angles.len() as i32, |_| -1));
+    if let Some(path) = legacy_path {
+        writer.text(path);
+    }
+    for angle in angles.iter().filter(|_| legacy_path.is_none()) {
         let value = if *angle == 999.0 {
             *angle
         } else {
@@ -211,7 +219,7 @@ fn boolean(v: &Value) -> Result<bool> {
 }
 
 // FloorHelper.MigratePathData from the game, including relative path letters.
-fn migrate_path(path: &str) -> Result<Vec<f32>> {
+fn migrate_path(path: &str, legacy: bool) -> Vec<f32> {
     let mut previous = 0.0;
     path.chars()
         .map(|c| {
@@ -241,6 +249,9 @@ fn migrate_path(path: &str) -> Result<Vec<f32>> {
                 'Y' => 285.0,
                 'A' => 345.0,
                 '!' => 999.0,
+                // Old sprite levels call TryGetPathInDegrees and use its
+                // zero-valued output even when the lookup returns false.
+                _ if legacy => 0.0,
                 '5' => previous + 72.0,
                 '6' => previous - 72.0,
                 '7' => previous + 52.0,
@@ -250,10 +261,11 @@ fn migrate_path(path: &str) -> Result<Vec<f32>> {
                 'j' => previous - 120.0,
                 't' => previous + 60.0,
                 'y' => previous + 300.0,
-                _ => return Err(SubmissionHashError),
+                // MigratePathData uses a zero delta for unknown letters.
+                _ => previous,
             };
             previous = value;
-            Ok(value)
+            value
         })
         .collect()
 }
@@ -328,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn unknown_rules_hitboxes_and_unsupported_migrations_fail_closed() {
+    fn unknown_rules_and_hitboxes_fail_closed() {
         for event in [
             "CallMethod",
             "AddComponent",
@@ -346,9 +358,6 @@ mod tests {
         let mut v = fixtures()[0]["chart"].clone();
         v["decorations"][0]["hitbox"] = json!("Kill");
         assert!(compute_submission_gameplay_hash(&serde_json::to_vec(&v).unwrap()).is_err());
-        v = fixtures()[0]["chart"].clone();
-        v["settings"]["legacySpriteTiles"] = json!(true);
-        assert!(compute_submission_gameplay_hash(&serde_json::to_vec(&v).unwrap()).is_err());
     }
 
     #[test]
@@ -358,6 +367,25 @@ mod tests {
         v.as_object_mut().unwrap().remove("pathData");
         v["angleData"] = json!([0, 90, 60, 999, 1071]);
         assert_eq!(expected, hash(&v));
+    }
+
+    #[test]
+    fn legacy_sprite_paths_are_distinct_from_modern_angles() {
+        let legacy = fixtures()[2]["chart"].clone();
+        assert_eq!(hash(&legacy), fixtures()[2]["sha256"].as_str().unwrap());
+        let mut updated = legacy.clone();
+        updated["settings"]["version"] = json!(15);
+        updated["settings"]["legacySpriteTiles"] = json!(true);
+        assert_eq!(hash(&legacy), hash(&updated));
+        updated["settings"]["legacySpriteTiles"] = json!(false);
+        assert_ne!(hash(&legacy), hash(&updated));
+        updated["settings"]["legacySpriteTiles"] = json!(true);
+        updated["pathData"] = json!("RUT!R");
+        assert_ne!(hash(&legacy), hash(&updated));
+        let modern_angles = json!({"settings":{"version":2},"angleData":[0,90],"actions":[]});
+        assert!(
+            compute_submission_gameplay_hash(&serde_json::to_vec(&modern_angles).unwrap()).is_ok()
+        );
     }
 
     #[test]
