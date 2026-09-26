@@ -6,6 +6,9 @@ use tokio::sync::Semaphore;
 #[derive(Clone, Debug, Deserialize)]
 pub struct TufCatalogSettings {
     pub tuf_api_base_url: String,
+    /// Optional origin for CDN metadata when it is served separately from the API.
+    #[serde(default)]
+    pub tuf_metadata_base_url: Option<String>,
     pub artifact_root: String,
     pub artifact_max_download_bytes: u64,
     pub artifact_max_extracted_bytes: u64,

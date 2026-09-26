@@ -96,11 +96,16 @@ impl TufCatalogRuntime {
     ) -> Result<Option<String>, CatalogError> {
         let mut url = reqwest::Url::parse(&format!(
             "{}/cdn/",
-            self.settings.tuf_api_base_url.trim_end_matches('/')
+            self.settings
+                .tuf_metadata_base_url
+                .as_deref()
+                .unwrap_or(&self.settings.tuf_api_base_url)
+                .trim_end_matches('/')
         ))
         .map_err(|_| CatalogError::UpstreamUnavailable)?;
         url.path_segments_mut()
             .map_err(|_| CatalogError::UpstreamUnavailable)?
+            .pop_if_empty()
             .push(file_id)
             .push("metadata");
         let response = self

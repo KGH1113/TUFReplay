@@ -166,6 +166,106 @@ async fn start_catalog_archive(
 
 #[tokio::test]
 #[serial]
+async fn separate_cdn_metadata_approves_ex_and_rejects_normal_before_persistence() {
+    use sea_orm::{EntityTrait, PaginatorTrait};
+    request::<App, _, _>(|mut request, ctx| async move {
+        let normal = br#"{"settings":{"version":17,"bpm":180},"angleData":[0,90],"actions":[]}"#;
+        let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+        for (name, bytes) in [
+            ("original/level.adofai", normal.as_slice()),
+            ("original/levelEX.adofai", CHART_BYTES),
+        ] {
+            zip.start_file(name, SimpleFileOptions::default()).unwrap();
+            zip.write_all(bytes).unwrap();
+        }
+        let (base_url, _, api) = start_catalog_archive(
+            serde_json::json!({"id":42,"diffId":1}),
+            StatusCode::OK,
+            serde_json::json!([{"id":1,"type":"PGU","name":"P2"}]).to_string(),
+            zip.finish().unwrap().into_inner(),
+        )
+        .await;
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let metadata_url = format!("http://{}", listener.local_addr().unwrap());
+        let cdn =
+            tokio::spawn(async move {
+                axum::serve(listener, Router::new().route("/cdn/file-42/metadata", get(|| async {
+                Json(serde_json::json!({"metadata": {
+                    "pathConfirmed":true, "targetLevel":"levels/file-42/levelEX.adofai",
+                    "levelFiles": {
+                        "original/level.adofai":{"path":"levels/file-42/level.adofai"},
+                        "original/levelEX.adofai":{"path":"levels/file-42/levelEX.adofai"}
+                    }
+                }}))
+            }))).await.unwrap();
+            });
+        let root = tempfile::tempdir().unwrap();
+        ctx.shared_store.insert(
+            TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_api_base_url: base_url,
+                tuf_metadata_base_url: Some(metadata_url),
+                artifact_root: root.path().to_string_lossy().into(),
+                artifact_max_download_bytes: 1024 * 1024,
+                artifact_max_extracted_bytes: 1024 * 1024,
+                artifact_max_files: 20,
+                artifact_hydration_timeout_seconds: 5,
+                artifact_max_concurrent_hydrations: 2,
+            })
+            .unwrap(),
+        );
+        let ticket = crate::support::authenticate(&ctx, &Uuid::new_v4().to_string()).await;
+        request.add_header(
+            axum::http::header::AUTHORIZATION,
+            format!("Bearer {ticket}"),
+        );
+        let before = tuf_replay_server::models::run_sessions::Entity::find()
+            .count(&ctx.db)
+            .await
+            .unwrap();
+        let mut denied = valid_request();
+        // Even claiming the EX filename cannot make the normal chart eligible.
+        denied["client_level_relative_path"] = serde_json::json!("levelEX.adofai");
+        denied["submission_gameplay_hash_hex"] = serde_json::json!(
+            tuf_replay_server::domain::submission_gameplay_hash::compute_submission_gameplay_hash(
+                normal
+            )
+            .unwrap()
+        );
+        let response = request.post("/api/v1/runs").json(&denied).await;
+        response.assert_status(StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            response.json::<serde_json::Value>()["code"],
+            "submission_chart_gameplay_mismatch"
+        );
+        assert_eq!(
+            tuf_replay_server::models::run_sessions::Entity::find()
+                .count(&ctx.db)
+                .await
+                .unwrap(),
+            before
+        );
+        let mut allowed = valid_request();
+        allowed["client_level_relative_path"] = serde_json::json!("levelEX.adofai");
+        request
+            .post("/api/v1/runs")
+            .json(&allowed)
+            .await
+            .assert_status(StatusCode::CREATED);
+        assert_eq!(
+            tuf_replay_server::models::run_sessions::Entity::find()
+                .count(&ctx.db)
+                .await
+                .unwrap(),
+            before + 1
+        );
+        api.abort();
+        cdn.abort();
+    })
+    .await;
+}
+
+#[tokio::test]
+#[serial]
 async fn ambiguous_reference_and_missing_identity_never_create_submission_records() {
     use sea_orm::{EntityTrait, PaginatorTrait};
     request::<App, _, _>(|mut request, ctx| async move {
@@ -193,6 +293,7 @@ async fn ambiguous_reference_and_missing_identity_never_create_submission_record
         let root = tempfile::tempdir().unwrap();
         ctx.shared_store.insert(
             TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_metadata_base_url: None,
                 tuf_api_base_url: base_url,
                 artifact_root: root.path().to_string_lossy().into(),
                 artifact_max_download_bytes: 1024 * 1024,
@@ -301,6 +402,7 @@ async fn issuance_resolves_official_difficulty_ids_and_distinguishes_catalog_fai
         for (label, level, status, body, expected) in cases {
             let (base_url, downloads, mock) = start_catalog_with(level, status, body).await;
             ctx.shared_store.insert(TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_metadata_base_url: None,
                 tuf_api_base_url: base_url,
                 artifact_root: "unused-in-memory".to_owned(),
                 artifact_max_download_bytes: 1024 * 1024,
@@ -344,6 +446,7 @@ async fn issuance_checks_loaded_chart_before_persisting_a_run() {
             .expect("ingest store");
         ctx.shared_store.insert(
             TufCatalogRuntime::new(TufCatalogSettings {
+                tuf_metadata_base_url: None,
                 tuf_api_base_url: base_url,
                 artifact_root: "unused-in-memory".to_owned(),
                 artifact_max_download_bytes: 1024 * 1024,
@@ -673,6 +776,7 @@ async fn reusable_level_socket_has_no_idle_runs_and_survives_immediate_restarts(
     let (base_url, downloads, catalog) = start_mock_catalog().await;
     ctx.shared_store.insert(
         TufCatalogRuntime::new(TufCatalogSettings {
+            tuf_metadata_base_url: None,
             tuf_api_base_url: base_url,
             artifact_root: "unused-in-memory".into(),
             artifact_max_download_bytes: 1024 * 1024,

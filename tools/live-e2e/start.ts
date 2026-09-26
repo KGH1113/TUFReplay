@@ -7,6 +7,7 @@ import { seedTrustedTester } from "../testing/trusted-tester-fixture";
 import { requireStorage, storageEnvironment } from "./storage";
 import { prepareObjectStorage } from "./maintenance";
 import { confirmedArchivePath } from "./official-chart";
+import { createArchiveHandler, type OfficialArchive } from "./archive-server";
 import {
 	assertBackendEnvironment,
 	backend,
@@ -36,7 +37,7 @@ for (const [name, path] of [["TUF backend", backend], ["TUF frontend", frontend]
 const deliveryResolver = Bun.file(`${editor}/src/web/replay-viewer/replay-delivery-url.resolver.ts`);
 if (!(await deliveryResolver.exists()) || !(await deliveryResolver.text()).includes("VITE_LOCAL_REPLAY_CDN_ORIGIN"))
   throw new Error("web-adofai checkout needs local CDN support (VITE_LOCAL_REPLAY_CDN_ORIGIN). Update it or select a current checkout with E2E_WEB_ADOFAI.");
-const charts: Array<{ levelId: number; archive: string; metadata: unknown }> = JSON.parse(
+const charts: OfficialArchive[] = JSON.parse(
 	await readFile(`${data}/charts.json`, "utf8"),
 );
 for (const chart of charts) {
@@ -104,25 +105,7 @@ async function waitReady(name: string, url: string, timeout = 180000) {
 const archives = Bun.serve({
 	hostname: "127.0.0.1",
 	port: 5152,
-	fetch(request) {
-		const url = new URL(request.url);
-		if (url.host !== "127.0.0.1:5152")
-			return new Response("Invalid host", { status: 403 });
-		if (request.method !== "GET" && request.method !== "HEAD")
-			return new Response(null, { status: 405 });
-		if (url.pathname === "/health")
-			return Response.json({
-				mode: "local-game",
-				charts: charts.map((x) => x.levelId),
-			});
-		const match = /^\/charts\/([1-9]\d*)\.zip$/.exec(url.pathname);
-		const chart = match && charts.find((c) => c.levelId === Number(match[1]));
-		return chart
-			? new Response(Bun.file(chart.archive), {
-					headers: { "Content-Type": "application/zip", "Access-Control-Allow-Origin": "http://127.0.0.1:5190" },
-				})
-			: new Response("Not found", { status: 404 });
-	},
+	fetch: createArchiveHandler(charts),
 });
 async function stop(code = 0) {
 	if (stopping) return;

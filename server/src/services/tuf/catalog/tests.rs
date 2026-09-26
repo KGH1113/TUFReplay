@@ -8,6 +8,7 @@ use zip::write::SimpleFileOptions;
 fn test_settings() -> TufCatalogSettings {
     TufCatalogSettings {
         tuf_api_base_url: "http://127.0.0.1:1".to_owned(),
+        tuf_metadata_base_url: None,
         artifact_root: "unused".to_owned(),
         artifact_max_download_bytes: 1024 * 1024,
         artifact_max_extracted_bytes: 1024 * 1024,
@@ -15,6 +16,58 @@ fn test_settings() -> TufCatalogSettings {
         artifact_hydration_timeout_seconds: 10,
         artifact_max_concurrent_hydrations: 1,
     }
+}
+
+#[test]
+#[ignore = "requires a prepared local official ZIP and recorded runtime hashes"]
+fn local_official_selection_matches_recorded_runtime_hashes() {
+    use super::{
+        archives::process_original_archive, types::TufMetadata,
+        validation_chart::select_official_chart,
+    };
+    let manifest: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(std::env::var("LOCAL_CHART_MANIFEST").expect("manifest path")).unwrap(),
+    )
+    .unwrap();
+    let level: i64 = std::env::var("LOCAL_CHART_LEVEL_ID")
+        .unwrap()
+        .parse()
+        .unwrap();
+    let fixture = manifest
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|v| v["levelId"].as_i64() == Some(level))
+        .unwrap();
+    let metadata = TufMetadata {
+        file_id: fixture["fileId"].as_str().unwrap().into(),
+        download_url: "unused".into(),
+        confirmed_chart_path: super::upstream::confirmed_chart_path(&fixture["metadata"]).unwrap(),
+    };
+    assert!(
+        metadata.confirmed_chart_path.is_some(),
+        "fixture must have a confirmed chart"
+    );
+    let tmp = tempfile::tempdir().unwrap();
+    let mut settings = test_settings();
+    settings.artifact_max_download_bytes = 512 * 1024 * 1024;
+    settings.artifact_max_extracted_bytes = 2 * 1024 * 1024 * 1024;
+    settings.artifact_max_files = 20000;
+    let revision = process_original_archive(
+        Path::new(fixture["archive"].as_str().unwrap()),
+        tmp.path(),
+        &settings,
+    )
+    .unwrap();
+    let chart = select_official_chart(revision, &metadata).unwrap();
+    assert_eq!(
+        chart.submission_gameplay_hash,
+        std::env::var("LOCAL_ALLOWED_HASH").unwrap()
+    );
+    assert_ne!(
+        chart.submission_gameplay_hash,
+        std::env::var("LOCAL_DENIED_HASH").unwrap()
+    );
 }
 
 fn write_zip(path: &Path, entries: &[(&str, &[u8])]) {

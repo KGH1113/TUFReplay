@@ -8,7 +8,7 @@ case "${1:-status}" in
   status) docker compose ps replay-objects replay-cdn ;;
   prepare) bun tools/live-e2e/maintenance.ts ;;
   charts) bun tools/live-e2e/prepare.ts "${@:2}" ;;
-  check) bun test tools/live-e2e/storage.test.ts tools/live-e2e/official-chart.test.ts tools/live-e2e/catalog-update.test.ts deploy/replay-cdn/worker.test.mjs
+  check) bun test tools/live-e2e/storage.test.ts tools/live-e2e/official-chart.test.ts tools/live-e2e/archive-server.test.ts tools/live-e2e/catalog-update.test.ts deploy/replay-cdn/worker.test.mjs
     docker compose exec -T replay-cdn node check.mjs
     export LOCAL_OBJECT_STORE
     LOCAL_OBJECT_STORE="$(bun -e 'import s from "./tools/live-e2e/services.json"; console.log(s.objectStore)')"
