@@ -134,7 +134,6 @@ public sealed class Main
         GUILayout.Label("No active replay.");
       }
     }
-
   }
 
   private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)

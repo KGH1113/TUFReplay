@@ -119,22 +119,30 @@ internal static class ActivityDatabaseSuite
     string secondId = LevelRepository.ResolveOrCreate(second);
     Assert(firstId != secondId, "TUF charts with the same ID and hash were merged across file paths.");
     Assert(firstId == LevelRepository.ResolveOrCreate(first), "The same TUF file did not retain its identity.");
-    Assert(LevelGroupIdentity.Create(8068, firstPath) != LevelGroupIdentity.Create(8068, secondPath),
-      "TUF chart cards were grouped by forum ID alone.");
-    Assert(LevelDisplayPath.RelativeToLevelFolder(8068, secondPath) == "EX/Merry Christmas EX.adofai",
-      "The displayed TUF chart path is not relative to its downloaded level folder.");
+    Assert(
+      LevelGroupIdentity.Create(8068, firstPath) != LevelGroupIdentity.Create(8068, secondPath),
+      "TUF chart cards were grouped by forum ID alone."
+    );
+    Assert(
+      LevelDisplayPath.RelativeToLevelFolder(8068, secondPath) == "EX/Merry Christmas EX.adofai",
+      "The displayed TUF chart path is not relative to its downloaded level folder."
+    );
 
     using (SqliteConnection connection = Database.OpenConnection())
     using (SqliteCommand command = connection.CreateCommand())
     {
       command.CommandText = "UPDATE levels SET identity_key=@legacy WHERE id=@id";
-      command.Parameters.AddWithValue("@legacy",
-        "tuf:8068:" + GameplayChartHash.Version + ":" + Convert.ToBase64String(hash));
+      command.Parameters.AddWithValue(
+        "@legacy",
+        "tuf:8068:" + GameplayChartHash.Version + ":" + Convert.ToBase64String(hash)
+      );
       command.Parameters.AddWithValue("@id", firstId);
       command.ExecuteNonQuery();
     }
-    Assert(LevelRepository.ResolveOrCreate(first) == firstId,
-      "A matching TUF chart recorded before path-aware identity was duplicated.");
+    Assert(
+      LevelRepository.ResolveOrCreate(first) == firstId,
+      "A matching TUF chart recorded before path-aware identity was duplicated."
+    );
   }
 
   private static void TestFreshSchemaAndAtomicArtifact(string root)
