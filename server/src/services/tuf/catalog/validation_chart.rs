@@ -72,7 +72,7 @@ pub(super) fn select_official_chart(
     let mut selected: Option<(String, Vec<u8>)> = None;
     for chart in revision.charts {
         if metadata
-            .confirmed_chart_path
+            .target_chart_path
             .as_ref()
             .is_some_and(|path| path != &chart.relative_path)
         {

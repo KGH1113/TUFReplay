@@ -66,16 +66,17 @@ have no uploaded evidence to recover.
 The public level response provides `fileId` and `dlLink`, but no authoritative
 chart path. The server also reads `/cdn/{fileId}/metadata`:
 
-- Only `pathConfirmed: true` makes `targetLevel` authoritative. TUF's automatic
-  largest-file selection has `pathConfirmed: false` and is not trusted.
+- Use `targetLevel` when it maps to exactly one original ZIP chart, including
+  when `pathConfirmed: false`. TUF may select this path automatically, so its
+  gameplay hash is the submission reference even if other charts differ.
 - `targetLevel` is a storage path. Exactly one `levelFiles` entry must reference
   it; that entry's **map key** identifies the original ZIP path. The flattened
   `targetLevelRelativePath`, client path, and basename are not selection rules.
-- If no path is confirmed (including older catalogs returning metadata 404),
-  every `.adofai` in the original archive must produce the same submission hash.
-  Different gameplay hashes produce `official_chart_ambiguous` and no automatic
-  registration. A moderator must resolve the source; there is no largest-file or
-  client-selection fallback.
+- If no `targetLevel` is available (including older catalogs returning metadata
+  404), every `.adofai` in the original archive must produce the same submission
+  hash. Different gameplay hashes produce `official_chart_ambiguous` and no
+  automatic registration. A present but unmapped or duplicated `targetLevel`
+  fails closed; there is no basename or client-selection fallback.
 - An unavailable metadata endpoint is a retryable upstream error, not permission
   to assume that the archive is unambiguous.
 - Original archive directories are preserved for this selection. Existing
