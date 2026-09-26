@@ -1,5 +1,5 @@
-//! Compatibility with GDMiniJSON: redundant container commas are ignored and
-//! literal control characters inside strings are retained as string contents.
+//! Compatibility with GDMiniJSON: redundant or omitted object separators are
+//! tolerated, and literal control characters inside strings are retained.
 use serde_json::Value;
 use std::fmt::Write;
 
@@ -26,6 +26,8 @@ fn repair(text: &str) -> String {
     let mut quote = None;
     let mut escaped = false;
     let mut previous = None;
+    let mut containers = Vec::new();
+    let mut completed_object_value = false;
     while let Some(c) = chars.next() {
         if let Some(delimiter) = quote {
             if escaped {
@@ -65,12 +67,35 @@ fn repair(text: &str) -> String {
             }
             continue;
         }
+        // GDMiniJSON.ParseObject does not require a comma after a container
+        // value before the next quoted property name (for example, actions
+        // followed by decorations). Only repair that boundary inside objects.
+        if c == '"' && completed_object_value {
+            output.push(',');
+            completed_object_value = false;
+        }
         if c == ',' && matches!(previous, Some('{' | '[' | ',')) {
             continue;
         }
         output.push(c);
         if matches!(c, '"' | '\'') {
             quote = Some(c);
+        }
+        match c {
+            '{' | '[' => {
+                containers.push(c);
+                completed_object_value = false;
+            }
+            '}' | ']' => {
+                let opening = if c == '}' { '{' } else { '[' };
+                if containers.last() == Some(&opening) {
+                    containers.pop();
+                }
+                completed_object_value = containers.last() == Some(&'{');
+            }
+            ',' => completed_object_value = false,
+            _ if !c.is_whitespace() && c != '"' => completed_object_value = false,
+            _ => {}
         }
         if !c.is_whitespace() {
             previous = Some(c);
@@ -93,6 +118,25 @@ mod tests {
         assert_eq!(
             parse(text).unwrap(),
             json!({"settings":{"useLegacyFlash":"Disabled"},"angleData":[0,180],"text":"한글, ,\r\n\t\u{0}"})
+        );
+    }
+
+    #[test]
+    fn native_missing_object_separator_preserves_chart_hashes() {
+        let canonical = r#"{"settings":{"version":17,"bpm":120},"angleData":[0,180],"actions":[],"decorations":[]}"#;
+        let native = canonical.replace("],\"decorations\"", "]\r\n\"decorations\"");
+        assert_eq!(parse(&native).unwrap(), parse(canonical).unwrap());
+        assert_eq!(
+            compute_submission_gameplay_hash(native.as_bytes()).unwrap(),
+            compute_submission_gameplay_hash(canonical.as_bytes()).unwrap()
+        );
+        assert_eq!(
+            compute_gameplay_hash(native.as_bytes()).unwrap(),
+            compute_gameplay_hash(canonical.as_bytes()).unwrap()
+        );
+        assert_eq!(
+            parse(r#"{"a":{"b":1}"c":[2]}"#).unwrap(),
+            json!({"a":{"b":1},"c":[2]})
         );
     }
 

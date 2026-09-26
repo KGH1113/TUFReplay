@@ -299,6 +299,12 @@ mod tests {
                     .get(e["eventType"].as_str().unwrap())
                     .is_some()
             });
+            visual["actions"].as_array_mut().unwrap().push(json!({
+                "floor": 0,
+                "eventType": "SetFrameRate",
+                "enabled": true,
+                "frameRate": 29
+            }));
             assert_eq!(hash(chart), hash(&visual));
         }
     }

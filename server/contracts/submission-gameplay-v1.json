@@ -29,7 +29,7 @@
   "visualEvents": [
     "Checkpoint", "MoveCamera", "CustomBackground", "ChangeTrack", "ColorTrack", "AnimateTrack", "RecolorTrack", "MoveTrack",
     "AddDecoration", "AddText", "SetText", "Flash", "SetHitsound", "SetFilter", "SetFilterAdvanced", "SetPlanetRotation",
-    "HallOfMirrors", "ShakeScreen", "MoveDecorations", "PositionTrack", "RepeatEvents", "Bloom", "SetHoldSound",
+    "HallOfMirrors", "ShakeScreen", "MoveDecorations", "PositionTrack", "RepeatEvents", "Bloom", "SetFrameRate", "SetHoldSound",
     "SetConditionalEvents", "ScreenTile", "ScreenScroll", "EditorComment", "Bookmark", "PlaySound", "Hide",
     "ScaleRadius", "TileDimensions", "ScalePlanets", "SetFloorIcon", "AddObject", "SetObject", "SetDefaultText",
     "AddParticle", "SetParticle", "EmitParticle"

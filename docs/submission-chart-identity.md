@@ -115,6 +115,8 @@ Color, camera and ordinary decoration data do not enter the hash. A TUFPLAY colo
 variant or a chart with only ordinary decorations removed therefore retains its
 identity. BPM changes, excerpts, changed judgment margins, autoplay changes and
 other supported gameplay edits change the identity.
+`SetFrameRate` changes the camera's displayed RenderTexture refresh rate, not
+simulation or input timing, and is treated as visual-only.
 
 Unknown action types, scripted actions (`CallMethod`, `AddComponent`,
 `SetInputEvent`, `KillPlayer`), and active gameplay hitboxes are not silently
