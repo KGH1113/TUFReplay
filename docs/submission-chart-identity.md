@@ -98,10 +98,13 @@ UTF-8 strings, and explicit counts. Angles normalize modulo 360 except midspin
 Numeric enum encodings normalize to the game enum names. The server converts
 modern `pathData` to angles with the game's `FloorHelper.MigratePathData` mapping.
 The game's v9–v16 Pause compatibility transformation is applied before hashing.
+For sprite-style charts, `LevelData.Decode` retains `pathData` instead of producing
+`angleData`; the hash writes a distinct path marker and the exact loaded path.
+This leaves existing modern chart hashes unchanged while detecting legacy path edits.
 
 Included gameplay data:
 
-- All tile angles and tile count.
+- All tile angles and tile count, or the legacy sprite path and its length.
 - BPM, song offset, countdown ticks and separate-countdown mode.
 - SetSpeed type/value/angleOffset, Twirl, Hold duration, MultiPlanet, Pause
   duration/countdown/angle correction, AutoPlayTiles enabled/safetyTiles,
@@ -113,8 +116,8 @@ identity. BPM changes, excerpts, changed judgment margins, autoplay changes and
 other supported gameplay edits change the identity.
 
 Unknown action types, scripted actions (`CallMethod`, `AddComponent`,
-`SetInputEvent`, `KillPlayer`), active gameplay hitboxes, and legacy sprite-style
-charts are not silently treated as visual data. These are unsupported and cannot
+`SetInputEvent`, `KillPlayer`), and active gameplay hitboxes are not silently
+treated as visual data. These are unsupported and cannot
 auto-register, even if the official file uses them. This is an explicit supported
 chart boundary rather than evidence that a submitted run is fraudulent. General
 modification of game behavior by external mods remains outside this identity

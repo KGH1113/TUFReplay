@@ -219,6 +219,46 @@ fn unconfirmed_archives_require_one_gameplay_identity() {
 }
 
 #[test]
+fn confirmed_legacy_original_accepts_tufplay_color_variant() {
+    use super::{
+        archives::process_original_archive, types::TufMetadata,
+        validation_chart::select_official_chart,
+    };
+    use crate::domain::submission_gameplay_hash::compute_submission_gameplay_hash;
+
+    let tmp = tempfile::tempdir().unwrap();
+    let archive = tmp.path().join("level.zip");
+    let original = br#"{"settings":{"version":2,"bpm":130,"offset":5200,"trackColor":"ff0000"},"pathData":"RUT!","actions":[{"floor":1,"eventType":"Twirl"}]}"#;
+    let tufplay = br#"{"settings":{"version":19,"legacySpriteTiles":true,"bpm":130,"offset":5200,"trackColor":"00ff00"},"pathData":"RUT!","actions":[{"floor":1,"eventType":"Twirl"},{"floor":1,"eventType":"MoveCamera"}]}"#;
+    write_zip(
+        &archive,
+        &[
+            ("official.adofai", original),
+            ("TUFPLAY_VER.adofai", tufplay),
+        ],
+    );
+    let revision =
+        process_original_archive(&archive, &tmp.path().join("charts"), &test_settings()).unwrap();
+    let metadata = TufMetadata {
+        file_id: "id".into(),
+        download_url: "unused".into(),
+        confirmed_chart_path: Some("official.adofai".into()),
+    };
+    let selected = select_official_chart(revision, &metadata).unwrap();
+    assert_eq!(
+        selected.submission_gameplay_hash,
+        compute_submission_gameplay_hash(tufplay).unwrap()
+    );
+    let altered = String::from_utf8(tufplay.to_vec())
+        .unwrap()
+        .replace("\"RUT!\"", "\"RUL!\"");
+    assert_ne!(
+        selected.submission_gameplay_hash,
+        compute_submission_gameplay_hash(altered.as_bytes()).unwrap()
+    );
+}
+
+#[test]
 fn native_json_compatibility_preserves_official_bytes_and_hashes() {
     use super::{
         archives::process_original_archive, types::TufMetadata,

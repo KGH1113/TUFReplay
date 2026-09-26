@@ -36,7 +36,7 @@ public static class SubmissionGameplayHash
 
   // Accepts decoded runtime settings/angles/events. Kept Unity-free so both
   // implementations can be checked against identical contract fixtures.
-  public static byte[] Compute(JObject settings, JArray angles, JArray actions)
+  public static byte[] Compute(JObject settings, JArray angles, JArray actions, string legacyPath = null)
   {
     using var stream = new MemoryStream();
     void Int(int value)
@@ -107,18 +107,23 @@ public static class SubmissionGameplayHash
     Text("tuf-submission-gameplay");
     Int(Version);
     Fields(settings, Contract["settings"]);
-    Int(angles.Count);
-    foreach (JToken angle in angles)
-    {
-      float value = (float)angle;
-      if (value != 999f)
+    // LevelData.Decode retains pathData for legacy sprite charts. Keep that
+    // representation distinct from modern angleData without changing v1 hashes.
+    Int(legacyPath == null ? angles.Count : -1);
+    if (legacyPath != null)
+      Text(legacyPath);
+    if (legacyPath == null)
+      foreach (JToken angle in angles)
       {
-        value %= 360f;
-        if (value < 0)
-          value += 360f;
+        float value = (float)angle;
+        if (value != 999f)
+        {
+          value %= 360f;
+          if (value < 0)
+            value += 360f;
+        }
+        Float(value);
       }
-      Float(value);
-    }
     var events = actions
       .Cast<JObject>()
       .Where(action => action["active"]?.Value<bool>() != false)

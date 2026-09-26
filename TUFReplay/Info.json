@@ -2,7 +2,7 @@
   "Id": "TUFReplay",
   "DisplayName": "TUFReplay",
   "Author": "impl",
-  "Version": "0.2.0-auto-submission.5",
+  "Version": "0.2.0-auto-submission.6",
   "BuildFlavor": "standard",
   "AssemblyName": "AdofaiIpc.DependencyShim.dll",
   "EntryMethod": "AdofaiIpc.DependencyShim.DependencyShim.Load",
