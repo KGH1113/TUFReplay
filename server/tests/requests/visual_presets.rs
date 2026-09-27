@@ -447,6 +447,7 @@ async fn submission_selection_is_fixed_across_bodyless_retries_and_deletion() {
         let submitted = request
             .post(&format!("/api/v1/runs/{run_id}/submit"))
             .json(&json!({
+                "feeling_rating": "G5",
                 "presentation": {"keyviewer_id": first_id, "overlay_id": null}
             }))
             .await;
