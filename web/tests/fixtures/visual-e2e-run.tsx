@@ -53,12 +53,15 @@ export function VisualE2ERun() {
       setBusy(false);
     }
   }
-  async function submit(selection: VisualSelection | undefined) {
+  async function submit(selection: VisualSelection | undefined, feelingRating: string | undefined) {
     if (!run) return;
     setBusy(true);
     setError("");
     try {
-      await post(`/harness/runs/${run.id}/submit`, selection ? { presentation: selection } : {});
+      await post(`/harness/runs/${run.id}/submit`, {
+        ...(selection ? { presentation: selection } : {}),
+        ...(feelingRating ? { feeling_rating: feelingRating } : {}),
+      });
       setFrozen(selection ?? frozen);
       setGallery(false);
     } catch (error) {
@@ -109,11 +112,12 @@ export function VisualE2ERun() {
         run={undefined}
         locked={frozen !== null}
         initialSelection={frozen}
+        initialRating={null}
         accountKey="00000000-0000-4000-8000-000000000041"
         pending={busy}
         error={error}
         onOpenChange={setGallery}
-        onSubmit={(selection) => void submit(selection)}
+        onSubmit={(selection, feelingRating) => void submit(selection, feelingRating)}
       />
     </section>
   );

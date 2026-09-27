@@ -63,13 +63,16 @@ pub(super) async fn register(
         let registered = runtime
             .registrar
             .register(
-                run.pid,
-                &record.owner_id,
-                record
-                    .oauth_grant_id
-                    .ok_or_else(|| Error::Unauthorized("oauth_grant_required".into()))?,
-                run.tuf_level_id,
-                &result.official_file_id,
+                crate::domain::PassRegistration {
+                    run_id: run.pid,
+                    owner_id: &record.owner_id,
+                    grant_id: record
+                        .oauth_grant_id
+                        .ok_or_else(|| Error::Unauthorized("oauth_grant_required".into()))?,
+                    level_id: run.tuf_level_id,
+                    current_file_id: &result.official_file_id,
+                    feeling_rating: record.feeling_rating.as_deref(),
+                },
                 &result,
             )
             .await;

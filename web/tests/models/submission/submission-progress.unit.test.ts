@@ -18,6 +18,7 @@ const recording: SubmissionRun = {
   created_at: "2026-09-25T00:00:00Z",
   evidence_expires_at: null,
   presentation: null,
+  feeling_rating: null,
 };
 
 describe("submission progress", () => {

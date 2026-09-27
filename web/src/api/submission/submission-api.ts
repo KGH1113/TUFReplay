@@ -12,6 +12,10 @@ export interface SubmissionApi {
   setDisabled(disabled: boolean): Promise<SubmissionStatus>;
   list(before?: number): Promise<SubmissionPage>;
   get(id: string): Promise<SubmissionRun>;
-  submit(id: string, presentation?: VisualSelection): Promise<SubmissionRun>;
+  submit(
+    id: string,
+    presentation?: VisualSelection,
+    feelingRating?: string,
+  ): Promise<SubmissionRun>;
   remove(id: string): Promise<void>;
 }

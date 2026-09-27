@@ -23,6 +23,12 @@
   "captureDescription": "Collect eligible P and G clears so they can be submitted from the play menu.",
   "disconnect": "Disconnect",
   "close": "Close",
+  "feelingRating": {
+    "label": "Your feeling rating",
+    "hint": "How difficult this clear felt to you. For example: G5, G5-G6, or U1.",
+    "placeholder": "e.g. G5-G6",
+    "invalid": "Enter a feeling rating such as G5, G5-G6, or U1."
+  },
   "visual": {
     "dmnoteKeyCounters": "Show key counters",
     "dmnoteCssLabel": "Custom CSS (optional)",
@@ -97,9 +103,9 @@
       "visual_registration_busy": "Another preset is being registered. Wait for it to finish, then retry.",
       "visual_registration_expired": "Registration status is unavailable. Refresh the preset list before retrying to avoid duplicates."
     },
-    "galleryEyebrow": "Replay appearance",
-    "galleryTitle": "Choose your replay visuals",
-    "galleryDescription": "Choose a preset for each tab, or leave both off and submit.",
+    "galleryEyebrow": "Submit clear",
+    "galleryTitle": "Review your submission",
+    "galleryDescription": "Enter how difficult the clear felt, then choose any visuals you want to show.",
     "galleryPresets": "Saved presets · {{count}}",
     "galleryOptional": "Visuals are optional",
     "galleryKeyviewerHint": "Shows the keys you press during play.",
@@ -116,7 +122,7 @@
     "galleryNone": "Don’t show",
     "gallerySelected": "Selected",
     "gallerySelect": "Select",
-    "galleryFixed": "Your previous selection is saved. Retry the submission with the same visuals.",
+    "galleryFixed": "Your feeling rating and visual selection are saved. Retry with the same details.",
     "gallerySubmit": "Submit replay",
     "galleryRetrySubmit": "Retry submission",
     "gallerySubmitting": "Submitting…",

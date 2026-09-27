@@ -16,12 +16,13 @@ pub struct RunView {
     pub created_at: chrono::DateTime<chrono::FixedOffset>,
     pub evidence_expires_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     pub presentation: Option<serde_json::Value>,
+    pub feeling_rating: Option<String>,
 }
 
 const SELECT: &str = "SELECT s.id AS cursor,r.pid AS run_id,r.tuf_level_id,
     r.client_level_relative_path AS chart_path,
     CASE WHEN s.state='uploading' THEN r.status ELSE s.state END AS status,
-    s.reason,s.external_pass_id,r.created_at,s.evidence_expires_at,
+    s.reason,s.external_pass_id,r.created_at,s.evidence_expires_at,s.feeling_rating,
     CASE WHEN v.run_submission_record_id IS NULL THEN NULL ELSE
         jsonb_build_object('keyviewer_id',v.keyviewer_id,'overlay_id',v.overlay_id)
     END AS presentation

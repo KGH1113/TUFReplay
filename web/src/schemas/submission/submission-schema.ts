@@ -32,6 +32,7 @@ export const submissionRunSchema = z.object({
   created_at: z.string(),
   evidence_expires_at: z.string().nullable().optional(),
   presentation: visualSelectionSchema.nullable().default(null),
+  feeling_rating: z.string().nullable().default(null),
 });
 export const submissionPageSchema = z.object({
   runs: z.array(submissionRunSchema),

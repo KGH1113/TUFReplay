@@ -79,7 +79,7 @@ public static class SubmissionIpcHandlers
 
   public static object Submit(IpcRequest request) =>
     FeatureRegistry.Submission.CanSubmit
-      ? TryPresentation(request, out JObject body, out object error)
+      ? TrySubmitBody(request, out JObject body, out object error)
         ? RunRequest(request, HttpMethod.Post, "/submit", body)
         : error
       : Error("submission_not_authorized");
@@ -115,15 +115,33 @@ public static class SubmissionIpcHandlers
     }
   }
 
-  private static bool TryPresentation(IpcRequest request, out JObject body, out object error)
+  private static bool TrySubmitBody(IpcRequest request, out JObject body, out object error)
   {
     body = null;
     error = null;
-    if (!(request?.Params is JObject parameters) || !parameters.TryGetValue("presentation", out JToken value))
+    if (!(request?.Params is JObject parameters))
+      return true;
+    if (parameters.TryGetValue("feelingRating", out JToken ratingValue))
+    {
+      if (ratingValue.Type != JTokenType.String)
+      {
+        error = Error("invalid_feeling_rating", "Enter a valid feeling rating before submitting.");
+        return false;
+      }
+      string rating = ratingValue.Value<string>()?.Trim();
+      if (string.IsNullOrEmpty(rating) || rating.Length > 60)
+      {
+        error = Error("invalid_feeling_rating", "Enter a valid feeling rating before submitting.");
+        return false;
+      }
+      body = new JObject { ["feeling_rating"] = rating };
+    }
+    if (!parameters.TryGetValue("presentation", out JToken value))
       return true;
     if (value.Type == JTokenType.Null)
     {
-      body = new JObject { ["presentation"] = JValue.CreateNull() };
+      body ??= new JObject();
+      body["presentation"] = JValue.CreateNull();
       return true;
     }
     if (!(value is JObject presentation))
@@ -149,7 +167,8 @@ public static class SubmissionIpcHandlers
         return false;
       }
     }
-    body = new JObject { ["presentation"] = presentation.DeepClone() };
+    body ??= new JObject();
+    body["presentation"] = presentation.DeepClone();
     return true;
   }
 

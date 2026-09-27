@@ -228,12 +228,12 @@ describe("auto submission boundaries", () => {
     );
 
     const selection = { keyviewer_id: "keyviewer-1", overlay_id: null };
-    await api.submit(run.run_id, selection);
+    await api.submit(run.run_id, selection, "G5-G6");
     await api.submit(run.run_id);
 
     expect(calls).toContainEqual({
       method: "submission.run.submit",
-      params: { runId: run.run_id, presentation: selection },
+      params: { runId: run.run_id, presentation: selection, feelingRating: "G5-G6" },
     });
     expect(calls).toContainEqual({
       method: "submission.run.submit",

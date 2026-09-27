@@ -110,9 +110,13 @@ export function createSubmissionApi(
       await requireCompatibleBuild();
       return callAdofaiIpc(clients.namespace, "submission.run.get", { runId }, submissionRunSchema);
     },
-    async submit(runId, presentation) {
+    async submit(runId, presentation, feelingRating) {
       await requireCompatibleBuild();
-      const params = presentation === undefined ? { runId } : { runId, presentation };
+      const params = {
+        runId,
+        ...(presentation === undefined ? {} : { presentation }),
+        ...(feelingRating === undefined ? {} : { feelingRating }),
+      };
       return callAdofaiIpc(clients.namespace, "submission.run.submit", params, submissionRunSchema);
     },
     async remove(runId) {

@@ -23,6 +23,12 @@
   "captureDescription": "제출 가능한 P·G 클리어를 수집하고 플레이 메뉴에서 제출할 수 있게 합니다.",
   "disconnect": "연결 해제",
   "close": "닫기",
+  "feelingRating": {
+    "label": "체감 난이도",
+    "hint": "직접 플레이하며 느낀 난이도예요. 예: G5, G5-G6, U1",
+    "placeholder": "예: G5-G6",
+    "invalid": "G5, G5-G6, U1처럼 체감 난이도를 입력해 주세요."
+  },
   "visual": {
     "dmnoteKeyCounters": "키 카운터 표시",
     "dmnoteCssLabel": "커스텀 CSS (선택)",
@@ -97,9 +103,9 @@
       "visual_registration_busy": "다른 프리셋을 등록하고 있어요. 완료된 뒤 다시 시도해 주세요.",
       "visual_registration_expired": "등록 상태를 확인할 수 없어요. 중복 등록되지 않도록 프리셋 목록을 새로고침한 뒤 다시 시도해 주세요."
     },
-    "galleryEyebrow": "리플레이 표시 설정",
-    "galleryTitle": "리플레이에 무엇을 표시할까요?",
-    "galleryDescription": "탭별로 프리셋을 고르거나, 추가 표시 없이 바로 제출하세요.",
+    "galleryEyebrow": "클리어 제출",
+    "galleryTitle": "제출 내용을 확인하세요",
+    "galleryDescription": "체감 난이도를 입력하고, 리플레이에 표시할 설정을 선택하세요.",
     "galleryPresets": "저장한 프리셋 · {{count}}개",
     "galleryOptional": "필요한 항목만 선택하세요",
     "galleryKeyviewerHint": "플레이 중 누르는 키를 보여줘요.",
@@ -116,7 +122,7 @@
     "galleryNone": "표시 안 함",
     "gallerySelected": "선택됨",
     "gallerySelect": "선택",
-    "galleryFixed": "이전에 선택한 설정이 저장되어 있어요. 같은 설정으로 제출을 다시 시도하세요.",
+    "galleryFixed": "체감 난이도와 표시 설정이 저장되어 있어요. 같은 내용으로 제출을 다시 시도하세요.",
     "gallerySubmit": "이 설정으로 제출",
     "galleryRetrySubmit": "제출 다시 시도",
     "gallerySubmitting": "제출 중…",

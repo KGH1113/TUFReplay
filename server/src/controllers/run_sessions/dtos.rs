@@ -47,6 +47,8 @@ pub(super) struct ErrorResponse {
 pub struct SubmitRequest {
     #[serde(default)]
     pub presentation: Option<SubmitPresentation>,
+    #[serde(default)]
+    pub feeling_rating: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

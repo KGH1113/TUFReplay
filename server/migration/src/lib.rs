@@ -16,6 +16,7 @@ mod m20260923_000001_create_trusted_testers;
 mod m20260924_000001_visual_asset_objects;
 mod m20260925_000001_pass_visual_visibility;
 mod m20260925_000002_run_chart_admission;
+mod m20260927_000001_submission_feeling_rating;
 pub struct Migrator;
 
 #[async_trait::async_trait]
@@ -35,6 +36,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20260924_000001_visual_asset_objects::Migration),
             Box::new(m20260925_000001_pass_visual_visibility::Migration),
             Box::new(m20260925_000002_run_chart_admission::Migration),
+            Box::new(m20260927_000001_submission_feeling_rating::Migration),
             // inject-above (do not remove this comment)
         ]
     }

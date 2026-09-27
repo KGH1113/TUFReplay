@@ -54,7 +54,7 @@ pub async fn submit(
     let identity = auth::identity(&ctx, &headers).await?;
     identity.require_can_submit()?;
     let owner = identity.owner_id;
-    let requested_selection = parse_selection(&body)?;
+    let request = parse_submit_request(&body)?;
     submission_queries::one(&ctx.db, &owner, id).await?;
     let run = crate::models::run_sessions::Model::find_by_pid(&ctx.db, id).await?;
     Records::request_authorized_with_selection(
@@ -62,7 +62,8 @@ pub async fn submit(
         run.id,
         &owner,
         Some(identity.grant_id),
-        requested_selection,
+        request.0,
+        request.1.as_deref(),
     )
     .await?;
     if let Err(error) = crate::workers::submission::Worker::perform_later(
@@ -76,19 +77,29 @@ pub async fn submit(
     format::json(submission_queries::one(&ctx.db, &owner, id).await?)
 }
 
-fn parse_selection(body: &Bytes) -> Result<Option<VisualSelection>> {
+fn parse_submit_request(body: &Bytes) -> Result<(Option<VisualSelection>, Option<String>)> {
     if body.is_empty() {
-        return Ok(None);
+        return Ok((None, None));
     }
     if body.len() > 1024 * 1024 {
         return Err(Error::BadRequest("visual_payload_too_large".into()));
     }
     let request: SubmitRequest = serde_json::from_slice(body)
         .map_err(|_| Error::BadRequest("visual_selection_conflict".into()))?;
-    Ok(request.presentation.map(|presentation| VisualSelection {
-        keyviewer_id: presentation.keyviewer_id,
-        overlay_id: presentation.overlay_id,
-    }))
+    let rating = request.feeling_rating.map(|value| value.trim().to_owned());
+    if rating
+        .as_ref()
+        .is_some_and(|value| value.is_empty() || value.len() > 60)
+    {
+        return Err(Error::BadRequest("invalid_feeling_rating".into()));
+    }
+    Ok((
+        request.presentation.map(|presentation| VisualSelection {
+            keyviewer_id: presentation.keyviewer_id,
+            overlay_id: presentation.overlay_id,
+        }),
+        rating,
+    ))
 }
 
 pub async fn delete_run(
@@ -118,4 +129,21 @@ pub async fn receipt(
         .await
         .map_err(super::errors::http_ingest_error)?;
     format::json(receipt)
+}
+
+#[cfg(test)]
+mod submit_request_tests {
+    use super::*;
+
+    #[test]
+    fn trims_rating_and_rejects_blank_or_oversized_values() {
+        let (_, rating) = parse_submit_request(&Bytes::from_static(
+            br#"{"feeling_rating":"  G5-G6  ","presentation":{"keyviewer_id":null,"overlay_id":null}}"#,
+        ))
+        .unwrap();
+        assert_eq!(rating.as_deref(), Some("G5-G6"));
+        assert!(parse_submit_request(&Bytes::from_static(br#"{"feeling_rating":"  "}"#)).is_err());
+        let oversized = serde_json::json!({"feeling_rating": "G".repeat(61)});
+        assert!(parse_submit_request(&Bytes::from(oversized.to_string())).is_err());
+    }
 }
