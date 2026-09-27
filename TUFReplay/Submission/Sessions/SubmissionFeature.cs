@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using TUFReplay.Recording.Sessions;
+using TUFReplay.Recording.Telemetry;
 using TUFReplay.Submission.Api;
 using TUFReplay.Submission.Logging;
 
@@ -143,6 +144,15 @@ public sealed class SubmissionFeature : IDisposable
     }
     if (_session == session)
       return;
+    string speedRejection = RunSpeedRejection(
+      RecordingRuntimeTelemetry.GetLevelPitchPercent(),
+      RecordingRuntimeTelemetry.GetPitchSpeedMultiplier()
+    );
+    if (speedRejection != null)
+    {
+      SubmissionLog.Publish("Capture skipped: " + speedRejection);
+      return;
+    }
     // Attach bounded live capture before input; run_start approval never blocks Unity.
     Prepare();
     // Snapshot the actual in-memory chart at every start, including editor edits and retries.
@@ -168,6 +178,22 @@ public sealed class SubmissionFeature : IDisposable
     SubmissionLog.Publish(
       "Live capture attached; awaiting run_start for " + attempt.RunId.ToString("N").Substring(0, 8)
     );
+  }
+
+  internal static string RunSpeedRejection(int? levelPitchPercent, float? playbackMultiplier)
+  {
+    if (
+      !levelPitchPercent.HasValue
+      || !playbackMultiplier.HasValue
+      || float.IsNaN(playbackMultiplier.Value)
+      || float.IsInfinity(playbackMultiplier.Value)
+    )
+      return "run speed unavailable";
+    if (levelPitchPercent.Value < 100)
+      return "chart pitch below 100%";
+    if (playbackMultiplier.Value <= 0f || levelPitchPercent.Value / 100d * playbackMultiplier.Value < 1d)
+      return "playback below normal speed";
+    return null;
   }
 
   public void Clear(RecordingSession session)
