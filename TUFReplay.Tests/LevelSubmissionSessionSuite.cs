@@ -6,12 +6,14 @@ using TUFReplay.Replay.Models;
 using TUFReplay.Submission.Capture;
 using TUFReplay.Submission.Catalog;
 using TUFReplay.Submission.Protocol;
+using TUFReplay.Submission.Sessions;
 using TUFReplay.Submission.Transport;
 
 internal static class LevelSubmissionSessionSuite
 {
   public static void RunAll()
   {
+    RunSpeedAdmission();
     ChartAdmission().GetAwaiter().GetResult();
     LocalActivityAdmission();
     RapidRestart().GetAwaiter().GetResult();
@@ -33,6 +35,34 @@ internal static class LevelSubmissionSessionSuite
     );
 
   private static byte[] ChartHash => Enumerable.Repeat((byte)0x11, 32).ToArray();
+
+  private static void RunSpeedAdmission()
+  {
+    TestFixture.Assert(SubmissionFeature.RunSpeedRejection(100, 1f) == null, "Normal-speed runs must remain eligible.");
+    TestFixture.Assert(
+      SubmissionFeature.RunSpeedRejection(99, 2f) == "chart pitch below 100%",
+      "A low chart pitch must be rejected even when Ctrl playback is fast."
+    );
+    TestFixture.Assert(
+      SubmissionFeature.RunSpeedRejection(100, 0.5f) == "playback below normal speed",
+      "Slow Ctrl playback must be rejected before creating an upload attempt."
+    );
+    TestFixture.Assert(
+      SubmissionFeature.RunSpeedRejection(125, 0.5f) == "playback below normal speed",
+      "The combined chart and Ctrl speed, not either setting alone, determines slow playback."
+    );
+    TestFixture.Assert(
+      SubmissionFeature.RunSpeedRejection(125, 0.8f) == null
+        && SubmissionFeature.RunSpeedRejection(100, 1.5f) == null
+        && SubmissionFeature.RunSpeedRejection(200, 0.5f) == null,
+      "Normal and faster combined speeds must remain eligible."
+    );
+    TestFixture.Assert(
+      SubmissionFeature.RunSpeedRejection(null, 1f) == "run speed unavailable"
+        && SubmissionFeature.RunSpeedRejection(100, float.NaN) == "run speed unavailable",
+      "Unknown speed must not create an upload attempt."
+    );
+  }
 
   private static async Task ChartAdmission()
   {
