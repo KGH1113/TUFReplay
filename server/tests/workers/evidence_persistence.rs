@@ -168,11 +168,7 @@ impl tuf_replay_server::domain::PassRegistrar for ExistingReceipt {
     }
     async fn register(
         &self,
-        _: Uuid,
-        _: &str,
-        _: Uuid,
-        _: i64,
-        _: &str,
+        _: tuf_replay_server::domain::PassRegistration<'_>,
         _: &tuf_replay_server::domain::ValidatedResult,
     ) -> Result<i64, String> {
         panic!("unvalidated evidence must never reach registration")

@@ -70,7 +70,13 @@ export function useSubmissionRun(id: string | null, enabled: boolean) {
         : false,
   });
   const submit = useMutation({
-    mutationFn: async (presentation?: VisualSelection) => {
+    mutationFn: async ({
+      presentation,
+      feelingRating,
+    }: {
+      presentation?: VisualSelection;
+      feelingRating?: string;
+    }) => {
       if (!enabled || id === null) throw new Error("submission_not_authorized");
       const submissionApi = (await api).submission;
       const latestStatus = await cache.fetchQuery({
@@ -81,7 +87,7 @@ export function useSubmissionRun(id: string | null, enabled: boolean) {
       });
       if (!hasSubmissionPermission(latestStatus)) throw new Error("submission_not_authorized");
       try {
-        return await submissionApi.submit(id, presentation);
+        return await submissionApi.submit(id, presentation, feelingRating);
       } catch (cause) {
         // A response can be lost after the server fixes the presentation. Refresh the
         // run before surfacing the error so the next retry omits the selection body.

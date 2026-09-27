@@ -28,6 +28,7 @@ pub struct Model {
     pub retry_count: i32,
     pub next_attempt_at: Option<DateTimeWithTimeZone>,
     pub ingest_released_at: Option<DateTimeWithTimeZone>,
+    pub feeling_rating: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

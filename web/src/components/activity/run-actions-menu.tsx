@@ -78,6 +78,7 @@ export function RunActionsMenu({
   const [progressOpen, setProgressOpen] = useState(false);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
   const [attemptedPresentation, setAttemptedPresentation] = useState<VisualSelection | null>(null);
+  const [attemptedRating, setAttemptedRating] = useState<string | null>(null);
   const busy = pendingAction !== null;
   const hasSubmissionRecording = isClearRun(run) && run.submissionRunId !== null;
   const submission = useSubmissionRun(
@@ -110,7 +111,10 @@ export function RunActionsMenu({
   };
 
   useEffect(() => {
-    if (run.submissionRunId !== null) setAttemptedPresentation(null);
+    if (run.submissionRunId !== null) {
+      setAttemptedPresentation(null);
+      setAttemptedRating(null);
+    }
   }, [run.submissionRunId]);
 
   const keepRecording = async () => {
@@ -166,7 +170,7 @@ export function RunActionsMenu({
     setPendingAction("submit");
     setMenuError("");
     try {
-      await submission.submit.mutateAsync(undefined);
+      await submission.submit.mutateAsync({});
     } catch {
       setMenuError(submissionT("requestFailed"));
     } finally {
@@ -174,7 +178,10 @@ export function RunActionsMenu({
     }
   };
 
-  const submitFromGallery = async (presentation: VisualSelection | undefined) => {
+  const submitFromGallery = async (
+    presentation: VisualSelection | undefined,
+    feelingRating: string | undefined,
+  ) => {
     if (disabled || busy || !submissionReady) return;
     const nextPresentation = submissionPresentationForRequest(
       submission.run.data?.presentation,
@@ -183,10 +190,11 @@ export function RunActionsMenu({
     );
     if (submission.run.data?.presentation == null && nextPresentation === undefined) return;
     if (nextPresentation) setAttemptedPresentation(nextPresentation);
+    if (feelingRating) setAttemptedRating(feelingRating);
     setPendingAction("submit");
     setMenuError("");
     try {
-      await submission.submit.mutateAsync(nextPresentation);
+      await submission.submit.mutateAsync({ presentation: nextPresentation, feelingRating });
     } catch {
       setMenuError(submissionT("requestFailed"));
     } finally {
@@ -422,11 +430,14 @@ export function RunActionsMenu({
         run={submission.run.data}
         locked={submission.run.data?.presentation != null}
         initialSelection={attemptedPresentation}
+        initialRating={attemptedRating}
         accountKey={submissionAccountKey(submission.status.data)}
         pending={pendingAction === "submit"}
         error={menuError}
         onOpenChange={setGalleryOpen}
-        onSubmit={(presentation) => void submitFromGallery(presentation)}
+        onSubmit={(presentation, feelingRating) =>
+          void submitFromGallery(presentation, feelingRating)
+        }
         onCloseAutoFocus={(event) => {
           event.preventDefault();
           if (!progressOpen) menuTriggerRef.current?.focus();

@@ -19,6 +19,7 @@ struct SubmissionLock {
     id: i64,
     requested_at: Option<chrono::DateTime<chrono::FixedOffset>>,
     state: String,
+    feeling_rating: Option<String>,
 }
 
 impl Entity {
@@ -148,10 +149,11 @@ impl Entity {
         owner: &str,
         grant: Option<Uuid>,
         requested_selection: Option<run_visual_selections::VisualSelection>,
+        requested_rating: Option<&str>,
     ) -> Result<()> {
         let transaction = db.begin().await?;
         let locked = SubmissionLock::find_by_statement(sql(
-            "SELECT id,requested_at,state
+            "SELECT id,requested_at,state,feeling_rating
              FROM run_submission_records
              WHERE run_session_id=$1 AND owner_id=$2
              FOR UPDATE",
@@ -160,6 +162,24 @@ impl Entity {
         .one(&transaction)
         .await?
         .ok_or(Error::NotFound)?;
+
+        match (locked.feeling_rating.as_deref(), requested_rating) {
+            (Some(saved), Some(requested)) if saved != requested => {
+                return Err(Error::BadRequest("feeling_rating_conflict".into()));
+            }
+            (None, Some(requested)) if locked.requested_at.is_none() => {
+                transaction
+                    .execute_raw(sql(
+                        "UPDATE run_submission_records SET feeling_rating=$2 WHERE id=$1",
+                        vec![locked.id.into(), requested.to_owned().into()],
+                    ))
+                    .await?;
+            }
+            (None, None) if locked.requested_at.is_none() => {
+                return Err(Error::BadRequest("feeling_rating_required".into()));
+            }
+            _ => {}
+        }
 
         let frozen = run_visual_selections::lock_for_update(&transaction, locked.id).await?;
         match frozen {

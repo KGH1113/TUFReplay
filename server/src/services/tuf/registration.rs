@@ -1,5 +1,5 @@
-use crate::domain::PassRegistrar;
 use crate::domain::ValidatedResult;
+use crate::domain::{PassRegistrar, PassRegistration};
 use async_trait::async_trait;
 
 pub struct TufRegistrar {
@@ -51,11 +51,7 @@ impl PassRegistrar for TufRegistrar {
     }
     async fn register(
         &self,
-        run_id: uuid::Uuid,
-        owner_id: &str,
-        grant_id: uuid::Uuid,
-        level_id: i64,
-        current_file_id: &str,
+        request: PassRegistration<'_>,
         result: &ValidatedResult,
     ) -> Result<i64, String> {
         let tokens = self.tokens.as_ref().ok_or("service_not_configured")?;
@@ -67,8 +63,10 @@ impl PassRegistrar for TufRegistrar {
             ))
             .bearer_auth(tokens.outgoing())
             .json(
-                &serde_json::json!({"run_id":run_id,"owner_id":owner_id,"grant_id":grant_id,
-                "level_id":level_id,"current_file_id":current_file_id,"validation":result}),
+                &serde_json::json!({"run_id":request.run_id,"owner_id":request.owner_id,
+                "grant_id":request.grant_id,"level_id":request.level_id,
+                "current_file_id":request.current_file_id,
+                "feeling_rating":request.feeling_rating,"validation":result}),
             )
             .send()
             .await

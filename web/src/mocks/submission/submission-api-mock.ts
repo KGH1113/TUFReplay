@@ -16,6 +16,7 @@ export function createSubmissionApiMock(): SubmissionApi {
       created_at: new Date().toISOString(),
       evidence_expires_at: null,
       presentation: null,
+      feeling_rating: null,
     },
   ];
   const status = () => ({
@@ -53,13 +54,22 @@ export function createSubmissionApiMock(): SubmissionApi {
       if (!run) throw new Error("Run not found");
       return { ...run };
     },
-    async submit(id, presentation) {
+    async submit(id, presentation, feelingRating) {
       const run = runs.find((run) => run.run_id === id);
       if (!run) throw new Error("Run not found");
       if (run.presentation !== null && presentation !== undefined) {
         throw new Error("visual_selection_conflict");
       }
       if (run.presentation === null && presentation !== undefined) run.presentation = presentation;
+      if (
+        run.feeling_rating !== null &&
+        feelingRating !== undefined &&
+        run.feeling_rating !== feelingRating
+      ) {
+        throw new Error("feeling_rating_conflict");
+      }
+      if (run.feeling_rating === null && feelingRating !== undefined)
+        run.feeling_rating = feelingRating;
       run.status = "validator_unavailable";
       run.reason = "validator_unavailable";
       return { ...run };

@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { VisualKindTabs } from "@/components/submission/visual-kind-tabs";
 import { VisualPresetCard } from "@/components/submission/visual-preset-card";
 import { useVisualLibrary } from "@/hooks/visual/use-visual-library";
+import { isValidFeelingRating } from "@/models/submission/feeling-rating";
 import type { SubmissionRun, VisualSelection } from "@/models/submission/submission-model";
 import type { VisualKind, VisualPreset } from "@/models/visual/visual-model";
 import { cn } from "@/shared/lib/cn";
@@ -16,6 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { Input } from "@/shared/ui/input";
 import { Tabs, TabsContent } from "@/shared/ui/tabs";
 
 export function SubmissionGalleryDialog({
@@ -23,6 +25,7 @@ export function SubmissionGalleryDialog({
   run,
   locked,
   initialSelection,
+  initialRating,
   accountKey,
   pending,
   error,
@@ -34,11 +37,12 @@ export function SubmissionGalleryDialog({
   run: SubmissionRun | undefined;
   locked: boolean;
   initialSelection: VisualSelection | null;
+  initialRating: string | null;
   accountKey: string | null;
   pending: boolean;
   error: string;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (selection: VisualSelection | undefined) => void;
+  onSubmit: (selection: VisualSelection | undefined, feelingRating: string | undefined) => void;
   onCloseAutoFocus?: (event: Event) => void;
 }) {
   const { t } = useTranslation("submission");
@@ -46,6 +50,9 @@ export function SubmissionGalleryDialog({
   const [keyviewerId, setKeyviewerId] = useState<string | null>(null);
   const [overlayId, setOverlayId] = useState<string | null>(null);
   const [activeKind, setActiveKind] = useState<VisualKind>("keyviewer");
+  const [feelingRating, setFeelingRating] = useState("");
+  const [ratingError, setRatingError] = useState(false);
+  const ratingId = useId();
   const library = useVisualLibrary(open, false, accountKey);
   const presets = library.presets.data?.presets ?? [];
   const keyviewers = useMemo(
@@ -59,7 +66,21 @@ export function SubmissionGalleryDialog({
     setKeyviewerId(initialSelection?.keyviewer_id ?? null);
     setOverlayId(initialSelection?.overlay_id ?? null);
     setActiveKind("keyviewer");
-  }, [initialSelection, open]);
+    setFeelingRating(run?.feeling_rating ?? initialRating ?? "");
+    setRatingError(false);
+  }, [initialSelection, initialRating, open, run?.feeling_rating]);
+
+  const submit = () => {
+    if (run?.feeling_rating == null && !isValidFeelingRating(feelingRating)) {
+      setRatingError(true);
+      document.getElementById(ratingId)?.focus();
+      return;
+    }
+    onSubmit(
+      locked ? undefined : firstSelection,
+      run?.feeling_rating ? undefined : feelingRating.trim(),
+    );
+  };
 
   const listError = library.presets.isError;
   const firstSelection = { keyviewer_id: keyviewerId, overlay_id: overlayId };
@@ -100,6 +121,34 @@ export function SubmissionGalleryDialog({
         </DialogHeader>
 
         <div className="flex min-h-0 flex-col px-6 pb-7 sm:px-8">
+          <div className="mb-6 space-y-2 rounded-xl border border-border/70 bg-muted/15 p-4">
+            <label htmlFor={ratingId} className="block text-sm font-semibold">
+              {t("feelingRating.label")}
+            </label>
+            <p id={`${ratingId}-hint`} className="text-xs leading-relaxed text-muted-foreground">
+              {t("feelingRating.hint")}
+            </p>
+            <Input
+              id={ratingId}
+              value={feelingRating}
+              maxLength={60}
+              required
+              autoComplete="off"
+              placeholder={t("feelingRating.placeholder")}
+              disabled={pending || run?.feeling_rating != null}
+              aria-invalid={ratingError}
+              aria-describedby={`${ratingId}-hint${ratingError ? ` ${ratingId}-error` : ""}`}
+              onChange={(event) => {
+                setFeelingRating(event.target.value);
+                if (ratingError) setRatingError(!isValidFeelingRating(event.target.value));
+              }}
+            />
+            {ratingError ? (
+              <p id={`${ratingId}-error`} role="alert" className="text-xs text-destructive">
+                {t("feelingRating.invalid")}
+              </p>
+            ) : null}
+          </div>
           {locked ? (
             <div className="grid gap-3 sm:grid-cols-2">
               <SelectionSummary
@@ -141,7 +190,7 @@ export function SubmissionGalleryDialog({
             <Tabs
               value={activeKind}
               onValueChange={(value) => setActiveKind(value as VisualKind)}
-              className="h-[24rem] min-h-0 flex-col gap-5"
+              className="h-[min(20rem,35dvh)] min-h-32 flex-col gap-5"
             >
               <VisualKindTabs
                 disabled={pending}
@@ -202,7 +251,7 @@ export function SubmissionGalleryDialog({
               type="button"
               className="h-11 shrink-0 gap-3 rounded-xl bg-primary px-5 font-semibold text-neutral-950 ring-0 hover:bg-primary/90 min-[380px]:flex-1 sm:flex-none"
               disabled={pending || (!locked && (library.presets.isPending || listError))}
-              onClick={() => onSubmit(locked ? undefined : firstSelection)}
+              onClick={submit}
             >
               {pending ? t("visual.gallerySubmitting") : submitLabel}
               <HugeiconsIcon

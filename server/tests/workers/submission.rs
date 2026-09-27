@@ -458,11 +458,7 @@ impl PassRegistrar for CommittedReceipt {
     }
     async fn register(
         &self,
-        _: Uuid,
-        _: &str,
-        _: Uuid,
-        _: i64,
-        _: &str,
+        _: tuf_replay_server::domain::PassRegistration<'_>,
         _: &ValidatedResult,
     ) -> Result<i64, String> {
         panic!("an existing receipt must not cause another pass registration")
@@ -503,11 +499,7 @@ impl PassRegistrar for CaptureRegistration {
 
     async fn register(
         &self,
-        _: Uuid,
-        _: &str,
-        _: Uuid,
-        _: i64,
-        _: &str,
+        _: tuf_replay_server::domain::PassRegistration<'_>,
         result: &ValidatedResult,
     ) -> Result<i64, String> {
         self.calls.fetch_add(1, Ordering::SeqCst);
