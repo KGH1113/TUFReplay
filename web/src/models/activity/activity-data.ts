@@ -46,10 +46,12 @@ export function buildLevelCardOverviews(
     else visitsByGroup.set(visit.levelGroupId, [visit]);
   }
   const result = new Map<string, LevelCard>();
+  const lastOpenedAtByGroup = new Map<string, string>();
   for (const [levelGroupId, visits] of visitsByGroup) {
     const latestVisitForDay = visits.reduce((latest, visit) =>
       isLaterVisit(visit, latest) ? visit : latest,
     );
+    lastOpenedAtByGroup.set(levelGroupId, latestVisitForDay.openedAtUtc);
     const latestRevisionId = latestRevisionByGroup.get(levelGroupId);
     const visibleVisits = visits.filter((visit) => visit.logicalLevelId === latestRevisionId);
     const hiddenRunCount = visits
@@ -62,7 +64,11 @@ export function buildLevelCardOverviews(
     for (const visit of countedVisits) if (visit !== primaryVisit) mergeVisit(overview, visit);
     result.set(levelGroupId, overview);
   }
-  return result;
+  return new Map(
+    [...result].sort(([left], [right]) =>
+      (lastOpenedAtByGroup.get(right) ?? "").localeCompare(lastOpenedAtByGroup.get(left) ?? ""),
+    ),
+  );
 }
 
 export function aggregateRunMarkers(runs: ActivityRun[]): RunMarker[] {
