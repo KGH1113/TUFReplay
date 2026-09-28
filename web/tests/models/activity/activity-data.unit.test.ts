@@ -148,6 +148,24 @@ describe("activity data", () => {
     expect(day.runCount).toBe(5);
   });
 
+  test("orders level cards by their latest opening time, not their closing time", () => {
+    const first = session("app-first", "2026-01-01T09:00:00Z");
+    const second = session("app-second", "2026-01-01T10:00:00Z");
+    first.levelSessions = [
+      visit("b-first", "logical-b", first.id, "2026-01-01T09:10:00Z", 1, "group-b"),
+      visit("a-first", "logical-a", first.id, "2026-01-01T09:20:00Z", 1, "group-a"),
+    ];
+    const bLast = visit("b-last", "logical-b", second.id, "2026-01-01T10:00:00Z", 1, "group-b");
+    bLast.closedAtUtc = "2026-01-01T11:00:00Z";
+    second.levelSessions = [
+      bLast,
+      visit("a-last", "logical-a", second.id, "2026-01-01T10:30:00Z", 1, "group-a"),
+    ];
+
+    const [day] = groupSessionsByDay([first, second], "UTC");
+    expect(day.levelSessions.map((level) => level.levelGroupId)).toEqual(["group-a", "group-b"]);
+  });
+
   test("keeps different chart files under the same TUF ID on separate cards", () => {
     const app = session("app", "2026-01-01T01:00:00Z");
     const first = visit("first", "first-level", app.id, app.startedAtUtc, 2, "first-file");
