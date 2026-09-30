@@ -6,8 +6,8 @@ export const activityQueryKeys = {
   all: ["activity"] as const,
   sessions: ["activity", "sessions"] as const,
   logicalLevel: (id: string) => ["activity", "logical-level", id] as const,
-  logicalLevelRuns: (id: string, appSessionIds: readonly string[]) =>
-    ["activity", "logical-level", id, "runs", ...appSessionIds] as const,
+  logicalLevelRuns: (id: string, date: string | null) =>
+    ["activity", "logical-level", id, "runs", date] as const,
   logicalLevelChart: (id: string) => ["activity", "logical-level", id, "chart"] as const,
 };
 

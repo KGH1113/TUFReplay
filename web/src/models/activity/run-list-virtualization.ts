@@ -3,6 +3,36 @@ export type VirtualRunRange = {
   end: number;
 };
 
+export function anchoredRunScrollTop(
+  previousRuns: readonly { id: string }[],
+  nextRuns: readonly { id: string }[],
+  scrollTop: number,
+  previousStride: number,
+  nextStride: number,
+) {
+  if (scrollTop <= 0 || !previousRuns.length || !nextRuns.length) return 0;
+  const safePreviousStride = Math.max(1, previousStride);
+  const safeNextStride = Math.max(1, nextStride);
+  const firstVisible = Math.min(
+    previousRuns.length - 1,
+    Math.floor(scrollTop / safePreviousStride),
+  );
+  const nextIndices = new Map(nextRuns.map((run, index) => [run.id, index]));
+  // If the visible card was deleted, keep the nearest surviving card in place.
+  for (let distance = 0; distance < previousRuns.length; distance++) {
+    for (const index of distance === 0
+      ? [firstVisible]
+      : [firstVisible + distance, firstVisible - distance]) {
+      const previousRun = previousRuns[index];
+      if (!previousRun) continue;
+      const nextIndex = nextIndices.get(previousRun.id);
+      if (nextIndex === undefined) continue;
+      return Math.max(0, nextIndex * safeNextStride + scrollTop - index * safePreviousStride);
+    }
+  }
+  return 0;
+}
+
 export function calculateVirtualRunRange(
   itemCount: number,
   scrollTop: number,
