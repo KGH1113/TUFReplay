@@ -7,17 +7,28 @@ import { RunCard } from "@/components/activity/run-card";
 import { useStableCallback } from "@/hooks/shared/use-stable-callback";
 import type { ActivityChart, ActivityRun, RunMarker } from "@/models/activity/activity-model";
 import {
+  anchoredRunScrollTop,
   calculateVirtualRunRange,
   type VirtualRunRange,
 } from "@/models/activity/run-list-virtualization";
 import type { ReplayStatus } from "@/models/replay/replay-model";
 import { cn } from "@/shared/lib/cn";
+import { Button } from "@/shared/ui/button";
+import { Card, CardContent } from "@/shared/ui/card";
 import { TooltipProvider } from "@/shared/ui/tooltip";
 
 type RunSortKey = "progress" | "time" | "pitch" | "accuracy";
 type SortDirection = "asc" | "desc";
 type PendingRunSortLayout = {
   positions: Map<string, DOMRect>;
+  scrollTop: number;
+};
+type RunListLayout = {
+  runs: ActivityRun[];
+  markerId: string | null;
+  sort: RunSortKey;
+  direction: SortDirection;
+  stride: number;
   scrollTop: number;
 };
 
@@ -36,6 +47,7 @@ export function ActivityWorkspace({
   loading,
   error,
   chartError,
+  onRetry,
   readOnly,
   timeZone,
   replayStatus,
@@ -59,6 +71,7 @@ export function ActivityWorkspace({
   loading: boolean;
   error: string;
   chartError: string;
+  onRetry: () => Promise<void>;
   readOnly: boolean;
   timeZone: string;
   replayStatus: ReplayStatus;
@@ -79,6 +92,7 @@ export function ActivityWorkspace({
   const runListRef = useRef<HTMLDivElement>(null);
   const runRowResizeObserverRef = useRef<ResizeObserver | null>(null);
   const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
+  const runListLayoutRef = useRef<RunListLayout | null>(null);
   const [runSort, setRunSort] = useState<RunSortKey>("time");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
   const [runRowStride, setRunRowStride] = useState(estimatedRunRowStride);
@@ -136,6 +150,7 @@ export function ActivityWorkspace({
     [markers, onSelectMarker],
   );
   const selectedFloor = selectedMarker?.floorIndex ?? null;
+  const selectedMarkerId = selectedMarker?.id ?? null;
   const hasSelectedMarker = selectedMarker !== null;
   const selectedRuns = useMemo(
     () => (selectedFloor === null ? [] : runs.filter((run) => run.startTile === selectedFloor)),
@@ -171,12 +186,48 @@ export function ActivityWorkspace({
   }, []);
   useEffect(() => () => runRowResizeObserverRef.current?.disconnect(), []);
   useLayoutEffect(() => {
+    const scroller = runScrollRef.current;
+    const previous = runListLayoutRef.current;
+    if (
+      scroller &&
+      previous?.markerId === selectedMarkerId &&
+      previous.sort === runSort &&
+      previous.direction === sortDirection
+    ) {
+      scroller.scrollTop = anchoredRunScrollTop(
+        previous.runs,
+        sortedRuns,
+        previous.scrollTop,
+        previous.stride,
+        runRowStride,
+      );
+      setVisibleRunRange(
+        calculateVirtualRunRange(
+          sortedRuns.length,
+          scroller.scrollTop,
+          scroller.clientHeight,
+          runRowStride,
+          runRowOverscan,
+        ),
+      );
+    }
+    runListLayoutRef.current = {
+      runs: sortedRuns,
+      markerId: selectedMarkerId,
+      sort: runSort,
+      direction: sortDirection,
+      stride: runRowStride,
+      scrollTop: scroller?.scrollTop ?? 0,
+    };
+  }, [runRowStride, runSort, selectedMarkerId, sortDirection, sortedRuns]);
+  useLayoutEffect(() => {
     if (!hasSelectedMarker) return;
     const scroller = runScrollRef.current;
     if (!scroller) return;
 
     let frame = 0;
     const updateRange = () => {
+      if (runListLayoutRef.current) runListLayoutRef.current.scrollTop = scroller.scrollTop;
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         const next = calculateVirtualRunRange(
@@ -233,11 +284,11 @@ export function ActivityWorkspace({
     }
   }, [runRowStride, runSort, sortDirection]);
   useLayoutEffect(() => {
-    if (!selectedMarker) return;
+    if (!selectedMarkerId) return;
     const frame = requestAnimationFrame(() => chartRef.current?.refocusSelection());
     return () => cancelAnimationFrame(frame);
-  }, [selectedMarker]);
-  if (error) return <StatePanel title={t("chart.loadError")} body={error} />;
+  }, [selectedMarkerId]);
+  if (error && !chart) return <StatePanel title={t("chart.loadError")} body={error} />;
   if (!chartAvailable)
     return <StatePanel title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
   if (!chart)
@@ -248,7 +299,21 @@ export function ActivityWorkspace({
       />
     );
   return (
-    <section className={cn("flex min-h-0 flex-1", selectedMarker && "gap-3")}>
+    <section className={cn("relative flex min-h-0 flex-1", selectedMarker && "gap-3")}>
+      {error ? (
+        <Card role="alert" className="absolute inset-x-3 top-3 z-20 border-destructive/25 py-3">
+          <CardContent className="flex items-center gap-3 px-4">
+            <div className="min-w-0 flex-1 text-sm">
+              <p className="font-semibold">{t("chart.refreshError")}</p>
+              <p className="mt-1 text-muted-foreground">{error}</p>
+              <p className="text-muted-foreground">{t("chart.showingPreviousRuns")}</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => void onRetry()}>
+              {t("chart.retry")}
+            </Button>
+          </CardContent>
+        </Card>
+      ) : null}
       <EmbeddedChart
         ref={chartRef}
         chart={chart}
@@ -304,7 +369,7 @@ export function ActivityWorkspace({
             </div>
             <div
               ref={runScrollRef}
-              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-1"
+              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-1 [overflow-anchor:none]"
             >
               <TooltipProvider>
                 <div
