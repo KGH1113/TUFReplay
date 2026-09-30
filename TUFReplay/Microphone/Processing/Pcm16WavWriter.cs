@@ -9,17 +9,16 @@ namespace TUFReplay.Microphone.Processing;
 public sealed class Pcm16WavWriter : IDisposable
 {
   private readonly BlockingCollection<Chunk> _queue;
-  private readonly FileStream _stream;
+  private readonly string _path;
+  private FileStream _stream;
   private readonly Thread _worker;
-  private Exception _failure;
+  private volatile Exception _failure;
   private long _frameCount;
-  private bool _completed;
+  private volatile bool _completed;
 
   public Pcm16WavWriter(string path, int queueCapacity = 16)
   {
-    Directory.CreateDirectory(Path.GetDirectoryName(path));
-    _stream = new FileStream(path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read, 65536);
-    WriteHeader(_stream, 0);
+    _path = path ?? throw new ArgumentNullException(nameof(path));
     _queue = new BlockingCollection<Chunk>(queueCapacity);
     _worker = new Thread(WriteLoop) { IsBackground = true, Name = "TUFReplay microphone WAV writer" };
     _worker.Start();
@@ -31,12 +30,23 @@ public sealed class Pcm16WavWriter : IDisposable
       return false;
 
     float[] copy = ArrayPool<float>.Shared.Rent(sampleCount);
-    Array.Copy(samples, copy, sampleCount);
-    if (_queue.TryAdd(new Chunk(copy, sampleCount, sourceChannels)))
-      return true;
-
-    ArrayPool<float>.Shared.Return(copy);
-    return false;
+    bool queued = false;
+    try
+    {
+      Array.Copy(samples, copy, sampleCount);
+      queued = _queue.TryAdd(new Chunk(copy, sampleCount, sourceChannels));
+      return queued;
+    }
+    catch (InvalidOperationException)
+    {
+      // Completion or an I/O failure may close the queue after the initial check.
+      return false;
+    }
+    finally
+    {
+      if (!queued)
+        ArrayPool<float>.Shared.Return(copy);
+    }
   }
 
   public long Complete()
@@ -62,7 +72,7 @@ public sealed class Pcm16WavWriter : IDisposable
     finally
     {
       _queue.Dispose();
-      _stream.Dispose();
+      _stream?.Dispose();
     }
   }
 
@@ -71,6 +81,9 @@ public sealed class Pcm16WavWriter : IDisposable
     byte[] pcm = ArrayPool<byte>.Shared.Rent(65536);
     try
     {
+      Directory.CreateDirectory(Path.GetDirectoryName(_path));
+      _stream = new FileStream(_path, FileMode.Create, FileAccess.ReadWrite, FileShare.Read, 65536);
+      WriteHeader(_stream, 0);
       foreach (Chunk chunk in _queue.GetConsumingEnumerable())
       {
         try
@@ -109,6 +122,7 @@ public sealed class Pcm16WavWriter : IDisposable
     catch (Exception exception)
     {
       _failure = exception;
+      _queue.CompleteAdding();
       while (_queue.TryTake(out Chunk chunk))
         ArrayPool<float>.Shared.Return(chunk.Samples);
     }

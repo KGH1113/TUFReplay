@@ -24,6 +24,7 @@ public static partial class ReplayPlaybackCoordinator
     public string PlaybackLevelPath;
     public readonly ReplayMetadata Meta;
     public readonly List<RecordedInput> Inputs;
+    public readonly ReplayInputScheduler InputScheduler;
     public readonly List<ReplayHitContext> HitContexts;
     public readonly long TerminalTimeUs;
     public readonly CancellationTokenSource PreparationCancellation = new CancellationTokenSource();
@@ -64,6 +65,7 @@ public static partial class ReplayPlaybackCoordinator
       PlaybackLevelPath = playbackLevelPath;
       Meta = meta;
       Inputs = inputs;
+      InputScheduler = new ReplayInputScheduler(inputs);
       HitContexts = hitContexts;
       TerminalTimeUs = terminalTimeUs;
     }

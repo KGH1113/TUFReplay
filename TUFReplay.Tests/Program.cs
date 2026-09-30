@@ -13,6 +13,7 @@ internal static class Program
       MicrophoneCalibrationSuite.RunAll(root);
       ActivityDatabaseSuite.RunAll(root);
       ReplayNativeInputSuite.RunAll();
+      PerformanceRegressionSuite.RunAll(root);
       UpdaterTests.RunAll();
       Console.WriteLine("TUFReplay C# tests passed.");
       return 0;

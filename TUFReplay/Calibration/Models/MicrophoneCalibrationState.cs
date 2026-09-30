@@ -10,6 +10,15 @@ internal sealed class MicrophoneCalibrationState
   private MicrophoneCalibrationStatus _status = new MicrophoneCalibrationStatus();
   private MicrophoneCalibrationResult _result;
 
+  public string State
+  {
+    get
+    {
+      lock (_gate)
+        return _status.State;
+    }
+  }
+
   public bool Active
   {
     get

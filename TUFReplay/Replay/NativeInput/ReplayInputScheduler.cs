@@ -7,15 +7,22 @@ namespace TUFReplay.Replay.NativeInput;
 
 public class ReplayInputScheduler
 {
+  internal const int SeekCheckpointInterval = 2048;
   private readonly object _gate = new object();
   private readonly List<RecordedInput> _events;
   private readonly List<NativeInputKey> _initialHeldKeys;
+  private readonly List<NativeInputKey[]> _checkpoints = new List<NativeInputKey[]>();
+  private readonly bool _timestampsOrdered;
+  private readonly int _indexedCount;
   private int _nextIndex;
+  internal int LastSeekScannedEvents { get; private set; }
 
   public ReplayInputScheduler(List<RecordedInput> events)
   {
     _events = events ?? new List<RecordedInput>();
     _initialHeldKeys = InferInitialHeldKeys(_events);
+    _indexedCount = _events.Count;
+    _timestampsOrdered = BuildCheckpoints();
     _nextIndex = 0;
   }
 
@@ -57,34 +64,70 @@ public class ReplayInputScheduler
   {
     lock (_gate)
     {
-      _nextIndex = 0;
-
-      List<NativeInputKey> heldKeys = new List<NativeInputKey>(_initialHeldKeys);
-      HashSet<NativeInputKey> heldSet = new HashSet<NativeInputKey>(_initialHeldKeys);
-
-      while (_nextIndex < _events.Count && _events[_nextIndex].TimeUs <= nowUs)
+      int endIndex = 0;
+      if (_timestampsOrdered && _indexedCount == _events.Count)
       {
-        RecordedInput input = _events[_nextIndex];
-
-        if (input.Async)
+        int low = 0;
+        int high = _events.Count;
+        while (low < high)
         {
-          NativeInputKey key = new NativeInputKey(input.Key, input.ExtendedKey, input.NativeCode, input.NativeFlags);
-          if (input.Down)
-          {
-            if (heldSet.Add(key))
-              heldKeys.Add(key);
-          }
-          else if (heldSet.Remove(key))
-          {
-            heldKeys.Remove(key);
-          }
+          int middle = low + (high - low) / 2;
+          if (_events[middle].TimeUs <= nowUs)
+            low = middle + 1;
+          else
+            high = middle;
         }
-
-        _nextIndex++;
+        endIndex = low;
       }
+      else
+        while (endIndex < _events.Count && _events[endIndex].TimeUs <= nowUs)
+          endIndex++;
+
+      int checkpoint = _timestampsOrdered && _indexedCount == _events.Count ? endIndex / SeekCheckpointInterval : 0;
+      var heldKeys = new List<NativeInputKey>(_checkpoints[checkpoint]);
+      var heldSet = new HashSet<NativeInputKey>(heldKeys);
+      int startIndex = checkpoint * SeekCheckpointInterval;
+      LastSeekScannedEvents = endIndex - startIndex;
+      for (int i = startIndex; i < endIndex; i++)
+        ApplyTransition(_events[i], heldKeys, heldSet);
+      _nextIndex = endIndex;
 
       return heldKeys;
     }
+  }
+
+  private bool BuildCheckpoints()
+  {
+    var heldKeys = new List<NativeInputKey>(_initialHeldKeys);
+    var heldSet = new HashSet<NativeInputKey>(_initialHeldKeys);
+    _checkpoints.Add(heldKeys.ToArray());
+    for (int i = 0; i < _events.Count; i++)
+    {
+      if (i > 0 && _events[i].TimeUs < _events[i - 1].TimeUs)
+        return false;
+      ApplyTransition(_events[i], heldKeys, heldSet);
+      if ((i + 1) % SeekCheckpointInterval == 0)
+        _checkpoints.Add(heldKeys.ToArray());
+    }
+    return true;
+  }
+
+  private static void ApplyTransition(
+    RecordedInput input,
+    List<NativeInputKey> heldKeys,
+    HashSet<NativeInputKey> heldSet
+  )
+  {
+    if (!input.Async)
+      return;
+    var key = new NativeInputKey(input.Key, input.ExtendedKey, input.NativeCode, input.NativeFlags);
+    if (input.Down)
+    {
+      if (heldSet.Add(key))
+        heldKeys.Add(key);
+    }
+    else if (heldSet.Remove(key))
+      heldKeys.Remove(key);
   }
 
   private static List<NativeInputKey> InferInitialHeldKeys(List<RecordedInput> events)

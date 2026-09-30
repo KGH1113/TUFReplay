@@ -62,7 +62,7 @@ internal static class MicrophoneCalibrationSuite
     int chunkFrames = UnityMicrophoneCaptureBackend.CaptureChunkFrames;
     int clipFrames = 48000 * 10;
 
-    Assert(chunkFrames == 12000, "Microphone capture chunk duration changed unexpectedly.");
+    Assert(chunkFrames == 960, "Microphone capture chunks must stay within the 20 ms read budget.");
     Assert(
       UnityMicrophoneCaptureBackend.WriterQueueCapacity > clipFrames / chunkFrames,
       "Microphone writer queue cannot absorb a full loop-buffer backlog."

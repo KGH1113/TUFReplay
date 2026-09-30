@@ -46,7 +46,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private long _maximumDriftFrames;
   private volatile float _gain;
   private volatile bool _failed;
-  private bool _disposed;
+  private volatile bool _disposed;
 
   internal ReplayMicrophonePlayer(
     StoredMicrophoneRecording recording,
@@ -273,12 +273,9 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
   public void Dispose()
   {
-    lock (_readerGate)
-    {
-      if (_disposed)
-        return;
-      _disposed = true;
-    }
+    if (_disposed)
+      return;
+    _disposed = true;
     LogDiagnostics();
     try
     {
@@ -286,12 +283,20 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       _source.clip = null;
     }
     catch { }
-    _prefetch.Dispose();
     if (_clip != null)
       UnityEngine.Object.Destroy(_clip);
     if (_gameObject != null)
       UnityEngine.Object.Destroy(_gameObject);
-    DeletePlaybackFile();
+    ThreadPool.QueueUserWorkItem(_ =>
+    {
+      // Unity objects are already detached. Wait for any active audio callback,
+      // disk reader, and file cleanup away from the game's frame thread.
+      lock (_readerGate)
+      {
+        _prefetch.Dispose();
+        DeletePlaybackFile();
+      }
+    });
   }
 
   private long TargetFrame(ReplayPlaybackSnapshot snapshot) =>
