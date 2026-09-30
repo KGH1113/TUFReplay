@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Threading.Tasks;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
 using TUFReplay.Recording.Input;
@@ -30,6 +31,7 @@ public sealed class Main
 
   private readonly string _updateSettingsPath;
   private bool _enabled;
+  private Task _pendingActivityWrites = Task.CompletedTask;
   private static bool _showReplayInputDiagnostics;
 
   private Main(UnityModManager.ModEntry modEntry)
@@ -57,6 +59,7 @@ public sealed class Main
       modEntry.OnSaveGUI = OnSaveGUI;
 
       Instance.Enable();
+      Application.quitting += OnApplicationQuitting;
       return true;
     }
     catch (Exception exception)
@@ -186,6 +189,7 @@ public sealed class Main
     try
     {
       Instance?.Disable();
+      Instance?.FlushPendingActivityWrites();
       return true;
     }
     catch (Exception exception)
@@ -195,8 +199,28 @@ public sealed class Main
     }
     finally
     {
+      Application.quitting -= OnApplicationQuitting;
       UnityMainThread.Shutdown();
     }
+  }
+
+  private static void OnApplicationQuitting()
+  {
+    try
+    {
+      Instance?.Disable();
+      Instance?.FlushPendingActivityWrites();
+    }
+    catch (Exception exception)
+    {
+      Instance?.LogException("Recording/Shutdown", exception);
+    }
+  }
+
+  private void FlushPendingActivityWrites()
+  {
+    if (!_pendingActivityWrites.Wait(TimeSpan.FromSeconds(5)))
+      Log("[Recording] Activity persistence did not finish within the shutdown timeout.");
   }
 
   private void Enable()
@@ -227,12 +251,15 @@ public sealed class Main
 
     _enabled = false;
     Application.focusChanged -= ReplaySessionService.OnApplicationFocusChanged;
+    var recording = FeatureRegistry.Recording;
     try
     {
       ModBootstrap.Shutdown();
     }
     finally
     {
+      if (recording != null)
+        _pendingActivityWrites = Task.WhenAll(_pendingActivityWrites, recording.PendingActivityWrites);
       NativeInputUmmWindowInterlock.Reset();
       TUFReplaySettingStore.Save();
     }

@@ -14,7 +14,8 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 {
   private const int SampleRate = 48000;
   private const int ClipSeconds = 10;
-  internal const int CaptureChunkFrames = SampleRate / 4;
+  internal const int CaptureChunkFrames = SampleRate / 50;
+  private const int MaxChunksPerTick = 4;
   internal const int WriterQueueCapacity = ClipSeconds * SampleRate / CaptureChunkFrames + 1;
 
   private AudioClip _clip;
@@ -128,7 +129,8 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       if (availableFrames == 0)
         return;
 
-      while (availableFrames > 0)
+      int chunks = 0;
+      while (availableFrames > 0 && (includePartialChunk || chunks < MaxChunksPerTick))
       {
         int frames = MicrophoneCaptureChunking.NextChunkFrames(
           availableFrames,
@@ -159,6 +161,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
         _cursor = MicrophoneCaptureChunking.AdvanceCursor(_cursor, frames, _clip.samples);
         availableFrames -= frames;
+        chunks++;
         _lastPollRealtime = now;
       }
     }

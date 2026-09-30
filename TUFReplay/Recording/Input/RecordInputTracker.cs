@@ -42,6 +42,23 @@ public static class RecordInputTracker
   private static long _resyncs;
   private static int _maxQueueDepth;
   private static NativeInputSourceDiagnostics _sourceDiagnostics;
+  private static NativeInputSourceDiagnostics _sourceBaseline;
+  private static long _captureStartTicks;
+  private static int _callbacksInFlight;
+
+  public static void PrepareSource()
+  {
+    if (!EventSource.IsRunning)
+      TryStartEventSource(EventSource);
+  }
+
+  public static void Shutdown()
+  {
+    Reset();
+    INativeInputEventSource stopped = EventSource;
+    EventSource = NativeInputEventSourceFactory.CreatePrimary();
+    ThreadPool.QueueUserWorkItem(_ => StopSourceNoThrow(stopped));
+  }
 
   public static string CaptureMode
   {
@@ -56,16 +73,24 @@ public static class RecordInputTracker
   {
     Reset();
 
-    lock (StateLock)
-      _capturing = true;
-
-    Exception startFailure = TryStartEventSource(EventSource);
+    Exception startFailure = EventSource.IsRunning ? null : TryStartEventSource(EventSource);
 
     lock (StateLock)
     {
       _captureWindowActive = false;
+      _captureStartTicks = Stopwatch.GetTimestamp();
+      _capturing = true;
       _usingEvents = startFailure == null;
       _mode = _usingEvents ? EventSource.Name : "unsupported";
+    }
+
+    try
+    {
+      _sourceBaseline = EventSource.GetDiagnostics();
+    }
+    catch
+    {
+      _sourceBaseline = default;
     }
 
     if (startFailure != null)
@@ -99,18 +124,20 @@ public static class RecordInputTracker
     }
 
     CaptureSourceDiagnostics();
-    StopEventSourceNoThrow();
+    WaitForActiveCallback();
     int count = DrainFilteredTransitions();
     if (count > 0 && session != null)
     {
       int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
       Interlocked.Add(ref _transitions, recorded);
     }
-    EventSource = NativeInputEventSourceFactory.CreatePrimary();
   }
 
   public static void Reset()
   {
+    _acceptingEvents = false;
+    _capturing = false;
+    WaitForActiveCallback();
     lock (StateLock)
     {
       _capturing = false;
@@ -121,7 +148,9 @@ public static class RecordInputTracker
       _restartAttempted = false;
       _mode = "stopped";
       _fallbackReason = null;
-      EventQueue.Reset();
+      // Clear only the consumer cursor: an already-entered producer must never
+      // race a reset of its write cursor when the hook is retained between runs.
+      EventQueue.Clear();
       Array.Clear(KeyStates, 0, KeyStates.Length);
       _samples = 0;
       _received = 0;
@@ -133,9 +162,6 @@ public static class RecordInputTracker
       _maxQueueDepth = 0;
       _sourceDiagnostics = default;
     }
-
-    StopEventSourceNoThrow();
-    EventSource = NativeInputEventSourceFactory.CreatePrimary();
   }
 
   public static void SetCaptureWindowActive(bool active)
@@ -253,6 +279,19 @@ public static class RecordInputTracker
 
   private static void OnNativeTransition(NativeInputTransition transition)
   {
+    Interlocked.Increment(ref _callbacksInFlight);
+    try
+    {
+      CaptureNativeTransition(transition);
+    }
+    finally
+    {
+      Interlocked.Decrement(ref _callbacksInFlight);
+    }
+  }
+
+  private static void CaptureNativeTransition(NativeInputTransition transition)
+  {
     if (!_capturing)
       return;
 
@@ -293,6 +332,8 @@ public static class RecordInputTracker
     for (int i = 0; i < count; i++)
     {
       NativeInputTransition transition = DrainBuffer[i];
+      if (transition.CaptureTimestampTicks < _captureStartTicks)
+        continue;
       if (!TryGetStateIndex(transition.Key, transition.ExtendedKey, out int stateIndex))
       {
         Interlocked.Increment(ref _readFailures);
@@ -439,9 +480,15 @@ public static class RecordInputTracker
 
   private static void StopEventSourceNoThrow()
   {
+    INativeInputEventSource source = EventSource;
+    ThreadPool.QueueUserWorkItem(_ => StopSourceNoThrow(source));
+  }
+
+  private static void StopSourceNoThrow(INativeInputEventSource source)
+  {
     try
     {
-      EventSource.Stop();
+      source.Stop();
     }
     catch (Exception exception)
     {
@@ -453,7 +500,14 @@ public static class RecordInputTracker
   {
     try
     {
-      _sourceDiagnostics = EventSource.GetDiagnostics();
+      NativeInputSourceDiagnostics current = EventSource.GetDiagnostics();
+      _sourceDiagnostics = new NativeInputSourceDiagnostics(
+        Math.Max(0L, current.Callbacks - _sourceBaseline.Callbacks),
+        Math.Max(0L, current.Repeats - _sourceBaseline.Repeats),
+        Math.Max(0L, current.Unmapped - _sourceBaseline.Unmapped),
+        current.Devices,
+        current.QueueDepth
+      );
     }
     catch (Exception exception)
     {
@@ -465,7 +519,11 @@ public static class RecordInputTracker
   {
     try
     {
-      source.Start(OnNativeTransition);
+      source.Start(transition =>
+      {
+        if (ReferenceEquals(EventSource, source))
+          OnNativeTransition(transition);
+      });
       if (!source.IsRunning)
         throw new InvalidOperationException(source.Name + " did not report a running hook after startup.");
       return null;
@@ -487,6 +545,15 @@ public static class RecordInputTracker
   private static long CurrentUnixTimeNs()
   {
     return (DateTime.UtcNow.Ticks - UnixEpochTicks) * 100L;
+  }
+
+  private static void WaitForActiveCallback()
+  {
+    // Callbacks only enqueue a struct; never wait for the OS hook or bridge
+    // thread to terminate. Bound the rare in-flight handoff to one millisecond.
+    long deadline = Stopwatch.GetTimestamp() + Math.Max(1L, Stopwatch.Frequency / 1000);
+    while (Volatile.Read(ref _callbacksInFlight) != 0 && Stopwatch.GetTimestamp() < deadline)
+      Thread.SpinWait(16);
   }
 
   private static bool TryGetStateIndex(int key, bool extendedKey, out int stateIndex)

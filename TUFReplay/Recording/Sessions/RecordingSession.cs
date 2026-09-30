@@ -17,6 +17,7 @@ public class RecordingSession
   private long _gameplayStateCaptureTicks;
   private bool _gameplayTimelineWasAdvancing;
   private double? _wonUnscaledTime;
+  private bool _completed;
   private readonly RecordingTimeline _timeline = new RecordingTimeline();
 
   public bool IsRecording { get; private set; }
@@ -52,6 +53,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
+      _completed = false;
       TufLevelId = tufLevelId;
       IsRecording = autoRecord;
       IsCapturingInput = false;
@@ -208,7 +210,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording)
+      if (!IsRecording || _completed)
         return;
 
       if (!Data.GameplayStartSongPosition.HasValue)
@@ -236,7 +238,7 @@ public class RecordingSession
 
     lock (_lock)
     {
-      if (!IsRecording)
+      if (!IsRecording || _completed)
         return 0;
 
       for (int i = 0; i < inputs.Length; i++)
@@ -258,7 +260,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || !IsCapturingInput)
+      if (!IsRecording || !IsCapturingInput || _completed)
         return;
 
       long durationTicks = Math.Max(0L, postfixCaptureTicks - prefixCaptureTicks);
@@ -299,7 +301,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording)
+      if (!IsRecording || _completed)
         return;
       hitContext.TimeUs = _timeline.RecordHit(CurrentTimelineTimeUsLocked());
       RefreshNoFailModeLocked();
@@ -311,7 +313,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.HitContexts.Count == 0)
+      if (!IsRecording || _completed || Data.HitContexts.Count == 0)
         return;
       Data.HitContexts.RemoveAt(Data.HitContexts.Count - 1);
     }
@@ -321,7 +323,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.HitContexts.Count == 0)
+      if (!IsRecording || _completed || Data.HitContexts.Count == 0)
         return;
 
       int index = Data.HitContexts.Count - 1;
@@ -333,11 +335,18 @@ public class RecordingSession
 
   public RunRecord CompleteRunRecord(RunRecord run, int? lastTile, string result)
   {
+    RecordedRunPayload completed = CompleteRunPayload(run, lastTile, result);
+    return completed == null ? null : RecordingPayloadBuilder.Apply(run, completed);
+  }
+
+  public RecordedRunPayload CompleteRunPayload(RunRecord run, int? lastTile, string result)
+  {
     lock (_lock)
     {
       if (run == null)
         return null;
 
+      FlushPendingNativeInputsLocked();
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
       Data.XAccuracy = GetXAccuracy();
@@ -347,7 +356,10 @@ public class RecordingSession
       run.EndedAtUtc = Data.EndedAtUtc ?? DateTime.UtcNow.ToString("O");
       run.LastTile = lastTile;
       run.Result = result ?? "unknown";
-      return RecordingPayloadBuilder.Apply(run, Data);
+      run.InputCount = Data.Inputs.Count;
+      run.HitContextCount = Data.HitContexts.Count;
+      _completed = true;
+      return Data.CompletedSnapshot();
     }
   }
 
@@ -735,6 +747,8 @@ public class RecordingSession
 
   private void FlushPendingNativeInputsLocked()
   {
+    if (_completed)
+      return;
     if (_pendingNativeInputs.Count == 0)
       return;
     if (!_previousInputAnchor.HasValue)

@@ -345,7 +345,7 @@ public static partial class ReplayPlaybackCoordinator
       return;
     }
 
-    ReplayInputScheduler scheduler = new ReplayInputScheduler(operation.Inputs);
+    ReplayInputScheduler scheduler = operation.InputScheduler;
     INativeInputFocusGuard focusGuard =
       operation.NativeInputFocusGuard
       ?? throw new InvalidOperationException("Native input focus guard is unavailable.");

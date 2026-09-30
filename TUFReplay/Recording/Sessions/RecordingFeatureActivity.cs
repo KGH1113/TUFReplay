@@ -51,7 +51,8 @@ public partial class RecordingFeature
     if (_currentRun == null)
       return false;
 
-    RunRecord run = Session.CompleteRunRecord(_currentRun, lastTile, result);
+    RunRecord run = _currentRun;
+    var completed = Session.CompleteRunPayload(run, lastTile, result);
     _runSaved = true;
 
     if (run.InputCount <= 0)
@@ -73,11 +74,20 @@ public partial class RecordingFeature
       return false;
     }
 
-    _activity.SaveRun(run);
-    FeatureRegistry.MicrophoneRecording?.NotifyRunPersisted(run.Id);
+    var microphone = FeatureRegistry.MicrophoneRecording;
+    _runPersistence = _activity.SaveRun(
+      run,
+      completed,
+      () => microphone?.NotifyRunPersisted(run.Id),
+      exception =>
+      {
+        microphone?.NotifyRunPersistenceFailed(run.Id);
+        Main.Instance?.Log("[Recording] Activity save failed. runId=" + run.Id + ", error=" + exception.Message);
+      }
+    );
 
     Main.Instance.Log(
-      "[Recording] Saved activity run. result="
+      "[Recording] Queued activity run. result="
         + result
         + ", startTile="
         + run.StartTile
@@ -87,8 +97,6 @@ public partial class RecordingFeature
         + run.InputCount
         + ", hitContexts="
         + run.HitContextCount
-        + ", replayUnavailableReason="
-        + (run.ReplayUnavailableReason ?? "none")
     );
     return true;
   }

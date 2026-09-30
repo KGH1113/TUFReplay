@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Tracking;
@@ -27,6 +28,9 @@ public partial class RecordingFeature
   private bool _failedRunWaitingForHit;
   private bool _runSaved;
   private RunRecord _currentRun;
+  private Task<bool> _runPersistence = Task.FromResult(false);
+  internal Task<bool> RunPersistence => _runPersistence;
+  internal Task PendingActivityWrites => _activity.PendingWrites;
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
   private bool _microphoneCaptureStarted;
@@ -190,6 +194,7 @@ public partial class RecordingFeature
     Active = true;
 
     RecordInputTracker.Reset();
+    RecordInputTracker.PrepareSource();
   }
 
   public void Disable()
@@ -200,7 +205,7 @@ public partial class RecordingFeature
 
     StopSession();
     DiscardPendingEditorRecording();
-    RecordInputTracker.Reset();
+    RecordInputTracker.Shutdown();
     _activity.CloseLevel();
     _activity.StopAppSession();
   }
@@ -385,6 +390,7 @@ public partial class RecordingFeature
     _failedRunWaitingForHit = false;
     _runSaved = false;
     _currentRun = null;
+    _runPersistence = Task.FromResult(false);
     _microphoneCaptureStarted = false;
     _microphoneTimelineAnchor = null;
   }
