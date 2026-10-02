@@ -28,16 +28,18 @@ internal static class MacOsInputPermissionNotice
       actionLabel = "Open System Settings";
       action = OpenSystemSettings;
     }
-    else if (IsResourceBusy(reason))
+    else if (reason?.IndexOf("TapCreate", System.StringComparison.Ordinal) >= 0)
     {
-      title = "Native input is busy";
-      message = "Another app or input utility may be holding exclusive access. Close it, then restart the game.";
+      title = "Input capture could not start";
+      message = "macOS could not create the input listener. Check Input Monitoring permission, then restart the game.";
+      actionLabel = "Open System Settings";
+      action = OpenSystemSettings;
     }
     else
     {
       title = "Native input failed to start";
       message =
-        "TUFReplay could not start macOS native keyboard capture. Restart the game and check the log if it repeats.";
+        "TUFReplay could not start macOS keyboard and mouse-button capture. Restart the game and check the log if it repeats.";
     }
 
     message += "\nReason: " + (string.IsNullOrWhiteSpace(reason) ? "unknown" : reason);
@@ -51,13 +53,7 @@ internal static class MacOsInputPermissionNotice
 
   private static bool IsPermissionFailure(string reason) =>
     reason?.StartsWith("input_monitoring_", System.StringComparison.Ordinal) == true
-    || reason?.IndexOf("Permission", System.StringComparison.Ordinal) >= 0
-    || reason?.IndexOf("kIOReturnNotPrivileged", System.StringComparison.Ordinal) >= 0
-    || reason?.IndexOf("kIOReturnNotPermitted", System.StringComparison.Ordinal) >= 0;
-
-  private static bool IsResourceBusy(string reason) =>
-    reason?.IndexOf("kIOReturnExclusiveAccess", System.StringComparison.Ordinal) >= 0
-    || reason?.IndexOf("kIOReturnBusy", System.StringComparison.Ordinal) >= 0;
+    || reason?.IndexOf("Permission", System.StringComparison.Ordinal) >= 0;
 
   private static void OpenSystemSettings()
   {

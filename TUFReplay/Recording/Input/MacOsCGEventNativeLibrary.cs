@@ -16,75 +16,33 @@ internal enum MacOsInputError
 {
   None = 0,
   Permission = 1,
-  ManagerCreate = 2,
-  ManagerOpen = 3,
+  TapCreate = 2,
+  RunLoopSource = 3,
   ThreadStart = 4,
   StartTimeout = 5,
 }
 
-internal static class MacOsIoHidErrorFormatter
+internal static class MacOsCGEventErrorFormatter
 {
-  public static string Format(MacOsInputError error, int systemError)
-  {
-    if (systemError == 0)
-      return error.ToString();
+  public static string Format(MacOsInputError error, int systemError) =>
+    systemError == 0 ? error.ToString() : error + ": system error " + systemError;
+}
 
-    uint code = unchecked((uint)systemError);
-    return error + ": " + GetIoReturnName(code) + " (decimal=" + systemError + ", hex=0x" + code.ToString("X8") + ")";
-  }
-
-  private static string GetIoReturnName(uint code)
-  {
-    switch (code)
-    {
-      case 0xE00002BC:
-        return "kIOReturnError";
-      case 0xE00002BD:
-        return "kIOReturnNoMemory";
-      case 0xE00002BE:
-        return "kIOReturnNoResources";
-      case 0xE00002BF:
-        return "kIOReturnIPCError";
-      case 0xE00002C0:
-        return "kIOReturnNoDevice";
-      case 0xE00002C1:
-        return "kIOReturnNotPrivileged";
-      case 0xE00002C2:
-        return "kIOReturnBadArgument";
-      case 0xE00002C5:
-        return "kIOReturnExclusiveAccess";
-      case 0xE00002C7:
-        return "kIOReturnUnsupported";
-      case 0xE00002C9:
-        return "kIOReturnInternalError";
-      case 0xE00002CA:
-        return "kIOReturnIOError";
-      case 0xE00002CD:
-        return "kIOReturnNotOpen";
-      case 0xE00002D5:
-        return "kIOReturnBusy";
-      case 0xE00002D6:
-        return "kIOReturnTimeout";
-      case 0xE00002D8:
-        return "kIOReturnNotReady";
-      case 0xE00002D9:
-        return "kIOReturnNotAttached";
-      case 0xE00002E2:
-        return "kIOReturnNotPermitted";
-      case 0xE00002E9:
-        return "kIOReturnDeviceError";
-      default:
-        return "unknown IOReturn";
-    }
-  }
+[Flags]
+internal enum MacOsCaptureFaults : uint
+{
+  None = 0,
+  TapTimeout = 1,
+  TapDisabled = 2,
+  EventDelayed = 4,
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct MacOsIoHidNativeEvent
+internal struct MacOsCGEventNativeEvent
 {
-  public ulong MachTimestamp;
+  public ulong TimestampNs;
   public ulong ModifierFlags;
-  public uint Usage;
+  public uint KeyCode;
   public byte Down;
   public byte Reserved0;
   public byte Reserved1;
@@ -92,7 +50,7 @@ internal struct MacOsIoHidNativeEvent
 }
 
 [StructLayout(LayoutKind.Sequential)]
-internal struct MacOsIoHidNativeStats
+internal struct MacOsCGEventNativeStats
 {
   public ulong CallbackCount;
   public ulong QueuedCount;
@@ -103,12 +61,12 @@ internal struct MacOsIoHidNativeStats
   public uint QueueDepth;
 }
 
-internal sealed class MacOsIoHidNativeLibrary
+internal sealed class MacOsCGEventNativeLibrary
 {
-  private const uint ExpectedAbiVersion = 2;
+  private const uint ExpectedAbiVersion = 3;
   private const int RtldNow = 2;
   private static readonly object LoadGate = new object();
-  private static MacOsIoHidNativeLibrary _instance;
+  private static MacOsCGEventNativeLibrary _instance;
   private static string _loadFailure;
 
   [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
@@ -118,10 +76,7 @@ internal sealed class MacOsIoHidNativeLibrary
   private delegate int AccessDelegate();
 
   [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate void TimebaseDelegate(out uint numerator, out uint denominator);
-
-  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate ulong MachNowDelegate();
+  private delegate ulong ClockNowDelegate();
 
   [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
   private delegate IntPtr CreateDelegate();
@@ -146,13 +101,15 @@ internal sealed class MacOsIoHidNativeLibrary
   private delegate ulong TakeDroppedDelegate(IntPtr context);
 
   [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate void GetStatsDelegate(IntPtr context, out MacOsIoHidNativeStats stats);
+  private delegate uint TakeFaultsDelegate(IntPtr context);
+
+  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+  private delegate void GetStatsDelegate(IntPtr context, out MacOsCGEventNativeStats stats);
 
   private readonly IntPtr _handle;
   private readonly AccessDelegate _checkAccess;
   private readonly AccessDelegate _requestAccess;
-  private readonly TimebaseDelegate _timebase;
-  private readonly MachNowDelegate _machNow;
+  private readonly ClockNowDelegate _clockNow;
   private readonly CreateDelegate _create;
   private readonly ContextResultDelegate _start;
   private readonly ContextActionDelegate _stop;
@@ -163,9 +120,10 @@ internal sealed class MacOsIoHidNativeLibrary
   private readonly WaitDequeueDelegate _waitDequeue;
   private readonly CopyStateDelegate _copyState;
   private readonly TakeDroppedDelegate _takeDropped;
+  private readonly TakeFaultsDelegate _takeFaults;
   private readonly GetStatsDelegate _getStats;
 
-  private MacOsIoHidNativeLibrary(string path)
+  private MacOsCGEventNativeLibrary(string path)
   {
     _handle = dlopen(path, RtldNow);
     if (_handle == IntPtr.Zero)
@@ -181,8 +139,7 @@ internal sealed class MacOsIoHidNativeLibrary
       throw new InvalidOperationException("macOS native input ABI version mismatch.");
     _checkAccess = Bind<AccessDelegate>("tufreplay_input_check_access");
     _requestAccess = Bind<AccessDelegate>("tufreplay_input_request_access");
-    _timebase = Bind<TimebaseDelegate>("tufreplay_input_timebase");
-    _machNow = Bind<MachNowDelegate>("tufreplay_input_mach_now");
+    _clockNow = Bind<ClockNowDelegate>("tufreplay_input_clock_now_ns");
     _create = Bind<CreateDelegate>("tufreplay_input_create");
     _start = Bind<ContextResultDelegate>("tufreplay_input_start");
     _stop = Bind<ContextActionDelegate>("tufreplay_input_stop");
@@ -193,10 +150,11 @@ internal sealed class MacOsIoHidNativeLibrary
     _waitDequeue = Bind<WaitDequeueDelegate>("tufreplay_input_wait_dequeue");
     _copyState = Bind<CopyStateDelegate>("tufreplay_input_copy_state");
     _takeDropped = Bind<TakeDroppedDelegate>("tufreplay_input_take_dropped");
+    _takeFaults = Bind<TakeFaultsDelegate>("tufreplay_input_take_faults");
     _getStats = Bind<GetStatsDelegate>("tufreplay_input_get_stats");
   }
 
-  public static bool TryLoad(out MacOsIoHidNativeLibrary library, out string failure)
+  public static bool TryLoad(out MacOsCGEventNativeLibrary library, out string failure)
   {
     lock (LoadGate)
     {
@@ -221,7 +179,7 @@ internal sealed class MacOsIoHidNativeLibrary
           : Path.Combine(Main.Instance.PayloadPath, "libTUFReplayInput.dylib");
         if (!File.Exists(path))
           throw new FileNotFoundException("macOS native input shim is missing.", path);
-        _instance = new MacOsIoHidNativeLibrary(path);
+        _instance = new MacOsCGEventNativeLibrary(path);
         library = _instance;
         failure = null;
         return true;
@@ -240,9 +198,7 @@ internal sealed class MacOsIoHidNativeLibrary
 
   public MacOsInputAccess RequestAccess() => (MacOsInputAccess)_requestAccess();
 
-  public void GetTimebase(out uint numerator, out uint denominator) => _timebase(out numerator, out denominator);
-
-  public ulong MachNow() => _machNow();
+  public ulong ClockNowNs() => _clockNow();
 
   public IntPtr Create() => _create();
 
@@ -265,9 +221,11 @@ internal sealed class MacOsIoHidNativeLibrary
 
   public ulong TakeDropped(IntPtr context) => _takeDropped(context);
 
-  public MacOsIoHidNativeStats GetStats(IntPtr context)
+  public MacOsCaptureFaults TakeFaults(IntPtr context) => (MacOsCaptureFaults)_takeFaults(context);
+
+  public MacOsCGEventNativeStats GetStats(IntPtr context)
   {
-    _getStats(context, out MacOsIoHidNativeStats stats);
+    _getStats(context, out MacOsCGEventNativeStats stats);
     return stats;
   }
 

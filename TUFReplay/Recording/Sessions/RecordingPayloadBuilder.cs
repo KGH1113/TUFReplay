@@ -22,7 +22,7 @@ public static class RecordingPayloadBuilder
     run.ReplayArtifact = null;
     run.ReplayUnavailableReason = null;
     if (!data.TryCreateArtifact(run.Id, out ReplayArtifact artifact))
-      run.ReplayUnavailableReason = ReplayUnavailableReasons.CaptureIncomplete;
+      run.ReplayUnavailableReason = data.GetInputFailureReason() ?? ReplayUnavailableReasons.CaptureIncomplete;
     else
       run.ReplayArtifact = artifact;
     return run;

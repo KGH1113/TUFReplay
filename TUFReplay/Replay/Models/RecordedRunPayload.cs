@@ -31,6 +31,7 @@ public class RecordedRunPayload
   public long InputDegradedEvents;
   public string InputDegradedReason;
   public string InputFallbackReason;
+  public string InputFailureReason;
   public long InputReceived;
   public long InputRecorded;
   public long InputRepeatDropped;
@@ -93,6 +94,7 @@ public class RecordedRunPayload
       inputDegradedEvents = InputDegradedEvents,
       inputDegradedReason = InputDegradedReason,
       inputFallbackReason = InputFallbackReason,
+      inputFailureReason = InputFailureReason,
       inputReceived = InputReceived,
       inputRecorded = InputRecorded,
       inputRepeatDropped = InputRepeatDropped,
@@ -218,6 +220,8 @@ public class RecordedRunPayload
   public bool TryCreateArtifact(string runId, out ReplayArtifact artifact)
   {
     artifact = null;
+    if (GetInputFailureReason() != null)
+      return false;
     long previousInputTimeUs = 0L;
     for (int i = 0; i < Inputs.Count; i++)
     {
@@ -244,5 +248,16 @@ public class RecordedRunPayload
       MetadataJson = ToActivityMetaJson(),
     };
     return true;
+  }
+
+  public string GetInputFailureReason()
+  {
+    if (!string.IsNullOrEmpty(InputFailureReason))
+      return InputFailureReason;
+    if (InputOverflowDropped > 0)
+      return ReplayUnavailableReasons.InputQueueOverflow;
+    if (InputReadFailures > 0)
+      return ReplayUnavailableReasons.InputReadFailed;
+    return string.IsNullOrEmpty(InputFallbackReason) ? null : ReplayUnavailableReasons.InputStartFailed;
   }
 }

@@ -27,20 +27,6 @@ internal sealed class MacOsMachTimeConverter
     );
   }
 
-  public MacOsMachTimeConverter(MacOsIoHidNativeLibrary library)
-  {
-    if (library == null)
-      throw new ArgumentNullException(nameof(library));
-    library.GetTimebase(out uint numerator, out uint denominator);
-    if (numerator == 0 || denominator == 0)
-      throw new InvalidOperationException("Invalid mach timebase.");
-    long before = Stopwatch.GetTimestamp();
-    _machOrigin = library.MachNow();
-    long after = Stopwatch.GetTimestamp();
-    _stopwatchOrigin = before + (after - before) / 2;
-    _nanosecondsPerMachTick = (double)numerator / denominator;
-  }
-
   internal MacOsMachTimeConverter(ulong machOrigin, long stopwatchOrigin, uint numerator, uint denominator)
   {
     _machOrigin = machOrigin;

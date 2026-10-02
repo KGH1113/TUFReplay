@@ -33,6 +33,7 @@ public static class RecordInputTracker
   private static bool _restartAttempted;
   private static string _mode = "stopped";
   private static string _fallbackReason;
+  private static string _captureFailureReason;
   private static long _samples;
   private static long _received;
   private static long _transitions;
@@ -44,6 +45,7 @@ public static class RecordInputTracker
   private static NativeInputSourceDiagnostics _sourceDiagnostics;
   private static NativeInputSourceDiagnostics _sourceBaseline;
   private static long _captureStartTicks;
+  private static long _captureWindowStartTicks;
   private static int _callbacksInFlight;
 
   public static void PrepareSource()
@@ -75,6 +77,11 @@ public static class RecordInputTracker
 
     Exception startFailure = EventSource.IsRunning ? null : TryStartEventSource(EventSource);
 
+    // A retained source may have faults from time spent outside recording.
+    // Consume them before establishing this run's capture boundary.
+    EventSource.ConsumeDroppedEvents();
+    (EventSource as INativeInputCaptureHealth)?.ConsumeCaptureFailure();
+
     lock (StateLock)
     {
       _captureWindowActive = false;
@@ -96,6 +103,10 @@ public static class RecordInputTracker
     if (startFailure != null)
     {
       _fallbackReason = GetStableFailureReason(startFailure);
+      _captureFailureReason =
+        startFailure is UnauthorizedAccessException
+          ? ReplayUnavailableReasons.InputPermissionDenied
+          : ReplayUnavailableReasons.InputStartFailed;
       Main.Instance?.Log(
         "[Recording/Input] High-resolution input recording is unsupported. source="
           + EventSource.Name
@@ -124,6 +135,7 @@ public static class RecordInputTracker
     }
 
     CaptureSourceDiagnostics();
+    CaptureSourceHealth();
     WaitForActiveCallback();
     int count = DrainFilteredTransitions();
     if (count > 0 && session != null)
@@ -148,6 +160,7 @@ public static class RecordInputTracker
       _restartAttempted = false;
       _mode = "stopped";
       _fallbackReason = null;
+      _captureFailureReason = null;
       // Clear only the consumer cursor: an already-entered producer must never
       // race a reset of its write cursor when the hook is retained between runs.
       EventQueue.Clear();
@@ -161,6 +174,7 @@ public static class RecordInputTracker
       _resyncs = 0;
       _maxQueueDepth = 0;
       _sourceDiagnostics = default;
+      _captureWindowStartTicks = 0;
     }
   }
 
@@ -176,6 +190,9 @@ public static class RecordInputTracker
 
       if (active)
       {
+        _captureWindowStartTicks = Stopwatch.GetTimestamp();
+        WaitForActiveCallback();
+        EventQueue.Clear();
         SynchronizePhysicalStateLocked(emitTransitions: true);
         _acceptingEvents = !_overflowed;
         Interlocked.Increment(ref _resyncs);
@@ -192,13 +209,7 @@ public static class RecordInputTracker
 
     Interlocked.Increment(ref _samples);
 
-    long sourceDropped = EventSource.ConsumeDroppedEvents();
-    if (sourceDropped > 0)
-    {
-      Interlocked.Add(ref _dropped, sourceDropped);
-      _overflowed = true;
-      _acceptingEvents = false;
-    }
+    CaptureSourceHealth();
 
     int count = DrainFilteredTransitions();
     if (count > 0)
@@ -262,6 +273,7 @@ public static class RecordInputTracker
     {
       payload.InputCapture = _mode;
       payload.InputFallbackReason = _fallbackReason;
+      payload.InputFailureReason = _captureFailureReason;
     }
     payload.InputReceived = Interlocked.Read(ref _received);
     payload.InputRecorded = payload.Inputs?.Count ?? 0;
@@ -309,6 +321,8 @@ public static class RecordInputTracker
       Interlocked.Increment(ref _readFailures);
       return;
     }
+    if (transition.CaptureTimestampTicks < Volatile.Read(ref _captureWindowStartTicks))
+      return;
 
     // This method runs directly on the platform hook/event-tap thread. Never
     // wait for Unity's state lock here: a blocked macOS event-tap callback can
@@ -332,7 +346,7 @@ public static class RecordInputTracker
     for (int i = 0; i < count; i++)
     {
       NativeInputTransition transition = DrainBuffer[i];
-      if (transition.CaptureTimestampTicks < _captureStartTicks)
+      if (transition.CaptureTimestampTicks < Math.Max(_captureStartTicks, _captureWindowStartTicks))
         continue;
       if (!TryGetStateIndex(transition.Key, transition.ExtendedKey, out int stateIndex))
       {
@@ -371,7 +385,8 @@ public static class RecordInputTracker
       }
 
       bool wasDown = KeyStates[stateIndex];
-      KeyStates[stateIndex] = isDown;
+      if (!emitTransitions)
+        KeyStates[stateIndex] = isDown;
       if (!emitTransitions || isDown == wasDown)
         continue;
 
@@ -402,6 +417,7 @@ public static class RecordInputTracker
 
     if (!_restartAttempted)
     {
+      MarkCaptureFailure(ReplayUnavailableReasons.InputSourceStopped);
       _restartAttempted = true;
       try
       {
@@ -445,6 +461,8 @@ public static class RecordInputTracker
       _overflowed = false;
       _mode = "unsupported";
       _fallbackReason = GetStableFailureReason(exception);
+      if (_captureFailureReason == null)
+        _captureFailureReason = ReplayUnavailableReasons.InputSourceStopped;
     }
 
     StopEventSourceNoThrow();
@@ -465,6 +483,7 @@ public static class RecordInputTracker
         return;
 
       _acceptingEvents = false;
+      WaitForActiveCallback();
       EventQueue.Clear();
       SynchronizePhysicalStateLocked(emitTransitions: false);
       _overflowed = false;
@@ -513,6 +532,42 @@ public static class RecordInputTracker
     {
       Main.Instance?.Log("[Recording/Input] Failed to read native source diagnostics. error=" + exception.Message);
     }
+  }
+
+  private static void CaptureSourceHealth()
+  {
+    try
+    {
+      string failure = (EventSource as INativeInputCaptureHealth)?.ConsumeCaptureFailure();
+      if (failure != null)
+        MarkCaptureFailure(failure);
+      long dropped = EventSource.ConsumeDroppedEvents();
+      if (dropped > 0)
+      {
+        Interlocked.Add(ref _dropped, dropped);
+        _overflowed = true;
+        _acceptingEvents = false;
+        MarkCaptureFailure(ReplayUnavailableReasons.InputQueueOverflow);
+      }
+      if (!EventSource.IsRunning && _usingEvents)
+        MarkCaptureFailure(ReplayUnavailableReasons.InputSourceStopped);
+    }
+    catch (Exception exception)
+    {
+      MarkCaptureFailure(ReplayUnavailableReasons.InputReadFailed);
+      Main.Instance?.Log("[Recording/Input] Could not inspect capture health: " + exception.Message);
+    }
+  }
+
+  private static void MarkCaptureFailure(string reason)
+  {
+    lock (StateLock)
+    {
+      if (_captureFailureReason != null)
+        return;
+      _captureFailureReason = reason;
+    }
+    Main.Instance?.Log("[Recording/Input] This run will be saved without playable replay. reason=" + reason);
   }
 
   private static Exception TryStartEventSource(INativeInputEventSource source)

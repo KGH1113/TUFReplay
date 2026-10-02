@@ -9,7 +9,7 @@ internal static class NativeInputEventSourceFactory
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
       return new WindowsLowLevelKeyboardEventSource();
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-      return new MacOsIoHidInputEventSource();
+      return new MacOsCGEventInputEventSource();
     return new UnsupportedNativeInputEventSource();
   }
 }

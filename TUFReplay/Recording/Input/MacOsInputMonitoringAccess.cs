@@ -18,7 +18,7 @@ internal static class MacOsInputMonitoringAccess
     _initialized = true;
     try
     {
-      if (!MacOsIoHidNativeLibrary.TryLoad(out MacOsIoHidNativeLibrary library, out string loadFailure))
+      if (!MacOsCGEventNativeLibrary.TryLoad(out MacOsCGEventNativeLibrary library, out string loadFailure))
       {
         NotifyUnavailable(loadFailure);
         return;
@@ -41,7 +41,7 @@ internal static class MacOsInputMonitoringAccess
     if (!RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
       return;
     _failureReason = string.IsNullOrWhiteSpace(reason) ? "input_monitoring_unavailable" : reason;
-    Main.Instance?.Log("[Recording/Input] macOS IOHID unavailable. reason=" + _failureReason);
+    Main.Instance?.Log("[Recording/Input] macOS CGEvent unavailable. reason=" + _failureReason);
     UnityMainThread.Post(() => MacOsInputPermissionNotice.Show(_failureReason));
   }
 }

@@ -34,7 +34,6 @@ xcrun clang++ \
   -I"$include_dir" \
   -I"$source_root/src" \
   "$implementation" \
-  -framework IOKit \
   -framework CoreFoundation \
   -framework CoreGraphics \
   -o "$TUFREPLAY_MAC_INPUT_LIBRARY"
@@ -52,6 +51,14 @@ xcrun clang++ \
   -o "$TUFREPLAY_MAC_INPUT_TEST"
 
 "$TUFREPLAY_MAC_INPUT_TEST"
+xcrun clang++ \
+  -std=c++17 -fobjc-arc -O2 -Wall -Wextra -Werror \
+  -mmacosx-version-min=12.0 \
+  -I"$include_dir" -I"$source_root/src" \
+  "$source_root/tests/event_tap_tests.mm" \
+  -framework CoreFoundation -framework CoreGraphics \
+  -o "$TUFREPLAY_MAC_INPUT_BUILD_OUTPUT/event-tap-tests"
+"$TUFREPLAY_MAC_INPUT_BUILD_OUTPUT/event-tap-tests"
 lipo "$TUFREPLAY_MAC_INPUT_LIBRARY" -verify_arch arm64
 lipo "$TUFREPLAY_MAC_INPUT_LIBRARY" -verify_arch x86_64
 codesign --force --sign - --timestamp=none "$TUFREPLAY_MAC_INPUT_LIBRARY"
