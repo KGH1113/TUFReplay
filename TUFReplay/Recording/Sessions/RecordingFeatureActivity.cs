@@ -55,7 +55,7 @@ public partial class RecordingFeature
     var completed = Session.CompleteRunPayload(run, lastTile, result);
     _runSaved = true;
 
-    if (run.InputCount <= 0)
+    if (run.InputCount <= 0 && completed.GetInputFailureReason() == null)
     {
       Main.Instance.Log("[Recording] Skipped activity run without native input. result=" + result);
       return false;

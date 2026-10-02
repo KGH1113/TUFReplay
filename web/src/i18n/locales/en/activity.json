@@ -148,6 +148,14 @@
     "replayUnavailable": {
       "legacy_engine": "This run was recorded with the previous replay engine.",
       "capture_incomplete": "Replay capture was incomplete for this run.",
+      "input_queue_overflow": "This run was saved, but some inputs were lost because the recording buffer filled up. Replay is unavailable. Try recording again; if it repeats, restart the game.",
+      "input_tap_timeout": "This run was saved, but macOS paused input capture after it stopped responding. Replay is unavailable because inputs may be missing. Restart the game before recording again.",
+      "input_tap_disabled": "This run was saved, but macOS disabled input capture during recording. Replay is unavailable because inputs may be missing. Check Input Monitoring permission and record again.",
+      "input_event_delayed": "This run was saved, but inputs reached the recorder more than one second late. Replay is unavailable because input timing could not be verified. Restart the game before recording again.",
+      "input_source_stopped": "This run was saved, but input capture stopped during recording. Replay is unavailable because inputs may be missing. Restart the game before recording again.",
+      "input_permission_denied": "This run was saved without complete inputs, so replay is unavailable. Allow A Dance of Fire and Ice in macOS Input Monitoring, then restart the game and record again.",
+      "input_start_failed": "This run was saved, but input capture could not start. Replay is unavailable. Restart the game and check the game log if it repeats.",
+      "input_read_failed": "This run was saved, but some input states could not be read. Replay is unavailable because the recording is incomplete. Restart the game before recording again.",
       "unsupported_engine": "This run uses an unsupported replay engine.",
       "unsupported_format": "This run uses an unsupported replay format.",
       "payload_missing": "Replay data is missing for this run."
