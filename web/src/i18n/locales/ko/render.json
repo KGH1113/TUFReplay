@@ -123,7 +123,13 @@
     "replay_gameplay_not_started": "렌더링 중 플레이가 시작되지 않았어요. ADOFAI에서 레벨을 확인한 뒤 다시 시도해 주세요.",
     "renderer_preferences_unwritable": "렌더 설정을 저장하지 못했어요. 렌더러 폴더의 접근 권한을 확인하거나 ‘이 설정 기억하기’를 꺼 주세요.",
     "renderer_request_failed": "렌더러가 요청을 처리하지 못했어요. ADOFAI 상태를 확인한 뒤 다시 시도해 주세요.",
-    "orbit_conflict": "별도 OrbitRender 모드가 내장 렌더러와 충돌해요. 별도 모드를 비활성화하고 ADOFAI를 다시 실행해 주세요."
+    "orbit_conflict": "별도 OrbitRender 모드가 내장 렌더러와 충돌해요. 별도 모드를 비활성화하고 ADOFAI를 다시 실행해 주세요.",
+    "render_media_file_missing": "기록된 미디어 파일이 없어요. 해당 녹화를 끄고 다시 시도하거나 새 플레이를 기록해 주세요.",
+    "render_media_file_invalid": "기록된 미디어 파일의 경로나 형식이 올바르지 않아요. 해당 녹화를 끄고 시도하거나 기록을 새로 내보내 주세요.",
+    "render_media_file_unreadable": "기록된 미디어 파일을 읽지 못했어요. 접근 권한과 드라이브 연결을 확인하거나 해당 녹화를 꺼 주세요.",
+    "render_capture_failed": "게임 화면을 캡처하지 못했어요. ADOFAI와 렌더 해상도를 확인한 뒤 다시 시도해 주세요.",
+    "render_audio_capture_failed": "게임 소리를 캡처하지 못했어요. ADOFAI 소리 설정을 확인하거나 ‘게임 소리’를 끄고 다시 시도해 주세요.",
+    "render_cleanup_failed": "렌더링 후 원래 게임 설정을 복원하지 못했어요. 플레이하거나 다시 렌더링하기 전에 ADOFAI를 다시 실행해 주세요."
   },
   "completedDescription": "완성된 영상이 컴퓨터에 저장됐어요. 저장 위치를 열어 영상을 확인하거나 공유할 수 있어요.",
   "sections": {
@@ -258,6 +264,9 @@
     "pixelFormat": "픽셀 형식",
     "audioGainDb": "게임 소리 볼륨",
     "endDelaySeconds": "끝난 뒤 추가 시간",
-    "outputDirectory": "저장 폴더"
+    "outputDirectory": "저장 폴더",
+    "media.webcam.path": "카메라 녹화 파일",
+    "media.microphone.path": "마이크 녹음 파일",
+    "requested": "픽셀 형식"
   }
 }

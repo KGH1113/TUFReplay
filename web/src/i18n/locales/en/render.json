@@ -123,7 +123,13 @@
     "replay_gameplay_not_started": "The level did not reach gameplay during the render. Check the level in ADOFAI and try again.",
     "renderer_preferences_unwritable": "Render preferences could not be saved. Check the renderer folder's permissions, or turn off Remember these settings.",
     "renderer_request_failed": "The renderer could not complete this request. Check ADOFAI and try again.",
-    "orbit_conflict": "The separate OrbitRender mod conflicts with the embedded renderer. Disable the separate mod and restart ADOFAI."
+    "orbit_conflict": "The separate OrbitRender mod conflicts with the embedded renderer. Disable the separate mod and restart ADOFAI.",
+    "render_media_file_missing": "A recorded media file is missing. Turn off the affected recording and try again, or record a new run.",
+    "render_media_file_invalid": "A recorded media file has an invalid path or format. Turn off the affected recording and try again, or export a fresh copy.",
+    "render_media_file_unreadable": "A recorded media file cannot be read. Check its permissions and drive connection, or turn off the affected recording.",
+    "render_capture_failed": "Game frames could not be captured. Check ADOFAI and the render resolution, then try again.",
+    "render_audio_capture_failed": "Game audio could not be captured. Check ADOFAI audio settings or turn off Game audio and try again.",
+    "render_cleanup_failed": "The original game settings could not be restored after rendering. Restart ADOFAI before playing or rendering again."
   },
   "completedDescription": "The finished video is saved on your computer. Open its save location to view or share it.",
   "sections": {
@@ -258,6 +264,9 @@
     "pixelFormat": "Pixel format",
     "audioGainDb": "Game audio gain",
     "endDelaySeconds": "End delay",
-    "outputDirectory": "Save folder"
+    "outputDirectory": "Save folder",
+    "media.webcam.path": "Camera recording file",
+    "media.microphone.path": "Microphone recording file",
+    "requested": "Pixel format"
   }
 }
