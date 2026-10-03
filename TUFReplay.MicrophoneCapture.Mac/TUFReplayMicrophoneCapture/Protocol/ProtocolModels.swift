@@ -5,6 +5,12 @@ struct CommandRequest: Decodable {
   let deviceId: String?
   let runId: String?
   let path: String?
+  let width: Int?
+  let height: Int?
+  let frameRate: Int?
+  let bitRate: Int?
+  let maxBytes: Int64?
+  let previewPath: String?
 }
 
 enum CommandName: String {
@@ -16,12 +22,19 @@ enum CommandName: String {
   case end
   case disarm
   case shutdown
+  case cameraDevices
+  case cameraArm
+  case cameraBegin
+  case cameraEnd
+  case cameraDisarm
+  case cameraDiagnostics
 }
 
 struct ConnectionHandshake: Encodable {
   let token: String
   let processId: Int32
   let protocolVersion = 3
+  let diagnosticsLogPath = CameraDiagnostics.shared.path
 }
 
 enum MicrophoneAuthorizationStatus: String, CaseIterable, Encodable {
@@ -70,4 +83,24 @@ struct SelfTestResponse: Encodable {
 struct ErrorResponse: Encodable {
   let ok = false
   let error: String
+}
+
+struct CameraDeviceResponse: Encodable {
+  let id: String
+  let name: String
+}
+
+struct CameraDevicesResponse: Encodable {
+  let ok = true
+  let devices: [CameraDeviceResponse]
+}
+
+struct CameraEndResponse: Encodable {
+  let ok = true
+  let deviceId: String?
+  let firstFrameHostTime: UInt64
+  let durationUs: Int64
+  let sizeLimited: Bool
+  let width: Int
+  let height: Int
 }

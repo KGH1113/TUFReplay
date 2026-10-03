@@ -3,6 +3,7 @@ using TUFReplay.Activity.Models;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
+using TUFReplay.Webcam.Playback;
 
 namespace TUFReplay.Replay.Sessions;
 
@@ -26,6 +27,7 @@ public class ActiveReplayContext
   public ReplayNativeInputPlayer NativeInputPlayer;
   public ReplayHitContextPlayer HitContextPlayer;
   public IReplayMicrophonePlayer MicrophonePlayer;
+  public IReplayWebcamPlayer WebcamPlayer;
   public ReplayMetadata Meta;
   public bool ReplayClockOffsetInitialized;
   public long ReplayClockOffsetUs;

@@ -7,6 +7,8 @@ using TUFReplay.Microphone.Recording;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Ipc;
+using TUFReplay.Webcam.Playback;
+using TUFReplay.Webcam.Recording;
 
 namespace TUFReplay.Composition;
 
@@ -20,6 +22,7 @@ public static class FeatureRegistry
   public static ReplayFeature Replay { get; private set; }
   public static MicrophoneRecordingFeature MicrophoneRecording { get; private set; }
   public static MicrophoneCalibrationFeature MicrophoneCalibration { get; private set; }
+  public static WebcamRecordingFeature WebcamRecording { get; private set; }
 
   public static void Initialize()
   {
@@ -31,6 +34,7 @@ public static class FeatureRegistry
     Replay = new ReplayFeature();
     MicrophoneRecording = new MicrophoneRecordingFeature();
     MicrophoneCalibration = new MicrophoneCalibrationFeature();
+    WebcamRecording = new WebcamRecordingFeature();
 
     _harmony = new Harmony(HarmonyId);
     try
@@ -40,6 +44,7 @@ public static class FeatureRegistry
         throw new System.InvalidOperationException("Harmony did not apply any TUFReplay patches.");
       MicrophoneRecording.Enable();
       MicrophoneCalibration.Enable();
+      WebcamRecording.Enable();
       Recording.Enable();
       Replay.Enable();
       MicrophonePermissionWarningCoordinator.Initialize();
@@ -56,10 +61,12 @@ public static class FeatureRegistry
   {
     Ipc?.Disable();
     MicrophonePermissionWarningCoordinator.Shutdown();
+    CameraFirstRunCoordinator.Shutdown();
     Replay?.Disable();
     Recording?.Disable();
     MicrophoneCalibration?.Disable();
     MicrophoneRecording?.Disable();
+    WebcamRecording?.Disable();
 
     _harmony?.UnpatchAll(HarmonyId);
     _harmony = null;
@@ -67,6 +74,7 @@ public static class FeatureRegistry
     Replay = null;
     MicrophoneRecording = null;
     MicrophoneCalibration = null;
+    WebcamRecording = null;
     Recording = null;
     Ipc = null;
   }

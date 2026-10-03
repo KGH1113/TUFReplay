@@ -8,6 +8,9 @@ build/
 
 # Library
 packages/
+!TUFReplay.Unity/Packages/
+!TUFReplay.Unity/Packages/manifest.json
+!TUFReplay.Unity/Packages/packages-lock.json
 node_modules/
 web/dist/
 

@@ -1,5 +1,4 @@
-using System;
-using System.Diagnostics;
+using TUFReplay.Shared.Timing;
 
 namespace TUFReplay.Microphone.Timing;
 
@@ -20,12 +19,8 @@ public readonly struct MicrophoneTimelineAnchor
   // WAV sample to real seconds relative to gameplay zero, including the frozen wait.
   public long ToCaptureStartOffsetUs(long firstSampleTimestampTicks)
   {
-    if (CaptureTimestampTicks <= 0 || firstSampleTimestampTicks <= 0)
-      throw new ArgumentOutOfRangeException(nameof(firstSampleTimestampTicks));
-    if (GameplayRate <= 0d || double.IsNaN(GameplayRate) || double.IsInfinity(GameplayRate))
-      throw new InvalidOperationException("The microphone timeline rate is invalid.");
-
-    double captureDeltaUs = (firstSampleTimestampTicks - CaptureTimestampTicks) * 1_000_000d / Stopwatch.Frequency;
-    return checked((long)Math.Round(TimelineTimeUs / GameplayRate + captureDeltaUs));
+    return new CaptureTimelineAnchor(CaptureTimestampTicks, TimelineTimeUs, GameplayRate).ToCaptureStartOffsetUs(
+      firstSampleTimestampTicks
+    );
   }
 }
