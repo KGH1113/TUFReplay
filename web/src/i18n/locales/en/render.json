@@ -14,6 +14,8 @@
   "start": "Render video",
   "cancel": "Cancel",
   "close": "Close",
+  "waitingForGameFocus": "Waiting for the ADOFAI window…",
+  "gameFocusWaitHelp": "ImplDmNote could not read the game's window position and size. Restore and click the ADOFAI window to retry automatically. Waiting up to 30 seconds; you can cancel.",
   "download": "Download video",
   "status": {
     "idle": "Ready to render",
@@ -101,6 +103,8 @@
     "level_fingerprint_invalid": "The recorded level fingerprint is invalid. Export the recording again.",
     "dmnote_busy": "ImplDmNote is already exporting an overlay. Wait for it to finish or cancel that export first.",
     "dmnote_capture_failed": "ImplDmNote failed while preparing or capturing its overlay. Check the details below, then try again or turn off its overlay.",
+    "dmnote_game_focus_timeout": "ImplDmNote could not read ADOFAI's window position and size, and the game did not receive focus within 30 seconds. Restore the game window, click it and try again, or set dmNote.automaticPlacement to false for manual placement.",
+    "dmnote_game_window_timeout": "ADOFAI received focus, but ImplDmNote still could not read its window position and size within 30 seconds. Restore the game window and try again, or set dmNote.automaticPlacement to false for manual placement.",
     "dmnote_disconnected": "ImplDmNote disconnected during export. Reconnect it and try again, or turn off its overlay.",
     "dmnote_frame_timeout": "ImplDmNote did not produce a frame in time. Check the app and try again, or turn off its overlay.",
     "dmnote_protocol_unsupported": "This ImplDmNote version does not support offline rendering. Update the compatible fork, or turn off its overlay.",

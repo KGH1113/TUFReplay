@@ -72,7 +72,11 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
               </div>
             ) : null}
             {control.phase !== "idle" ? (
-              <p className="font-medium">{t(`status.${control.phase}`)}</p>
+              <p className="font-medium">
+                {control.busy && control.job?.waitingForGameFocus
+                  ? t("waitingForGameFocus")
+                  : t(`status.${control.phase}`)}
+              </p>
             ) : null}
             {control.busy && control.phase !== "checking" ? (
               <progress
@@ -83,7 +87,9 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
               />
             ) : null}
             {control.busy ? (
-              <p className="text-xs text-muted-foreground">{t("keepGameOpen")}</p>
+              <p className="text-xs text-muted-foreground">
+                {control.job?.waitingForGameFocus ? t("gameFocusWaitHelp") : t("keepGameOpen")}
+              </p>
             ) : null}
             {unavailable ? (
               <p role="alert" className="text-destructive">

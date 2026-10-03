@@ -79,6 +79,25 @@ describe("neutral render IPC contract", () => {
       { namespace: "tuf-replay-renderer", method: "render.cancel", params: { jobId: "render-1" } },
     ]);
   });
+  test("preserves a cancellable focus wait and accepts older renderer status without it", async () => {
+    let response = { ...job, state: "preparing", waitingForGameFocus: true };
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        () => response,
+      ),
+    );
+    expect((await api.getStatus("render-1")).waitingForGameFocus).toBe(true);
+    response = { ...response, state: "cancelled", waitingForGameFocus: false };
+    expect((await api.cancel("render-1")).state).toBe("cancelled");
+    const olderApi = createRenderApi(
+      clients(
+        () => bundle,
+        () => job,
+      ),
+    );
+    expect((await olderApi.getStatus("render-1")).waitingForGameFocus).toBe(false);
+  });
   test("rejects unsupported output options before issuing a command", async () => {
     let called = false;
     const api = createRenderApi(

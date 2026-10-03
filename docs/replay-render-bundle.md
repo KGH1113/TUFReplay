@@ -69,6 +69,12 @@ The web dialog's **Wait after clear or death** setting adds 0–30 output second
 terminal. On failure it waits for the native death animation to finish first, including
 the explosion with a zero delay. This is independent of the recording's pitch.
 
+Renderer job status may include `waitingForGameFocus` (older servers omit it, treated as
+false). While automatic ImplDmNote placement cannot read the game window, the web shows
+the reason and asks the user to restore and click ADOFAI. This preparation wait remains
+cancellable and expires after 30 seconds. Missing focus and bounds still unreadable after
+focus have separate timeout errors; manual placement and other capture errors are unchanged.
+
 `inputs.csv` has the exact header:
 
 ```csv

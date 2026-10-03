@@ -14,6 +14,8 @@
   "start": "영상 렌더링",
   "cancel": "취소",
   "close": "닫기",
+  "waitingForGameFocus": "얼불춤 창 확인 대기 중…",
+  "gameFocusWaitHelp": "ImplDmNote가 게임 창의 위치와 크기를 읽지 못했어요. 얼불춤 창을 복원하고 클릭하면 자동으로 다시 시도해요. 최대 30초 동안 기다리며 취소할 수 있어요.",
   "download": "영상 다운로드",
   "status": {
     "idle": "렌더링 준비 완료",
@@ -101,6 +103,8 @@
     "level_fingerprint_invalid": "기록된 레벨의 확인 값이 올바르지 않아요. 기록을 다시 내보내 주세요.",
     "dmnote_busy": "ImplDmNote가 이미 오버레이를 내보내고 있어요. 먼저 완료하거나 취소해 주세요.",
     "dmnote_capture_failed": "ImplDmNote 오버레이를 준비하거나 캡처하는 중에 문제가 발생했어요. 아래 원인을 확인한 뒤 다시 시도하거나 오버레이를 꺼 주세요.",
+    "dmnote_game_focus_timeout": "게임 창의 위치와 크기를 읽지 못한 상태에서 30초 동안 얼불춤 창에 포커스가 오지 않았어요. 게임 창을 복원하고 클릭한 뒤 다시 시도하거나, dmNote.automaticPlacement를 false로 설정해 수동 배치를 사용해 주세요.",
+    "dmnote_game_window_timeout": "얼불춤 창에 포커스가 왔지만 30초 안에 게임 창의 위치와 크기를 읽지 못했어요. 게임 창이 화면에 보이도록 복원한 뒤 다시 시도하거나, dmNote.automaticPlacement를 false로 설정해 수동 배치를 사용해 주세요.",
     "dmnote_disconnected": "내보내는 중 ImplDmNote 연결이 끊어졌어요. 다시 연결하고 시도하거나 오버레이를 꺼 주세요.",
     "dmnote_frame_timeout": "ImplDmNote가 제때 화면을 만들지 못했어요. 앱을 확인하고 다시 시도하거나 오버레이를 꺼 주세요.",
     "dmnote_protocol_unsupported": "이 ImplDmNote 버전은 오프라인 렌더링을 지원하지 않아요. 호환되는 포크로 업데이트하거나 오버레이를 꺼 주세요.",
