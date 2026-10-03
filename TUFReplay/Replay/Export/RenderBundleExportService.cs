@@ -106,6 +106,11 @@ public static class RenderBundleExportService
           "render_recording_incompatible",
           "This recording cannot be rendered. Record a new run with the current TUFReplay version."
         );
+      if (run.StartTile != 0)
+        throw new ExportException(
+          "render_start_tile_unsupported",
+          "Rendering currently supports recordings that start at the first tile. Record a new run from the beginning of the level."
+        );
       var meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
       ValidateMetadata(meta);
       string target = job.LevelPath ?? run.LevelPath;
