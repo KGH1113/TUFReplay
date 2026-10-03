@@ -47,6 +47,7 @@ export const renderExportStatusSchema = z.object({
 });
 export const renderJobSchema = z.object({
   warnings: z.array(z.string()).optional().default([]),
+  waitingForGameFocus: z.boolean().optional().default(false),
   jobId: z.string(),
   state: z.enum(["preparing", "rendering", "compositing", "completed", "failed", "cancelled"]),
   progress: z.number().min(0).max(1),
