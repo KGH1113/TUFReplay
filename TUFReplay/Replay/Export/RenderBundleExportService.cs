@@ -107,10 +107,10 @@ public static class RenderBundleExportService
           "render_recording_unavailable",
           "This run's input recording was incomplete. Check the recording failure in the activity list, then record a new run."
         );
-      if (run.StartTile != 0)
+      if (run.StartTile < 0)
         throw new ExportException(
-          "render_start_tile_unsupported",
-          "Rendering currently supports recordings that start at the first tile. Record a new run from the beginning of the level."
+          "render_start_tile_invalid",
+          "The recording has a negative start tile. Record a new run before rendering."
         );
       ReplayMetadata meta;
       try
@@ -275,6 +275,7 @@ public static class RenderBundleExportService
             judgmentSystem = meta.judgmentSystem,
             judgmentDifficulty = run.JudgmentDifficulty?.ToString(),
             startTile = run.StartTile,
+            result = run.Result?.ToLowerInvariant(),
             wonTimeUs = meta.wonTimeUs,
             terminalTimeUs = meta.terminalTimeUs.Value,
           },
