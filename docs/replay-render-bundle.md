@@ -45,6 +45,8 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 `gameplayHash`, and `gameplayHashVersion`. Replay metadata includes
 `gameplayStartSongPosition`, `effectivePitch`, `gameInputOffsetMs`, `noFailMode`,
 `judgmentSystem`, `judgmentDifficulty`, `startTile`, `wonTimeUs`, and `terminalTimeUs`.
+Version 1 supports runs recorded from tile 0. Practice and checkpoint runs fail export
+with `render_start_tile_unsupported` before opening the level or copying media.
 All event times are integer microseconds in the recorded replay timeline. The renderer owns
 the mapping from that timeline into video time, including countdown and post-clear input.
 

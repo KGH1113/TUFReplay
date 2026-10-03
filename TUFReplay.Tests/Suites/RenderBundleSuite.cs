@@ -24,6 +24,21 @@ internal static class RenderBundleSuite
       windows.ToString().Replace("\r", "") == "timeUs,key,down,sequence\n0,A,1,0\n0,A,0,1\n1,KeypadEnter,1,2\n",
       "Neutral key export lost a short pulse or native keypad identity."
     );
+    using var specialKeys = new StringWriter();
+    RenderBundleCsv.WriteInputs(
+      specialKeys,
+      new[]
+      {
+        new RecordedInput(0, 0x90, RecordInputFlags.Down),
+        new RecordedInput(1, 0x2C, RecordInputFlags.Down | RecordInputFlags.ExtendedKey),
+      },
+      "windows",
+      1
+    );
+    Assert(
+      specialKeys.ToString().Replace("\r", "") == "timeUs,key,down,sequence\n0,Numlock,1,0\n1,Print,1,1\n",
+      "Windows lock and print keys did not use Unity KeyCode aliases."
+    );
     using var mac = new StringWriter();
     RenderBundleCsv.WriteInputs(
       mac,

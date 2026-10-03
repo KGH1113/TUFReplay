@@ -34,6 +34,7 @@
     "replay_busy": "Stop replay playback before rendering a video.",
     "render_export_busy": "Another recording is being prepared. Wait for it to finish or cancel it first.",
     "render_recording_incompatible": "This recording lacks timing or judgment data needed for rendering. Record a new run with the current TUFReplay version.",
+    "render_start_tile_unsupported": "Rendering currently supports recordings that start at the first tile. Record a new run from the beginning of the level.",
     "level_file_missing": "The level file is missing. Restore the original level file and try again.",
     "level_gameplay_modified": "The level's gameplay has changed. Restore a matching level file and try again.",
     "render_export_failed": "The recording could not be prepared. Check the level file and free disk space, then try again.",

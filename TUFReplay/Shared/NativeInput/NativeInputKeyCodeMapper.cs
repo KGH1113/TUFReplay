@@ -224,6 +224,8 @@ internal static class NativeInputKeyCodeMapper
       LogicalKeyboardKey.LeftBrace => "LeftBracket",
       LogicalKeyboardKey.RightBrace => "RightBracket",
       LogicalKeyboardKey.PauseBreak => "Pause",
+      LogicalKeyboardKey.NumLock => "Numlock",
+      LogicalKeyboardKey.PrintScreen => "Print",
       LogicalKeyboardKey.Super => sourcePlatform == "macos" ? "LeftCommand" : "LeftWindows",
       LogicalKeyboardKey.RSuper => sourcePlatform == "macos" ? "RightCommand" : "RightWindows",
       _ => key.ToString(),
