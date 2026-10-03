@@ -7,10 +7,11 @@ import {
   Mic01Icon,
   MoreVerticalIcon,
   Upload04Icon,
+  Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { formatFileSize } from "@/models/activity/file-size";
@@ -34,6 +35,8 @@ export function RunActionsMenu({
   run,
   disabled,
   runDeleteDisabled,
+  onRender,
+  renderDisabled = false,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
@@ -42,6 +45,8 @@ export function RunActionsMenu({
   run: ActivityRun;
   disabled: boolean;
   runDeleteDisabled: boolean;
+  onRender?: (run: ActivityRun, trigger?: HTMLElement) => void;
+  renderDisabled?: boolean;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -49,6 +54,7 @@ export function RunActionsMenu({
 }) {
   const { t } = useTranslation("replay");
   const { t: activityT } = useTranslation("activity");
+  const { t: renderT } = useTranslation("render");
   const { t: microphoneT, i18n } = useTranslation("microphone");
   const locale = i18n.resolvedLanguage ?? "en";
   const [menuOpen, setMenuOpen] = useState(false);
@@ -58,6 +64,8 @@ export function RunActionsMenu({
   const [menuError, setMenuError] = useState("");
   const [dialogError, setDialogError] = useState("");
   const busy = pendingAction !== null;
+  const trigger = useRef<HTMLButtonElement>(null);
+  const openingRender = useRef(false);
 
   const downloadRecording = async () => {
     if (disabled || busy) return;
@@ -125,6 +133,7 @@ export function RunActionsMenu({
       >
         <DropdownMenuTrigger asChild>
           <Button
+            ref={trigger}
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -133,7 +142,33 @@ export function RunActionsMenu({
             <HugeiconsIcon aria-hidden="true" icon={MoreVerticalIcon} className="size-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-fit min-w-0 whitespace-nowrap">
+        <DropdownMenuContent
+          align="end"
+          className="w-fit min-w-0 whitespace-nowrap"
+          onCloseAutoFocus={(event) => {
+            if (openingRender.current) {
+              event.preventDefault();
+              openingRender.current = false;
+            }
+          }}
+        >
+          {onRender ? (
+            <>
+              <DropdownMenuItem
+                disabled={disabled || busy || renderDisabled}
+                onSelect={() => {
+                  openingRender.current = true;
+                  setMenuOpen(false);
+                  onRender(run, trigger.current ?? undefined);
+                }}
+              >
+                <span aria-hidden="true" className="size-4" />
+                <HugeiconsIcon aria-hidden="true" icon={Video01Icon} className="size-4" />
+                {renderT("button")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
           {run.hasMicrophoneRecording ? (
             <DropdownMenuSub>
               <DropdownMenuSubTrigger>

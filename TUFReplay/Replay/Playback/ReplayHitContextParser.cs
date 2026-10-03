@@ -14,11 +14,17 @@ public static class ReplayHitContextParser
     ReadOnlySpan<byte> payload = hitContextCsv;
     List<ReplayHitContext> contexts = new List<ReplayHitContext>(Utf8Csv.CountNonEmptyLines(payload));
     int offset = 0;
+    int row = 0;
 
     while (Utf8Csv.TryReadNonEmptyLine(payload, ref offset, out ReadOnlySpan<byte> line))
     {
+      row++;
       if (!TryParseLine(line, out ReplayHitContext context))
-        throw new InvalidDataException("Replay hit payload contains a malformed row.");
+      {
+        var exception = new InvalidDataException($"Replay hit payload contains a malformed row (row {row}).");
+        exception.Data["line"] = row;
+        throw exception;
+      }
       contexts.Add(context);
     }
 
@@ -58,7 +64,7 @@ public static class ReplayHitContextParser
 
     if (!Utf8Csv.TryParseInt32(line[parts[11]], out int resolvedHitMargin))
       return false;
-    if (!Utf8Csv.TryParseInt64(line[parts[12]], out long timeUs) || timeUs < 0L)
+    if (!Utf8Csv.TryParseInt64(line[parts[12]], out long timeUs))
       return false;
 
     context = new ReplayHitContext(

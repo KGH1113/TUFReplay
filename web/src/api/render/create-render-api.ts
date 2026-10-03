@@ -1,10 +1,14 @@
 import type { RenderApi } from "@/api/render/render-api";
 import {
+  outputDirectoryCancelSchema,
+  outputDirectoryChoiceSchema,
+  outputDirectoryOpenSchema,
   renderDownloadSchema,
   renderExportStatusSchema,
   renderHealthSchema,
   renderJobSchema,
   renderOptionsSchema,
+  renderSettingsSchema,
 } from "@/schemas/render/render-schema";
 import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 import { ApiError } from "@/shared/errors/api-error";
@@ -20,6 +24,37 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
   };
   return {
     getHealth: () => callAdofaiIpc(renderer(), "health.get", {}, renderHealthSchema),
+    getSettings: () => callAdofaiIpc(renderer(), "settings.get", {}, renderSettingsSchema),
+    updateSettings: (options) =>
+      callAdofaiIpc(renderer(), "settings.update", options, renderSettingsSchema),
+    chooseOutputDirectory: (initialPath) =>
+      callAdofaiIpc(
+        renderer(),
+        "output-directory.choose",
+        initialPath ? { initialPath } : {},
+        outputDirectoryChoiceSchema,
+      ),
+    getOutputDirectorySelection: (selectionId) =>
+      callAdofaiIpc(
+        renderer(),
+        "output-directory.selection.get",
+        { selectionId },
+        outputDirectoryChoiceSchema,
+      ),
+    cancelOutputDirectorySelection: (selectionId) =>
+      callAdofaiIpc(
+        renderer(),
+        "output-directory.selection.cancel",
+        { selectionId },
+        outputDirectoryCancelSchema,
+      ),
+    openOutputDirectory: (jobId) =>
+      callAdofaiIpc(
+        renderer(),
+        "output-directory.open",
+        jobId ? { jobId } : {},
+        outputDirectoryOpenSchema,
+      ),
     exportBundle(runId, options, levelPath) {
       const validated = renderOptionsSchema.parse(options);
       return callAdofaiIpc(

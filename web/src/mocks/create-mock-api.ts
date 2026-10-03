@@ -1,5 +1,6 @@
 import type { AppApi } from "@/api/app-api";
 import { createActivityWireFixture } from "@/mocks/activity/activity-api-fixture";
+import { createRenderApiMock } from "@/mocks/render/create-render-api-mock";
 import { createReplayApiMock } from "@/mocks/replay/replay-api-mock";
 import { createWebcamApiMock } from "@/mocks/webcam/create-webcam-api-mock";
 import {
@@ -108,6 +109,7 @@ export function createMockApi(): AppApi {
     },
     replay: createReplayApiMock(),
     webcam: createWebcamApiMock(),
+    render: createRenderApiMock(),
     microphone: {
       async getDevices() {
         return mapMicrophoneDevicesState(

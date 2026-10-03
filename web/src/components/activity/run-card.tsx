@@ -21,7 +21,6 @@ import { replayButtonState } from "@/models/activity/replay-button-state";
 import { formatXAccuracy } from "@/models/activity/x-accuracy";
 import { isReplayInProgress, type ReplayStatus } from "@/models/replay/replay-model";
 import { cn } from "@/shared/lib/cn";
-import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
 export const RunCard = memo(function RunCard({
@@ -58,7 +57,6 @@ export const RunCard = memo(function RunCard({
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
-  const { t: renderT } = useTranslation("render");
   const statusMatches = replayStatus.runId === run.id;
   const runDeleteDisabled =
     replayPendingRunId === run.id ||
@@ -89,23 +87,6 @@ export const RunCard = memo(function RunCard({
           onPlay={onPlayReplay}
           disabled={readOnly}
         />
-        {onRender ? (
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 rounded-md px-2 text-xs"
-            aria-label={renderT("title", { runIndex: run.runIndex })}
-            disabled={
-              readOnly ||
-              Boolean(run.replayUnavailableReason) ||
-              replayPendingRunId !== null ||
-              isReplayInProgress(replayStatus)
-            }
-            onClick={() => onRender(run)}
-          >
-            {renderT("button")}
-          </Button>
-        ) : null}
         <div className="ml-auto flex h-8 items-center gap-1">
           <RunDifficultyIcon difficulty={run.judgmentDifficulty} />
           <RunNoFailIcon enabled={run.noFailMode} />
@@ -115,6 +96,12 @@ export const RunCard = memo(function RunCard({
           run={run}
           disabled={readOnly}
           runDeleteDisabled={runDeleteDisabled}
+          onRender={onRender}
+          renderDisabled={
+            Boolean(run.replayUnavailableReason) ||
+            replayPendingRunId !== null ||
+            isReplayInProgress(replayStatus)
+          }
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
           onDownloadMicrophoneRecording={onDownloadMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}

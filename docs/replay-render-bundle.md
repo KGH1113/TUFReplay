@@ -4,18 +4,29 @@ TUFReplay keeps recording and storage separate from video rendering. It has no r
 OrbitRender or TUFReplay-Renderer source or assemblies. The independent renderer consumes
 schema version 1 files through its own `tuf-replay-renderer` AdofaiIpc namespace.
 
-The web run card's Render button checks `health.get`, exports a bundle through the
-`tuf-replay` namespace, starts `render.start`, and polls `render.status.get`. Resolution
-presets cover 720p, 1080p, 1440p, and 2160p; output frame rates are 30, 60, and 120 fps.
-Camera, microphone, and configured ImplDmNote overlay inclusion are optional. The dialog
-shows the renderer's compatibility warnings, cancellation, progress, output path, and a
-one-use local download from `render.download`.
+The web run card's menu contains the Render action. The dialog checks `health.get` and
+`settings.get`, exports a bundle through the `tuf-replay` namespace, starts `render.start`,
+and polls `render.status.get`. The renderer embeds the OrbitRender engine, so a separate
+OrbitRender mod is not required. Resolution, simulation/video frame rates, codec, encoder,
+quality/speed, bitrate or supported software CRF, bit depth, ProRes profile, pixel format,
+game audio, end delay, preview, and display flags are editable. Camera, microphone, and
+configured ImplDmNote overlay inclusion are optional.
+
+The video is saved in the user's selected local folder on the computer running ADOFAI.
+`output-directory.choose` returns a selection ID immediately; the web polls
+`output-directory.selection.get` while the native folder dialog runs outside the game
+thread. Closing the render dialog cancels a pending selection with
+`output-directory.selection.cancel`. The path can also be typed directly. The completed
+job exposes `localOutputPath` and `canOpenOutput`; `output-directory.open` takes the job ID
+and opens its verified save folder. Completion appears in the web dialog and does not
+start a browser download. `settings.update` optionally saves the chosen render defaults.
 
 ## Export lifecycle
 
 `replay.render-bundle.export` takes `{runId, levelPath?, includeWebcam?, includeMicrophone?}`.
 Both inclusion flags default to true. It returns a quick job status with `jobId`, `runId`,
-`state`, `progress`, `manifestPath`, `errorCode`, and `errorMessage`.
+`state`, `progress`, `manifestPath`, `errorCode`, `errorMessage`, and optional
+`errorDetails: {field, line, file}`.
 `replay.render-bundle.status.get` and `replay.render-bundle.cancel` take `{jobId}`.
 States are `preparing`, `completed`, `failed`, or `cancelled`.
 
@@ -47,8 +58,11 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 `judgmentSystem`, `judgmentDifficulty`, `startTile`, `wonTimeUs`, and `terminalTimeUs`.
 Version 1 supports runs recorded from tile 0. Practice and checkpoint runs fail export
 with `render_start_tile_unsupported` before opening the level or copying media.
-All event times are integer microseconds in the recorded replay timeline. The renderer owns
-the mapping from that timeline into video time, including countdown and post-clear input.
+All event times are signed integer microseconds in the recorded replay timeline. Inputs
+during countdown may be negative; export preserves those times and their stable sequence
+instead of clamping or rejecting them. Negative time alone does not imply missing timing
+or judgment data. The renderer maps countdown events before gameplay begins, establishes
+the definitive gameplay anchor at tile zero, and keeps the post-clear input tail.
 
 `inputs.csv` has the exact header:
 
@@ -91,8 +105,15 @@ Missing recordings are omitted even when the inclusion checkbox is enabled.
 
 ## Validation boundary
 
-The neutral CSV contract, input normalization, invalid data rejection, cancellation checks,
-namespace routing, output option validation, and download URL validation have automated
+Missing metadata fields, malformed CSV values, unsupported keys or judgments, out-of-order
+events, and events beyond terminal time have distinct error codes. The web shows localized
+recovery guidance and the affected field or row when available. CSV export validation counts
+the neutral header as line one; errors encountered while reading native replay payloads
+refer to their original payload row.
+
+The neutral CSV contract, signed countdown events, input normalization, precise invalid
+data rejection, cancellation checks, namespace routing, output option validation, and
+retained download URL validation have automated
 tests. Unity/Mono build checks do not prove an installed game's frame timing or each overlay
 mod's runtime compatibility. Pixel capture and replay input support are distinct capabilities;
 the separate renderer reports unsupported or unverified mod behavior as warnings.

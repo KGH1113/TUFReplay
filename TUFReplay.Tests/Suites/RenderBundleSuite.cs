@@ -1,6 +1,8 @@
 using System.Globalization;
+using System.Text;
 using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Models;
+using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using static TestFixture;
 
@@ -23,6 +25,70 @@ internal static class RenderBundleSuite
     Assert(
       windows.ToString().Replace("\r", "") == "timeUs,key,down,sequence\n0,A,1,0\n0,A,0,1\n1,KeypadEnter,1,2\n",
       "Neutral key export lost a short pulse or native keypad identity."
+    );
+    using var countdown = new StringWriter();
+    RenderBundleCsv.WriteInputs(
+      countdown,
+      new[]
+      {
+        new RecordedInput(-2_000_000, 0x41, RecordInputFlags.Down),
+        new RecordedInput(-2_000_000, 0x41, 0),
+        new RecordedInput(-1, 0x42, RecordInputFlags.Down),
+        new RecordedInput(0, 0x42, 0),
+      },
+      "windows",
+      1
+    );
+    Assert(
+      countdown.ToString().Replace("\r", "")
+        == "timeUs,key,down,sequence\n-2000000,A,1,0\n-2000000,A,0,1\n-1,B,1,2\n0,B,0,3\n",
+      "Countdown input times or short pulse sequence changed during export."
+    );
+    var parsedCountdown = ReplayInputParser.Parse(Encoding.UTF8.GetBytes("-2000000,65,1,65,0\n-2000000,65,0,65,0\n"));
+    Assert(
+      parsedCountdown.Count == 2 && parsedCountdown[0].TimeUs == -2_000_000 && !parsedCountdown[1].Down,
+      "Native countdown timestamps or tied short tap changed during parsing."
+    );
+    using var earlyHit = new StringWriter();
+    RenderBundleCsv.WriteHits(
+      earlyHit,
+      new[] { new ReplayHitContext(0, 1, 0, false, false, false, 1, 1, false, false, 0, 0, -1) },
+      1,
+      _ => "Perfect"
+    );
+    Assert(earlyHit.ToString().Contains("-1,0,1,0"), "A signed pre-origin accepted hit was rejected.");
+    var metadata = new ReplayMetadata
+    {
+      gameplayStartSongPosition = -1,
+      effectivePitch = 1,
+      gameInputOffsetMs = 0,
+      terminalTimeUs = 1,
+      judgmentSystem = "ModernClassic",
+    };
+    RenderBundleValidation.ValidateMetadata(metadata);
+    metadata.effectivePitch = null;
+    Error(() => RenderBundleValidation.ValidateMetadata(metadata), "render_metadata_field_missing", "effectivePitch");
+    metadata.effectivePitch = float.NaN;
+    Error(() => RenderBundleValidation.ValidateMetadata(metadata), "render_metadata_field_invalid", "effectivePitch");
+    Error(
+      () =>
+        RenderBundleCsv.WriteInputs(
+          new StringWriter(),
+          new[] { new RecordedInput(-1, 0x41, 0), new RecordedInput(-2, 0x41, 0) },
+          "windows",
+          1
+        ),
+      "render_timeline_out_of_order",
+      "timeUs",
+      3,
+      "inputs.csv"
+    );
+    Error(
+      () => RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(2, 0x41, 0) }, "windows", 1),
+      "render_event_after_terminal",
+      "timeUs",
+      2,
+      "inputs.csv"
     );
     using var specialKeys = new StringWriter();
     RenderBundleCsv.WriteInputs(
@@ -117,10 +183,28 @@ internal static class RenderBundleSuite
     {
       action();
     }
-    catch (InvalidDataException)
+    catch (RenderBundleValidationException)
     {
       rejected = true;
     }
     Assert(rejected, "Invalid replay data was silently exported.");
+  }
+
+  private static void Error(Action action, string code, string field, int? line = null, string file = null)
+  {
+    try
+    {
+      action();
+      throw new Exception("Invalid data was accepted.");
+    }
+    catch (RenderBundleValidationException exception)
+    {
+      Assert(exception.Code == code && exception.Field == field, "Export lost the exact validation reason or field.");
+      if (line.HasValue)
+        Assert(
+          exception.Line == line && exception.File == file,
+          "Export error row did not include the neutral CSV header."
+        );
+    }
   }
 }

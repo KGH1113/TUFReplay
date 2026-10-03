@@ -97,22 +97,64 @@ public static class RenderBundleExportService
       StoredReplayRun run = RunRepository.GetReplayRun(job.RunId);
       if (run == null)
         throw new ExportException("run_not_found", "This play record no longer exists. Refresh the activity list.");
-      if (
-        run.EngineId != ReplayFormat.EngineId
-        || run.FormatVersion != ReplayFormat.FormatVersion
-        || !string.IsNullOrEmpty(run.ReplayUnavailableReason)
-      )
+      if (run.EngineId != ReplayFormat.EngineId || run.FormatVersion != ReplayFormat.FormatVersion)
         throw new ExportException(
-          "render_recording_incompatible",
-          "This recording cannot be rendered. Record a new run with the current TUFReplay version."
+          "render_recording_version_unsupported",
+          "This recording uses an older or unsupported replay format. Record a new run with the current TUFReplay version."
+        );
+      if (!string.IsNullOrEmpty(run.ReplayUnavailableReason))
+        throw new ExportException(
+          "render_recording_unavailable",
+          "This run's input recording was incomplete. Check the recording failure in the activity list, then record a new run."
         );
       if (run.StartTile != 0)
         throw new ExportException(
           "render_start_tile_unsupported",
           "Rendering currently supports recordings that start at the first tile. Record a new run from the beginning of the level."
         );
-      var meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "{}");
-      ValidateMetadata(meta);
+      ReplayMetadata meta;
+      try
+      {
+        meta = JsonConvert.DeserializeObject<ReplayMetadata>(run.MetaJson ?? "null");
+      }
+      catch (JsonException exception)
+      {
+        throw new RenderBundleValidationException(
+          "render_metadata_invalid",
+          "The recording metadata could not be read. Export it again or record a new run.",
+          (exception as JsonSerializationException)?.Path
+        );
+      }
+      RenderBundleValidation.ValidateMetadata(meta);
+      List<RecordedInput> inputs;
+      List<ReplayHitContext> hits;
+      try
+      {
+        inputs = ReplayInputParser.Parse(run.InputCsv);
+      }
+      catch (InvalidDataException exception)
+      {
+        throw new RenderBundleValidationException(
+          exception.Data["code"] as string ?? "render_input_payload_invalid",
+          exception.Message,
+          field: exception.Data["field"] as string,
+          line: exception.Data["line"] as int?,
+          file: "inputs.csv"
+        );
+      }
+      try
+      {
+        hits = ReplayHitContextParser.Parse(run.HitContextCsv);
+      }
+      catch (InvalidDataException exception)
+      {
+        throw new RenderBundleValidationException(
+          "render_hit_payload_invalid",
+          exception.Message,
+          line: exception.Data["line"] as int?,
+          file: "hits.csv"
+        );
+      }
       string target = job.LevelPath ?? run.LevelPath;
       if (string.IsNullOrWhiteSpace(target) || !File.Exists(target))
         throw new ExportException(
@@ -127,8 +169,6 @@ public static class RenderBundleExportService
           "The level changed while preparing this recording. Try again after saving the level."
         );
       token.ThrowIfCancellationRequested();
-      var inputs = ReplayInputParser.Parse(run.InputCsv);
-      var hits = ReplayHitContextParser.Parse(run.HitContextCsv);
       Directory.CreateDirectory(job.Directory);
       using (var writer = new StreamWriter(Path.Combine(job.Directory, "inputs.csv"), false, new UTF8Encoding(false)))
         RenderBundleCsv.WriteInputs(writer, inputs, meta.inputNativePlatform, meta.terminalTimeUs.Value, token);
@@ -266,13 +306,29 @@ public static class RenderBundleExportService
       lock (Gate)
       {
         job.State = "failed";
+        var validation = exception as RenderBundleValidationException;
         job.ErrorCode =
-          (exception as ExportException)?.Code
-          ?? (exception is InvalidDataException ? "render_recording_incompatible" : "render_export_failed");
+          validation?.Code
+          ?? (
+            exception is UnauthorizedAccessException ? "render_export_access_denied"
+            : exception is IOException ? "render_export_io"
+            : "render_export_failed"
+          );
+        job.ErrorDetails =
+          validation == null
+            ? null
+            : new
+            {
+              field = validation.Field,
+              line = validation.Line,
+              file = validation.File,
+            };
         job.ErrorMessage =
-          exception is ExportException ? exception.Message
-          : exception is InvalidDataException
-            ? "This recording has incomplete or unsupported replay data. Record a new run with the current TUFReplay version."
+          validation != null ? exception.Message
+          : exception is UnauthorizedAccessException
+            ? "The recording files cannot be accessed. Check folder permissions and try again."
+          : exception is IOException
+            ? "The recording files could not be read or written. Check that the files are available and the disk has enough free space, then try again."
           : "The recording could not be prepared. Check the level file and available disk space, then try again.";
       }
     }
@@ -318,29 +374,6 @@ public static class RenderBundleExportService
     await result.Task;
   }
 
-  private static void ValidateMetadata(ReplayMetadata meta)
-  {
-    if (
-      meta == null
-      || !meta.gameplayStartSongPosition.HasValue
-      || !Finite(meta.gameplayStartSongPosition.Value)
-      || !meta.effectivePitch.HasValue
-      || !Finite(meta.effectivePitch.Value)
-      || meta.effectivePitch <= 0
-      || !meta.gameInputOffsetMs.HasValue
-      || !meta.terminalTimeUs.HasValue
-      || meta.terminalTimeUs < 0
-      || (meta.wonTimeUs.HasValue && (meta.wonTimeUs < 0 || meta.wonTimeUs > meta.terminalTimeUs))
-      || string.IsNullOrWhiteSpace(meta.judgmentSystem)
-    )
-      throw new ExportException(
-        "render_recording_incompatible",
-        "This recording lacks timing or judgment data. Record a new run with the current TUFReplay version."
-      );
-  }
-
-  private static bool Finite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
-
   private static string FileHash(string path)
   {
     using var stream = File.OpenRead(path);
@@ -371,6 +404,7 @@ public static class RenderBundleExportService
       manifestPath = job.ManifestPath,
       errorCode = job.ErrorCode,
       errorMessage = job.ErrorMessage,
+      errorDetails = job.ErrorDetails,
     };
 
   private static object Error(string code, string message) => new { error = new { code, message } };
@@ -422,19 +456,15 @@ public static class RenderBundleExportService
     public int ScreenWidth,
       ScreenHeight;
     public TUFReplaySetting Settings;
+    public object ErrorDetails;
     public readonly DateTime CreatedAt = DateTime.UtcNow;
     public readonly CancellationTokenSource Cancellation = new CancellationTokenSource();
     public bool Finished => State == "completed" || State == "failed" || State == "cancelled";
   }
 
-  private sealed class ExportException : Exception
+  private sealed class ExportException : RenderBundleValidationException
   {
-    public readonly string Code;
-
     public ExportException(string code, string message)
-      : base(message)
-    {
-      Code = code;
-    }
+      : base(code, message) { }
   }
 }
