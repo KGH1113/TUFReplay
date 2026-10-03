@@ -17,6 +17,7 @@ interface DomainErrorPayload {
   error: {
     code: string;
     message: string;
+    details?: unknown;
   };
 }
 
@@ -52,17 +53,27 @@ export async function callAdofaiIpc<TResult>(
   try {
     result = await namespace.call(method, params);
   } catch (cause) {
-    throw new ApiError("The local TUFReplay connection failed.", {
-      kind: "connection",
-      code: connectionErrorCode(cause),
-      cause,
-    });
+    const name = errorString(cause, "name");
+    throw new ApiError(
+      cause instanceof Error ? cause.message : "The ADOFAI request could not be completed.",
+      {
+        kind:
+          name === "IpcResponseError"
+            ? "protocol"
+            : name === "IpcHttpError"
+              ? "http"
+              : "connection",
+        code: connectionErrorCode(cause),
+        cause,
+      },
+    );
   }
 
   if (isDomainError(result)) {
     throw new ApiError(result.error.message, {
       kind: "domain",
       code: result.error.code,
+      cause: result.error.details ? { details: result.error.details } : undefined,
     });
   }
 

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderApi } from "@/api/render/create-render-api";
-import { defaultRenderOptions } from "@/models/render/render-model";
+import { availableEncoders, defaultRenderOptions } from "@/models/render/render-model";
 import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 
 const bundle = {
@@ -95,12 +95,123 @@ describe("neutral render IPC contract", () => {
     );
     for (const options of [
       { ...defaultRenderOptions, width: 1919 },
-      { ...defaultRenderOptions, fps: 0 },
+      { ...defaultRenderOptions, videoFps: 0 },
+      { ...defaultRenderOptions, simulationFps: 30 },
+      { ...defaultRenderOptions, encoder: "NvidiaNvenc", crf: 23 },
+      { ...defaultRenderOptions, crf: 52 },
+      { ...defaultRenderOptions, videoCodec: "VP9", encoder: "NvidiaNvenc" },
+      { ...defaultRenderOptions, videoCodec: "VP9", encoder: "Auto" },
+      { ...defaultRenderOptions, pixelFormat: "bgra" },
+      { ...defaultRenderOptions, bitDepth: 10, pixelFormat: "yuv420p" },
       { ...defaultRenderOptions, width: Number.NaN },
     ]) {
       expect(() => api.start(bundle.manifestPath, options as never)).toThrow();
     }
     expect(called).toBe(false);
+  });
+  test("chooses save folders asynchronously and opens only an owned completed job", async () => {
+    const calls: unknown[] = [];
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        (method, params) => {
+          calls.push({ method, params });
+          if (method === "output-directory.selection.cancel") return { cancelled: true };
+          if (method === "output-directory.open") return { opened: true };
+          return {
+            selectionId: "pick-1",
+            pending: method === "output-directory.choose",
+            outputDirectory: method === "output-directory.choose" ? null : "/local/videos",
+          };
+        },
+      ),
+    );
+    expect((await api.chooseOutputDirectory("/local/start")).pending).toBe(true);
+    expect((await api.getOutputDirectorySelection("pick-1")).outputDirectory).toBe("/local/videos");
+    await api.cancelOutputDirectorySelection("pick-1");
+    await api.openOutputDirectory("render-1");
+    expect(calls).toEqual([
+      { method: "output-directory.choose", params: { initialPath: "/local/start" } },
+      { method: "output-directory.selection.get", params: { selectionId: "pick-1" } },
+      { method: "output-directory.selection.cancel", params: { selectionId: "pick-1" } },
+      { method: "output-directory.open", params: { jobId: "render-1" } },
+    ]);
+  });
+  test("retains the precise invalid field and row returned by the renderer", async () => {
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        () => ({
+          ...job,
+          state: "failed",
+          errorCode: "render_csv_value_invalid",
+          errorMessage: "Invalid time",
+          errorDetails: { field: "timeUs", line: 2, file: "inputs.csv" },
+        }),
+      ),
+    );
+    expect(await api.getStatus("render-1")).toMatchObject({
+      errorCode: "render_csv_value_invalid",
+      errorDetails: { field: "timeUs", line: 2, file: "inputs.csv" },
+    });
+  });
+  test("retains option error details and does not retry permanent namespace errors as a connection", async () => {
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        () => ({
+          error: {
+            code: "render_option_invalid",
+            message: "Unsupported encoder",
+            details: { field: "encoder" },
+          },
+        }),
+      ),
+    );
+    await expect(api.start(bundle.manifestPath, defaultRenderOptions)).rejects.toMatchObject({
+      kind: "domain",
+      code: "render_option_invalid",
+      cause: { details: { field: "encoder" } },
+    });
+    const unavailable = createRenderApi(
+      clients(
+        () => bundle,
+        () => {
+          throw Object.assign(new Error("Missing renderer namespace"), {
+            name: "IpcResponseError",
+            code: "namespace_not_found",
+          });
+        },
+      ),
+    );
+    await expect(unavailable.getHealth()).rejects.toMatchObject({
+      kind: "protocol",
+      code: "namespace_not_found",
+    });
+  });
+  test("uses platform-specific engine encoder capabilities", async () => {
+    const settings = {
+      defaults: defaultRenderOptions,
+      outputDirectory: "/local/videos",
+      capabilities: {
+        codecs: ["H264", "ProRes"],
+        encoders: ["Auto", "Software", "AppleVideoToolbox"],
+        bitDepths: [8, 10],
+        proResProfiles: ["Standard"],
+        pixelFormats: ["auto"],
+      },
+      engineOptions: { codecs: [{ value: "ProRes", encoders: ["Software"] }] },
+    };
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        () => settings,
+      ),
+    );
+    const loaded = await api.getSettings();
+    expect(availableEncoders("ProRes", loaded.capabilities.encoders, loaded.engineOptions)).toEqual(
+      ["Software"],
+    );
   });
   test("preserves export capability errors", async () => {
     const api = createRenderApi(

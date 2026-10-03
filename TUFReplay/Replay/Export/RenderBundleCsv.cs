@@ -24,14 +24,20 @@ public static class RenderBundleCsv
   )
   {
     writer.WriteLine(InputHeader);
-    long previous = -1,
+    long previous = long.MinValue,
       sequence = 0;
     foreach (RecordedInput input in inputs)
     {
       cancellation.ThrowIfCancellationRequested();
-      ValidateTime(input.TimeUs, previous, terminalTimeUs);
+      ValidateTime(input.TimeUs, previous, terminalTimeUs, checked((int)sequence + 2), "inputs.csv");
       if (!NativeInputKeyCodeMapper.TryGetUnityKeyName(platform, input, out string name))
-        throw new InvalidDataException("This recording contains an input key the renderer cannot identify.");
+        throw new RenderBundleValidationException(
+          "render_input_key_unsupported",
+          "A recorded key cannot be mapped for rendering. Check the recording's original keyboard platform.",
+          "key",
+          checked((int)sequence + 2),
+          "inputs.csv"
+        );
       writer.WriteLine(FormattableString.Invariant($"{input.TimeUs},{name},{(input.Down ? 1 : 0)},{sequence++}"));
       previous = input.TimeUs;
     }
@@ -46,14 +52,22 @@ public static class RenderBundleCsv
   )
   {
     writer.WriteLine(HitHeader);
-    long previous = -1;
+    long previous = long.MinValue;
+    int row = 1;
     foreach (ReplayHitContext hit in hits)
     {
       cancellation.ThrowIfCancellationRequested();
-      ValidateTime(hit.TimeUs, previous, terminalTimeUs);
+      row++;
+      ValidateTime(hit.TimeUs, previous, terminalTimeUs, row, "hits.csv");
       string margin = marginName(hit.ResolvedHitMargin);
       if (string.IsNullOrEmpty(margin) || !IsSymbol(margin))
-        throw new InvalidDataException("This recording contains an unknown hit judgment.");
+        throw new RenderBundleValidationException(
+          "render_hit_judgment_unsupported",
+          "A recorded judgment is not supported by this game version. Use the original compatible game version or record a new run.",
+          "margin",
+          row,
+          "hits.csv"
+        );
       writer.WriteLine(
         string.Join(
           ",",
@@ -61,13 +75,13 @@ public static class RenderBundleCsv
           {
             hit.TimeUs.ToString(CultureInfo.InvariantCulture),
             hit.CurrentFloorID.ToString(CultureInfo.InvariantCulture),
-            Number(hit.CurrAngle),
-            Number(hit.OverloadCounter),
+            Number(hit.CurrAngle, "angle", row),
+            Number(hit.OverloadCounter, "overloadCounter", row),
             Bit(hit.NoFailHit),
             Bit(hit.IsAuto),
             Bit(hit.NextFloorAuto),
-            Number(hit.CachedAngle),
-            Number(hit.TargetExitAngle),
+            Number(hit.CachedAngle, "cachedAngle", row),
+            Number(hit.TargetExitAngle, "targetExitAngle", row),
             Bit(hit.MidspinInfiniteMargin),
             Bit(hit.RDCAuto),
             hit.CurFreeRoamSection.ToString(CultureInfo.InvariantCulture),
@@ -79,10 +93,25 @@ public static class RenderBundleCsv
     }
   }
 
-  private static void ValidateTime(long time, long previous, long terminal)
+  private static void ValidateTime(long time, long previous, long terminal, int row, string file)
   {
-    if (time < 0 || time < previous || time > terminal)
-      throw new InvalidDataException("The recorded timeline is incomplete or out of order.");
+    // The recording origin is gameplay start; countdown keys legitimately precede zero.
+    if (time < previous)
+      throw new RenderBundleValidationException(
+        "render_timeline_out_of_order",
+        "Recorded events are out of time order. Export the recording again or record a new run.",
+        "timeUs",
+        row,
+        file
+      );
+    if (time > terminal)
+      throw new RenderBundleValidationException(
+        "render_event_after_terminal",
+        "A recorded event occurs after the recording's end time. Export the recording again or record a new run.",
+        "timeUs",
+        row,
+        file
+      );
   }
 
   private static bool IsSymbol(string value)
@@ -95,10 +124,16 @@ public static class RenderBundleCsv
 
   private static string Bit(bool value) => value ? "1" : "0";
 
-  private static string Number(double value)
+  private static string Number(double value, string field, int row)
   {
     if (double.IsNaN(value) || double.IsInfinity(value))
-      throw new InvalidDataException("The recording contains an invalid hit value.");
+      throw new RenderBundleValidationException(
+        "render_hit_value_invalid",
+        "A recorded hit contains an invalid value. Export the recording again or record a new run.",
+        field,
+        row,
+        "hits.csv"
+      );
     return value.ToString("R", CultureInfo.InvariantCulture);
   }
 }
