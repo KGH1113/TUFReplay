@@ -12,6 +12,7 @@ packages/
 !TUFReplay.Unity/Packages/manifest.json
 !TUFReplay.Unity/Packages/packages-lock.json
 node_modules/
+node_modules
 web/dist/
 
 # Local Environment

@@ -129,7 +129,6 @@ internal static class NativeInputKeyCodeMapper
     MacVirtualKeyCodes
   );
 
-
   public static List<RecordedInput> NormalizeForPlayback(
     List<RecordedInput> inputs,
     ReplayMetadata meta,
@@ -192,6 +191,44 @@ internal static class NativeInputKeyCodeMapper
       return true;
     }
     return TryGetWindowsKeyLabel(nativeKey, out label);
+  }
+
+  // A neutral export must resolve the recording's platform, never the host's
+  // current platform. Unsupported keys fail explicitly instead of disappearing.
+  public static bool TryGetUnityKeyName(string sourcePlatform, RecordedInput input, out string name)
+  {
+    name = null;
+    if (!TryGetSourceLogicalKey(sourcePlatform, input, out LogicalKeyboardKey key))
+      return false;
+    name = key switch
+    {
+      LogicalKeyboardKey.Enter => "Return",
+      LogicalKeyboardKey.Apostrophe => "Quote",
+      LogicalKeyboardKey.ArrowDown => "DownArrow",
+      LogicalKeyboardKey.ArrowLeft => "LeftArrow",
+      LogicalKeyboardKey.ArrowRight => "RightArrow",
+      LogicalKeyboardKey.ArrowUp => "UpArrow",
+      LogicalKeyboardKey.BackSlash => "Backslash",
+      LogicalKeyboardKey.Dot => "Period",
+      LogicalKeyboardKey.Equal => "Equals",
+      LogicalKeyboardKey.Grave => "BackQuote",
+      LogicalKeyboardKey.KeypadAsterisk => "KeypadMultiply",
+      LogicalKeyboardKey.KeypadDot => "KeypadPeriod",
+      LogicalKeyboardKey.KeypadSlash => "KeypadDivide",
+      LogicalKeyboardKey.LAlt => "LeftAlt",
+      LogicalKeyboardKey.LControl => "LeftControl",
+      LogicalKeyboardKey.LShift => "LeftShift",
+      LogicalKeyboardKey.RAlt => "RightAlt",
+      LogicalKeyboardKey.RControl => "RightControl",
+      LogicalKeyboardKey.RShift => "RightShift",
+      LogicalKeyboardKey.LeftBrace => "LeftBracket",
+      LogicalKeyboardKey.RightBrace => "RightBracket",
+      LogicalKeyboardKey.PauseBreak => "Pause",
+      LogicalKeyboardKey.Super => sourcePlatform == "macos" ? "LeftCommand" : "LeftWindows",
+      LogicalKeyboardKey.RSuper => sourcePlatform == "macos" ? "RightCommand" : "RightWindows",
+      _ => key.ToString(),
+    };
+    return Enum.TryParse(name, out UnityEngine.KeyCode code) && code != UnityEngine.KeyCode.None;
   }
 
   private static bool TryGetWindowsKeyLabel(int key, out LogicalKeyboardKey label)

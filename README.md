@@ -61,6 +61,7 @@ New recordings keep hit timestamps nondecreasing even when the game song clock m
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization. New recordings align the first microphone sample to the native-input clock after the game timeline resumes, so EnhancedCountdown waits do not become replay offsets. On macOS the helper supplies the first written sample's host timestamp; other platforms anchor Unity's microphone cursor to the same monotonic clock.
 - Optionally records H.264 camera video alongside each run and plays it inside the game during replay. Camera recording starts disabled. The companion header's camera button configures capture, crop, visibility, mirroring, synchronization, quality, storage budget, and retention. Position and size are adjusted directly in the game.
+- Offers a Render action for saved runs when the separate TUFReplay-Renderer and OrbitRender mods are installed. TUFReplay exports a validated neutral recording bundle; the renderer creates the video, reports overlay compatibility warnings, and serves the finished file through AdofaiIpc. Camera crop, mirror, position, timing, and microphone gain are snapshotted from the current replay settings. See [rendering integration](docs/replay-render-bundle.md).
 - Replays restore the recorded game input offset when available. Older records without that value keep the current game setting; input/hit timestamp differences are not used to guess calibration.
 - Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
 - Aggregates overlapping timeline judgments into display columns, preserving the most severe visible judgment and keeping dense replays below Unity's UI vertex limit. The progress fill rebuilds only after a visible half-pixel change while the playhead continues to track replay time.
@@ -331,6 +332,9 @@ Registered methods:
 - `microphone.recording.export` (`runId` identifies a recorded run; returns a short-lived download URL)
 - `replay.play`
 - `replay.status.get`
+- `replay.render-bundle.export` (`runId`, optional `levelPath`, `includeWebcam`, and `includeMicrophone`; starts background export after a game-thread settings snapshot)
+- `replay.render-bundle.status.get` (`jobId`; returns progress, terminal state, or the prepared `manifestPath`)
+- `replay.render-bundle.cancel` (`jobId`; cancels an active preparation job and removes its partial files)
 - `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
 - `microphone.devices.get`
 - `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
