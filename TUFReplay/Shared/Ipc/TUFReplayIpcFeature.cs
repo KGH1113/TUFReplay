@@ -2,6 +2,7 @@ using AdofaiIpc;
 using TUFReplay.Activity.Ipc;
 using TUFReplay.Calibration.Ipc;
 using TUFReplay.Microphone.Ipc;
+using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Ipc;
 using TUFReplay.Webcam.Ipc;
 
@@ -52,6 +53,9 @@ public sealed class TUFReplayIpcFeature
     ipc.RegisterDownload("microphone.recording.export", MicrophoneRecordingIpcHandlers.Export);
     ipc.Register("replay.play", ReplayIpcHandlers.Play);
     ipc.Register("replay.status.get", ReplayIpcHandlers.GetStatus);
+    ipc.RegisterMainThread("replay.render-bundle.export", RenderBundleIpcHandlers.Export);
+    ipc.Register("replay.render-bundle.status.get", RenderBundleIpcHandlers.GetStatus);
+    ipc.Register("replay.render-bundle.cancel", RenderBundleIpcHandlers.Cancel);
     ipc.Register("replay.level-file.pick", ReplayIpcHandlers.PickLevelFile);
     ipc.Register("replay.level-file.status.get", ReplayIpcHandlers.GetLevelFilePickerStatus);
     ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
@@ -79,6 +83,8 @@ public sealed class TUFReplayIpcFeature
     if (!_active)
       return;
     _active = false;
+
+    RenderBundleExportService.Shutdown();
 
     AdofaiIpc.AdofaiIpc.UnregisterNamespace(Namespace);
     Main.Instance.Log("[IPC] Unregistered namespace: " + Namespace);

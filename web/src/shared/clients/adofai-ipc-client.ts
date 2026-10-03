@@ -23,6 +23,7 @@ interface DomainErrorPayload {
 export interface AdofaiIpcClients {
   namespace: AdofaiIpcNamespaceClient;
   pickerNamespace: AdofaiIpcNamespaceClient;
+  rendererNamespace?: AdofaiIpcNamespaceClient;
 }
 
 let clientsPromise: Promise<AdofaiIpcClients> | null = null;
@@ -121,6 +122,7 @@ async function connect(
   return {
     namespace: client.namespace(NAMESPACE),
     pickerNamespace: pickerClient.namespace(NAMESPACE),
+    rendererNamespace: client.namespace("tuf-replay-renderer"),
   };
 }
 

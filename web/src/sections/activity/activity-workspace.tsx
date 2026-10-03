@@ -57,6 +57,7 @@ export function ActivityWorkspace({
   onSelectMarker,
   onSelectRun,
   onPlayReplay,
+  onRender,
   onDeleteRun,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
@@ -81,6 +82,7 @@ export function ActivityWorkspace({
   onSelectMarker: (marker: RunMarker | null) => void;
   onSelectRun: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onRender?: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -402,6 +404,7 @@ export function ActivityWorkspace({
                             replayErrorRunId={replayErrorRunId}
                             onSelect={selectRun}
                             onPlayReplay={playReplay}
+                            onRender={onRender}
                             onDeleteRun={deleteRun}
                             onKeepMicrophoneRecording={keepMicrophoneRecording}
                             onDownloadMicrophoneRecording={downloadMicrophoneRecording}

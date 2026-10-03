@@ -9,15 +9,24 @@ import {
 import activityEn from "./locales/en/activity.json";
 import commonEn from "./locales/en/common.json";
 import microphoneEn from "./locales/en/microphone.json";
+import renderEn from "./locales/en/render.json";
 import replayEn from "./locales/en/replay.json";
 import webcamEn from "./locales/en/webcam.json";
 import activityKo from "./locales/ko/activity.json";
 import commonKo from "./locales/ko/common.json";
 import microphoneKo from "./locales/ko/microphone.json";
+import renderKo from "./locales/ko/render.json";
 import replayKo from "./locales/ko/replay.json";
 import webcamKo from "./locales/ko/webcam.json";
 
-export const namespaces = ["common", "activity", "microphone", "replay", "webcam"] as const;
+export const namespaces = [
+  "common",
+  "activity",
+  "microphone",
+  "replay",
+  "webcam",
+  "render",
+] as const;
 
 let initialization: Promise<void> | null = null;
 
@@ -31,6 +40,7 @@ export function initializeI18n() {
           activity: activityEn,
           microphone: microphoneEn,
           replay: replayEn,
+          render: renderEn,
           webcam: webcamEn,
         },
         ko: {
@@ -38,6 +48,7 @@ export function initializeI18n() {
           activity: activityKo,
           microphone: microphoneKo,
           replay: replayKo,
+          render: renderKo,
           webcam: webcamKo,
         },
       },
