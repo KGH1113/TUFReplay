@@ -99,7 +99,7 @@
     "level_file_unreadable": "The level file cannot be read. Check its permissions and whether the drive is connected, then try again.",
     "level_fingerprint_invalid": "The recorded level fingerprint is invalid. Export the recording again.",
     "dmnote_busy": "ImplDmNote is already exporting an overlay. Wait for it to finish or cancel that export first.",
-    "dmnote_capture_failed": "The ImplDmNote overlay could not be exported. Keep ImplDmNote open and try again, or turn off its overlay.",
+    "dmnote_capture_failed": "ImplDmNote failed while preparing or capturing its overlay. Check the details below, then try again or turn off its overlay.",
     "dmnote_disconnected": "ImplDmNote disconnected during export. Reconnect it and try again, or turn off its overlay.",
     "dmnote_frame_timeout": "ImplDmNote did not produce a frame in time. Check the app and try again, or turn off its overlay.",
     "dmnote_protocol_unsupported": "This ImplDmNote version does not support offline rendering. Update the compatible fork, or turn off its overlay.",

@@ -99,7 +99,7 @@
     "level_file_unreadable": "레벨 파일을 읽지 못했어요. 접근 권한과 드라이브 연결을 확인한 뒤 다시 시도해 주세요.",
     "level_fingerprint_invalid": "기록된 레벨의 확인 값이 올바르지 않아요. 기록을 다시 내보내 주세요.",
     "dmnote_busy": "ImplDmNote가 이미 오버레이를 내보내고 있어요. 먼저 완료하거나 취소해 주세요.",
-    "dmnote_capture_failed": "ImplDmNote 오버레이를 내보내지 못했어요. 앱을 열어 둔 채 다시 시도하거나 오버레이를 꺼 주세요.",
+    "dmnote_capture_failed": "ImplDmNote 오버레이를 준비하거나 캡처하는 중에 문제가 발생했어요. 아래 원인을 확인한 뒤 다시 시도하거나 오버레이를 꺼 주세요.",
     "dmnote_disconnected": "내보내는 중 ImplDmNote 연결이 끊어졌어요. 다시 연결하고 시도하거나 오버레이를 꺼 주세요.",
     "dmnote_frame_timeout": "ImplDmNote가 제때 화면을 만들지 못했어요. 앱을 확인하고 다시 시도하거나 오버레이를 꺼 주세요.",
     "dmnote_protocol_unsupported": "이 ImplDmNote 버전은 오프라인 렌더링을 지원하지 않아요. 호환되는 포크로 업데이트하거나 오버레이를 꺼 주세요.",

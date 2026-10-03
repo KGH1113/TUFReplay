@@ -101,6 +101,9 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
                 className="space-y-1 rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-destructive"
               >
                 <p>{knownError || control.errorMessage || t("errors.failed")}</p>
+                {knownError && control.errorMessage && control.errorMessage !== knownError ? (
+                  <p className="break-words text-xs">{control.errorMessage}</p>
+                ) : null}
                 {fieldLabel ? (
                   <p className="text-xs">{t("errorDetailField", { field: fieldLabel })}</p>
                 ) : null}
