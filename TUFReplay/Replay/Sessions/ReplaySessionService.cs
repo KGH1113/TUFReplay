@@ -135,6 +135,7 @@ public static partial class ReplaySessionService
       context.Phase = ReplayPlaybackPhase.Stopped;
       context.NativeInputPlayer?.Dispose();
       context.MicrophonePlayer?.Dispose();
+      context.WebcamPlayer?.Dispose();
     }
     RestoreReplayNoFail();
     RestoreReplayGameInputOffset();
@@ -198,6 +199,7 @@ public static partial class ReplaySessionService
       case States.Fail:
       case States.Fail2:
         _activeContext.MicrophonePlayer?.Stop();
+        _activeContext.WebcamPlayer?.Stop();
         break;
 
       case States.Start:
@@ -272,6 +274,7 @@ public static partial class ReplaySessionService
     ReplayPlaybackPhase previous = _activeContext.Phase;
     ReplayRunController.MarkRestartPrepared(_activeContext, preserveClockOrigin);
     _activeContext.MicrophonePlayer?.Stop();
+    _activeContext.WebcamPlayer?.Stop();
     LogLifecycleTransition(previous, ReplayPlaybackPhase.Prepared, reason);
     _suppressReplayMarkFail = false;
 
@@ -298,6 +301,7 @@ public static partial class ReplaySessionService
     ResetReplayHeldInputState();
     _activeContext.NativeInputPlayer?.ResetTo(snapshot);
     _activeContext.MicrophonePlayer?.ResetTo(snapshot);
+    _activeContext.WebcamPlayer?.ResetTo(snapshot);
     bool skipPassedAngles = TryGetControllerState(out States state) && state == States.PlayerControl;
     _activeContext.HitContextPlayer?.ResetTo(ADOBase.controller, skipPassedAngles);
     _playbackPauseSuspended = false;
@@ -372,6 +376,16 @@ public static partial class ReplaySessionService
       player.Tick(snapshot);
 
     return emitted;
+  }
+
+  public static void TickWebcamPlayback()
+  {
+    if (
+      _activeContext?.WebcamPlayer != null
+      && _activeContext.RunStarted
+      && TryComputeReplayTimeUs(out long nowUs, out _)
+    )
+      _activeContext.WebcamPlayer.Tick(CreatePlaybackSnapshot(nowUs));
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)

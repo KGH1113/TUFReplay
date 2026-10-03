@@ -4,6 +4,7 @@
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
     <Nullable>disable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <AssemblyName>TUFReplay</AssemblyName>
     <RootNamespace>TUFReplay</RootNamespace>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
@@ -72,6 +73,14 @@
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/MicrophonePermissionWarningView.cs"
       Link="Unity/Notifications/MicrophonePermissionWarningView.cs"
     />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/CameraSetupView.cs"
+      Link="Unity/Camera/CameraSetupView.cs"
+    />
+    <Compile
+      Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/CameraToggleView.cs"
+      Link="Unity/Camera/CameraToggleView.cs"
+    />
 
     <Reference Include="AdofaiIpc">
       <HintPath>$(AdofaiIpcDll)</HintPath>
@@ -132,6 +141,10 @@
     </Reference>
     <Reference Include="UnityEngine.AudioModule">
       <HintPath>$(AdofaiManaged)/UnityEngine.AudioModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="UnityEngine.VideoModule">
+      <HintPath>$(AdofaiManaged)/UnityEngine.VideoModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="RDTools">

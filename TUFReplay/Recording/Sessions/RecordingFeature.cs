@@ -53,6 +53,7 @@ public partial class RecordingFeature
       return;
     _clearReached = true;
     Session.MarkWonReached();
+    ObserveWebcamWon();
     if (_calibrationRun)
       return;
     Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
@@ -117,7 +118,7 @@ public partial class RecordingFeature
       return;
     }
     bool saved = SaveActivityRun("failed", Session.GetLastReachedTile());
-    EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved));
+    EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved), persistWebcam: saved);
     Main.Instance.Log("[Recording] Run failed.");
   }
 
@@ -156,7 +157,7 @@ public partial class RecordingFeature
       );
       if (!_clearReached)
       {
-        EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved));
+        EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved), persistWebcam: saved);
       }
       else if (saved)
         QueueEditorRecording();
@@ -177,6 +178,9 @@ public partial class RecordingFeature
 
   public void OnEditorReturnCompleted()
   {
+    var webcam = _pendingEditorWebcamRecording;
+    _pendingEditorWebcamRecording = null;
+    webcam?.CompleteDisposition(persist: true);
     PendingMicrophoneDisposition recording = _pendingEditorRecording;
     _pendingEditorRecording = null;
     recording?.CompleteDisposition(persist: true);
@@ -283,7 +287,10 @@ public partial class RecordingFeature
     RecordingPatches.ResetHitContextState();
     Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
     if (Session.IsRecording)
+    {
       FeatureRegistry.MicrophoneRecording?.ArmForLevel();
+      FeatureRegistry.WebcamRecording?.ArmForLevel();
+    }
     Main.Instance.Log("[Recording] " + logMessage + ". tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
   }
 
@@ -346,14 +353,18 @@ public partial class RecordingFeature
       _calibrationRun = false;
       return;
     }
+    bool persistWebcam = false;
     if (Session.IsRecording && _clearReached && !_runSaved)
     {
       Session.MarkTerminal();
       Session.StopInputCapture("session_stop_after_clear");
-      SaveActivityRun("cleared", RecordingSession.GetLevelTileCount());
+      persistWebcam = SaveActivityRun("cleared", RecordingSession.GetLevelTileCount());
     }
 
-    EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));
+    EndMicrophoneRun(
+      recording => FeatureRegistry.MicrophoneRecording?.Discard(recording),
+      persistWebcam: persistWebcam
+    );
     FeatureRegistry.MicrophoneRecording?.Disarm();
     Session.Stop();
     RecordingPatches.ResetHitContextState();
@@ -393,5 +404,7 @@ public partial class RecordingFeature
     _runPersistence = Task.FromResult(false);
     _microphoneCaptureStarted = false;
     _microphoneTimelineAnchor = null;
+    _webcamCaptureStarted = false;
+    _webcamTimeline = null;
   }
 }
