@@ -396,7 +396,7 @@ export function RenderOptionsForm({ control }: { control: Control }) {
         <div className="space-y-4 pt-4">
           <div className="grid grid-cols-2 gap-4">
             {number("audioGainDb", -60, 12, 0.5, t("audioGainHelp"), !options.captureAudio)}
-            {number("endDelaySeconds", 0, 30, 0.1)}
+            {number("endDelaySeconds", 0, 30, 0.1, t("endDelayHelp"))}
           </div>
           {toggle("showRenderPreview")}
           {toggle("bgaMode", false, t("bgaModeHelp"))}

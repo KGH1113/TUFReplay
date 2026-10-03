@@ -55,14 +55,19 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 `hitsFile`, and `media`. The level object includes its absolute `path`, `fileSha256`,
 `gameplayHash`, and `gameplayHashVersion`. Replay metadata includes
 `gameplayStartSongPosition`, `effectivePitch`, `gameInputOffsetMs`, `noFailMode`,
-`judgmentSystem`, `judgmentDifficulty`, `startTile`, `wonTimeUs`, and `terminalTimeUs`.
-Version 1 supports runs recorded from tile 0. Practice and checkpoint runs fail export
-with `render_start_tile_unsupported` before opening the level or copying media.
+`judgmentSystem`, `judgmentDifficulty`, `startTile`, `result`, `wonTimeUs`, and `terminalTimeUs`.
+Version 1 exports runs from tile 0 and recorded mid-level/checkpoint starts. The renderer
+restores the native checkpoint state and music position. Negative start tiles are invalid;
+the renderer also checks that the tile exists in the loaded level. `result` preserves
+`cleared`, `failed` or `aborted` so failed runs without an accepted final hit still show death.
 All event times are signed integer microseconds in the recorded replay timeline. Inputs
 during countdown may be negative; export preserves those times and their stable sequence
 instead of clamping or rejecting them. Negative time alone does not imply missing timing
 or judgment data. The renderer maps countdown events before gameplay begins, establishes
-the definitive gameplay anchor at tile zero, and keeps the post-clear input tail.
+the definitive gameplay anchor at player control, and keeps the post-clear input tail.
+The web dialog's **Wait after clear or death** setting adds 0–30 output seconds after
+terminal. On failure it waits for the native death animation to finish first, including
+the explosion with a zero delay. This is independent of the recording's pitch.
 
 `inputs.csv` has the exact header:
 
