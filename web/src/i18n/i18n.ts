@@ -10,12 +10,14 @@ import activityEn from "./locales/en/activity.json";
 import commonEn from "./locales/en/common.json";
 import microphoneEn from "./locales/en/microphone.json";
 import replayEn from "./locales/en/replay.json";
+import webcamEn from "./locales/en/webcam.json";
 import activityKo from "./locales/ko/activity.json";
 import commonKo from "./locales/ko/common.json";
 import microphoneKo from "./locales/ko/microphone.json";
 import replayKo from "./locales/ko/replay.json";
+import webcamKo from "./locales/ko/webcam.json";
 
-export const namespaces = ["common", "activity", "microphone", "replay"] as const;
+export const namespaces = ["common", "activity", "microphone", "replay", "webcam"] as const;
 
 let initialization: Promise<void> | null = null;
 
@@ -24,8 +26,20 @@ export function initializeI18n() {
     .use(initReactI18next)
     .init({
       resources: {
-        en: { common: commonEn, activity: activityEn, microphone: microphoneEn, replay: replayEn },
-        ko: { common: commonKo, activity: activityKo, microphone: microphoneKo, replay: replayKo },
+        en: {
+          common: commonEn,
+          activity: activityEn,
+          microphone: microphoneEn,
+          replay: replayEn,
+          webcam: webcamEn,
+        },
+        ko: {
+          common: commonKo,
+          activity: activityKo,
+          microphone: microphoneKo,
+          replay: replayKo,
+          webcam: webcamKo,
+        },
       },
       lng: detectInitialLanguage(),
       fallbackLng: "en",

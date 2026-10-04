@@ -3,6 +3,7 @@ using TUFReplay.Activity.Ipc;
 using TUFReplay.Calibration.Ipc;
 using TUFReplay.Microphone.Ipc;
 using TUFReplay.Replay.Ipc;
+using TUFReplay.Webcam.Ipc;
 
 namespace TUFReplay.Shared.Ipc;
 
@@ -54,6 +55,8 @@ public sealed class TUFReplayIpcFeature
     ipc.Register("replay.level-file.pick", ReplayIpcHandlers.PickLevelFile);
     ipc.Register("replay.level-file.status.get", ReplayIpcHandlers.GetLevelFilePickerStatus);
     ipc.RegisterMainThread("microphone.devices.get", MicrophoneIpcHandlers.GetDevices);
+    ipc.RegisterMainThread("webcam.settings.get", WebcamIpcHandlers.GetState);
+    ipc.RegisterMainThread("webcam.settings.update", WebcamIpcHandlers.UpdateSettings);
     ipc.RegisterMainThread("microphone.enabled.set", MicrophoneIpcHandlers.SetEnabled);
     ipc.RegisterMainThread("microphone.device.select", MicrophoneIpcHandlers.SelectDevice);
     ipc.RegisterMainThread("microphone.offset.set", MicrophoneIpcHandlers.SetOffset);

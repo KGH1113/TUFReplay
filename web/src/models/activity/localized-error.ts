@@ -53,7 +53,10 @@ export function translatedDomainError(code: string) {
   return null;
 }
 
-function domainErrorNamespace(code: string): "activity" | "microphone" | "replay" | null {
+function domainErrorNamespace(
+  code: string,
+): "activity" | "microphone" | "replay" | "webcam" | null {
+  if (code.startsWith("webcam_") || code === "invalid_webcam_settings") return "webcam";
   if (
     code.startsWith("microphone_") ||
     code.startsWith("calibration_") ||
