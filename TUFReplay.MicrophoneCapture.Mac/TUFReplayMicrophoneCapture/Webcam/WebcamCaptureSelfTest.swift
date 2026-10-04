@@ -16,18 +16,16 @@ enum WebcamCaptureSelfTest {
     try WebcamProfile(width: 1920, height: 1080, frameRate: 30, bitRate: 3_000_000).validate()
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("tufreplay-webcam-self-test-\(UUID().uuidString).mp4")
     defer { try? FileManager.default.removeItem(at: url) }
-    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
-    let input = AVAssetWriterInput(mediaType: .video, outputSettings: profile.outputSettings)
+    let prepared = try CameraPreparedWriter(directory: FileManager.default.temporaryDirectory.path, profile: profile)
+    defer { prepared.cancel() }
+    let writer = prepared.writer
+    let input = prepared.input
+    let standbyURL = writer.outputURL
+    guard writer.status == .writing, !FileManager.default.fileExists(atPath: url.path) else {
+      throw CaptureError.message("Camera writer was not ready before attaching a run.")
+    }
     let sourceWidth = 1280
     let sourceHeight = 720
-    let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: [
-      kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
-      kCVPixelBufferWidthKey as String: sourceWidth,
-      kCVPixelBufferHeightKey as String: sourceHeight,
-    ])
-    writer.add(input)
-    guard writer.startWriting() else { throw writer.error ?? CaptureError.message("Synthetic camera writer failed.") }
-    writer.startSession(atSourceTime: .zero)
     var pixelBuffer: CVPixelBuffer?
     guard CVPixelBufferCreate(kCFAllocatorDefault, sourceWidth, sourceHeight, kCVPixelFormatType_32BGRA, nil, &pixelBuffer) == kCVReturnSuccess,
       let pixelBuffer else { throw CaptureError.message("Synthetic camera frame allocation failed.") }
@@ -48,6 +46,11 @@ enum WebcamCaptureSelfTest {
       }
     }
     CVPixelBufferUnlockBaseAddress(pixelBuffer, [])
+    var description: CMVideoFormatDescription?
+    guard CMVideoFormatDescriptionCreateForImageBuffer(allocator: kCFAllocatorDefault,
+      imageBuffer: pixelBuffer, formatDescriptionOut: &description) == noErr, let description else {
+      throw CaptureError.message("Synthetic camera frame description failed.")
+    }
     let previewURL = FileManager.default.temporaryDirectory.appendingPathComponent("tufreplay-camera-preview-test-\(UUID().uuidString).frame")
     defer { try? FileManager.default.removeItem(at: previewURL) }
     let previewBytes = 64 + CameraPreviewBuffer.maxWidth * CameraPreviewBuffer.maxHeight * 4
@@ -105,22 +108,44 @@ enum WebcamCaptureSelfTest {
     if ProcessInfo.processInfo.environment["TUFREPLAY_CAMERA_PREVIEW_BENCHMARK"] == "1" {
       try benchmarkPreview(preview: preview)
     }
+    // Idle preview work above must not become recorded video. Start its clock
+    // only when the first synthetic run attaches to the prepared writer.
+    writer.startSession(atSourceTime: .zero)
     for frame in 0..<12 {
+      var timing = CMSampleTimingInfo(duration: CMTime(value: 1, timescale: 30),
+        presentationTimeStamp: CMTime(value: Int64(frame), timescale: 30), decodeTimeStamp: .invalid)
+      var sample: CMSampleBuffer?
+      guard CMSampleBufferCreateReadyWithImageBuffer(allocator: kCFAllocatorDefault, imageBuffer: pixelBuffer,
+        formatDescription: description, sampleTiming: &timing, sampleBufferOut: &sample) == noErr, let sample else {
+        throw CaptureError.message("Synthetic camera sample creation failed.")
+      }
       let deadline = Date().addingTimeInterval(5)
       while !input.isReadyForMoreMediaData && writer.status == .writing && Date() < deadline {
         Thread.sleep(forTimeInterval: 0.001)
       }
       guard input.isReadyForMoreMediaData,
-        adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: Int64(frame), timescale: 30)) else {
+        input.append(sample) else {
         writer.cancelWriting()
         throw writer.error ?? CaptureError.message("Synthetic camera frame encoding failed.")
       }
     }
     input.markAsFinished()
-    let completed = DispatchSemaphore(value: 0)
-    writer.finishWriting { completed.signal() }
-    guard completed.wait(timeout: .now() + 10) == .success, writer.status == .completed else {
-      throw writer.error ?? CaptureError.message("Synthetic camera MP4 finalization failed.")
+    try prepared.finish(destination: url.path)
+    guard !FileManager.default.fileExists(atPath: standbyURL.path) else {
+      throw CaptureError.message("The camera standby destination was not released after recording.")
+    }
+    let unused = try CameraPreparedWriter(directory: FileManager.default.temporaryDirectory.path, profile: profile)
+    let unusedURL = unused.writer.outputURL
+    unused.cancel()
+    guard !FileManager.default.fileExists(atPath: unusedURL.path) else {
+      throw CaptureError.message("An unused camera writer leaked its temporary file.")
+    }
+    let boundary = CMTime(seconds: 10, preferredTimescale: 1_000_000_000)
+    guard WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 9.94, preferredTimescale: 1_000_000_000), boundary: boundary),
+      !WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 9, preferredTimescale: 1_000_000_000), boundary: boundary),
+      !WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 10.01, preferredTimescale: 1_000_000_000), boundary: boundary),
+      !WebcamCaptureService.canReuseLatestSample(hostTime: .invalid, boundary: boundary) else {
+      throw CaptureError.message("Camera run attachment accepted an invalid or stale frame.")
     }
     let asset = AVURLAsset(url: url)
     guard let track = asset.tracks(withMediaType: .video).first,
@@ -142,6 +167,11 @@ enum WebcamCaptureSelfTest {
       from: Data(#"{"command":"cameraBegin","path":"test.mp4","maxBytes":134217728}"#.utf8))
     guard command.command == CommandName.cameraBegin.rawValue, command.maxBytes == 134217728 else {
       throw CaptureError.message("Camera command protocol validation failed.")
+    }
+    let armCommand = try JSONDecoder().decode(CommandRequest.self,
+      from: Data(#"{"command":"cameraArm","recordingDirectory":"/tmp/camera-recordings"}"#.utf8))
+    guard armCommand.command == CommandName.cameraArm.rawValue, armCommand.recordingDirectory == "/tmp/camera-recordings" else {
+      throw CaptureError.message("The camera standby recording directory was not preserved by the protocol.")
     }
     let response = CameraEndResponse(deviceId: "camera", firstFrameHostTime: 9_007_199_254_740_993, durationUs: 400_000,
       sizeLimited: false, width: profile.width, height: profile.height)

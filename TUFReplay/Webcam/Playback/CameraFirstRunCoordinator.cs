@@ -20,6 +20,7 @@ internal static class CameraFirstRunCoordinator
   private static TUFReplay.Webcam.Ipc.WebcamStateDto _state;
   private static float _nextStateRefresh;
   public static bool IsVisible => _isVisible;
+  private static bool LiveCameraRequested => Main.Settings?.WebcamEnabled == true && Main.Settings.WebcamLiveVisible;
 
   public static bool InterceptEditorPlay(scnEditor editor)
   {
@@ -57,6 +58,7 @@ internal static class CameraFirstRunCoordinator
 
   private static bool Eligible() =>
     !_confirmed
+    && LiveCameraRequested
     && FeatureRegistry.WebcamRecording?.Supported == true
     && !ReplaySessionService.HasActiveContext
     && FeatureRegistry.MicrophoneCalibration?.IsCalibrationLevel() != true
@@ -110,6 +112,9 @@ internal static class CameraFirstRunCoordinator
 
   public static void Tick()
   {
+    if (_isVisible && !LiveCameraRequested)
+      Continue();
+    CameraRenderDiagnostics.Tick(_isVisible);
     CameraLivePreview.Tick(_isVisible);
     if (!_isVisible || _view == null)
       return;
@@ -156,9 +161,10 @@ internal static class CameraFirstRunCoordinator
 
   private static void Continue()
   {
-    if (Main.Settings.WebcamEnabled && FeatureRegistry.WebcamRecording?.IsReady != true)
+    if (LiveCameraRequested && FeatureRegistry.WebcamRecording?.IsReady != true)
       return;
-    _confirmed = true;
+    // Skipping a hidden camera must not confirm a future visible-camera run.
+    _confirmed = LiveCameraRequested;
     _isVisible = false;
     _view.Hide();
     Action resume = _resume;
@@ -194,5 +200,6 @@ internal static class CameraFirstRunCoordinator
     }
     _view = null;
     CameraLivePreview.Shutdown();
+    CameraRenderDiagnostics.Shutdown();
   }
 }

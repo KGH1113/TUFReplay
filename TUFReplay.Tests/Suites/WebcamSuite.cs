@@ -19,6 +19,9 @@ internal static class WebcamSuite
   public static void RunAll(string root)
   {
     TimelineSkipsRecordedPausesAndHandlesRateChanges();
+    LatestFrameOwnershipRemainsStableAndRejectsStaleFrames();
+    AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
+    CameraCompletionKeepsHealthyCaptureArmed(root);
     WonTailAndLatencyHaveTheSameConventionAsMicrophone();
     WallClockPreservesLargeTimestampPrecision();
     FfmpegDiscoverySeparatesAudioFromVideo();
@@ -40,11 +43,221 @@ internal static class WebcamSuite
     StoreRejectsCorruptTimingAndDuplicateSaves(root);
     StoreReleaseNeverWaitsForRetention(root);
     FfmpegUsesLogicalPooledFrameSize(root);
+    PreparedFfmpegWriterKeepsIdleTimeOutOfVideo(root);
     LargeCameraBuffersAreReused();
     Console.WriteLine("TUFReplay webcam timing, storage, and disposition tests passed.");
   }
 
   private static long Ticks(double seconds) => (long)Math.Round(seconds * Stopwatch.Frequency);
+
+  private static void PreparedFfmpegWriterKeepsIdleTimeOutOfVideo(string root)
+  {
+    string executable = Environment.GetEnvironmentVariable("TUFREPLAY_CAMERA_TEST_FFMPEG");
+    if (string.IsNullOrWhiteSpace(executable))
+      return;
+    WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality("compact").FitToSource(640, 360);
+    var source = new CameraFrameSize(640, 360);
+    string standby = Path.Combine(root, "camera-prepared.mp4.partial");
+    string destination = Path.Combine(root, "camera-attached.mp4.partial");
+    var recording = new FfmpegCameraRecording(
+      executable,
+      null,
+      standby,
+      "synthetic",
+      profile,
+      source,
+      WebcamRecordingStore.MaximumCaptureBytes
+    );
+    bool finalizing = false;
+    try
+    {
+      // Preparing the encoder must not create footage for the idle interval.
+      Thread.Sleep(100);
+      Check(!File.Exists(destination), "The idle camera writer used a run destination before attachment.");
+      recording.Attach("synthetic-run", destination, WebcamRecordingStore.MaximumCaptureBytes);
+      byte[] pixels = new byte[640 * 360 * 3 / 2];
+      Array.Fill(pixels, (byte)128, 640 * 360, pixels.Length - 640 * 360);
+      for (int frame = 0; frame < 12; frame++)
+      {
+        recording.Submit(pixels, Ticks(10 + frame / 30d));
+        Thread.Sleep(35);
+      }
+      finalizing = true;
+      WebcamRecording result = recording.FinishAsync().GetAwaiter().GetResult();
+      Check(result.RunId == "synthetic-run" && result.FilePath == destination, "Camera attachment lost its run.");
+      Check(result.CaptureStartTimestampTicks == Ticks(10), "The prepared encoder changed the first frame clock.");
+      // FFmpeg progress reports the final mux timestamp, which can precede
+      // the MP4 duration when H.264 reorders frames. Verify the frame count
+      // by decoding below rather than treating progress as a frame count.
+      Check(
+        result.DurationUs > 0 && result.DurationUs <= 400_000,
+        "The prepared encoder reported an invalid duration: " + result.DurationUs
+      );
+      Check(File.Exists(destination) && !File.Exists(standby), "Camera footage kept the standby destination.");
+      using var decoder = FfmpegCameraProcess.Create(
+        executable,
+        new[] { "-v", "error", "-nostats", "-i", destination, "-an", "-progress", "pipe:1", "-f", "null", "-" }
+      );
+      Check(decoder.Start(), "Synthetic camera decoding did not start.");
+      decoder.StandardInput.Close();
+      Task<string> progress = decoder.StandardOutput.ReadToEndAsync();
+      Task<string> errors = decoder.StandardError.ReadToEndAsync();
+      if (!decoder.WaitForExit(10000))
+      {
+        decoder.Kill();
+        throw new InvalidOperationException("Synthetic camera decoding timed out.");
+      }
+      Check(decoder.ExitCode == 0, "The prepared camera MP4 could not be decoded: " + errors.GetAwaiter().GetResult());
+      Check(
+        progress.GetAwaiter().GetResult().Split('\n').Where(line => line.StartsWith("frame=")).LastOrDefault()?.Trim()
+          == "frame=12",
+        "The prepared MP4 saved idle time or did not decode all 12 frames."
+      );
+    }
+    finally
+    {
+      if (!finalizing)
+        recording.CancelAsync().GetAwaiter().GetResult();
+    }
+    string unusedPath = Path.Combine(root, "camera-unused.mp4.partial");
+    var unused = new FfmpegCameraRecording(
+      executable,
+      null,
+      unusedPath,
+      "synthetic",
+      profile,
+      source,
+      WebcamRecordingStore.MaximumCaptureBytes
+    );
+    unused.CancelAsync().GetAwaiter().GetResult();
+    Check(!File.Exists(unusedPath), "Cancelling an idle camera encoder leaked its temporary file.");
+    Console.WriteLine("TUFReplay prepared FFmpeg camera encoder integration test passed (no camera access).");
+  }
+
+  private static void LatestFrameOwnershipRemainsStableAndRejectsStaleFrames()
+  {
+    var latest = new LatestCameraFrame();
+    var first = new byte[] { 1, 2, 3, 4 };
+    byte[] reader = latest.Exchange(first, 1000);
+    Check(reader != first, "The camera reader received the frame still held for attachment.");
+    reader[0] = 9;
+    Check(latest.TryGet(1060, 1000, out byte[] pixels, out long ticks), "A current camera frame was discarded.");
+    Check(pixels[0] == 1 && ticks == 1000, "Reading the next frame changed the attached frame or its timestamp.");
+    Check(!latest.TryGet(999, 1000, out _, out _), "A future camera timestamp was accepted.");
+    Check(!latest.TryGet(1251, 1000, out _, out _), "A stale camera frame was appended to a new run.");
+    reader = latest.Exchange(reader, 1100);
+    Check(reader == first, "Camera frames stopped reusing the bounded pair of buffers.");
+    long before = GC.GetAllocatedBytesForCurrentThread();
+    for (int frame = 0; frame < 100; frame++)
+      reader = latest.Exchange(reader, 1100 + frame);
+    Check(GC.GetAllocatedBytesForCurrentThread() == before, "Idle camera frame rotation allocated memory.");
+    latest.Clear();
+    Check(!latest.TryGet(1200, 1000, out _, out _), "Disabling capture retained a frame for a future run.");
+  }
+
+  private static void AttachingAnEarlierCameraFrameKeepsReplaySynchronized()
+  {
+    var timeline = new WebcamCaptureTimeline();
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(10), 0, 1));
+    var recording = new WebcamRecording { CaptureStartTimestampTicks = Ticks(9.94) };
+    timeline.ApplyTo(recording);
+    Check(recording.CaptureStartOffsetUs == -60_000, "The seeded camera frame lost its real capture timestamp.");
+    Near(0.06, WebcamPlaybackClock.ToVideoSeconds(Snapshot(0), recording, 0));
+    Near(0.56, WebcamPlaybackClock.ToVideoSeconds(Snapshot(500_000), recording, 0));
+  }
+
+  private static void CameraCompletionKeepsHealthyCaptureArmed(string root)
+  {
+    for (int variant = 0; variant < 4; variant++)
+    {
+      var timeline = variant == 1 ? null : new WebcamCaptureTimeline();
+      if (variant >= 2)
+        timeline.Observe(new CaptureTimelineAnchor(Ticks(11), 0, 1));
+      var recording = new WebcamRecording
+      {
+        RunId = "camera-finalize-" + variant,
+        FilePath = Path.Combine(root, "camera-finalize-" + variant + ".mp4"),
+        CaptureStartTimestampTicks = variant == 2 ? 0 : Ticks(10),
+      };
+      File.WriteAllText(recording.FilePath, "temporary camera video");
+      var backend = new CompletedCameraBackend(recording);
+      var camera = new WebcamRecordingFeature();
+      SetCameraField(camera, "_backend", backend);
+      SetCameraField(camera, "_armed", true);
+      SetCameraField(camera, "_recording", true);
+      SetCameraField(camera, "_runId", recording.RunId);
+      int callbacks = 0;
+      WebcamRecording result = recording;
+      camera.EndRun(
+        timeline,
+        value =>
+        {
+          result = value;
+          Interlocked.Increment(ref callbacks);
+        }
+      );
+      Task completion = (Task)
+        typeof(WebcamRecordingFeature)
+          .GetField("_work", BindingFlags.NonPublic | BindingFlags.Instance)
+          .GetValue(camera);
+      Check(completion.Wait(TimeSpan.FromSeconds(5)), "Camera finalization did not complete.");
+      bool synchronized = variant == 3;
+      Check(callbacks == 1, "Camera completion was invoked more than once.");
+      Check(synchronized ? result == recording : result == null, "Camera completion kept the wrong video.");
+      Check(camera.IsReady, "An incomplete run made a healthy camera unavailable.");
+      Check(backend.EndCalls == 1 && backend.DisarmCalls == 0, "Discarding a run interrupted continuous capture.");
+      Check(File.Exists(recording.FilePath) == synchronized, "Camera completion deleted or retained the wrong file.");
+      if (synchronized)
+      {
+        Check(recording.Timeline.Length == 1, "Valid camera synchronization was lost.");
+        Check(recording.CaptureStartOffsetUs == -1_000_000, "Valid camera start alignment changed.");
+      }
+      Check(
+        (int)
+          typeof(WebcamRecordingFeature)
+            .GetField("_finalizing", BindingFlags.NonPublic | BindingFlags.Instance)
+            .GetValue(camera) == 0,
+        "Discarding a camera run leaked the finalization counter."
+      );
+    }
+  }
+
+  private static void SetCameraField(WebcamRecordingFeature camera, string name, object value) =>
+    typeof(WebcamRecordingFeature)
+      .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)
+      .SetValue(camera, value);
+
+  private sealed class CompletedCameraBackend : IWebcamCaptureBackend
+  {
+    private readonly WebcamRecording _recording;
+    public int EndCalls;
+    public int DisarmCalls;
+    public CameraPreviewBuffer Preview => null;
+
+    public CompletedCameraBackend(WebcamRecording recording) => _recording = recording;
+
+    public Task<WebcamRecording> EndAsync()
+    {
+      EndCalls++;
+      return Task.FromResult(_recording);
+    }
+
+    public Task DisarmAsync()
+    {
+      DisarmCalls++;
+      return Task.CompletedTask;
+    }
+
+    public Task<List<WebcamDevice>> ListDevicesAsync() => throw new InvalidOperationException("Do not open a camera.");
+
+    public Task ArmAsync(string deviceId, WebcamCaptureProfile profile, string recordingDirectory = null) =>
+      throw new InvalidOperationException("Do not open a camera.");
+
+    public Task BeginAsync(string runId, string path, long maxBytes) =>
+      throw new InvalidOperationException("Do not open a camera.");
+
+    public void Dispose() { }
+  }
 
   private static void DiagnosticSnapshotsPreserveErrorsAndPreviewState()
   {

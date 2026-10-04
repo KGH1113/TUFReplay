@@ -14,6 +14,7 @@ namespace TUFReplay.Webcam.Repositories;
 // Video stays on disk. No BLOB copies, full-file reads or per-frame database writes.
 public sealed class WebcamRecordingStore
 {
+  public const long MaximumCaptureBytes = 128L * 1024 * 1024;
   private readonly object _gate = new object();
   private readonly string _directory;
   private readonly HashSet<string> _deleted = new HashSet<string>(StringComparer.Ordinal);
@@ -23,6 +24,7 @@ public sealed class WebcamRecordingStore
     Main.Instance?.LogException("Camera/Release", exception)
   );
   internal Task PendingReleases => _releases.Completion;
+  public string CaptureDirectory => _directory;
 
   public WebcamRecordingStore(string directory)
   {
@@ -36,7 +38,7 @@ public sealed class WebcamRecordingStore
   {
     lock (_gate)
     {
-      long reservation = Math.Min(128L * 1024 * 1024, budgetBytes);
+      long reservation = Math.Min(MaximumCaptureBytes, budgetBytes);
       long stored = PruneLocked(budgetBytes - reservation, retentionDays, DateTime.UtcNow);
       return Math.Max(0L, Math.Min(reservation, budgetBytes - stored));
     }

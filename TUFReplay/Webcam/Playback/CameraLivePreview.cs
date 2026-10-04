@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using TUFReplay.Composition;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Webcam.Capture;
+using TUFReplay.Webcam.Diagnostics;
 using TUFReplay.Webcam.Models;
 using UnityEngine;
 
@@ -16,6 +18,19 @@ internal static class CameraLivePreview
   internal static Texture Texture => _texture;
 
   internal static void Tick(bool setupVisible)
+  {
+    long started = Stopwatch.GetTimestamp();
+    try
+    {
+      TickCore(setupVisible);
+    }
+    finally
+    {
+      CameraRenderDiagnostics.Record(CameraRenderPhase.PreviewTick, Stopwatch.GetTimestamp() - started);
+    }
+  }
+
+  private static void TickCore(bool setupVisible)
   {
     CameraPreviewBuffer buffer = FeatureRegistry.WebcamRecording?.Preview;
     bool cameraEnabled = Main.Settings.WebcamEnabled;
@@ -39,8 +54,13 @@ internal static class CameraLivePreview
     {
       if (_pixels == null || _pixels.Length != size.ByteCount)
         _pixels = new byte[size.ByteCount];
-      if (buffer.TryCopy(_pixels, out CameraFrameSize copiedSize))
+      long copyStarted = Stopwatch.GetTimestamp();
+      bool copied = buffer.TryCopy(_pixels, out CameraFrameSize copiedSize);
+      long copyTicks = Stopwatch.GetTimestamp() - copyStarted;
+      CameraRenderDiagnostics.Record(CameraRenderPhase.PreviewRead, copyTicks);
+      if (copied)
       {
+        CameraRenderDiagnostics.Record(CameraRenderPhase.SharedCopy, copyTicks);
         // Keep the old texture until a complete replacement is uploaded, even
         // when the camera changes orientation or a helper write overlaps Tick.
         Texture2D previous = _texture;
@@ -53,8 +73,25 @@ internal static class CameraLivePreview
             filterMode = FilterMode.Bilinear,
             wrapMode = TextureWrapMode.Clamp,
           };
-        next.LoadRawTextureData(_pixels);
-        next.Apply(false, false);
+        long loadStarted = Stopwatch.GetTimestamp();
+        try
+        {
+          next.LoadRawTextureData(_pixels);
+        }
+        finally
+        {
+          CameraRenderDiagnostics.Record(CameraRenderPhase.TextureLoad, Stopwatch.GetTimestamp() - loadStarted);
+        }
+        long applyStarted = Stopwatch.GetTimestamp();
+        try
+        {
+          next.Apply(false, false);
+        }
+        finally
+        {
+          CameraRenderDiagnostics.Record(CameraRenderPhase.TextureApply, Stopwatch.GetTimestamp() - applyStarted);
+        }
+        CameraRenderDiagnostics.RecordUpload(copiedSize.Width, copiedSize.Height, resized);
         if (resized)
         {
           _texture = next;

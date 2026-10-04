@@ -1,7 +1,9 @@
 using System;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Shared.Capture;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Webcam.Repositories;
 using TUFReplay.Webcam.Timing;
 using UnityEngine;
@@ -11,6 +13,7 @@ namespace TUFReplay.Webcam.Playback;
 
 public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
 {
+  private static readonly SerialBackgroundQueue Logs = new SerialBackgroundQueue();
   private readonly WebcamRecordingLease _lease;
   private readonly GameObject _object;
   private readonly VideoPlayer _video;
@@ -28,6 +31,9 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
   private double _lastRequested;
   private double _seekStartedAt;
   private int _lastOffset;
+  private double _previousRawTarget;
+  private bool _hasDecodedFrame;
+  private bool _displayReported;
 
   public WebcamReplayPlayer(WebcamRecordingLease lease)
   {
@@ -50,6 +56,10 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       _video.skipOnDrop = true;
       _video.errorReceived += OnVideoError;
       _video.seekCompleted += OnSeekCompleted;
+      _video.prepareCompleted += OnPrepared;
+      _video.frameReady += OnFrameReady;
+      if (TUFReplaySettingStore.Current.WebcamPlaybackVisible)
+        BeginPreparation();
     }
     catch
     {
@@ -65,12 +75,18 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
     double target = WebcamPlaybackClock.ToVideoSeconds(snapshot, _lease.Recording, settings.WebcamOffsetMs);
     double rate = WebcamPlaybackClock.PlaybackRate(snapshot, _lease.Recording);
-    bool outside = target < 0 || target >= _lease.Recording.DurationUs / 1_000_000d;
-    if (_hasTarget && (target < _target - 0.05 || target - _target > Time.unscaledDeltaTime * rate + 0.2))
+    bool before = target < 0;
+    bool after = target >= _lease.Recording.DurationUs / 1_000_000d;
+    bool outside = before || after;
+    if (
+      _hasTarget
+      && (target < _previousRawTarget - 0.05 || target - _previousRawTarget > Time.unscaledDeltaTime * rate + 0.2)
+    )
       _forceSeek = true;
     if (_wasPaused != snapshot.Paused || _lastOffset != settings.WebcamOffsetMs)
       _forceSeek = true;
     _hasTarget = true;
+    _previousRawTarget = target;
     _wasPaused = snapshot.Paused;
     _lastOffset = settings.WebcamOffsetMs;
     _target = Math.Max(
@@ -78,7 +94,7 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       Math.Min(target, Math.Max(0, _lease.Recording.DurationUs / 1_000_000d - 1d / _lease.Recording.FrameRate))
     );
 
-    if (!settings.WebcamPlaybackVisible || outside)
+    if (!settings.WebcamPlaybackVisible || after)
     {
       _overlay.ShowFrame = false;
       if (_preparing || _video.isPrepared)
@@ -87,6 +103,8 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       _seeking = false;
       _forceSeek = true;
       _lastPlaybackRate = float.NaN;
+      _hasDecodedFrame = false;
+      _displayReported = false;
       return;
     }
 
@@ -94,11 +112,7 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     {
       _overlay.ShowFrame = false;
       if (!_preparing)
-      {
-        _preparing = true;
-        _prepareStartedAt = Time.realtimeSinceStartupAsDouble;
-        _video.Prepare();
-      }
+        BeginPreparation();
       if (Time.realtimeSinceStartupAsDouble - _prepareStartedAt > 15)
         OnVideoError(_video, "Video preparation timed out.");
       return;
@@ -123,21 +137,46 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       _video.playbackSpeed = playbackRate;
       _lastPlaybackRate = playbackRate;
     }
-    if (_forceSeek && !_seeking && !outside)
+    if (_forceSeek && !_seeking)
     {
       if (!_video.canSetTime)
       {
         OnVideoError(_video, "This video cannot be synchronized with the replay.");
         return;
       }
-      _video.Pause();
-      _seeking = true;
-      _lastRequested = _target;
-      _seekStartedAt = Time.realtimeSinceStartupAsDouble;
       _forceSeek = false;
-      _video.time = _target;
+      if (!_hasDecodedFrame || Math.Abs(_video.time - _target) > 0.5d / _lease.Recording.FrameRate)
+      {
+        _video.Pause();
+        _seeking = true;
+        _lastRequested = _target;
+        _seekStartedAt = Time.realtimeSinceStartupAsDouble;
+        _video.time = _target;
+        Record(
+          "playback.seek.begin",
+          new
+          {
+            runId = _lease.Recording.RunId,
+            targetSeconds = _target,
+            beforeVideoStart = before,
+          }
+        );
+      }
     }
     _overlay.ShowFrame = !outside && settings.WebcamPlaybackVisible && !_seeking;
+    if (_overlay.ShowFrame && !_displayReported && _video.texture != null)
+    {
+      _displayReported = true;
+      Record(
+        "playback.first-display",
+        new
+        {
+          runId = _lease.Recording.RunId,
+          targetSeconds = _target,
+          videoSeconds = _video.time,
+        }
+      );
+    }
     if (_seeking || snapshot.Paused || outside)
     {
       if (_video.isPlaying)
@@ -146,6 +185,48 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     else if (!_video.isPlaying)
       _video.Play();
   }
+
+  private void BeginPreparation()
+  {
+    _preparing = true;
+    _prepareStartedAt = Time.realtimeSinceStartupAsDouble;
+    _hasDecodedFrame = false;
+    _video.sendFrameReadyEvents = true;
+    Record("playback.prepare.begin", new { runId = _lease.Recording.RunId });
+    _video.Prepare();
+  }
+
+  private void OnPrepared(VideoPlayer player)
+  {
+    if (_disposed || _failed || !player.isPrepared)
+      return;
+    Record(
+      "playback.prepare.complete",
+      new { runId = _lease.Recording.RunId, elapsedMs = (Time.realtimeSinceStartupAsDouble - _prepareStartedAt) * 1000 }
+    );
+  }
+
+  private void OnFrameReady(VideoPlayer player, long frame)
+  {
+    if (_disposed || _failed)
+      return;
+    _hasDecodedFrame = true;
+    player.sendFrameReadyEvents = false;
+    Record(
+      "playback.first-frame-ready",
+      new
+      {
+        runId = _lease.Recording.RunId,
+        frame,
+        videoSeconds = player.time,
+      }
+    );
+    if (_seeking && Math.Abs(player.time - _lastRequested) <= 2d / _lease.Recording.FrameRate)
+      OnSeekCompleted(player);
+  }
+
+  private static void Record(string name, object state) =>
+    _ = Logs.Enqueue(() => CaptureDiagnostics.Record(name, state));
 
   public void ResetTo(ReplayPlaybackSnapshot snapshot)
   {
@@ -166,7 +247,18 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
 
   private void OnSeekCompleted(VideoPlayer player)
   {
+    if (!_seeking || _disposed || _failed)
+      return;
     _seeking = false;
+    Record(
+      "playback.seek.complete",
+      new
+      {
+        runId = _lease.Recording.RunId,
+        elapsedMs = (Time.realtimeSinceStartupAsDouble - _seekStartedAt) * 1000,
+        targetSeconds = _lastRequested,
+      }
+    );
     if (_wasPaused && Math.Abs(_target - _lastRequested) > 2d / _lease.Recording.FrameRate)
       _forceSeek = true;
   }
@@ -192,6 +284,8 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     _disposed = true;
     _video.errorReceived -= OnVideoError;
     _video.seekCompleted -= OnSeekCompleted;
+    _video.prepareCompleted -= OnPrepared;
+    _video.frameReady -= OnFrameReady;
     _video.Stop();
     UnityEngine.Object.Destroy(_object);
     _lease.Dispose();

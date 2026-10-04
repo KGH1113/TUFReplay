@@ -45,6 +45,7 @@ final class JsonLineCommandServer {
             "command": request.command, "deviceId": request.deviceId as Any? ?? NSNull(),
             "runId": request.runId as Any? ?? NSNull(), "path": request.path as Any? ?? NSNull(),
             "previewPath": request.previewPath as Any? ?? NSNull(),
+            "recordingDirectory": request.recordingDirectory as Any? ?? NSNull(),
             "width": request.width as Any? ?? NSNull(), "height": request.height as Any? ?? NSNull(),
             "frameRate": request.frameRate as Any? ?? NSNull(), "bitRate": request.bitRate as Any? ?? NSNull(),
             "maxBytes": request.maxBytes as Any? ?? NSNull(),
@@ -108,7 +109,8 @@ final class JsonLineCommandServer {
           width: request.width ?? 640, height: request.height ?? 480,
           frameRate: request.frameRate ?? 30, bitRate: request.bitRate ?? 600_000
         ),
-        previewPath: request.previewPath
+        previewPath: request.previewPath,
+        recordingDirectory: request.recordingDirectory
       )
       try transport.writeCamera(EmptyResponse(), diagnostics: camera.diagnosticState())
     case .cameraBegin:

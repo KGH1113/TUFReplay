@@ -2,7 +2,7 @@ using System;
 
 namespace TUFReplay.Webcam.Playback;
 
-// Owns pointer tracking independently of IMGUI, so capture can finish consistently
+// Owns pointer tracking independently of the UI, so capture can finish consistently
 // on mouse-up, focus loss, a hidden frame, or a changed game-window geometry.
 public sealed class WebcamOverlayGesture
 {

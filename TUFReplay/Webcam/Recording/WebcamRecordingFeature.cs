@@ -267,7 +267,7 @@ public sealed class WebcamRecordingFeature
               profile.BitRate,
             }
           );
-          await _backend.ArmAsync(device, profile);
+          await _backend.ArmAsync(device, profile, Store.CaptureDirectory);
           var frameWait = Stopwatch.StartNew();
           DateTime deadline = DateTime.UtcNow.AddSeconds(10);
           while (
@@ -400,23 +400,41 @@ public sealed class WebcamRecordingFeature
                 timeline = timeline?.DiagnosticState(),
               }
             );
-            timeline.ApplyTo(recording);
-            CaptureDiagnostics.Record(
-              "capture.recording.complete",
-              new
-              {
-                runId,
-                recording.FilePath,
-                recording.DeviceId,
-                recording.Width,
-                recording.Height,
-                recording.FrameRate,
-                recording.DurationUs,
-                recording.CaptureStartTimestampTicks,
-                recording.CaptureStartOffsetUs,
-                recording.SizeLimited,
-              }
-            );
+            if (timeline?.TryApplyTo(recording) != true)
+            {
+              // A run can end before its game clock advances. The camera is
+              // still healthy; discard this video without disarming capture.
+              CaptureDiagnostics.Record(
+                "capture.recording.discarded",
+                new
+                {
+                  runId,
+                  reason = timeline?.First.HasValue != true ? "no_gameplay_clock_anchor" : "invalid_capture_timestamp",
+                  recording.CaptureStartTimestampTicks,
+                  timeline = timeline?.DiagnosticState(),
+                  state = DiagnosticState(),
+                }
+              );
+              WebcamRecordingStore.Discard(recording);
+              recording = null;
+            }
+            else
+              CaptureDiagnostics.Record(
+                "capture.recording.complete",
+                new
+                {
+                  runId,
+                  recording.FilePath,
+                  recording.DeviceId,
+                  recording.Width,
+                  recording.Height,
+                  recording.FrameRate,
+                  recording.DurationUs,
+                  recording.CaptureStartTimestampTicks,
+                  recording.CaptureStartOffsetUs,
+                  recording.SizeLimited,
+                }
+              );
           }
           completed?.Invoke(recording);
         }
