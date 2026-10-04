@@ -3,7 +3,7 @@ import AVFoundation
 import CoreMedia
 import CoreVideo
 
-struct WebcamProfile {
+struct WebcamProfile: Equatable {
   let width: Int
   let height: Int
   let frameRate: Int
@@ -39,16 +39,76 @@ struct WebcamProfile {
   }
 }
 
+// Prepare a single empty destination while capture keeps running. No camera
+// samples are appended until a run claims this writer.
+final class CameraPreparedWriter {
+  let writer: AVAssetWriter
+  let input: AVAssetWriterInput
+  let profile: WebcamProfile
+
+  init(directory: String, profile: WebcamProfile) throws {
+    self.profile = profile
+    try FileManager.default.createDirectory(atPath: directory, withIntermediateDirectories: true)
+    let url = URL(fileURLWithPath: directory).appendingPathComponent(UUID().uuidString + ".mp4.partial")
+    writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+    input = AVAssetWriterInput(mediaType: .video, outputSettings: profile.outputSettings)
+    input.expectsMediaDataInRealTime = true
+    guard writer.canAdd(input) else {
+      cancel()
+      throw CaptureError.message("H.264 camera encoding is unavailable.")
+    }
+    writer.add(input)
+    writer.shouldOptimizeForNetworkUse = true
+    guard writer.startWriting() else {
+      let error = writer.error ?? CaptureError.message("Video recording could not start.")
+      cancel()
+      throw error
+    }
+  }
+
+  func finish(destination: String) throws {
+    let done = DispatchSemaphore(value: 0)
+    writer.finishWriting { done.signal() }
+    guard done.wait(timeout: .now() + 20) == .success, writer.status == .completed else {
+      let error = writer.error ?? CaptureError.message("The camera video could not be saved. Try reconnecting the camera.")
+      cancel()
+      throw error
+    }
+    do {
+      try FileManager.default.moveItem(at: writer.outputURL, to: URL(fileURLWithPath: destination))
+    } catch {
+      cancel()
+      throw error
+    }
+  }
+
+  func cancel() {
+    if writer.status == .writing || writer.status == .unknown { writer.cancelWriting() }
+    try? FileManager.default.removeItem(at: writer.outputURL)
+  }
+}
+
 final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBufferDelegate {
   private let callbackQueue = DispatchQueue(label: "impl.tufreplay.webcam.frames", qos: .userInitiated)
+  private let preparationQueue = DispatchQueue(label: "impl.tufreplay.webcam.prepare", qos: .userInitiated)
   private var session: AVCaptureSession?
   private var output: AVCaptureVideoDataOutput?
   private var profile = WebcamProfile(width: 640, height: 480, frameRate: 30, bitRate: 600_000)
   private var requestedProfile = WebcamProfile(width: 640, height: 480, frameRate: 30, bitRate: 600_000)
   private var deviceId: String?
   // Only callbackQueue accesses the writer and its timing state.
-  private var writer: AVAssetWriter?
-  private var input: AVAssetWriterInput?
+  private var activeWriter: CameraPreparedWriter?
+  private var standbyWriter: CameraPreparedWriter?
+  private var preparingWriter = false
+  private var preparationGeneration = 0
+  private var preparationError: Error?
+  private var recordingDirectory: String?
+  private var destination: String?
+  private var latestSample: CMSampleBuffer?
+  private var latestHostTime: CMTime = .invalid
+  private var writer: AVAssetWriter? { activeWriter?.writer }
+  private var input: AVAssetWriterInput? { activeWriter?.input }
+  private var requestedBoundaryHostTime: CMTime = .invalid
   private var boundaryHostTime: CMTime = .invalid
   private var firstTime: CMTime = .invalid
   private var lastTime: CMTime = .invalid
@@ -97,7 +157,7 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     return AVCaptureDevice.DiscoverySession(deviceTypes: types, mediaType: .video, position: .unspecified).devices
   }
 
-  func arm(deviceId: String?, profile: WebcamProfile, previewPath: String? = nil) throws {
+  func arm(deviceId: String?, profile: WebcamProfile, previewPath: String? = nil, recordingDirectory: String? = nil) throws {
     disarm()
     captureId = UUID().uuidString
     callbackQueue.sync {
@@ -112,6 +172,7 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       runId = nil
       receivedAtBegin = 0
       encodedAtBegin = 0
+      self.recordingDirectory = recordingDirectory ?? FileManager.default.temporaryDirectory.path
     }
     phase = "profile.validate"
     diagnostics.record("capture.arm.begin", [
@@ -228,9 +289,56 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       "running": capture.isRunning,
     ])
     startHealthTimer()
+    callbackQueue.sync { prepareNextWriter() }
+    preparationQueue.sync {}
+    callbackQueue.sync {}
+  }
+
+  private func invalidateStandby() {
+    preparationGeneration += 1
+    preparingWriter = false
+    preparationError = nil
+    standbyWriter?.cancel()
+    standbyWriter = nil
+  }
+
+  private func prepareNextWriter() {
+    guard activeWriter == nil, standbyWriter == nil, !preparingWriter, preparationError == nil,
+      let directory = recordingDirectory, session?.isRunning == true else { return }
+    let generation = preparationGeneration
+    let preparedProfile = profile
+    preparingWriter = true
+    preparationQueue.async {
+      let started = ProcessInfo.processInfo.systemUptime
+      do {
+        let prepared = try CameraPreparedWriter(directory: directory, profile: preparedProfile)
+        self.callbackQueue.async {
+          guard self.preparationGeneration == generation, self.recordingDirectory != nil,
+            self.activeWriter == nil, self.profile == preparedProfile else {
+            prepared.cancel()
+            return
+          }
+          self.standbyWriter = prepared
+          self.preparingWriter = false
+          self.diagnostics.record("recording.prepare.complete", [
+            "elapsedMs": (ProcessInfo.processInfo.systemUptime - started) * 1000,
+            "width": preparedProfile.width, "height": preparedProfile.height,
+          ])
+        }
+      } catch {
+        self.callbackQueue.async {
+          guard self.preparationGeneration == generation else { return }
+          self.preparingWriter = false
+          self.preparationError = error
+          self.diagnostics.record("recording.prepare.failed", error: error)
+        }
+      }
+    }
   }
 
   func begin(path: String, maxBytes: Int64, runId: String? = nil) throws {
+    let requestedBoundary = CMClockGetTime(CMClockGetHostTimeClock())
+    let started = ProcessInfo.processInfo.systemUptime
     phase = "recording.begin"
     diagnostics.record("recording.begin", ["runId": runId as Any? ?? NSNull(), "path": path, "maxBytes": maxBytes])
     guard session?.isRunning == true else {
@@ -239,18 +347,29 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     guard maxBytes >= 2 * 1024 * 1024 else {
       throw CaptureError.message("Camera storage is full. Increase the storage limit or remove older videos.")
     }
-    try callbackQueue.sync {
-      guard writer == nil else { throw CaptureError.message("A camera recording is already running.") }
-      let asset = try AVAssetWriter(outputURL: URL(fileURLWithPath: path), fileType: .mp4)
-      let video = AVAssetWriterInput(mediaType: .video, outputSettings: profile.outputSettings)
-      video.expectsMediaDataInRealTime = true
-      guard asset.canAdd(video) else { throw CaptureError.message("H.264 camera encoding is unavailable.") }
-      asset.add(video)
-      asset.shouldOptimizeForNetworkUse = true
-      guard asset.startWriting() else { throw asset.error ?? CaptureError.message("Video recording could not start.") }
-      writer = asset
-      input = video
-      boundaryHostTime = CMClockGetTime(CMClockGetHostTimeClock())
+    let initial = callbackQueue.sync { (latestSample, latestHostTime, preparingWriter) }
+    if initial.2 {
+      // Wait on the command thread, while camera callbacks continue normally.
+      preparationQueue.sync {}
+      callbackQueue.sync {}
+    }
+    let slot = try callbackQueue.sync { () -> (CameraPreparedWriter?, WebcamProfile) in
+      guard activeWriter == nil else { throw CaptureError.message("A camera recording is already running.") }
+      let prepared = standbyWriter
+      standbyWriter = nil
+      preparationGeneration += 1
+      preparingWriter = false
+      return (prepared, profile)
+    }
+    let prepared = try slot.0 ?? CameraPreparedWriter(directory: URL(fileURLWithPath: path).deletingLastPathComponent().path,
+      profile: slot.1)
+    callbackQueue.sync {
+      activeWriter = prepared
+      preparationError = nil
+      profile = prepared.profile
+      destination = path
+      requestedBoundaryHostTime = requestedBoundary
+      boundaryHostTime = requestedBoundary
       self.runId = runId
       receivedAtBegin = statistics.received
       encodedAtBegin = statistics.encoded
@@ -267,11 +386,27 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       maxDuration = Double(maxBytes - 1024 * 1024) * 8 / (Double(profile.bitRate) * 1.5)
       phase = "recording"
       diagnostics.record("recording.writer.started", [
-        "runId": runId as Any? ?? NSNull(), "writerStatus": asset.status.rawValue,
+        "runId": runId as Any? ?? NSNull(), "writerStatus": prepared.writer.status.rawValue,
         "boundaryHostSeconds": CMTimeGetSeconds(boundaryHostTime), "maxDurationSeconds": maxDuration,
         "maxFileBytes": maxFileBytes, "outputSettings": profile.outputSettings,
+        "preparedWriterUsed": slot.0 != nil, "attachElapsedMs": (ProcessInfo.processInfo.systemUptime - started) * 1000,
       ])
+      // A delivered frame can be tens of milliseconds older than the wall
+      // clock. Start from the latest complete sample instead of throwing it
+      // away and waiting for camera latency again. Preserve its original PTS.
+      if let sample = initial.0, initial.1.isValid {
+        if Self.canReuseLatestSample(hostTime: initial.1, boundary: requestedBoundary) {
+          boundaryHostTime = initial.1
+          append(sample, pts: CMSampleBufferGetPresentationTimeStamp(sample), hostTime: initial.1)
+        }
+      }
     }
+  }
+
+  static func canReuseLatestSample(hostTime: CMTime, boundary: CMTime) -> Bool {
+    guard hostTime.isValid, !hostTime.isIndefinite, boundary.isValid, !boundary.isIndefinite else { return false }
+    let age = CMTimeGetSeconds(CMTimeSubtract(boundary, hostTime))
+    return age >= 0 && age <= 0.25
   }
 
   func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -294,7 +429,12 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
         ])
       }
       if writer == nil {
-        profile = requestedProfile.fitting(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels))
+        let fitted = requestedProfile.fitting(width: CVPixelBufferGetWidth(pixels), height: CVPixelBufferGetHeight(pixels))
+        if fitted != profile {
+          profile = fitted
+          invalidateStandby()
+        }
+        prepareNextWriter()
       }
       preview?.submit(pixels, time: ProcessInfo.processInfo.systemUptime)
     } else {
@@ -304,6 +444,10 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     if let clock = session?.masterClock, pts.isValid, !pts.isIndefinite {
       let host = CMSyncConvertTime(pts, from: clock, to: CMClockGetHostTimeClock())
       if host.isValid, !host.isIndefinite {
+        if CMSampleBufferGetImageBuffer(sampleBuffer) != nil {
+          latestSample = sampleBuffer
+          latestHostTime = host
+        }
         let delayMs = CMTimeGetSeconds(CMTimeSubtract(CMClockGetTime(CMClockGetHostTimeClock()), host)) * 1000
         statistics.lastDeliveryDelayMs = delayMs
         statistics.maxDeliveryDelayMs = max(statistics.maxDeliveryDelayMs, delayMs)
@@ -312,6 +456,15 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     if statistics.received == 1 {
       diagnostics.record("capture.first-frame", stateOnCallbackQueue())
     }
+    guard writer != nil else { return }
+    guard let clock = session?.masterClock, pts.isValid, !pts.isIndefinite else {
+      if statistics.skip("invalid-capture-clock-or-timestamp") { diagnostics.record("recording.clock.missing") }
+      return
+    }
+    append(sampleBuffer, pts: pts, hostTime: CMSyncConvertTime(pts, from: clock, to: CMClockGetHostTimeClock()))
+  }
+
+  private func append(_ sampleBuffer: CMSampleBuffer, pts: CMTime, hostTime: CMTime) {
     guard let writer, let input else { return }
     guard !sizeLimited else { statistics.skip("storage-limit"); return }
     guard captureError == nil else { statistics.skip("capture-error"); return }
@@ -321,17 +474,12 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       }
       return
     }
-    guard let clock = session?.masterClock else {
-      if statistics.skip("missing-capture-clock") { diagnostics.record("recording.clock.missing") }
-      return
-    }
     guard pts.isValid, !pts.isIndefinite else {
       if statistics.skip("invalid-presentation-time") {
         diagnostics.record("recording.timestamp.invalid", ["value": pts.value, "timescale": pts.timescale, "flags": pts.flags.rawValue])
       }
       return
     }
-    let hostTime = CMSyncConvertTime(pts, from: clock, to: CMClockGetHostTimeClock())
     guard hostTime.isValid, !hostTime.isIndefinite else {
       if statistics.skip("invalid-host-time") { diagnostics.record("recording.host-time.invalid") }
       return
@@ -370,7 +518,8 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       diagnostics.record("recording.first-frame", [
         "runId": runId as Any? ?? NSNull(), "firstFrameHostTime": firstFrameHostTime,
         "presentationSeconds": CMTimeGetSeconds(pts), "hostSeconds": CMTimeGetSeconds(hostTime),
-        "boundaryDelayMs": CMTimeGetSeconds(CMTimeSubtract(hostTime, boundaryHostTime)) * 1000,
+        "boundaryDelayMs": CMTimeGetSeconds(CMTimeSubtract(hostTime, requestedBoundaryHostTime)) * 1000,
+        "reusedLatestSample": CMTimeCompare(hostTime, requestedBoundaryHostTime) < 0,
       ])
     }
     statistics.encoded += 1
@@ -382,36 +531,27 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
   func end() throws -> CameraEndResponse {
     phase = "recording.finalize"
     diagnostics.record("recording.end.begin", diagnosticState())
-    let state = callbackQueue.sync { () -> (AVAssetWriter?, Error?, UInt64, Int64, Bool, Int, Int) in
-      let asset = writer
+    let state = callbackQueue.sync { () -> (CameraPreparedWriter?, Error?, UInt64, Int64, Bool, Int, Int, String?) in
+      let prepared = activeWriter
       if firstTime.isValid { input?.markAsFinished() }
       let duration = firstTime.isValid
         ? max(1, Int64((CMTimeGetSeconds(CMTimeSubtract(lastTime, firstTime)) + 1 / Double(profile.frameRate)) * 1_000_000)) : 0
-      let result = (asset, captureError, firstFrameHostTime, duration, sizeLimited, profile.width, profile.height)
-      writer = nil
-      input = nil
+      let result = (prepared, captureError, firstFrameHostTime, duration, sizeLimited, profile.width, profile.height, destination)
+      activeWriter = nil
+      destination = nil
+      prepareNextWriter()
       return result
     }
-    if let error = state.1 { state.0?.cancelWriting(); throw error }
-    if let asset = state.0 {
-      if state.2 == 0 { asset.cancelWriting() }
-      else {
-        let done = DispatchSemaphore(value: 0)
-        asset.finishWriting { done.signal() }
-        guard done.wait(timeout: .now() + 20) == .success else {
-          asset.cancelWriting()
-          throw CaptureError.message("The camera video could not be finalized. Try reconnecting the camera.")
-        }
-        guard asset.status == .completed else {
-          throw asset.error ?? CaptureError.message("The camera video could not be saved.")
-        }
-      }
+    if let error = state.1 { state.0?.cancel(); throw error }
+    if let prepared = state.0 {
+      if state.2 == 0 { prepared.cancel() }
+      else if let path = state.7 { try prepared.finish(destination: path) }
     }
     phase = "armed"
     diagnostics.record("recording.end.complete", [
       "runId": runId as Any? ?? NSNull(), "firstFrameHostTime": state.2, "durationUs": state.3,
       "sizeLimited": state.4, "width": state.5, "height": state.6,
-      "writerStatus": state.0?.status.rawValue as Any? ?? NSNull(),
+      "writerStatus": state.0?.writer.status.rawValue as Any? ?? NSNull(),
     ])
     return CameraEndResponse(deviceId: deviceId, firstFrameHostTime: state.2, durationUs: state.3, sizeLimited: state.4,
       width: state.5, height: state.6)
@@ -453,6 +593,9 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     state["recordingHeight"] = profile.height
     state["recordingFrameRate"] = profile.frameRate
     state["recordingBitRate"] = profile.bitRate
+    state["standbyWriterPresent"] = standbyWriter != nil
+    state["preparingWriter"] = preparingWriter
+    state["preparationError"] = preparationError.map { CameraDiagnostics.errorDetails($0) } as Any? ?? NSNull()
     state["runReceivedFrames"] = statistics.received - receivedAtBegin
     state["runEncodedFrames"] = statistics.encoded - encodedAtBegin
     state["writerPresent"] = writer != nil
@@ -547,14 +690,21 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     healthTimer?.cancel()
     healthTimer = nil
     callbackQueue.sync {
-      writer?.cancelWriting()
-      writer = nil
-      input = nil
+      recordingDirectory = nil
+      invalidateStandby()
+      activeWriter?.cancel()
+      activeWriter = nil
+      destination = nil
+      latestSample = nil
+      latestHostTime = .invalid
       preview?.stop()
       preview = nil
       previewBuffer = nil
     }
     session?.stopRunning()
+    // Drain a preparation already in progress and its cancellation callback.
+    preparationQueue.sync {}
+    callbackQueue.sync {}
     for observation in observations { NotificationCenter.default.removeObserver(observation) }
     observations.removeAll()
     output?.setSampleBufferDelegate(nil, queue: nil)

@@ -40,6 +40,7 @@ internal sealed class FfmpegCameraSession : IDisposable
   private volatile WebcamCaptureProfile _recordingProfile;
   private readonly object _sinkGate = new object();
   private FfmpegCameraRecording _sink;
+  private readonly LatestCameraFrame _latestFrame = new LatestCameraFrame();
   private int _numerator;
   private int _denominator;
   private volatile bool _disposed;
@@ -47,6 +48,7 @@ internal sealed class FfmpegCameraSession : IDisposable
   public WebcamCaptureProfile RecordingProfile => _recordingProfile;
   public CameraFrameSize SourceSize { get; private set; }
   public string Error { get; private set; }
+  public bool IsDisposed => _disposed;
 
   public FfmpegCameraSession(string executable, string deviceId, WebcamCaptureProfile profile)
   {
@@ -113,7 +115,16 @@ internal sealed class FfmpegCameraSession : IDisposable
   public void SetRecording(FfmpegCameraRecording recording)
   {
     lock (_sinkGate)
+    {
       _sink = recording;
+      // The last complete frame remains owned by this gate while the reader
+      // fills the other buffer. Keep its real capture timestamp when attaching.
+      if (
+        recording != null
+        && _latestFrame.TryGet(Stopwatch.GetTimestamp(), Stopwatch.Frequency, out byte[] pixels, out long ticks)
+      )
+        recording.Submit(pixels, ticks);
+    }
   }
 
   private void ParseTimestamp(string line)
@@ -206,7 +217,12 @@ internal sealed class FfmpegCameraSession : IDisposable
           Preview.Publish(_previewPixels, previewSize.Width, previewSize.Height);
         }
         lock (_sinkGate)
+        {
+          if (_disposed)
+            return;
           _sink?.Submit(frame, info.Ticks);
+          frame = _latestFrame.Exchange(frame, info.Ticks);
+        }
       }
     }
     catch (Exception exception)
@@ -227,6 +243,7 @@ internal sealed class FfmpegCameraSession : IDisposable
     {
       _sink?.Fail("Camera capture was stopped.");
       _sink = null;
+      _latestFrame.Clear();
     }
     try
     {

@@ -26,7 +26,7 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
     return Task.FromResult(devices);
   }
 
-  public Task ArmAsync(string deviceId, WebcamCaptureProfile profile)
+  public Task ArmAsync(string deviceId, WebcamCaptureProfile profile, string recordingDirectory = null)
   {
     Preview?.Dispose();
     Preview = new CameraPreviewBuffer(CameraPreviewBuffer.MaxWidth, CameraPreviewBuffer.MaxHeight);
@@ -40,6 +40,7 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
         ["frameRate"] = profile.FrameRate,
         ["bitRate"] = profile.BitRate,
         ["previewPath"] = Preview.Path,
+        ["recordingDirectory"] = recordingDirectory,
       }
     );
     _profile = profile;

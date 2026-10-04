@@ -1,20 +1,33 @@
 using System;
+using System.Diagnostics;
 using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Webcam.Diagnostics;
 using TUFReplay.Webcam.Models;
 using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 using UnityEngine.Video;
 
 namespace TUFReplay.Webcam.Playback;
 
-public sealed class WebcamReplayOverlay : MonoBehaviour
+public sealed class WebcamReplayOverlay
+  : MonoBehaviour,
+    IPointerDownHandler,
+    IPointerUpHandler,
+    IInitializePotentialDragHandler,
+    IDragHandler,
+    IEndDragHandler
 {
+  private const float EdgeWidth = 8;
   private static WebcamReplayOverlay _visibleOverlay;
   private VideoPlayer _video;
   private Texture _preview;
   private double _aspect;
   private readonly WebcamOverlayGesture _gesture = new WebcamOverlayGesture();
-  private int _controlId;
+  private Canvas _canvas;
+  private RawImage _image;
+  private RectTransform _rect;
   private bool _cursorRegistered;
   private bool _showFrame;
 
@@ -23,9 +36,12 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
     get => _showFrame;
     set
     {
+      if (_showFrame == value)
+        return;
       _showFrame = value;
       if (!value)
         FinishGesture();
+      RefreshSurface();
     }
   }
 
@@ -34,7 +50,7 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
     get
     {
       WebcamReplayOverlay overlay = _visibleOverlay;
-      if (overlay == null || !overlay.ShowFrame || !Application.isFocused)
+      if (overlay == null || !overlay.ShowFrame || !Application.isFocused || Cursor.lockState != CursorLockMode.None)
         return false;
       if (overlay._gesture.Active)
         return true;
@@ -50,15 +66,45 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
   public void Initialize(VideoPlayer video, double aspect)
   {
     _video = video;
+    _preview = null;
     _aspect = aspect;
     RegisterCursor();
+    CreateSurface();
+    RefreshSurface();
   }
 
   public void InitializePreview(Texture texture, double aspect)
   {
+    _video = null;
     _preview = texture;
     _aspect = aspect;
     RegisterCursor();
+    CreateSurface();
+    RefreshSurface();
+  }
+
+  private void CreateSurface()
+  {
+    if (_canvas != null)
+      return;
+    var root = new GameObject("CameraCanvas", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+    root.SetActive(false);
+    root.transform.SetParent(transform, false);
+    _canvas = root.GetComponent<Canvas>();
+    _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+    _canvas.overrideSorting = true;
+    // Keep the timeline and camera-check modal (32000) above the video.
+    _canvas.sortingOrder = 31999;
+
+    var image = new GameObject("CameraFrame", typeof(RectTransform), typeof(RawImage));
+    image.transform.SetParent(root.transform, false);
+    _rect = image.GetComponent<RectTransform>();
+    _rect.anchorMin = _rect.anchorMax = new Vector2(0, 1);
+    _rect.pivot = new Vector2(0, 1);
+    _image = image.GetComponent<RawImage>();
+    _image.maskable = false;
+    // Expand the pointer target without stretching or adding a second image.
+    _image.raycastPadding = new Vector4(-EdgeWidth, -EdgeWidth, -EdgeWidth, -EdgeWidth);
   }
 
   private void RegisterCursor()
@@ -75,6 +121,21 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
     WebcamOverlayLayout.Get(settings, Screen.width, Screen.height, WebcamCropRect.Get(settings).AspectRatio(_aspect));
 
   private void LateUpdate()
+  {
+    long started = Stopwatch.GetTimestamp();
+    bool visible = false;
+    try
+    {
+      UpdateCursor();
+      visible = RefreshSurface();
+    }
+    finally
+    {
+      CameraRenderDiagnostics.RecordOverlayUpdate(Stopwatch.GetTimestamp() - started, visible, _video != null);
+    }
+  }
+
+  private void UpdateCursor()
   {
     if (!ShowFrame || Frame == null || !Application.isFocused || Cursor.lockState != CursorLockMode.None)
     {
@@ -100,36 +161,38 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
     WebcamOverlayCursor.Show(this, hover);
   }
 
-  private void OnGUI()
+  private bool RefreshSurface()
   {
     Texture texture = Frame;
-    if (!ShowFrame || texture == null)
+    bool visible = isActiveAndEnabled && ShowFrame && texture != null && _canvas != null;
+    if (!visible)
     {
+      if (_canvas != null && _canvas.gameObject.activeSelf)
+        _canvas.gameObject.SetActive(false);
       if (_visibleOverlay == this)
         _visibleOverlay = null;
-      return;
+      return false;
     }
     _visibleOverlay = this;
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
     WebcamOverlayBounds bounds = Bounds(settings);
-    var rect = new Rect((float)bounds.X, (float)bounds.Y, (float)bounds.Width, (float)bounds.Height);
-    int id = GUIUtility.GetControlID(GetInstanceID(), FocusType.Passive);
-    int previousDepth = GUI.depth;
-    GUI.depth = -100;
-    try
-    {
-      WebcamTextureCoordinates coordinates = WebcamCropRect.Get(settings).TextureCoordinates(settings.WebcamMirror);
-      GUI.DrawTextureWithTexCoords(
-        rect,
-        texture,
-        new Rect((float)coordinates.X, (float)coordinates.Y, (float)coordinates.Width, (float)coordinates.Height)
-      );
-      HandleInput(bounds, settings, id);
-    }
-    finally
-    {
-      GUI.depth = previousDepth;
-    }
+    var position = new Vector2((float)bounds.X, -(float)bounds.Y);
+    var size = new Vector2((float)bounds.Width, (float)bounds.Height);
+    WebcamTextureCoordinates coordinates = WebcamCropRect.Get(settings).TextureCoordinates(settings.WebcamMirror);
+    var uv = new Rect((float)coordinates.X, (float)coordinates.Y, (float)coordinates.Width, (float)coordinates.Height);
+    // Reuse the same quad and texture. A newly uploaded camera frame does not
+    // require a Canvas mesh/layout rebuild when its dimensions are unchanged.
+    if (_image.texture != texture)
+      _image.texture = texture;
+    if (_image.uvRect != uv)
+      _image.uvRect = uv;
+    if (_rect.anchoredPosition != position)
+      _rect.anchoredPosition = position;
+    if (_rect.sizeDelta != size)
+      _rect.sizeDelta = size;
+    if (!_canvas.gameObject.activeSelf)
+      _canvas.gameObject.SetActive(true);
+    return true;
   }
 
   private void OnDisable()
@@ -138,6 +201,8 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
       _visibleOverlay = null;
     FinishGesture();
     WebcamOverlayCursor.Release(this);
+    if (_canvas != null)
+      _canvas.gameObject.SetActive(false);
   }
 
   private void OnDestroy()
@@ -157,42 +222,96 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
     WebcamOverlayCursor.Release(this);
   }
 
-  private void HandleInput(WebcamOverlayBounds bounds, TUFReplaySetting settings, int id)
+  public void OnInitializePotentialDrag(PointerEventData input) => input.useDragThreshold = false;
+
+  public void OnPointerDown(PointerEventData input)
   {
-    Event input = Event.current;
-    if (
-      input.type == EventType.MouseDown
-      && input.button == 0
-      && Application.isFocused
-      && Cursor.lockState == CursorLockMode.None
-      && GUIUtility.hotControl == 0
-      && IsInsideScreen(input.mousePosition)
-    )
+    long started = Stopwatch.GetTimestamp();
+    try
     {
-      WebcamOverlayHandle handle = WebcamOverlayInteraction.HitTest(
-        bounds,
-        input.mousePosition.x,
-        input.mousePosition.y
-      );
+      if (
+        input.button != PointerEventData.InputButton.Left
+        || !ShowFrame
+        || Frame == null
+        || !Application.isFocused
+        || Cursor.lockState != CursorLockMode.None
+        || _gesture.Active
+      )
+        return;
+      Vector2 pointer = PointerPosition(input.position);
+      if (!IsInsideScreen(pointer))
+        return;
+      WebcamOverlayBounds bounds = Bounds(TUFReplaySettingStore.Current);
+      WebcamOverlayHandle handle = WebcamOverlayInteraction.HitTest(bounds, pointer.x, pointer.y, EdgeWidth);
       if (handle == WebcamOverlayHandle.None)
         return;
-      _gesture.Begin(bounds, handle, input.mousePosition.x, input.mousePosition.y, Screen.width, Screen.height);
-      _controlId = id;
-      GUIUtility.hotControl = id;
+      _gesture.Begin(bounds, handle, pointer.x, pointer.y, Screen.width, Screen.height);
+      input.useDragThreshold = false;
       input.Use();
     }
-    else if (_gesture.Active && GUIUtility.hotControl != _controlId)
-      FinishGesture();
-    else if (input.type == EventType.MouseDrag && _gesture.Active)
+    finally
     {
-      WebcamOverlayBounds updated = _gesture.Move(input.mousePosition.x, input.mousePosition.y);
-      WebcamOverlayLayout.Apply(settings, updated, _gesture.ScreenWidth, _gesture.ScreenHeight, _gesture.Aspect);
+      CameraRenderDiagnostics.Record(CameraRenderPhase.OverlayInput, Stopwatch.GetTimestamp() - started);
+    }
+  }
+
+  public void OnDrag(PointerEventData input)
+  {
+    long started = Stopwatch.GetTimestamp();
+    try
+    {
+      if (input.button != PointerEventData.InputButton.Left || !_gesture.Active)
+        return;
+      if (
+        !ShowFrame
+        || Frame == null
+        || _gesture.NeedsFinish(
+          Application.isFocused,
+          Input.GetMouseButton(0),
+          Screen.width,
+          Screen.height,
+          WebcamCropRect.Get(TUFReplaySettingStore.Current).AspectRatio(_aspect)
+        )
+      )
+      {
+        FinishGesture();
+        return;
+      }
+      Vector2 pointer = PointerPosition(input.position);
+      WebcamOverlayBounds updated = _gesture.Move(pointer.x, pointer.y);
+      WebcamOverlayLayout.Apply(
+        TUFReplaySettingStore.Current,
+        updated,
+        _gesture.ScreenWidth,
+        _gesture.ScreenHeight,
+        _gesture.Aspect
+      );
+      RefreshSurface();
       input.Use();
     }
-    else if (input.type == EventType.MouseUp && input.button == 0 && _gesture.Active)
+    finally
     {
+      CameraRenderDiagnostics.Record(CameraRenderPhase.OverlayInput, Stopwatch.GetTimestamp() - started);
+    }
+  }
+
+  public void OnPointerUp(PointerEventData input) => EndPointer(input);
+
+  public void OnEndDrag(PointerEventData input) => EndPointer(input);
+
+  private void EndPointer(PointerEventData input)
+  {
+    long started = Stopwatch.GetTimestamp();
+    try
+    {
+      if (input.button != PointerEventData.InputButton.Left || !_gesture.Active)
+        return;
       FinishGesture();
       input.Use();
+    }
+    finally
+    {
+      CameraRenderDiagnostics.Record(CameraRenderPhase.OverlayInput, Stopwatch.GetTimestamp() - started);
     }
   }
 
@@ -201,20 +320,13 @@ public sealed class WebcamReplayOverlay : MonoBehaviour
     if (!_gesture.Active)
       return;
     bool changed = _gesture.Finish();
-    // Release while hiding/destroying: a disabled overlay may never receive
-    // another OnGUI callback.
-    if (_controlId != 0 && GUIUtility.hotControl == _controlId)
-      GUIUtility.hotControl = 0;
-    _controlId = 0;
     if (changed)
       SavePosition();
   }
 
-  private static Vector2 PointerPosition()
-  {
-    Vector3 pointer = Input.mousePosition;
-    return new Vector2(pointer.x, Screen.height - pointer.y);
-  }
+  private static Vector2 PointerPosition() => PointerPosition(Input.mousePosition);
+
+  private static Vector2 PointerPosition(Vector2 pointer) => new Vector2(pointer.x, Screen.height - pointer.y);
 
   private static bool IsInsideScreen(Vector2 pointer) =>
     pointer.x >= 0 && pointer.x <= Screen.width && pointer.y >= 0 && pointer.y <= Screen.height;

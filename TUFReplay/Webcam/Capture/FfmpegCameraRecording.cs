@@ -33,7 +33,9 @@ internal sealed class FfmpegCameraRecording
   private readonly ConcurrentQueue<byte[]> _pool = new ConcurrentQueue<byte[]>();
   private readonly Task _writer;
   private readonly WebcamRecording _recording;
-  private readonly long _maxFrames;
+  private long _maxFrames;
+  private readonly WebcamCaptureProfile _profile;
+  private string _destination;
   private readonly int _frameByteCount;
   private readonly byte[][] _buffers = new byte[5][];
   private volatile string _error;
@@ -51,6 +53,7 @@ internal sealed class FfmpegCameraRecording
     long maxBytes
   )
   {
+    _profile = profile;
     _recording = new WebcamRecording
     {
       RunId = runId,
@@ -148,6 +151,15 @@ internal sealed class FfmpegCameraRecording
     }
   }
 
+  public void Attach(string runId, string destination, long maxBytes)
+  {
+    if (_destination != null || maxBytes < 2 * 1024 * 1024)
+      throw new InvalidOperationException("The camera recording could not be attached to this run.");
+    _recording.RunId = runId;
+    _destination = destination;
+    _maxFrames = Math.Max(1, (long)((maxBytes - 1024 * 1024) * 8d / (_profile.BitRate * 1.5d) * _profile.FrameRate));
+  }
+
   public void Submit(byte[] source, long ticks)
   {
     if (_frames.IsAddingCompleted || _error != null || _limited)
@@ -243,6 +255,11 @@ internal sealed class FfmpegCameraRecording
       _recording.DurationUs =
         _encodedDurationUs > 0 ? _encodedDurationUs : _writtenFrames * 1_000_000 / _recording.FrameRate;
       _recording.SizeLimited = _limited;
+      if (_destination != null)
+      {
+        File.Move(_recording.FilePath, _destination);
+        _recording.FilePath = _destination;
+      }
       return _recording;
     }
     catch
@@ -253,6 +270,37 @@ internal sealed class FfmpegCameraRecording
     finally
     {
       _encoder.Dispose();
+      if (_writer.IsCompleted)
+        CleanupBuffers();
+      else
+        _ = _writer.ContinueWith(
+          completed =>
+          {
+            _ = completed.Exception;
+            CleanupBuffers();
+          },
+          TaskScheduler.Default
+        );
+    }
+  }
+
+  public async Task CancelAsync()
+  {
+    _frames.CompleteAdding();
+    try
+    {
+      await Task.Run(() =>
+      {
+        if (!_encoder.HasExited)
+          _encoder.Kill();
+        _encoder.WaitForExit(2000);
+      });
+      await Task.WhenAny(_writer, Task.Delay(2000));
+    }
+    finally
+    {
+      _encoder.Dispose();
+      WebcamRecordingStore.Discard(_recording);
       if (_writer.IsCompleted)
         CleanupBuffers();
       else

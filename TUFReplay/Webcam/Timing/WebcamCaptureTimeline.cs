@@ -73,6 +73,14 @@ public sealed class WebcamCaptureTimeline
     _previous = anchor;
   }
 
+  public bool TryApplyTo(WebcamRecording recording)
+  {
+    if (!First.HasValue || recording == null || recording.CaptureStartTimestampTicks <= 0)
+      return false;
+    ApplyTo(recording);
+    return true;
+  }
+
   public void ApplyTo(WebcamRecording recording)
   {
     if (!First.HasValue)

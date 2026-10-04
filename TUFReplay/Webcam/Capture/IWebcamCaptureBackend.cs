@@ -9,7 +9,7 @@ public interface IWebcamCaptureBackend : IDisposable
 {
   CameraPreviewBuffer Preview { get; }
   Task<List<WebcamDevice>> ListDevicesAsync();
-  Task ArmAsync(string deviceId, WebcamCaptureProfile profile);
+  Task ArmAsync(string deviceId, WebcamCaptureProfile profile, string recordingDirectory = null);
   Task BeginAsync(string runId, string path, long maxBytes);
   Task<WebcamRecording> EndAsync();
   Task DisarmAsync();
