@@ -6,6 +6,7 @@ using TMPro;
 using TUFReplay.Unity.Notifications;
 using TUFReplay.Unity.ReplayTimeline;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -23,16 +24,106 @@ namespace TUFReplay.Unity.Editor
     [MenuItem("Tools/TUFReplay/Build Runtime UI Bundles")]
     public static void BuildRuntimeUiBundles()
     {
-      ReplayTimelinePrototypeBuilder.Rebuild();
-      BuildRuntimePrefab();
-      ValidateRuntimePrefab();
-      ValidateNotificationPrefab();
+      if (!Application.isBatchMode && !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+        return;
+      SceneSetup[] previousScenes = EditorSceneManager.GetSceneManagerSetup();
+      try
+      {
+        ReplayTimelinePrototypeBuilder.Rebuild();
+        CameraSetupPrefabBuilder.Rebuild();
+        BuildRuntimePrefab();
+        ValidateRuntimePrefab();
+        ValidateNotificationPrefab();
+        GameObject cameraPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(CameraSetupPrefabBuilder.PrefabPath);
+        if (
+          cameraPrefab == null
+          || cameraPrefab.activeSelf
+          || cameraPrefab.GetComponent<TUFReplay.Unity.CameraSetup.CameraSetupView>()?.IsConfigured != true
+        )
+          throw new InvalidOperationException("Runtime camera setup modal is missing or unconfigured.");
+        ValidateCameraSetupPrivacy(cameraPrefab);
 
-      BuildBundle(BuildTarget.StandaloneOSX, "mac");
-      BuildBundle(BuildTarget.StandaloneWindows64, "win");
-      BuildBundle(BuildTarget.StandaloneLinux64, "linux");
-      AssetDatabase.Refresh();
-      Debug.Log("[TUFReplay.Unity] Built and validated macOS, Windows, and Linux runtime UI bundles.");
+        BuildBundle(BuildTarget.StandaloneOSX, "mac");
+        BuildBundle(BuildTarget.StandaloneWindows64, "win");
+        BuildBundle(BuildTarget.StandaloneLinux64, "linux");
+        AssetDatabase.Refresh();
+        Debug.Log("[TUFReplay.Unity] Built and validated macOS, Windows, and Linux runtime UI bundles.");
+      }
+      finally
+      {
+        if (!Application.isBatchMode)
+          EditorApplication.delayCall += () =>
+          {
+            EditorSceneManager.RestoreSceneManagerSetup(previousScenes);
+            EditorApplication.QueuePlayerLoopUpdate();
+            EditorApplication.RepaintHierarchyWindow();
+            SceneView.RepaintAll();
+          };
+      }
+    }
+
+    private static void ValidateCameraSetupPrivacy(GameObject prefab)
+    {
+      GameObject instance = UnityEngine.Object.Instantiate(prefab);
+      var texture = new Texture2D(8, 4, TextureFormat.RGBA32, false);
+      try
+      {
+        var view = instance.GetComponent<TUFReplay.Unity.CameraSetup.CameraSetupView>();
+        RawImage image = instance.GetComponentInChildren<RawImage>(true);
+        Button reveal = instance.transform.Find("Panel/PreviewArea/RevealButton")?.GetComponent<Button>();
+        if (image == null || reveal == null)
+          throw new InvalidOperationException("Camera setup preview or reveal button is missing.");
+
+        void Show() => view.Show(false, true, null, null, null, null, null, null);
+        void Update(bool enabled = true) =>
+          view.SetState(enabled, false, true, true, "Privacy validation camera", null, texture, false);
+        void AssertConcealed(string phase)
+        {
+          if (image.enabled || image.texture != null || !reveal.gameObject.activeInHierarchy)
+            throw new InvalidOperationException("Camera preview was exposed without a reveal action: " + phase);
+        }
+        bool HasUvRect(Rect expected) =>
+          Mathf.Approximately(image.uvRect.x, expected.x)
+          && Mathf.Approximately(image.uvRect.y, expected.y)
+          && Mathf.Approximately(image.uvRect.width, expected.width)
+          && Mathf.Approximately(image.uvRect.height, expected.height);
+
+        Show();
+        Update();
+        AssertConcealed("first frame");
+        Update();
+        AssertConcealed("state refresh");
+
+        reveal.onClick.Invoke();
+        if (!image.enabled || image.texture != texture || reveal.gameObject.activeSelf)
+          throw new InvalidOperationException("Camera preview did not become visible after clicking reveal.");
+
+        Rect crop = new Rect(0.1f, 0.2f, 0.4f, 0.5f);
+        view.SetState(true, false, true, true, "Crop validation camera", null, texture, false, crop);
+        AspectRatioFitter fit = image.GetComponent<AspectRatioFitter>();
+        if (!HasUvRect(new Rect(0.1f, 0.3f, 0.4f, 0.5f)) || fit == null || !Mathf.Approximately(fit.aspectRatio, 1.6f))
+          throw new InvalidOperationException("Camera setup preview did not preserve the cropped source aspect ratio.");
+        view.SetState(true, false, true, true, "Crop validation camera", null, texture, true, crop);
+        if (!HasUvRect(new Rect(0.5f, 0.3f, -0.4f, 0.5f)))
+          throw new InvalidOperationException("Camera setup preview did not mirror the selected crop.");
+
+        Update(false);
+        Update();
+        AssertConcealed("camera toggled off and on");
+        reveal.onClick.Invoke();
+        view.Hide();
+        if (image.enabled || image.texture != null)
+          throw new InvalidOperationException("Camera preview retained its image after the modal was hidden.");
+        Show();
+        Update();
+        AssertConcealed("modal reopened");
+        Debug.Log("[TUFReplay.Unity] Camera click-to-reveal privacy and crop display validated.");
+      }
+      finally
+      {
+        UnityEngine.Object.DestroyImmediate(instance);
+        UnityEngine.Object.DestroyImmediate(texture);
+      }
     }
 
     private static void BuildRuntimePrefab()
@@ -440,7 +531,7 @@ namespace TUFReplay.Unity.Editor
       var build = new AssetBundleBuild
       {
         assetBundleName = BundleName,
-        assetNames = new[] { RuntimePrefabPath, NotificationPrefabPath },
+        assetNames = new[] { RuntimePrefabPath, NotificationPrefabPath, CameraSetupPrefabBuilder.PrefabPath },
       };
       AssetBundleManifest manifest = BuildPipeline.BuildAssetBundles(
         intermediate,

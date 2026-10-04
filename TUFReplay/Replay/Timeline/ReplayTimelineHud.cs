@@ -42,6 +42,15 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
       _instance._panelDragHandle?.IsDragging == true || _instance._isScrubbing || _instance.IsPointerPressOverPanel()
     );
 
+  internal static GameObject InstantiateOverlay(string assetPath)
+  {
+    ReplayTimelineHud instance = _instance;
+    if (instance == null || instance._bundle == null)
+      return null;
+    GameObject prefab = instance._bundle.LoadAsset<GameObject>(assetPath);
+    return prefab == null ? null : Instantiate(prefab, instance.transform, false);
+  }
+
   internal static void Initialize()
   {
     Shutdown();
