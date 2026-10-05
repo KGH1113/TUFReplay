@@ -1041,6 +1041,11 @@ internal static class ReplayNativeInputSuite
         scale.Denominator
       );
       ulong firstSample = hostOrigin + second;
+      Assert(before.ToMachTimestamp(frequency * 21) == firstSample, "Camera boundary lost host timestamp precision.");
+      Assert(
+        after.ToMachTimestamp(frequency * 21) == firstSample,
+        "Camera boundary shifted with delayed IPC delivery."
+      );
       Assert(
         Math.Abs(before.ToStopwatchTicks(firstSample) - frequency * 21) <= 1,
         "First sample clock mapping changed."

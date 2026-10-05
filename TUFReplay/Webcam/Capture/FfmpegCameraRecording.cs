@@ -36,6 +36,7 @@ internal sealed class FfmpegCameraRecording
   private long _maxFrames;
   private readonly WebcamCaptureProfile _profile;
   private string _destination;
+  private long _startTimestampTicks;
   private readonly int _frameByteCount;
   private readonly byte[][] _buffers = new byte[5][];
   private volatile string _error;
@@ -151,17 +152,20 @@ internal sealed class FfmpegCameraRecording
     }
   }
 
-  public void Attach(string runId, string destination, long maxBytes)
+  public void Attach(string runId, string destination, long maxBytes, long startTimestampTicks = 0)
   {
     if (_destination != null || maxBytes < 2 * 1024 * 1024)
       throw new InvalidOperationException("The camera recording could not be attached to this run.");
     _recording.RunId = runId;
     _destination = destination;
+    _startTimestampTicks = startTimestampTicks;
     _maxFrames = Math.Max(1, (long)((maxBytes - 1024 * 1024) * 8d / (_profile.BitRate * 1.5d) * _profile.FrameRate));
   }
 
   public void Submit(byte[] source, long ticks)
   {
+    if (ticks < _startTimestampTicks)
+      return;
     if (_frames.IsAddingCompleted || _error != null || _limited)
       return;
     if (!_pool.TryDequeue(out byte[] pixels))

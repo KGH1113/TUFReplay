@@ -117,7 +117,7 @@ final class JsonLineCommandServer {
       guard let path = request.path, let maxBytes = request.maxBytes else {
         throw CaptureError.message("Missing video path or storage limit.")
       }
-      try camera.begin(path: path, maxBytes: maxBytes, runId: request.runId)
+      try camera.begin(path: path, maxBytes: maxBytes, runId: request.runId, startHostTime: request.startHostTime)
       try transport.writeCamera(EmptyResponse(), diagnostics: camera.diagnosticState())
     case .cameraEnd:
       let result = try camera.end()

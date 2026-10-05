@@ -89,6 +89,7 @@ public partial class RecordingFeature
 
     _failed = true;
     Session.MarkTerminal();
+    ObserveWebcamFailure();
     Session.StopInputCapture("failed");
     if (hitInProgress)
     {
@@ -118,7 +119,8 @@ public partial class RecordingFeature
       return;
     }
     bool saved = SaveActivityRun("failed", Session.GetLastReachedTile());
-    EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved), persistWebcam: saved);
+    _persistFailedWebcam = saved;
+    EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved), endWebcam: false);
     Main.Instance.Log("[Recording] Run failed.");
   }
 
@@ -165,7 +167,10 @@ public partial class RecordingFeature
         EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));
     }
     else
-      EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));
+      EndMicrophoneRun(
+        recording => FeatureRegistry.MicrophoneRecording?.Discard(recording),
+        persistWebcam: _persistFailedWebcam
+      );
     StopSession();
 
     if (_clearReached && !_failed && Session.HasRecordableData)
@@ -356,7 +361,7 @@ public partial class RecordingFeature
       _calibrationRun = false;
       return;
     }
-    bool persistWebcam = false;
+    bool persistWebcam = _persistFailedWebcam;
     if (Session.IsRecording && _clearReached && !_runSaved)
     {
       Session.MarkTerminal();
@@ -381,6 +386,9 @@ public partial class RecordingFeature
     Session.MarkGameplayStarted(RecordingClock.IsTimelineAdvancing());
     if (!PrepareActivityRun(RecordingSession.GetLevelTileCount()))
       return;
+    // If activity creation was busy during countdown, recover using the
+    // original input boundary rather than starting from gameplay time.
+    StartWebcamRun();
     StartMicrophoneRun();
     if (_calibrationRun)
       FeatureRegistry.MicrophoneCalibration?.OnRunStarted();
@@ -393,11 +401,15 @@ public partial class RecordingFeature
 
     if (!PrepareActivityRun(RecordingSession.GetLevelTileCount()))
       return;
+    StartWebcamRun();
     StartMicrophoneRun();
   }
 
   private void ResetRunState()
   {
+    // A retry can start directly from the fail screen without an editor return.
+    // Finish its camera against the old run's persistence before resetting IDs.
+    EndWebcamRun(_persistFailedWebcam);
     DiscardPendingEditorRecording();
     _clearReached = false;
     _failed = false;
@@ -409,5 +421,6 @@ public partial class RecordingFeature
     _microphoneTimelineAnchor = null;
     _webcamCaptureStarted = false;
     _webcamTimeline = null;
+    _persistFailedWebcam = false;
   }
 }
