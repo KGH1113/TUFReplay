@@ -10,6 +10,18 @@ export const videoEncoderSchema = z.enum([
   "AppleVideoToolbox",
 ]);
 export const encodingSpeedSchema = z.enum(["Maximum", "Balanced", "Quality"]);
+export const renderQualitySchema = z.enum([
+  "lowest",
+  "low",
+  "medium",
+  "high",
+  "highest",
+  "extreme",
+]);
+export const renderPreferencesSchema = z.object({
+  mode: z.enum(["recommended", "advanced"]),
+  quality: renderQualitySchema.nullable(),
+});
 export const proResProfileSchema = z.enum([
   "Proxy",
   "LT",
@@ -119,7 +131,10 @@ export const renderOptionsSchema = z
       !["Software", "Auto", "AppleVideoToolbox"].includes(value.encoder)
     )
       context.addIssue({ code: "custom", path: ["encoder"], message: "encoder_incompatible" });
-    if (value.videoCodec !== "ProRes" && value.encoder === "AppleVideoToolbox")
+    if (
+      !["H264", "H265", "ProRes"].includes(value.videoCodec) &&
+      value.encoder === "AppleVideoToolbox"
+    )
       context.addIssue({ code: "custom", path: ["encoder"], message: "encoder_incompatible" });
     if (value.pixelFormat !== "auto") {
       const alpha =
@@ -147,6 +162,7 @@ export const renderOptionsSchema = z
 
 export const renderSettingsSchema = z.object({
   defaults: renderOptionsSchema,
+  preferences: renderPreferencesSchema.optional(),
   outputDirectory: z.string(),
   capabilities: z.object({
     codecs: z.array(videoCodecSchema),
@@ -158,6 +174,21 @@ export const renderSettingsSchema = z.object({
   engineOptions: z
     .object({
       codecs: z.array(z.object({ value: videoCodecSchema, encoders: z.array(videoEncoderSchema) })),
+    })
+    .optional(),
+  system: z
+    .object({
+      platform: z.enum(["windows", "macos", "linux"]),
+      processorName: z.string(),
+      logicalProcessors: z.number().int().min(1),
+      memoryMb: z.number().int().nonnegative(),
+      graphicsName: z.string(),
+      graphicsMemoryMb: z.number().int().nonnegative(),
+      maxTextureSize: z.number().int().nonnegative(),
+      encoding: z.object({
+        state: z.enum(["checking", "ready", "missing", "unavailable"]),
+        h264Encoders: z.array(videoEncoderSchema),
+      }),
     })
     .optional(),
 });

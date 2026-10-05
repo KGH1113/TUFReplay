@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApiPromise } from "@/api/app-api-provider";
 import type { RenderApi } from "@/api/render/render-api";
 import { downloadsQueryKey } from "@/hooks/downloads/use-downloads";
@@ -13,6 +13,12 @@ import {
   type RenderSettings,
   renderJobFinished,
 } from "@/models/render/render-model";
+import {
+  applyRenderRecommendation,
+  createRenderRecommendations,
+  type RenderQuality,
+  type RenderSettingsMode,
+} from "@/models/render/render-recommendations";
 import { renderOptionsSchema } from "@/schemas/render/render-schema";
 import { ApiError } from "@/shared/errors/api-error";
 
@@ -35,9 +41,19 @@ export function useRenderControl() {
   const [run, setRun] = useState<ActivityRun | null>(null);
   const [levelChoiceRun, setLevelChoiceRun] = useState<ActivityRun | null>(null);
   const [levelPath, setLevelPath] = useState<string | undefined>();
-  const [options, setOptions] = useState<RenderOptions>(defaultRenderOptions);
+  const [customOptions, setOptions] = useState<RenderOptions>(defaultRenderOptions);
   const [health, setHealth] = useState<RenderHealth | null>(null);
   const [settings, setSettings] = useState<RenderSettings | null>(null);
+  const [settingsMode, setSettingsMode] = useState<RenderSettingsMode>("recommended");
+  const [quality, setQuality] = useState<RenderQuality | null>(null);
+  const recommendations = useMemo(() => createRenderRecommendations(settings), [settings]);
+  const options = useMemo(
+    () =>
+      settingsMode === "recommended"
+        ? applyRenderRecommendation(customOptions, recommendations, quality)
+        : customOptions,
+    [customOptions, quality, recommendations, settingsMode],
+  );
   const [saveAsDefault, setSaveAsDefault] = useState(false);
   const [choosingDirectory, setChoosingDirectory] = useState(false);
   const [openingDirectory, setOpeningDirectory] = useState(false);
@@ -95,6 +111,36 @@ export function useRenderControl() {
     setErrorMessage(cause instanceof Error ? cause.message : "");
     setErrorDetails(null);
   }, []);
+  useEffect(() => {
+    if (!run || settings?.system?.encoding.state !== "checking" || busyRef.current) return;
+    const current = generation.current;
+    let disposed = false;
+    const timer = setTimeout(() => {
+      void renderer()
+        .then((api) => api.getSettings())
+        .then((next) => {
+          if (!disposed && current === generation.current && !busyRef.current) setSettings(next);
+        })
+        .catch(() => {
+          if (disposed || current !== generation.current || busyRef.current) return;
+          setSettings((previous) =>
+            previous?.system
+              ? {
+                  ...previous,
+                  system: {
+                    ...previous.system,
+                    encoding: { state: "unavailable", h264Encoders: ["Software"] },
+                  },
+                }
+              : previous,
+          );
+        });
+    }, 500);
+    return () => {
+      disposed = true;
+      clearTimeout(timer);
+    };
+  }, [run, settings, renderer]);
   const open = useCallback(
     (selected: ActivityRun, opener?: HTMLElement, selectedLevelPath?: string) => {
       if (busyRef.current) return;
@@ -118,6 +164,8 @@ export function useRenderControl() {
           if (!activeRef.current || current !== generation.current) return;
           setHealth(state);
           setSettings(saved);
+          setSettingsMode(saved.preferences?.mode ?? "recommended");
+          setQuality(saved.preferences?.quality ?? null);
           setOptions({
             ...saved.defaults,
             outputDirectory: saved.defaults.outputDirectory || saved.outputDirectory,
@@ -135,6 +183,8 @@ export function useRenderControl() {
     trigger.current =
       opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setRun(null);
+    setSettingsMode("recommended");
+    setQuality(null);
     setLevelChoiceRun(selected);
   }, []);
   const chooseLevel = useCallback(
@@ -156,6 +206,7 @@ export function useRenderControl() {
     setErrorCode(null);
     setErrorMessage("");
     setErrorDetails(null);
+    let chosenOptions = options;
     const poll = async <T>(read: () => Promise<T>): Promise<T> => {
       while (activeRef.current) {
         try {
@@ -220,9 +271,45 @@ export function useRenderControl() {
           }
         }
       }
-      if (saveAsDefault) setSettings(await api.updateSettings(options));
+      if (settingsMode === "recommended") {
+        // First-use installation may have changed the usable encoders. Resolve
+        // the selected quality once, then use that exact profile for the job.
+        const deadline = Date.now() + 20_000;
+        let latest = await api.getSettings();
+        while (
+          latest.system &&
+          latest.system.encoding.state !== "ready" &&
+          Date.now() < deadline &&
+          activeRef.current &&
+          !cancelledRef.current
+        ) {
+          await pause();
+          latest = await api.getSettings();
+        }
+        if (!activeRef.current) return;
+        if (cancelledRef.current) {
+          setPhase("cancelled");
+          return;
+        }
+        setSettings(latest);
+        const resolved = createRenderRecommendations(latest);
+        const selected = resolved.levels.find(
+          (value) => value.quality === (quality ?? resolved.recommended),
+        );
+        if (!selected?.supported)
+          throw new ApiError(
+            "This GPU cannot render the selected resolution. Choose a lower quality.",
+            {
+              kind: "domain",
+              code: "render_resolution_unsupported",
+            },
+          );
+        chosenOptions = applyRenderRecommendation(customOptions, resolved, quality);
+      }
+      if (saveAsDefault)
+        setSettings(await api.updateSettings(chosenOptions, { mode: settingsMode, quality }));
       setPhase("exporting");
-      let bundle = await api.exportBundle(run.id, options, levelPath);
+      let bundle = await api.exportBundle(run.id, chosenOptions, levelPath);
       exportId.current = bundle.jobId;
       while (bundle.state === "preparing") {
         if (cancelledRef.current) {
@@ -252,8 +339,8 @@ export function useRenderControl() {
       setPhase("preparing");
       setProgress(0);
       let rendered = await api.start(bundle.manifestPath, {
-        ...options,
-        includeDmNote: options.includeDmNote && ready.dmNoteConfigured,
+        ...chosenOptions,
+        includeDmNote: chosenOptions.includeDmNote && ready.dmNoteConfigured,
       });
       renderId.current = rendered.jobId;
       while (!renderJobFinished(rendered)) {
@@ -296,7 +383,19 @@ export function useRenderControl() {
       }
       busyRef.current = false;
     }
-  }, [run, options, levelPath, renderer, fail, saveAsDefault, apiPromise, queryClient]);
+  }, [
+    run,
+    options,
+    customOptions,
+    quality,
+    settingsMode,
+    levelPath,
+    renderer,
+    fail,
+    saveAsDefault,
+    apiPromise,
+    queryClient,
+  ]);
   const cancel = useCallback(async () => {
     cancelledRef.current = true;
     try {
@@ -387,6 +486,14 @@ export function useRenderControl() {
     closeLevelChoice: () => setLevelChoiceRun(null),
     options,
     setOptions,
+    settingsMode,
+    setSettingsMode: (mode: RenderSettingsMode) => {
+      if (mode === "advanced") setOptions(options);
+      setSettingsMode(mode);
+    },
+    quality: quality ?? recommendations.recommended,
+    selectQuality: setQuality,
+    recommendations,
     health,
     settings,
     saveAsDefault,

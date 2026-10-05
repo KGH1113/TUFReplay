@@ -1,4 +1,31 @@
 {
+  "settingsMode": { "label": "영상 설정 방식", "recommended": "추천", "advanced": "고급" },
+  "qualities": {
+    "lowest": "최저",
+    "low": "낮음",
+    "medium": "보통",
+    "high": "높음",
+    "highest": "최고",
+    "extreme": "극한"
+  },
+  "recommendation": {
+    "quality": "영상 품질",
+    "badge": "이 컴퓨터에 추천",
+    "resolution": "{{height}}p · {{fps}} fps",
+    "size": "1분당 약 {{size}} MB",
+    "checking": "얼불춤이 실행 중인 컴퓨터의 인코더를 확인하고 있어요. 기다리는 동안 품질을 골라도 돼요.",
+    "needsFfmpeg": "렌더링을 시작할 때 FFmpeg를 설치해요. 설치가 끝나면 사용할 인코더를 다시 확인해 적용해요.",
+    "hardware": "시험 프레임을 처리한 하드웨어 인코더를 사용해요. 이 컴퓨터의 CPU와 메모리에 맞춰 품질을 추천했어요.",
+    "software": "사용 가능한 하드웨어 인코더를 확인하지 못해 CPU로 처리해요. 이 컴퓨터의 CPU와 메모리에 맞춰 품질을 추천했어요.",
+    "unavailable": "인코더 확인을 마치지 못해 CPU 기준으로 설정했어요. 렌더링을 시작하면 다시 확인해요.",
+    "legacy": "이 렌더러 버전은 컴퓨터 정보를 보내지 않아 CPU 기준으로 설정했어요. 렌더러를 업데이트하면 이 컴퓨터에 맞춰 추천해요.",
+    "heavy": "렌더링 시간과 저장 공간이 많이 필요해요. 추천은 시작점이며, 실제 속도는 레벨과 오버레이에 따라 달라져요.",
+    "textureLimit": "GPU가 처리할 수 있는 최대 크기를 넘는 품질은 선택할 수 없어요.",
+    "systemDetails": "얼불춤이 실행 중인 컴퓨터",
+    "unknownProcessor": "CPU 정보를 확인할 수 없어요",
+    "unknownGraphics": "GPU 정보를 확인할 수 없어요",
+    "memory": "메모리 {{size}} GB · CPU {{threads}}스레드"
+  },
   "levelChoice": {
     "title": "렌더링할 레벨 선택",
     "description": "원본 레벨이나 플레이 구성이 같은 다른 파일을 선택하세요. 다음 화면에서 영상 설정을 선택해요.",
@@ -57,6 +84,7 @@
     "failed": "영상을 만들지 못했어요"
   },
   "errors": {
+    "render_resolution_unsupported": "GPU가 선택한 해상도를 처리할 수 없어요. 품질을 낮추거나 고급 설정에서 해상도를 줄여 주세요.",
     "renderer_missing": "다운로드 센터에서 TUFReplay-Renderer를 설치하고 얼불춤을 완전히 다시 실행한 뒤 모드를 켜 주세요.",
     "downloads_unavailable": "최신 TUFReplay로 업데이트하고 얼불춤을 완전히 다시 실행하면 웹에서 설치할 수 있어요.",
     "namespace_not_found": "TUFReplay-Renderer를 설치하고 활성화한 뒤 얼불춤을 다시 실행해 주세요.",

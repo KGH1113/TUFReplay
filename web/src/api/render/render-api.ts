@@ -4,13 +4,17 @@ import type {
   RenderHealth,
   RenderJob,
   RenderOptions,
+  RenderPreferences,
   RenderSettings,
 } from "@/models/render/render-model";
 
 export interface RenderApi {
   getHealth(): Promise<RenderHealth>;
   getSettings(): Promise<RenderSettings>;
-  updateSettings(options: Partial<RenderOptions>): Promise<RenderSettings>;
+  updateSettings(
+    options: Partial<RenderOptions>,
+    preferences?: RenderPreferences,
+  ): Promise<RenderSettings>;
   chooseOutputDirectory(initialPath?: string): Promise<OutputDirectorySelection>;
   getOutputDirectorySelection(selectionId: string): Promise<OutputDirectorySelection>;
   cancelOutputDirectorySelection(selectionId: string): Promise<{ cancelled: boolean }>;

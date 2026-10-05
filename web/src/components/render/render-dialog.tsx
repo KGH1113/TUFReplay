@@ -46,6 +46,11 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
     !control.health?.busy &&
     Boolean(control.health && control.settings) &&
     control.optionValidation.success &&
+    (control.settingsMode === "advanced" ||
+      Boolean(
+        control.recommendations.levels.find((value) => value.quality === control.quality)
+          ?.supported,
+      )) &&
     control.options.outputDirectory.trim().length > 0;
 
   if (needsRendererSetup) {
