@@ -1,4 +1,35 @@
 {
+  "settingsMode": {
+    "label": "Video settings",
+    "recommended": "Recommended",
+    "advanced": "Advanced"
+  },
+  "qualities": {
+    "lowest": "Lowest",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "highest": "Highest",
+    "extreme": "Extreme"
+  },
+  "recommendation": {
+    "quality": "Video quality",
+    "badge": "For this computer",
+    "resolution": "{{height}}p · {{fps}} fps",
+    "size": "About {{size}} MB / minute",
+    "checking": "Checking the encoders on the computer running ADOFAI. You can choose a quality while it finishes.",
+    "needsFfmpeg": "Set up FFmpeg when you start rendering. Your encoder recommendation will update after installation.",
+    "hardware": "A hardware encoder passed the frame check. The suggested quality balances video detail with this computer's CPU and memory.",
+    "software": "Using CPU encoding because no hardware encoder passed the check. Suggested quality is based on this computer's CPU and memory.",
+    "unavailable": "The encoder check could not finish. Using conservative CPU settings; start rendering to check again.",
+    "legacy": "This Renderer version does not report system details. Using conservative CPU settings; update Renderer for a recommendation specific to this computer.",
+    "heavy": "This quality takes more time and disk space. The recommendation is a starting point; rendering speed also depends on the level and overlays.",
+    "textureLimit": "Qualities above this GPU's maximum texture size are unavailable.",
+    "systemDetails": "Computer running ADOFAI",
+    "unknownProcessor": "Processor details unavailable",
+    "unknownGraphics": "Graphics details unavailable",
+    "memory": "{{size}} GB memory · {{threads}} CPU threads"
+  },
   "levelChoice": {
     "title": "Choose a level to render",
     "description": "Use the original level or choose another file with matching gameplay. Next, choose your video settings.",
@@ -57,6 +88,7 @@
     "failed": "The video could not be created"
   },
   "errors": {
+    "render_resolution_unsupported": "This GPU cannot render the selected resolution. Choose a lower quality or reduce the resolution in Advanced.",
     "renderer_missing": "Install TUFReplay-Renderer from Downloads, fully restart ADOFAI and enable the mod, then try again.",
     "downloads_unavailable": "Update TUFReplay and fully restart ADOFAI to use the web installer.",
     "namespace_not_found": "Install and enable TUFReplay-Renderer, restart ADOFAI, then try again.",

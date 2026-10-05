@@ -5,6 +5,7 @@ import type {
   renderHealthSchema,
   renderJobSchema,
   renderOptionsSchema,
+  renderPreferencesSchema,
   renderSettingsSchema,
 } from "@/schemas/render/render-schema";
 
@@ -13,6 +14,7 @@ export type RenderExportStatus = z.infer<typeof renderExportStatusSchema>;
 export type RenderJob = z.infer<typeof renderJobSchema>;
 export type RenderOptions = z.infer<typeof renderOptionsSchema>;
 export type RenderSettings = z.infer<typeof renderSettingsSchema>;
+export type RenderPreferences = z.infer<typeof renderPreferencesSchema>;
 export type OutputDirectorySelection = z.infer<typeof outputDirectoryChoiceSchema>;
 export const defaultRenderOptions: RenderOptions = {
   width: 1920,
@@ -55,7 +57,9 @@ export function availableEncoders(
     return encoders.filter(
       (value) => value === "Software" || value === "Auto" || value === "AppleVideoToolbox",
     );
-  return encoders.filter((value) => value !== "AppleVideoToolbox");
+  return codec === "H264" || codec === "H265"
+    ? encoders
+    : encoders.filter((value) => value !== "AppleVideoToolbox");
 }
 
 export function availablePixelFormats(options: RenderOptions) {

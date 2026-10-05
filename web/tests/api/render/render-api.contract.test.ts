@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createRenderApi } from "@/api/render/create-render-api";
+import { createRenderApiMock } from "@/mocks/render/create-render-api-mock";
 import { availableEncoders, defaultRenderOptions } from "@/models/render/render-model";
 import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 
@@ -30,6 +31,33 @@ function clients(
   } as unknown as AdofaiIpcClients;
 }
 describe("neutral render IPC contract", () => {
+  test("remembers the chosen settings mode and quality with validated, independent snapshots", async () => {
+    const calls: unknown[] = [];
+    const mock = createRenderApiMock();
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        (method, params) => {
+          calls.push({ method, params });
+          return mock.getSettings();
+        },
+      ),
+    );
+    await api.updateSettings(defaultRenderOptions, { mode: "recommended", quality: "low" });
+    expect(calls).toEqual([
+      {
+        method: "settings.update",
+        params: { ...defaultRenderOptions, preferences: { mode: "recommended", quality: "low" } },
+      },
+    ]);
+    expect(() => api.updateSettings({}, { mode: "advanced", quality: "ultra" } as never)).toThrow();
+    expect(calls).toHaveLength(1);
+    await mock.updateSettings({ width: 2560, height: 1440 }, { mode: "advanced", quality: "high" });
+    const saved = await mock.getSettings();
+    expect(saved.preferences).toEqual({ mode: "advanced", quality: "high" });
+    if (saved.preferences) saved.preferences.mode = "recommended";
+    expect((await mock.getSettings()).preferences?.mode).toBe("advanced");
+  });
   test("exports the chosen matching level without starting a replay or saving its path as a default", async () => {
     const calls: unknown[] = [];
     const api = createRenderApi(

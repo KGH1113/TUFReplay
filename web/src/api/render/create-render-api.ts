@@ -8,6 +8,7 @@ import {
   renderHealthSchema,
   renderJobSchema,
   renderOptionsSchema,
+  renderPreferencesSchema,
   renderSettingsSchema,
 } from "@/schemas/render/render-schema";
 import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
@@ -25,8 +26,16 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
   return {
     getHealth: () => callAdofaiIpc(renderer(), "health.get", {}, renderHealthSchema),
     getSettings: () => callAdofaiIpc(renderer(), "settings.get", {}, renderSettingsSchema),
-    updateSettings: (options) =>
-      callAdofaiIpc(renderer(), "settings.update", options, renderSettingsSchema),
+    updateSettings: (options, preferences) =>
+      callAdofaiIpc(
+        renderer(),
+        "settings.update",
+        {
+          ...options,
+          ...(preferences ? { preferences: renderPreferencesSchema.parse(preferences) } : {}),
+        },
+        renderSettingsSchema,
+      ),
     chooseOutputDirectory: (initialPath) =>
       callAdofaiIpc(
         renderer(),

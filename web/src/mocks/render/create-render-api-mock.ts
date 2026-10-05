@@ -3,18 +3,31 @@ import {
   defaultRenderOptions,
   type RenderJob,
   type RenderOptions,
+  type RenderPreferences,
   type RenderSettings,
 } from "@/models/render/render-model";
 
 export function createRenderApiMock(): RenderApi {
   let defaults = { ...defaultRenderOptions, outputDirectory: "/Users/example/Videos/TUFReplay" };
+  let preferences: RenderPreferences = { mode: "recommended", quality: null };
   let currentJob: RenderJob | null = null;
   let renderStep = 0;
   let exportCancelled = false;
   let pickerCancelled = false;
   const settings = (): RenderSettings => ({
     defaults: { ...defaults },
+    preferences: { ...preferences },
     outputDirectory: defaults.outputDirectory,
+    system: {
+      platform: "windows",
+      processorName: "AMD Ryzen 7 7800X3D",
+      logicalProcessors: 16,
+      memoryMb: 32768,
+      graphicsName: "NVIDIA GeForce RTX 4070",
+      graphicsMemoryMb: 12288,
+      maxTextureSize: 16384,
+      encoding: { state: "ready", h264Encoders: ["Software", "NvidiaNvenc"] },
+    },
     capabilities: {
       codecs: ["H264", "H265", "VP9", "AV1", "ProRes"],
       encoders: ["Auto", "Software", "NvidiaNvenc", "IntelQsv", "AmdAmf", "AppleVideoToolbox"],
@@ -55,8 +68,9 @@ export function createRenderApiMock(): RenderApi {
     async getSettings() {
       return settings();
     },
-    async updateSettings(options) {
+    async updateSettings(options, selectedPreferences) {
       defaults = { ...defaults, ...options };
+      if (selectedPreferences) preferences = { ...selectedPreferences };
       return settings();
     },
     async chooseOutputDirectory() {
