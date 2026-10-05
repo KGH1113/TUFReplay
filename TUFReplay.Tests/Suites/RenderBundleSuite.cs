@@ -1,5 +1,8 @@
 using System.Globalization;
+using System.Reflection;
 using System.Text;
+using Microsoft.Data.Sqlite;
+using Newtonsoft.Json;
 using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
@@ -170,7 +173,139 @@ internal static class RenderBundleSuite
       cancelled = true;
     }
     Assert(cancelled, "Bundle export ignored cancellation.");
+    TestPrematureTerminalRecovery();
+    TestRecordedTerminalFixture();
     Console.WriteLine("TUFReplay neutral render bundle tests passed.");
+  }
+
+  private static void TestPrematureTerminalRecovery()
+  {
+    // Reproduce the 23:56 payload's committed zero boundary, valid later hits
+    // and final Escape transition. Recovery changes the export boundary only.
+    var metadata = new ReplayMetadata
+    {
+      startedAtUtc = "2026-10-05T14:56:56.3889140Z",
+      endedAtUtc = "2026-10-05T14:56:56.4034060Z",
+      terminalTimeUs = 0L,
+      inputFormat = RecordedRunPayload.NativeInputFormatV2,
+      inputTimeBase = ReplayInputTimeBases.Hybrid,
+      inputInvalidAnchors = 229,
+      inputDiscontinuities = 2,
+      inputLastDiscontinuity = "fail",
+    };
+    RecordedInput[] inputs =
+    {
+      new(0L, 14, RecordInputFlags.Down),
+      new(0L, 14, 0),
+      new(483_193L, 121, RecordInputFlags.Down),
+      new(584_667L, 121, 0),
+      new(9_665_839L, 53, RecordInputFlags.Down),
+    };
+    ReplayHitContext[] hits =
+    {
+      new(0, 0, 0, false, false, false, 0, 0, false, false, 0, 4, 0L),
+      new(57, 0, 0, false, false, false, 0, 0, false, false, 0, 7, 8_832_425L),
+    };
+    long terminal = RenderBundleValidation.ResolveTerminalTimeUs(metadata, "aborted", inputs, hits, out bool recovered);
+    Assert(recovered && terminal == 9_665_839L, "The observed pre-start boundary defect could not be exported.");
+    Assert(
+      metadata.terminalTimeUs == 0L && inputs[0].TimeUs == 0L,
+      "Recovery modified the original recording timestamps."
+    );
+    using var output = new StringWriter();
+    RenderBundleCsv.WriteInputs(output, inputs, "macos", terminal);
+    Assert(output.ToString().Contains("9665839,Escape,1,4"), "Terminal recovery lost the recorded stop input.");
+    Assert(
+      RenderBundleValidation.RecoveredTerminalWarning.Contains("cannot be restored"),
+      "Recovery hid the unrecoverable pre-start key timing."
+    );
+
+    metadata.terminalTimeUs = 400_000L;
+    terminal = RenderBundleValidation.ResolveTerminalTimeUs(metadata, "aborted", inputs, hits, out recovered);
+    Assert(!recovered && terminal == 400_000L, "Ordinary late events silently extended a nonzero terminal.");
+    Error(
+      () => RenderBundleCsv.WriteInputs(new StringWriter(), inputs, "macos", terminal),
+      "render_event_after_terminal",
+      "timeUs",
+      4,
+      "inputs.csv"
+    );
+    metadata.terminalTimeUs = 0L;
+    _ = RenderBundleValidation.ResolveTerminalTimeUs(metadata, "failed", inputs, hits, out recovered);
+    Assert(!recovered, "A failed recording without the observed aborted signature was normalized.");
+    metadata.endedAtUtc = "2026-10-05T14:56:57.4034060Z";
+    _ = RenderBundleValidation.ResolveTerminalTimeUs(metadata, "aborted", inputs, hits, out recovered);
+    Assert(!recovered, "A terminal committed during gameplay was treated as a pre-start defect.");
+    metadata.endedAtUtc = "2026-10-05T14:56:56.4034060Z";
+    metadata.inputDiscontinuities = 0L;
+    _ = RenderBundleValidation.ResolveTerminalTimeUs(metadata, "aborted", inputs, hits, out recovered);
+    Assert(!recovered, "An unrelated zero terminal was normalized without the capture signature.");
+    metadata.inputDiscontinuities = 2L;
+    inputs[inputs.Length - 1] = new RecordedInput(50_000_000L, 53, RecordInputFlags.Down);
+    _ = RenderBundleValidation.ResolveTerminalTimeUs(metadata, "aborted", inputs, hits, out recovered);
+    Assert(!recovered, "Arbitrary input long after the final hit extended the export.");
+  }
+
+  private static void TestRecordedTerminalFixture()
+  {
+    string database = Environment.GetEnvironmentVariable("TUFREPLAY_RENDER_BUNDLE_FIXTURE_DB");
+    if (string.IsNullOrWhiteSpace(database))
+      return;
+    string runId = Environment.GetEnvironmentVariable("TUFREPLAY_RENDER_BUNDLE_FIXTURE_RUN");
+    string gameAssembly = Environment.GetEnvironmentVariable("TUFREPLAY_RENDER_BUNDLE_FIXTURE_GAME_DLL");
+    Assert(
+      !string.IsNullOrWhiteSpace(runId) && File.Exists(gameAssembly),
+      "Recorded fixture needs its run and game judgment enum."
+    );
+    var connectionString = new SqliteConnectionStringBuilder
+    {
+      DataSource = database,
+      Mode = SqliteOpenMode.ReadOnly,
+      Pooling = false,
+    };
+    using var connection = new SqliteConnection(connectionString.ToString());
+    connection.Open();
+    using var command = connection.CreateCommand();
+    command.CommandText =
+      "SELECT r.result, a.metadata_json, a.input_csv, a.hit_context_csv FROM runs r JOIN replay_artifacts a ON a.run_id=r.id WHERE r.id=@run";
+    command.Parameters.AddWithValue("@run", runId);
+    using var reader = command.ExecuteReader();
+    Assert(reader.Read(), "The requested recorded terminal fixture is missing.");
+    var metadata = JsonConvert.DeserializeObject<ReplayMetadata>(reader.GetString(1));
+    var inputs = ReplayInputParser.Parse((byte[])reader[2]);
+    var hits = ReplayHitContextParser.Parse((byte[])reader[3]);
+    RenderBundleValidation.ValidateMetadata(metadata);
+    long terminal = RenderBundleValidation.ResolveTerminalTimeUs(
+      metadata,
+      reader.GetString(0),
+      inputs,
+      hits,
+      out bool recovered
+    );
+    Assert(
+      recovered && terminal == Math.Max(inputs[^1].TimeUs, hits[^1].TimeUs),
+      "The actual recorded terminal defect did not match safe recovery."
+    );
+    using var inputCsv = new StringWriter();
+    RenderBundleCsv.WriteInputs(inputCsv, inputs, metadata.inputNativePlatform, terminal);
+    Type marginType = Assembly.LoadFrom(gameAssembly).GetType("HitMargin", throwOnError: true);
+    using var hitCsv = new StringWriter();
+    RenderBundleCsv.WriteHits(hitCsv, hits, terminal, value => Enum.GetName(marginType, value));
+    Assert(
+      inputCsv.ToString().Split('\n').Length == inputs.Count + 2,
+      "Fixture export dropped recorded key transitions."
+    );
+    Assert(hitCsv.ToString().Split('\n').Length == hits.Count + 2, "Fixture export dropped accepted judgments.");
+    Assert(metadata.terminalTimeUs == 0L, "Fixture recovery changed the stored metadata.");
+    Console.WriteLine(
+      "Read-only recorded terminal fixture passed. terminalTimeUs="
+        + terminal
+        + ", inputs="
+        + inputs.Count
+        + ", hits="
+        + hits.Count
+        + ", warnings=1"
+    );
   }
 
   private static ReplayHitContext Hit(double angle) =>

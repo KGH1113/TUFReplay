@@ -155,6 +155,25 @@ public static class RenderBundleExportService
           file: "hits.csv"
         );
       }
+      long terminalTimeUs = RenderBundleValidation.ResolveTerminalTimeUs(
+        meta,
+        run.Result,
+        inputs,
+        hits,
+        out bool recoveredTerminal
+      );
+      string[] warnings = recoveredTerminal
+        ? new[] { RenderBundleValidation.RecoveredTerminalWarning }
+        : Array.Empty<string>();
+      if (recoveredTerminal)
+        Main.Instance?.Log(
+          "[Render/Export] Recovered pre-start terminal. runId="
+            + run.Id
+            + ", terminalTimeUs="
+            + terminalTimeUs
+            + ". "
+            + warnings[0]
+        );
       string target = job.LevelPath ?? run.LevelPath;
       if (string.IsNullOrWhiteSpace(target) || !File.Exists(target))
         throw new ExportException(
@@ -171,15 +190,9 @@ public static class RenderBundleExportService
       token.ThrowIfCancellationRequested();
       Directory.CreateDirectory(job.Directory);
       using (var writer = new StreamWriter(Path.Combine(job.Directory, "inputs.csv"), false, new UTF8Encoding(false)))
-        RenderBundleCsv.WriteInputs(writer, inputs, meta.inputNativePlatform, meta.terminalTimeUs.Value, token);
+        RenderBundleCsv.WriteInputs(writer, inputs, meta.inputNativePlatform, terminalTimeUs, token);
       using (var writer = new StreamWriter(Path.Combine(job.Directory, "hits.csv"), false, new UTF8Encoding(false)))
-        RenderBundleCsv.WriteHits(
-          writer,
-          hits,
-          meta.terminalTimeUs.Value,
-          value => Enum.GetName(typeof(HitMargin), value),
-          token
-        );
+        RenderBundleCsv.WriteHits(writer, hits, terminalTimeUs, value => Enum.GetName(typeof(HitMargin), value), token);
       SetProgress(job, 0.35);
       var media = new JObject();
       if (job.IncludeWebcam)
@@ -277,10 +290,11 @@ public static class RenderBundleExportService
             startTile = run.StartTile,
             result = run.Result?.ToLowerInvariant(),
             wonTimeUs = meta.wonTimeUs,
-            terminalTimeUs = meta.terminalTimeUs.Value,
+            terminalTimeUs,
           },
           inputsFile = "inputs.csv",
           hitsFile = "hits.csv",
+          warnings,
         }
       );
       manifest["media"] = media;

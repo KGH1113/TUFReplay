@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using TUFReplay.Replay.Models;
+using TUFReplay.Replay.Playback;
 
 namespace TUFReplay.Replay.Export;
 
@@ -28,6 +31,9 @@ public class RenderBundleValidationException : Exception
 
 public static class RenderBundleValidation
 {
+  public const string RecoveredTerminalWarning =
+    "This recording saved its end time before gameplay began. The video uses the end of its recorded events. Pre-start key timestamps saved as zero cannot be restored, so their key rain may differ from the original play. Record a new run with the updated TUFReplay to preserve their exact timing.";
+
   public static void ValidateMetadata(ReplayMetadata metadata)
   {
     if (metadata == null)
@@ -48,6 +54,59 @@ public static class RenderBundleValidation
         || (metadata.wonTimeUs.Value >= 0 && metadata.wonTimeUs.Value <= metadata.terminalTimeUs.Value),
       "wonTimeUs"
     );
+  }
+
+  public static long ResolveTerminalTimeUs(
+    ReplayMetadata metadata,
+    string result,
+    IReadOnlyList<RecordedInput> inputs,
+    IReadOnlyList<ReplayHitContext> hits,
+    out bool recovered
+  )
+  {
+    recovered = false;
+    long terminal = metadata.terminalTimeUs.Value;
+    // Older recorder sessions could be rearmed after a pre-start terminal
+    // without clearing that terminal. Recover only that observed signature;
+    // ordinary events after a nonzero terminal remain invalid.
+    if (
+      terminal != 0L
+      || metadata.wonTimeUs.HasValue
+      || !string.Equals(result, "aborted", StringComparison.OrdinalIgnoreCase)
+      || metadata.inputFormat != RecordedRunPayload.NativeInputFormatV2
+      || metadata.inputTimeBase != ReplayInputTimeBases.Hybrid
+      || metadata.inputInvalidAnchors <= 0L
+      || metadata.inputDiscontinuities < 2L
+      || metadata.inputLastDiscontinuity != "fail"
+      || inputs == null
+      || inputs.Count == 0
+      || hits == null
+      || hits.Count < 2
+      || !DateTimeOffset.TryParse(
+        metadata.startedAtUtc,
+        CultureInfo.InvariantCulture,
+        DateTimeStyles.AssumeUniversal,
+        out var started
+      )
+      || !DateTimeOffset.TryParse(
+        metadata.endedAtUtc,
+        CultureInfo.InvariantCulture,
+        DateTimeStyles.AssumeUniversal,
+        out var ended
+      )
+      || ended < started
+      || (ended - started).TotalMilliseconds > 50d
+    )
+      return terminal;
+
+    long lastInput = inputs[inputs.Count - 1].TimeUs;
+    long lastHit = hits[hits.Count - 1].TimeUs;
+    // The observed final input is a stop key shortly after the final hit.
+    // Do not extend a video over arbitrary later input or an unproven hit tail.
+    if (lastHit <= 0L || lastInput < lastHit || lastInput - lastHit > 1_000_000L)
+      return terminal;
+    recovered = true;
+    return lastInput;
   }
 
   private static void Required(bool present, string field)
