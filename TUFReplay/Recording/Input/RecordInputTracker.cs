@@ -48,6 +48,8 @@ public static class RecordInputTracker
   private static long _captureWindowStartTicks;
   private static int _callbacksInFlight;
 
+  internal static long CaptureStartTimestampTicks => _capturing ? Interlocked.Read(ref _captureStartTicks) : 0;
+
   public static void PrepareSource()
   {
     if (!EventSource.IsRunning)

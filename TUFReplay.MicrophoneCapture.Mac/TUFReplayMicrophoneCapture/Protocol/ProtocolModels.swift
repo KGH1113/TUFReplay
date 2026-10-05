@@ -12,6 +12,7 @@ struct CommandRequest: Decodable {
   let maxBytes: Int64?
   let previewPath: String?
   let recordingDirectory: String?
+  let startHostTime: UInt64?
 }
 
 enum CommandName: String {

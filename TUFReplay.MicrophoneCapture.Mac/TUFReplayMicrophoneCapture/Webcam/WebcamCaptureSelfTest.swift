@@ -141,6 +141,11 @@ enum WebcamCaptureSelfTest {
       throw CaptureError.message("An unused camera writer leaked its temporary file.")
     }
     let boundary = CMTime(seconds: 10, preferredTimescale: 1_000_000_000)
+    guard !WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 9.94, preferredTimescale: 1_000_000_000),
+      boundary: boundary, minimumHostTime: boundary),
+      WebcamCaptureService.canReuseLatestSample(hostTime: boundary, boundary: boundary, minimumHostTime: boundary) else {
+      throw CaptureError.message("Camera recording accepted a frame from before the input capture boundary.")
+    }
     guard WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 9.94, preferredTimescale: 1_000_000_000), boundary: boundary),
       !WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 9, preferredTimescale: 1_000_000_000), boundary: boundary),
       !WebcamCaptureService.canReuseLatestSample(hostTime: CMTime(seconds: 10.01, preferredTimescale: 1_000_000_000), boundary: boundary),
@@ -164,8 +169,9 @@ enum WebcamCaptureSelfTest {
       throw CaptureError.message("Synthetic camera H.264 video did not decode all frames.")
     }
     let command = try JSONDecoder().decode(CommandRequest.self,
-      from: Data(#"{"command":"cameraBegin","path":"test.mp4","maxBytes":134217728}"#.utf8))
-    guard command.command == CommandName.cameraBegin.rawValue, command.maxBytes == 134217728 else {
+      from: Data(#"{"command":"cameraBegin","path":"test.mp4","maxBytes":134217728,"startHostTime":9007199254740993}"#.utf8))
+    guard command.command == CommandName.cameraBegin.rawValue, command.maxBytes == 134217728,
+      command.startHostTime == 9_007_199_254_740_993 else {
       throw CaptureError.message("Camera command protocol validation failed.")
     }
     let armCommand = try JSONDecoder().decode(CommandRequest.self,
