@@ -1,6 +1,7 @@
 import { createActivityApi } from "@/api/activity/create-activity-api";
 import type { AppApi } from "@/api/app-api";
 import { createCalibrationApi } from "@/api/calibration/create-calibration-api";
+import { createDownloadsApi } from "@/api/downloads/create-downloads-api";
 import { createHealthApi } from "@/api/health/create-health-api";
 import { createMicrophoneApi } from "@/api/microphone/create-microphone-api";
 import { createRenderApi } from "@/api/render/create-render-api";
@@ -22,6 +23,7 @@ export function getProductionApi(): Promise<AppApi> {
       microphone: createMicrophoneApi(clients),
       calibration: createCalibrationApi(clients),
       webcam: createWebcamApi(clients),
+      downloads: createDownloadsApi(clients),
     }))
     .catch((cause) => {
       apiPromise = null;

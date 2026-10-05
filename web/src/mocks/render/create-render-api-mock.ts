@@ -96,6 +96,7 @@ export function createRenderApiMock(): RenderApi {
         jobId: "mock-render",
         state: "preparing",
         waitingForGameFocus: false,
+        waitingForFfmpeg: false,
         progress: 0,
         warnings: [],
         errorCode: null,

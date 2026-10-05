@@ -4,6 +4,8 @@ using TUFReplay.Calibration.Ipc;
 using TUFReplay.Microphone.Ipc;
 using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Ipc;
+using TUFReplay.Shared.Downloads;
+using TUFReplay.Shared.Media;
 using TUFReplay.Webcam.Ipc;
 
 namespace TUFReplay.Shared.Ipc;
@@ -32,6 +34,9 @@ public sealed class TUFReplayIpcFeature
           "https://tufreplay.impl1113.dev",
           "https://tufreplay-dev.impl1113.dev",
           "https://tufreplay-auto.impl1113.dev",
+          // Temporary Tailscale test origins.
+          "https://guhyeons-macbook-pro.tail234c02.ts.net",
+          "http://guhyeons-macbook-pro.tail234c02.ts.net",
           "http://localhost",
           "http://127.0.0.1",
         },
@@ -39,6 +44,23 @@ public sealed class TUFReplayIpcFeature
     );
 
     ipc.Register("health.get", HealthIpcHandlers.Get);
+    ipc.Register("media.ffmpeg.status", _ => FfmpegInstallCoordinator.Status());
+    ipc.RegisterMainThread("media.ffmpeg.request", _ => FfmpegInstallCoordinator.Request());
+    ipc.RegisterMainThread("media.ffmpeg.confirm", _ => FfmpegInstallCoordinator.Confirm());
+    ipc.RegisterMainThread("media.ffmpeg.decline", _ => FfmpegInstallCoordinator.Decline());
+    ipc.RegisterMainThread("media.ffmpeg.cancel", _ => FfmpegInstallCoordinator.Cancel());
+    ipc.RegisterMainThread("downloads.status", _ => DownloadCenterCoordinator.Status());
+    ipc.RegisterMainThread("downloads.renderer.request", _ => DownloadCenterCoordinator.RequestRenderer());
+    ipc.RegisterMainThread("downloads.renderer.confirm", _ => DownloadCenterCoordinator.ConfirmRenderer());
+    ipc.RegisterMainThread("downloads.renderer.cancel", _ => DownloadCenterCoordinator.CancelRenderer());
+    ipc.RegisterMainThread(
+      "media.ffmpeg.cancel-pending",
+      _ =>
+      {
+        FfmpegInstallCoordinator.CancelPendingRequest();
+        return FfmpegInstallCoordinator.Status();
+      }
+    );
     ipc.Register("activity.app-sessions.list", ActivityIpcHandlers.ListAppSessions);
     ipc.Register("activity.legacy-replay-status.get", ActivityIpcHandlers.GetLegacyReplayStatus);
     ipc.Register("activity.level-session.get", ActivityIpcHandlers.GetLevelSession);

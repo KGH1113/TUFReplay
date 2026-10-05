@@ -80,8 +80,7 @@
   "syncHint": "첫 프레임의 시각을 기준으로 리플레이와 자동으로 맞춰요. 카메라 지연이 느껴지면 키 입력 근처에서 일시정지하고 영상과 리플레이를 비교해 주세요. 양수는 영상을 더 일찍, 음수는 더 늦게 보여줘요.",
   "resetOffset": "싱크 보정 초기화",
   "windowsSetup": "Windows 카메라 설정",
-  "ffmpegHint": "Windows에서는 DirectShow와 H.264를 지원하는 FFmpeg가 필요해요. 경로를 비우면 함께 설치된 FFmpeg 또는 PATH를 사용해요. 직접 설치했다면 ffmpeg.exe의 전체 경로를 입력해 주세요.",
-  "ffmpegPath": "FFmpeg 실행 파일 경로",
+  "ffmpegHint": "Windows 카메라 녹화에는 FFmpeg가 필요해요. 카메라를 켜면 웹 설치 안내 창이 열려요. 동의하면 TUFReplay가 설치하고 렌더러와 함께 사용해요.",
   "applyPath": "경로 적용",
   "errors": {
     "readSettings": "카메라 설정을 불러오지 못했어요. 게임 연결을 확인하고, 필요하면 TUFReplay를 업데이트해 주세요.",

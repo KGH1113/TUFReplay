@@ -13,7 +13,6 @@ export function createWebcamApiMock(): WebcamApi {
       Error: null,
       Devices: [{ Id: "mock-camera", Name: "FaceTime HD Camera" }],
       SelectedDeviceId: null,
-      FfmpegPath: null,
       Quality: "compact",
       OffsetMs: 0,
       StorageLimitMb: 512,

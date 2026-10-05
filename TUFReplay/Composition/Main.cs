@@ -151,6 +151,7 @@ public sealed class Main
     ReplaySessionService.TickStartup();
     ReplaySessionService.TickWebcamPlayback();
     CameraFirstRunCoordinator.Tick();
+    TUFReplay.Shared.Media.FfmpegInstallCoordinator.Tick();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 

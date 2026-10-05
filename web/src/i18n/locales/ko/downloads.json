@@ -1,0 +1,55 @@
+{
+  "title": "다운로드 센터",
+  "view": "자세히",
+  "continue": "계속",
+  "close": "닫기",
+  "done": "완료",
+  "background": "백그라운드에서 계속",
+  "connectionIssue": "설치 상태를 읽지 못했어요",
+  "loading": "설치 상태를 확인하고 있어요…",
+  "description": {
+    "center": "카메라 녹화와 렌더링에 필요한 구성 요소를 설치해요.",
+    "renderer": "녹화된 플레이를 영상으로 만들어요. 설치 후 게임을 다시 시작해 주세요.",
+    "ffmpeg": "렌더링과 Windows 카메라 녹화에 필요한 영상 인코더예요. 두 기능이 함께 사용해요."
+  },
+  "consent": {
+    "renderer": "동의하면 TUFReplay가 GitHub의 공식 Renderer 배포 파일을 받아 게임의 Mods 폴더에 설치해요. Renderer는 별도의 GPL 라이선스를 따르는 확장 모드예요.",
+    "ffmpeg": "동의하면 운영체제에 맞는 배포처에서 FFmpeg를 받아 검증한 뒤 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있어요. TUFReplay 폴더에 저장하고 카메라 녹화와 렌더링에 함께 사용해요."
+  },
+  "status": {
+    "checking": "설치 상태 확인 중…",
+    "missing": "설치되지 않음",
+    "awaiting-consent": "설치하려면 동의가 필요해요",
+    "resolving": "공식 배포 파일을 찾고 있어요…",
+    "downloading": "다운로드 중…",
+    "extracting": "압축을 풀고 있어요…",
+    "validating": "다운로드를 검증하고 있어요…",
+    "ready": "설치됨",
+    "restart-required": "설치됨 · 재시작 필요",
+    "declined": "설치를 건너뛰었어요",
+    "cancelled": "설치를 취소했어요",
+    "failed": "설치하지 못했어요"
+  },
+  "install": "설치",
+  "agreeInstall": "동의하고 설치",
+  "later": "나중에",
+  "cancel": "취소",
+  "retry": "다시 시도",
+  "license": "라이선스 보기",
+  "details": "자세히 보기",
+  "progress": "{{name}} 다운로드 진행률",
+  "installLocation": "설치 위치: {{path}}",
+  "restartHelp": "ADOFAI를 완전히 종료한 뒤 다시 열고, Unity Mod Manager에서 TUFReplay-Renderer를 켜 주세요.",
+  "errors": {
+    "statusFailed": "설치 상태를 읽지 못했어요. 게임에서 최신 TUFReplay가 켜져 있는지 확인한 뒤 다시 시도해 주세요.",
+    "downloads_unavailable": "최신 TUFReplay로 업데이트하고 얼불춤을 완전히 다시 실행하면 다운로드 센터를 사용할 수 있어요.",
+    "actionFailed": "설치 요청을 게임에 전달하지 못했어요. 게임과 연결되어 있는지 확인한 뒤 다시 시도해 주세요.",
+    "renderer_download_timeout": "Renderer를 받는 데 시간이 너무 오래 걸렸어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
+    "installFailed": "설치를 마치지 못했어요. 자세한 내용과 여유 공간, 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
+    "renderer_release_unavailable": "아직 공식 Renderer 배포 파일이 올라오지 않았어요. 배포 후 다시 시도해 주세요.",
+    "renderer_release_inaccessible": "Renderer 저장소에 접근하지 못했어요. 비공개이거나 사용할 수 없는 저장소일 수 있어요. 공개 릴리스가 제공되면 다시 시도해 주세요.",
+    "renderer_release_invalid": "배포된 Renderer 설치 파일이나 검증 파일이 올바르지 않아요. 배포 파일이 수정되면 다시 시도해 주세요.",
+    "renderer_checksum_mismatch": "받은 Renderer 파일이 공식 배포 파일과 일치하지 않아요. 다시 다운로드해 주세요.",
+    "renderer_directory_exists": "Renderer 폴더가 이미 있어요. 게임을 재시작하고 설치된 모드를 확인해 주세요. 설치가 불완전하다면 기존 폴더를 다른 곳으로 옮긴 뒤 다시 시도해 주세요."
+  }
+}

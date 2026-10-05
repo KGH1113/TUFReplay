@@ -17,13 +17,9 @@ public sealed class WebcamSettingsPatch
     || _values.ContainsKey("deviceId")
     || _values["quality"] != null
     || _values["storageLimitMb"] != null
-    || _values["retentionDays"] != null
-    || _values.ContainsKey("ffmpegPath");
+    || _values["retentionDays"] != null;
   public bool RearmsCapture =>
-    _values["enabled"] != null
-    || _values.ContainsKey("deviceId")
-    || _values["quality"] != null
-    || _values.ContainsKey("ffmpegPath");
+    _values["enabled"] != null || _values.ContainsKey("deviceId") || _values["quality"] != null;
 
   public static bool TryParse(JObject values, out WebcamSettingsPatch patch)
   {
@@ -43,7 +39,6 @@ public sealed class WebcamSettingsPatch
             return false;
           break;
         case "deviceId":
-        case "ffmpegPath":
           if (token.Type != JTokenType.Null && (token.Type != JTokenType.String || token.Value<string>().Length > 4096))
             return false;
           break;
@@ -99,8 +94,6 @@ public sealed class WebcamSettingsPatch
       settings.WebcamEnabled = _values["enabled"].Value<bool>();
     if (_values.ContainsKey("deviceId"))
       settings.WebcamDeviceId = NullableText(_values["deviceId"]);
-    if (_values.ContainsKey("ffmpegPath"))
-      settings.WebcamFfmpegPath = NullableText(_values["ffmpegPath"]);
     if (_values["quality"] != null)
       settings.WebcamQuality = _values["quality"].Value<string>();
     if (_values["offsetMs"] != null)

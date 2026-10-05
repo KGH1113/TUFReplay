@@ -1,5 +1,6 @@
 import type { ActivityApi } from "@/api/activity/activity-api";
 import type { CalibrationApi } from "@/api/calibration/calibration-api";
+import type { DownloadsApi } from "@/api/downloads/downloads-api";
 import type { HealthApi } from "@/api/health/health-api";
 import type { MicrophoneApi } from "@/api/microphone/microphone-api";
 import type { RenderApi } from "@/api/render/render-api";
@@ -16,4 +17,5 @@ export interface AppApi {
   calibration: CalibrationApi;
   webcam: WebcamApi;
   render?: RenderApi;
+  downloads?: DownloadsApi;
 }

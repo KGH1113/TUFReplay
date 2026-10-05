@@ -6,6 +6,7 @@ using Newtonsoft.Json.Linq;
 using TUFReplay;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Shared.Capture;
+using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Timing;
 using TUFReplay.Webcam.Capture;
 using TUFReplay.Webcam.Models;
@@ -22,6 +23,8 @@ internal static class WebcamSuite
     LatestFrameOwnershipRemainsStableAndRejectsStaleFrames();
     AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
     CameraCompletionKeepsHealthyCaptureArmed(root);
+    CameraInstallationWaitDoesNotStartARun(root);
+    CameraRunCannotUseAnInvalidatedBackend(root);
     WonTailAndLatencyHaveTheSameConventionAsMicrophone();
     WallClockPreservesLargeTimestampPrecision();
     FfmpegDiscoverySeparatesAudioFromVideo();
@@ -183,6 +186,7 @@ internal static class WebcamSuite
       var backend = new CompletedCameraBackend(recording);
       var camera = new WebcamRecordingFeature();
       SetCameraField(camera, "_backend", backend);
+      SetCameraField(camera, "_runBackend", backend);
       SetCameraField(camera, "_armed", true);
       SetCameraField(camera, "_recording", true);
       SetCameraField(camera, "_runId", recording.RunId);
@@ -227,9 +231,130 @@ internal static class WebcamSuite
       .GetField(name, BindingFlags.NonPublic | BindingFlags.Instance)
       .SetValue(camera, value);
 
+  private static void CameraInstallationWaitDoesNotStartARun(string root)
+  {
+    WithEnabledCameraSettings(
+      root,
+      () =>
+      {
+        var camera = new WebcamRecordingFeature();
+        var installation = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetCameraField(camera, "_active", true);
+        SetCameraField(camera, "_arming", true);
+        SetCameraField(camera, "_work", installation.Task);
+        typeof(WebcamRecordingFeature)
+          .GetProperty(nameof(WebcamRecordingFeature.Store))
+          .SetValue(camera, new WebcamRecordingStore(Path.Combine(root, "camera-install-wait")));
+        try
+        {
+          Check(!camera.BeginRun("during-install"), "An installing camera accepted a recording without a backend.");
+          int callbacks = 0;
+          camera.EndRun(
+            null,
+            result =>
+            {
+              Check(result == null, "An installing camera returned a recording.");
+              callbacks++;
+            }
+          );
+          Check(callbacks == 1, "Ending a skipped camera run waited for FFmpeg installation.");
+          Check(!camera.GetState().CaptureLocked, "An installation wait locked camera recording settings.");
+        }
+        finally
+        {
+          installation.TrySetResult(true);
+          WaitForCameraWork(camera);
+        }
+        Check(camera.GetState().Error == null, "Playing during installation produced a camera error.");
+        var backend = new CompletedCameraBackend(null);
+        SetCameraField(camera, "_backend", backend);
+        // Creating the backend is not enough; its first-frame warmup must finish.
+        Check(!camera.BeginRun("during-warmup"), "A warming camera accepted a recording before its first frame.");
+        SetCameraField(camera, "_arming", false);
+        SetCameraField(camera, "_armed", true);
+        Check(camera.BeginRun("after-install"), "Camera readiness did not recover after installation.");
+        int completions = 0;
+        camera.EndRun(null, _ => Interlocked.Increment(ref completions));
+        WaitForCameraWork(camera);
+        Check(backend.BeginCalls == 1 && backend.EndCalls == 1, "The next run did not use the prepared camera.");
+        Check(completions == 1 && !camera.GetState().CaptureLocked, "The next camera run did not finish cleanly.");
+      }
+    );
+  }
+
+  private static void CameraRunCannotUseAnInvalidatedBackend(string root)
+  {
+    WithEnabledCameraSettings(
+      root,
+      () =>
+      {
+        var camera = new WebcamRecordingFeature();
+        var backend = new CompletedCameraBackend(null);
+        var queuedWork = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        SetCameraField(camera, "_active", true);
+        SetCameraField(camera, "_armed", true);
+        SetCameraField(camera, "_backend", backend);
+        SetCameraField(camera, "_work", queuedWork.Task);
+        typeof(WebcamRecordingFeature)
+          .GetProperty(nameof(WebcamRecordingFeature.Store))
+          .SetValue(camera, new WebcamRecordingStore(Path.Combine(root, "camera-stale-begin")));
+        int callbacks = 0;
+        try
+        {
+          Check(camera.BeginRun("queued-run"), "A ready camera rejected a run.");
+          camera.Disarm();
+          camera.EndRun(
+            null,
+            result =>
+            {
+              Check(result == null, "An invalidated camera returned a recording.");
+              Interlocked.Increment(ref callbacks);
+            }
+          );
+        }
+        finally
+        {
+          queuedWork.TrySetResult(true);
+          WaitForCameraWork(camera);
+        }
+        Check(backend.BeginCalls == 0 && backend.EndCalls == 0, "A queued run used an invalidated camera backend.");
+        Check(backend.DisarmCalls == 1, "Invalidating a queued run did not disarm the camera.");
+        Check(callbacks == 1 && !camera.GetState().CaptureLocked, "Invalidating a run leaked its completion or lock.");
+        Check(camera.GetState().Error == null, "Invalidating a queued run produced a camera error.");
+      }
+    );
+  }
+
+  private static void WaitForCameraWork(WebcamRecordingFeature camera)
+  {
+    Task work = (Task)
+      typeof(WebcamRecordingFeature).GetField("_work", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(camera);
+    Check(work.Wait(TimeSpan.FromSeconds(5)), "Camera work did not finish.");
+  }
+
+  private static void WithEnabledCameraSettings(string root, Action action)
+  {
+    var current = typeof(TUFReplaySettingStore).GetProperty(nameof(TUFReplaySettingStore.Current));
+    var path = typeof(TUFReplaySettingStore).GetField("_path", BindingFlags.NonPublic | BindingFlags.Static);
+    object previousSettings = current.GetValue(null);
+    object previousPath = path.GetValue(null);
+    try
+    {
+      TUFReplaySettingStore.Initialize(Path.Combine(root, "camera-lifecycle-settings.json"));
+      Main.Settings.WebcamEnabled = true;
+      action();
+    }
+    finally
+    {
+      current.SetValue(null, previousSettings);
+      path.SetValue(null, previousPath);
+    }
+  }
+
   private sealed class CompletedCameraBackend : IWebcamCaptureBackend
   {
     private readonly WebcamRecording _recording;
+    public int BeginCalls;
     public int EndCalls;
     public int DisarmCalls;
     public CameraPreviewBuffer Preview => null;
@@ -253,8 +378,11 @@ internal static class WebcamSuite
     public Task ArmAsync(string deviceId, WebcamCaptureProfile profile, string recordingDirectory = null) =>
       throw new InvalidOperationException("Do not open a camera.");
 
-    public Task BeginAsync(string runId, string path, long maxBytes) =>
-      throw new InvalidOperationException("Do not open a camera.");
+    public Task BeginAsync(string runId, string path, long maxBytes)
+    {
+      BeginCalls++;
+      return Task.CompletedTask;
+    }
 
     public void Dispose() { }
   }

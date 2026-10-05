@@ -27,6 +27,7 @@ export default defineConfig({
       "tufreplay.impl1113.dev",
       "tufreplay-dev.impl1113.dev",
       "tufreplay-auto.impl1113.dev",
+      "guhyeons-macbook-pro.tail234c02.ts.net",
     ],
     proxy: tufApiProxy,
   },
