@@ -47,7 +47,7 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
     return Task.CompletedTask;
   }
 
-  public Task BeginAsync(string runId, string path, long maxBytes)
+  public Task BeginAsync(string runId, string path, long maxBytes, long startTimestampTicks = 0)
   {
     _clock = MacOsMachTimeConverter.CaptureSystemClock();
     _helper.Send(
@@ -57,6 +57,8 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
         ["runId"] = runId,
         ["path"] = path,
         ["maxBytes"] = maxBytes,
+        ["startHostTime"] =
+          startTimestampTicks > 0 ? (JToken)_clock.ToMachTimestamp(startTimestampTicks) : JValue.CreateNull(),
       }
     );
     _run = new WebcamRecording

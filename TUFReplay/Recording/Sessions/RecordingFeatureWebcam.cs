@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using TUFReplay.Composition;
+using TUFReplay.Recording.Input;
 using TUFReplay.Shared.Timing;
 using TUFReplay.Webcam.Models;
 using TUFReplay.Webcam.Recording;
@@ -14,12 +15,14 @@ public partial class RecordingFeature
   private bool _webcamCaptureStarted;
   private WebcamCaptureTimeline _webcamTimeline;
   private PendingWebcamDisposition _pendingEditorWebcamRecording;
+  private bool _persistFailedWebcam;
 
   private void StartWebcamRun()
   {
-    if (_calibrationRun || _currentRun == null || _webcamCaptureStarted)
+    long startTicks = RecordInputTracker.CaptureStartTimestampTicks;
+    if (_calibrationRun || _currentRun == null || _webcamCaptureStarted || !Session.IsCapturingInput || startTicks <= 0)
       return;
-    _webcamCaptureStarted = FeatureRegistry.WebcamRecording?.BeginRun(_currentRun.Id) == true;
+    _webcamCaptureStarted = FeatureRegistry.WebcamRecording?.BeginRun(_currentRun.Id, startTicks) == true;
     if (_webcamCaptureStarted)
       _webcamTimeline = new WebcamCaptureTimeline();
   }
@@ -38,6 +41,14 @@ public partial class RecordingFeature
   {
     if (_webcamCaptureStarted && Session.Data.WonTimeUs.HasValue)
       _webcamTimeline.Observe(new CaptureTimelineAnchor(Stopwatch.GetTimestamp(), Session.Data.WonTimeUs.Value, 1d));
+  }
+
+  private void ObserveWebcamFailure()
+  {
+    if (_webcamCaptureStarted && Session.Data.TerminalTimeUs.HasValue)
+      _webcamTimeline.Observe(
+        new CaptureTimelineAnchor(Stopwatch.GetTimestamp(), Session.Data.TerminalTimeUs.Value, 1d)
+      );
   }
 
   private void EndWebcamRun(bool persist, Action<WebcamRecording> completed = null)

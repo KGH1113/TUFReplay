@@ -10,9 +10,14 @@ namespace TUFReplay.Recording.Sessions;
 
 public partial class RecordingFeature
 {
-  private void EndMicrophoneRun(Action<CapturedMicrophoneRecording> completed, bool persistWebcam = false)
+  private void EndMicrophoneRun(
+    Action<CapturedMicrophoneRecording> completed,
+    bool persistWebcam = false,
+    bool endWebcam = true
+  )
   {
-    EndWebcamRun(persistWebcam);
+    if (endWebcam)
+      EndWebcamRun(persistWebcam);
     if (!_microphoneCaptureStarted)
     {
       completed?.Invoke(null);
@@ -57,7 +62,6 @@ public partial class RecordingFeature
 
   private void StartMicrophoneRun()
   {
-    StartWebcamRun();
     if (_currentRun == null || _microphoneCaptureStarted)
       return;
 

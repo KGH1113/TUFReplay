@@ -22,6 +22,8 @@ internal static class CGEventCaptureRegressionSuite
     WithSource(source =>
     {
       RecordInputTracker.StartCapture();
+      long boundary = RecordInputTracker.CaptureStartTimestampTicks;
+      Assert(boundary > 0 && boundary <= Stopwatch.GetTimestamp(), "Input capture did not expose its real boundary.");
       source.Held = true;
       RecordInputTracker.SetCaptureWindowActive(true);
       var initial = Drain();
@@ -40,6 +42,12 @@ internal static class CGEventCaptureRegressionSuite
       Assert(Drain().Length == 0, "Focus resume accepted stale input backlog.");
       source.Emit(Stopwatch.GetTimestamp(), true);
       Assert(Drain().Length == 1, "Current foreground input was rejected.");
+      Assert(
+        RecordInputTracker.CaptureStartTimestampTicks == boundary,
+        "Focus changes moved the run's media boundary."
+      );
+      RecordInputTracker.StopCapture(null);
+      Assert(RecordInputTracker.CaptureStartTimestampTicks == 0, "Stopped input exposed a stale media boundary.");
     });
   }
 

@@ -4,6 +4,9 @@ using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay;
+using TUFReplay.Composition;
+using TUFReplay.Microphone.Models;
+using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Shared.Capture;
 using TUFReplay.Shared.Timing;
@@ -21,6 +24,8 @@ internal static class WebcamSuite
     TimelineSkipsRecordedPausesAndHandlesRateChanges();
     LatestFrameOwnershipRemainsStableAndRejectsStaleFrames();
     AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
+    CameraTailSurvivesMicrophoneCompletionUntilEditorOrRetry();
+    FailureCameraTailUsesRealTime();
     CameraCompletionKeepsHealthyCaptureArmed(root);
     WonTailAndLatencyHaveTheSameConventionAsMicrophone();
     WallClockPreservesLargeTimestampPrecision();
@@ -50,6 +55,70 @@ internal static class WebcamSuite
 
   private static long Ticks(double seconds) => (long)Math.Round(seconds * Stopwatch.Frequency);
 
+  private static void FailureCameraTailUsesRealTime()
+  {
+    var timeline = new WebcamCaptureTimeline();
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(10), 0, 1.5));
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(12), 3_000_000, 1));
+    var recording = new WebcamRecording { CaptureStartTimestampTicks = Ticks(10) };
+    timeline.ApplyTo(recording);
+    Near(2, WebcamPlaybackClock.ToVideoSeconds(Snapshot(3_000_000), recording, 0));
+    Near(4.5, WebcamPlaybackClock.ToVideoSeconds(Snapshot(5_500_000), recording, 0));
+    Check(recording.Timeline.Last().GameplayRate == 1, "Failure camera tail retained the gameplay pitch.");
+  }
+
+  private static void CameraTailSurvivesMicrophoneCompletionUntilEditorOrRetry()
+  {
+    PropertyInfo cameraProperty = typeof(FeatureRegistry).GetProperty(nameof(FeatureRegistry.WebcamRecording));
+    WebcamRecordingFeature previous = FeatureRegistry.WebcamRecording;
+    try
+    {
+      foreach (bool retry in new[] { false, true })
+      {
+        var backend = new CompletedCameraBackend(null);
+        var camera = new WebcamRecordingFeature();
+        SetCameraField(camera, "_backend", backend);
+        SetCameraField(camera, "_armed", true);
+        SetCameraField(camera, "_recording", true);
+        SetCameraField(camera, "_runId", "camera-tail");
+        cameraProperty.SetValue(null, camera);
+        var feature = (RecordingFeature)
+          System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(RecordingFeature));
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(RecordingFeature).GetField("_webcamCaptureStarted", flags).SetValue(feature, true);
+        typeof(RecordingFeature).GetField("_webcamTimeline", flags).SetValue(feature, new WebcamCaptureTimeline());
+        typeof(RecordingFeature).GetField("_runPersistence", flags).SetValue(feature, Task.FromResult(false));
+        typeof(RecordingFeature).GetField("_persistFailedWebcam", flags).SetValue(feature, true);
+        int completions = 0;
+        Action<CapturedMicrophoneRecording> completed = _ => completions++;
+        MethodInfo end = typeof(RecordingFeature).GetMethod("EndMicrophoneRun", flags);
+        end.Invoke(feature, new object[] { completed, false, false });
+        Check(completions == 1 && backend.EndCalls == 0, "Microphone completion stopped the failure camera tail.");
+        if (retry)
+          typeof(RecordingFeature).GetMethod("ResetRunState", flags).Invoke(feature, null);
+        else
+          end.Invoke(feature, new object[] { completed, true, true });
+        Task work = (Task)typeof(WebcamRecordingFeature).GetField("_work", flags).GetValue(camera);
+        Check(work.Wait(TimeSpan.FromSeconds(5)), "Camera tail finalization did not finish.");
+        Check(
+          backend.EndCalls == 1 && backend.DisarmCalls == 0,
+          "Editor or retry failed to detach exactly one camera run."
+        );
+        end.Invoke(feature, new object[] { completed, false, true });
+        Check(backend.EndCalls == 1, "Session cleanup finalized the same camera tail twice.");
+        if (retry)
+          Check(
+            !(bool)typeof(RecordingFeature).GetField("_persistFailedWebcam", flags).GetValue(feature),
+            "A failed run's camera disposition leaked into its retry."
+          );
+      }
+    }
+    finally
+    {
+      cameraProperty.SetValue(null, previous);
+    }
+  }
+
   private static void PreparedFfmpegWriterKeepsIdleTimeOutOfVideo(string root)
   {
     string executable = Environment.GetEnvironmentVariable("TUFREPLAY_CAMERA_TEST_FFMPEG");
@@ -74,9 +143,10 @@ internal static class WebcamSuite
       // Preparing the encoder must not create footage for the idle interval.
       Thread.Sleep(100);
       Check(!File.Exists(destination), "The idle camera writer used a run destination before attachment.");
-      recording.Attach("synthetic-run", destination, WebcamRecordingStore.MaximumCaptureBytes);
+      recording.Attach("synthetic-run", destination, WebcamRecordingStore.MaximumCaptureBytes, Ticks(10));
       byte[] pixels = new byte[640 * 360 * 3 / 2];
       Array.Fill(pixels, (byte)128, 640 * 360, pixels.Length - 640 * 360);
+      recording.Submit(pixels, Ticks(9.99)); // A cached camera frame from before input capture must be rejected.
       for (int frame = 0; frame < 12; frame++)
       {
         recording.Submit(pixels, Ticks(10 + frame / 30d));
@@ -253,7 +323,7 @@ internal static class WebcamSuite
     public Task ArmAsync(string deviceId, WebcamCaptureProfile profile, string recordingDirectory = null) =>
       throw new InvalidOperationException("Do not open a camera.");
 
-    public Task BeginAsync(string runId, string path, long maxBytes) =>
+    public Task BeginAsync(string runId, string path, long maxBytes, long startTimestampTicks = 0) =>
       throw new InvalidOperationException("Do not open a camera.");
 
     public void Dispose() { }

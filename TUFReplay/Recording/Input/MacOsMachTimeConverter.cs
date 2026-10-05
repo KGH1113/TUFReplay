@@ -48,6 +48,16 @@ internal sealed class MacOsMachTimeConverter
     return value >= long.MaxValue ? long.MaxValue : (long)Math.Round(value);
   }
 
+  internal ulong ToMachTimestamp(long stopwatchTicks)
+  {
+    if (stopwatchTicks <= 0)
+      throw new ArgumentOutOfRangeException(nameof(stopwatchTicks));
+    double delta = (stopwatchTicks - _stopwatchOrigin) * 1_000_000_000d / Stopwatch.Frequency / _nanosecondsPerMachTick;
+    return delta >= 0
+      ? checked(_machOrigin + (ulong)Math.Round(delta))
+      : checked(_machOrigin - (ulong)Math.Round(-delta));
+  }
+
   [StructLayout(LayoutKind.Sequential)]
   private struct MachTimebase
   {

@@ -336,8 +336,9 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     }
   }
 
-  func begin(path: String, maxBytes: Int64, runId: String? = nil) throws {
-    let requestedBoundary = CMClockGetTime(CMClockGetHostTimeClock())
+  func begin(path: String, maxBytes: Int64, runId: String? = nil, startHostTime: UInt64? = nil) throws {
+    let requestedBoundary = startHostTime.map { CMClockMakeHostTimeFromSystemUnits($0) }
+      ?? CMClockGetTime(CMClockGetHostTimeClock())
     let started = ProcessInfo.processInfo.systemUptime
     phase = "recording.begin"
     diagnostics.record("recording.begin", ["runId": runId as Any? ?? NSNull(), "path": path, "maxBytes": maxBytes])
@@ -395,18 +396,19 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       // clock. Start from the latest complete sample instead of throwing it
       // away and waiting for camera latency again. Preserve its original PTS.
       if let sample = initial.0, initial.1.isValid {
-        if Self.canReuseLatestSample(hostTime: initial.1, boundary: requestedBoundary) {
+        if Self.canReuseLatestSample(hostTime: initial.1, boundary: CMClockGetTime(CMClockGetHostTimeClock()),
+          minimumHostTime: startHostTime == nil ? .invalid : requestedBoundary) {
           boundaryHostTime = initial.1
-          append(sample, pts: CMSampleBufferGetPresentationTimeStamp(sample), hostTime: initial.1)
+          append(sample, pts: CMSampleBufferGetPresentationTimeStamp(sample), hostTime: initial.1, reusedLatestSample: true)
         }
       }
     }
   }
 
-  static func canReuseLatestSample(hostTime: CMTime, boundary: CMTime) -> Bool {
+  static func canReuseLatestSample(hostTime: CMTime, boundary: CMTime, minimumHostTime: CMTime = .invalid) -> Bool {
     guard hostTime.isValid, !hostTime.isIndefinite, boundary.isValid, !boundary.isIndefinite else { return false }
     let age = CMTimeGetSeconds(CMTimeSubtract(boundary, hostTime))
-    return age >= 0 && age <= 0.25
+    return age >= 0 && age <= 0.25 && (!minimumHostTime.isValid || CMTimeCompare(hostTime, minimumHostTime) >= 0)
   }
 
   func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
@@ -464,7 +466,7 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     append(sampleBuffer, pts: pts, hostTime: CMSyncConvertTime(pts, from: clock, to: CMClockGetHostTimeClock()))
   }
 
-  private func append(_ sampleBuffer: CMSampleBuffer, pts: CMTime, hostTime: CMTime) {
+  private func append(_ sampleBuffer: CMSampleBuffer, pts: CMTime, hostTime: CMTime, reusedLatestSample: Bool = false) {
     guard let writer, let input else { return }
     guard !sizeLimited else { statistics.skip("storage-limit"); return }
     guard captureError == nil else { statistics.skip("capture-error"); return }
@@ -519,7 +521,7 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
         "runId": runId as Any? ?? NSNull(), "firstFrameHostTime": firstFrameHostTime,
         "presentationSeconds": CMTimeGetSeconds(pts), "hostSeconds": CMTimeGetSeconds(hostTime),
         "boundaryDelayMs": CMTimeGetSeconds(CMTimeSubtract(hostTime, requestedBoundaryHostTime)) * 1000,
-        "reusedLatestSample": CMTimeCompare(hostTime, requestedBoundaryHostTime) < 0,
+        "reusedLatestSample": reusedLatestSample,
       ])
     }
     statistics.encoded += 1
