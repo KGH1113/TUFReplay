@@ -300,7 +300,10 @@ public partial class RecordingFeature
       return false;
     if (!Session.IsRecording)
       return false;
-    if (!_runSaved)
+    // A transient fail may have ended capture before an activity draft existed.
+    // Reusing that payload would retain its terminal boundary and clamp the new
+    // countdown's inputs to it, even though the later gameplay keeps recording.
+    if (!_runSaved && !Session.Data.TerminalTimeUs.HasValue)
       return true;
 
     int? tufLevelId = Session.TufLevelId;

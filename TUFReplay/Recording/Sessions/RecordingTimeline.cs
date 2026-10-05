@@ -43,4 +43,9 @@ internal sealed class RecordingTimeline
     _lastEventTimeUs = timeUs;
     return timeUs;
   }
+
+  public long RecordTerminal(long? committedTimeUs, long currentTimeUs)
+  {
+    return RecordBoundary(Math.Max(0L, committedTimeUs ?? currentTimeUs));
+  }
 }
