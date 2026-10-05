@@ -1,4 +1,9 @@
 {
+  "levelChoice": {
+    "title": "Choose a level to render",
+    "description": "Use the original level or choose another file with matching gameplay. Next, choose your video settings.",
+    "continuing": "Opening video settings…"
+  },
   "waitingForFfmpeg": "Preparing FFmpeg",
   "installRenderer": "Install Renderer",
   "setup": {

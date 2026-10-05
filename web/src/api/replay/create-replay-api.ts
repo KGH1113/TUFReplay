@@ -34,8 +34,11 @@ export function createReplayApi(clients: AdofaiIpcClients): ReplayApi {
       return mapReplayStatus(dto);
     },
 
-    async pickLevelFile(runId): Promise<ReplayLevelFilePickerResult> {
-      let result = await pick(clients, "replay.level-file.pick", { runId });
+    async pickLevelFile(runId, purpose): Promise<ReplayLevelFilePickerResult> {
+      let result = await pick(clients, "replay.level-file.pick", {
+        runId,
+        ...(purpose ? { purpose } : {}),
+      });
       while (result.outcome === "picking" && result.operationId) {
         await delay(FILE_PICKER_POLL_INTERVAL_MS);
         result = await pick(clients, "replay.level-file.status.get", {
