@@ -1,6 +1,8 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useApiPromise } from "@/api/app-api-provider";
 import type { RenderApi } from "@/api/render/render-api";
+import { downloadsQueryKey } from "@/hooks/downloads/use-downloads";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import {
   defaultRenderOptions,
@@ -17,6 +19,7 @@ import { ApiError } from "@/shared/errors/api-error";
 type Phase =
   | "idle"
   | "checking"
+  | "installing"
   | "exporting"
   | "preparing"
   | "rendering"
@@ -28,6 +31,7 @@ const pause = () => new Promise<void>((resolve) => setTimeout(resolve, 500));
 
 export function useRenderControl() {
   const apiPromise = useApiPromise();
+  const queryClient = useQueryClient();
   const [run, setRun] = useState<ActivityRun | null>(null);
   const [options, setOptions] = useState<RenderOptions>(defaultRenderOptions);
   const [health, setHealth] = useState<RenderHealth | null>(null);
@@ -46,29 +50,42 @@ export function useRenderControl() {
   const cancelledRef = useRef(false);
   const exportId = useRef<string | null>(null);
   const renderId = useRef<string | null>(null);
+  const waitingForInstall = useRef(false);
   const generation = useRef(0);
   const trigger = useRef<HTMLElement | null>(null);
   const directorySelectionId = useRef<string | null>(null);
   const directorySelectionApi = useRef<RenderApi | null>(null);
   const renderer = useCallback(async (): Promise<RenderApi> => {
-    const api = (await apiPromise).render;
+    const app = await apiPromise;
+    if (app.downloads) {
+      const state = await app.downloads.getStatus();
+      queryClient.setQueryData(downloadsQueryKey, state);
+      if (state.Renderer.Status !== "ready")
+        throw new ApiError("Install or enable TUFReplay-Renderer and restart ADOFAI.", {
+          kind: "domain",
+          code: "renderer_missing",
+        });
+    }
+    const api = app.render;
     if (!api)
       throw new ApiError("Install TUFReplay-Renderer and restart ADOFAI.", {
         kind: "domain",
         code: "renderer_missing",
       });
     return api;
-  }, [apiPromise]);
+  }, [apiPromise, queryClient]);
   useEffect(() => {
     activeRef.current = true;
     return () => {
       activeRef.current = false;
+      if (waitingForInstall.current)
+        void apiPromise.then((api) => api.downloads?.cancelPendingFfmpeg()).catch(() => {});
       if (directorySelectionId.current && directorySelectionApi.current)
         void directorySelectionApi.current
           .cancelOutputDirectorySelection(directorySelectionId.current)
           .catch(() => {});
     };
-  }, []);
+  }, [apiPromise]);
   const fail = useCallback((cause: unknown) => {
     if (!activeRef.current) return;
     setPhase("failed");
@@ -151,6 +168,39 @@ export function useRenderControl() {
         setPhase("cancelled");
         return;
       }
+      const downloads = (await apiPromise).downloads;
+      if (downloads) {
+        let state = await downloads.getStatus();
+        if (state.Ffmpeg.Status !== "ready") {
+          waitingForInstall.current = true;
+          setPhase("installing");
+          state = await downloads.act("ffmpeg", "request");
+          while (activeRef.current && !cancelledRef.current && state.Ffmpeg.Status !== "ready") {
+            queryClient.setQueryData(downloadsQueryKey, state);
+            if (["cancelled", "declined"].includes(state.Ffmpeg.Status))
+              throw new ApiError(
+                "FFmpeg installation was skipped. Start rendering again to install it.",
+                { kind: "domain", code: "ffmpeg_install_declined" },
+              );
+            if (state.Ffmpeg.Status === "failed")
+              throw new ApiError(state.Ffmpeg.Error ?? "FFmpeg installation failed.", {
+                kind: "domain",
+                code: "ffmpeg_install_failed",
+              });
+            await pause();
+            state = await downloads.getStatus();
+            if (state.Ffmpeg.Status === "missing") state = await downloads.act("ffmpeg", "request");
+          }
+          waitingForInstall.current = false;
+          await downloads.cancelPendingFfmpeg();
+          queryClient.setQueryData(downloadsQueryKey, state);
+          if (!activeRef.current) return;
+          if (cancelledRef.current) {
+            setPhase("cancelled");
+            return;
+          }
+        }
+      }
       if (saveAsDefault) setSettings(await api.updateSettings(options));
       setPhase("exporting");
       let bundle = await api.exportBundle(run.id, options);
@@ -221,12 +271,20 @@ export function useRenderControl() {
       )
         setErrorDetails((cause.cause as { details: RenderExportStatus["errorDetails"] }).details);
     } finally {
+      if (waitingForInstall.current) {
+        waitingForInstall.current = false;
+        void apiPromise.then((api) => api.downloads?.cancelPendingFfmpeg()).catch(() => {});
+      }
       busyRef.current = false;
     }
-  }, [run, options, renderer, fail, saveAsDefault]);
+  }, [run, options, renderer, fail, saveAsDefault, apiPromise, queryClient]);
   const cancel = useCallback(async () => {
     cancelledRef.current = true;
     try {
+      if (waitingForInstall.current) {
+        await (await apiPromise).downloads?.cancelPendingFfmpeg();
+        return;
+      }
       const api = await renderer();
       if (renderId.current) await api.cancel(renderId.current);
       else if (exportId.current) await api.cancelExport(exportId.current);
@@ -234,7 +292,7 @@ export function useRenderControl() {
       setErrorCode(cause instanceof ApiError ? cause.code : null);
       setErrorMessage(cause instanceof Error ? cause.message : "");
     }
-  }, [renderer]);
+  }, [renderer, apiPromise]);
   const openOutputDirectory = useCallback(async () => {
     if (!job?.canOpenOutput || openingDirectory) return;
     setOpeningDirectory(true);
@@ -296,6 +354,7 @@ export function useRenderControl() {
   }, [options.outputDirectory, renderer, choosingDirectory]);
   const busy =
     (phase === "checking" && busyRef.current) ||
+    phase === "installing" ||
     phase === "exporting" ||
     phase === "preparing" ||
     phase === "rendering" ||

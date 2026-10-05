@@ -7,6 +7,7 @@ using TUFReplay.Microphone.Recording;
 using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Ipc;
+using TUFReplay.Shared.Media;
 using TUFReplay.Webcam.Playback;
 using TUFReplay.Webcam.Recording;
 
@@ -44,6 +45,8 @@ public static class FeatureRegistry
         throw new System.InvalidOperationException("Harmony did not apply any TUFReplay patches.");
       MicrophoneRecording.Enable();
       MicrophoneCalibration.Enable();
+      FfmpegInstallCoordinator.Initialize();
+      TUFReplay.Shared.Downloads.DownloadCenterCoordinator.Initialize();
       WebcamRecording.Enable();
       Recording.Enable();
       Replay.Enable();
@@ -67,6 +70,8 @@ public static class FeatureRegistry
     MicrophoneCalibration?.Disable();
     MicrophoneRecording?.Disable();
     WebcamRecording?.Disable();
+    FfmpegInstallCoordinator.Shutdown();
+    TUFReplay.Shared.Downloads.DownloadCenterCoordinator.Shutdown();
 
     _harmony?.UnpatchAll(HarmonyId);
     _harmony = null;

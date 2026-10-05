@@ -19,7 +19,6 @@ export const webcamSettingsPatchSchema = z
   .object({
     enabled: z.boolean().optional(),
     deviceId: z.string().nullable().optional(),
-    ffmpegPath: z.string().nullable().optional(),
     quality: z.enum(["compact", "balanced", "quality"]).optional(),
     offsetMs: z.number().int().min(-1000).max(1000).optional(),
     storageLimitMb: z.number().int().min(64).max(8192).optional(),
@@ -40,7 +39,6 @@ export const webcamStateDtoSchema = z.object({
   Error: z.string().nullable(),
   Devices: z.array(z.object({ Id: z.string(), Name: z.string() })),
   SelectedDeviceId: z.string().nullable(),
-  FfmpegPath: z.string().nullable(),
   Quality: z.enum(["compact", "balanced", "quality"]),
   OffsetMs: z.number().int().min(-1000).max(1000),
   StorageLimitMb: z.number().int().min(64).max(8192),

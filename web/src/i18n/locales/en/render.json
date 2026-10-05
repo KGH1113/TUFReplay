@@ -1,4 +1,26 @@
 {
+  "waitingForFfmpeg": "Preparing FFmpeg",
+  "installRenderer": "Install Renderer",
+  "setup": {
+    "install": {
+      "title": "Get ready to make a video",
+      "description": "Install TUFReplay-Renderer to turn this recorded play into a video."
+    },
+    "restart": {
+      "title": "One restart to go",
+      "description": "Renderer is installed. Fully restart ADOFAI and enable TUFReplay-Renderer, then come back to this play."
+    },
+    "ready": {
+      "title": "Ready for video setup",
+      "description": "Renderer is available. Continue to choose your video settings and save folder."
+    },
+    "restartHint": "After installation, you’ll need to restart ADOFAI once.",
+    "later": "Not now",
+    "continue": "Continue",
+    "checkConnection": "Check connection"
+  },
+  "errorDetails": "Technical details",
+  "ffmpegInstallHelp": "Approve FFmpeg installation in the setup dialog or Downloads. Rendering continues when installation finishes.",
   "button": "Render",
   "warnings": "Overlay compatibility",
   "title": "Render play #{{runIndex}}",
@@ -20,6 +42,7 @@
   "status": {
     "idle": "Ready to render",
     "checking": "Checking the renderer…",
+    "installing": "Waiting for FFmpeg installation…",
     "exporting": "Preparing the recording…",
     "preparing": "Opening the level…",
     "rendering": "Rendering frames…",
@@ -29,7 +52,8 @@
     "failed": "The video could not be created"
   },
   "errors": {
-    "renderer_missing": "Install and enable TUFReplay-Renderer, restart ADOFAI, then try again.",
+    "renderer_missing": "Install TUFReplay-Renderer from Downloads, fully restart ADOFAI and enable the mod, then try again.",
+    "downloads_unavailable": "Update TUFReplay and fully restart ADOFAI to use the web installer.",
     "namespace_not_found": "Install and enable TUFReplay-Renderer, restart ADOFAI, then try again.",
     "orbit_missing": "The renderer is unavailable. Enable TUFReplay-Renderer and restart ADOFAI.",
     "render_busy": "Another video is being rendered. Wait for it to finish, then try again.",
@@ -79,7 +103,11 @@
     "render_bundle_missing": "The exported recording files are missing. Start rendering again to prepare a fresh copy.",
     "render_option_invalid": "A video setting is invalid. Check the affected setting below and try again.",
     "render_engine_unavailable": "The renderer is unavailable. Enable TUFReplay-Renderer and restart ADOFAI.",
-    "ffmpeg_unavailable": "FFmpeg could not run. Install a working FFmpeg executable and configure its path in TUFReplay-Renderer.",
+    "ffmpeg_unavailable": "FFmpeg could not run. Retry installation in TUFReplay's web download center.",
+    "ffmpeg_owner_unavailable": "TUFReplay's installer could not be reached. Enable the latest TUFReplay and AdofaiIpc, then retry.",
+    "ffmpeg_install_declined": "FFmpeg installation was skipped. Start rendering again and approve installation in the web download center.",
+    "ffmpeg_install_failed": "FFmpeg could not be installed. Check the details below and retry installation in the web download center.",
+    "ffmpeg_install_invalid": "TUFReplay's FFmpeg installation is missing. Retry installation in the web download center.",
     "folder_picker_busy": "A folder selection window is already open. Finish or cancel that selection first.",
     "folder_selection_missing": "The folder selection has expired. Choose the save folder again.",
     "folder_picker_failed": "The folder chooser could not finish. Enter the save folder's full local path instead.",

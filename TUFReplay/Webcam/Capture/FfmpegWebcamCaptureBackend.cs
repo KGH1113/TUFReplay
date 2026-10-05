@@ -20,13 +20,9 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
   private Task<FfmpegCameraRecording> _standby;
   public CameraPreviewBuffer Preview => _session?.Preview;
 
-  public FfmpegWebcamCaptureBackend(string configuredPath, string payloadPath)
+  public FfmpegWebcamCaptureBackend(string managedExecutable)
   {
-    string bundled = Path.Combine(payloadPath, "Helpers", "win", "ffmpeg.exe");
-    _executable =
-      !string.IsNullOrWhiteSpace(configuredPath) ? configuredPath
-      : File.Exists(bundled) ? bundled
-      : "ffmpeg.exe";
+    _executable = managedExecutable;
   }
 
   public async Task<List<WebcamDevice>> ListDevicesAsync()
@@ -44,7 +40,9 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
             output.Add(args.Data);
     };
     if (!process.Start())
-      throw new IOException("FFmpeg could not start. Select an FFmpeg executable in camera settings.");
+      throw new IOException(
+        "TUFReplay's FFmpeg could not start. Retry installation in the game and check your security software."
+      );
     process.BeginErrorReadLine();
     await Task.Run(() =>
     {

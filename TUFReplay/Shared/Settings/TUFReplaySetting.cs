@@ -23,7 +23,6 @@ public sealed class TUFReplaySetting
 
   public bool WebcamEnabled { get; set; }
   public string WebcamDeviceId { get; set; }
-  public string WebcamFfmpegPath { get; set; }
   public string WebcamQuality { get; set; } = "compact";
   public int WebcamOffsetMs { get; set; }
   public int WebcamStorageLimitMb { get; set; } = 512;
