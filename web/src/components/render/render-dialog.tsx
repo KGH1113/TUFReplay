@@ -79,7 +79,7 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
               disabled={downloads.pending}
               onClick={() => {
                 if (setupStep === "install") void downloads.act("renderer", "request");
-                else if (control.run) control.open(control.run);
+                else if (control.run) control.open(control.run, undefined, control.levelPath);
               }}
             >
               {setupStep === "install"
@@ -225,7 +225,7 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
           ) : control.phase === "failed" && !control.health ? (
             <Button
               onClick={() => {
-                if (control.run) control.open(control.run);
+                if (control.run) control.open(control.run, undefined, control.levelPath);
               }}
             >
               {t("retry")}

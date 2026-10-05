@@ -30,6 +30,37 @@ function clients(
   } as unknown as AdofaiIpcClients;
 }
 describe("neutral render IPC contract", () => {
+  test("exports the chosen matching level without starting a replay or saving its path as a default", async () => {
+    const calls: unknown[] = [];
+    const api = createRenderApi(
+      clients(
+        (method, params) => {
+          calls.push({ method, params });
+          return bundle;
+        },
+        () => {
+          throw new Error("Choosing a level must not call the render engine");
+        },
+      ),
+    );
+    await api.exportBundle("run-1", defaultRenderOptions, "/levels/visual edit.adofai");
+    await api.exportBundle("run-2", defaultRenderOptions);
+    expect(calls).toEqual([
+      {
+        method: "replay.render-bundle.export",
+        params: {
+          runId: "run-1",
+          levelPath: "/levels/visual edit.adofai",
+          includeWebcam: true,
+          includeMicrophone: true,
+        },
+      },
+      {
+        method: "replay.render-bundle.export",
+        params: { runId: "run-2", includeWebcam: true, includeMicrophone: true },
+      },
+    ]);
+  });
   test("keeps bundle export in TUF and rendering in its independent namespace", async () => {
     const calls: unknown[] = [];
     const api = createRenderApi(

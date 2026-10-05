@@ -3,5 +3,5 @@ import type { ReplayLevelFilePickerResult, ReplayStatus } from "@/models/replay/
 export interface ReplayApi {
   play(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getStatus(): Promise<ReplayStatus>;
-  pickLevelFile(runId: string): Promise<ReplayLevelFilePickerResult>;
+  pickLevelFile(runId: string, purpose?: "replay" | "render"): Promise<ReplayLevelFilePickerResult>;
 }

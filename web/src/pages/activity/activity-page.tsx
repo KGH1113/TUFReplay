@@ -105,7 +105,10 @@ export function ActivityPage() {
                 onSelectMarker={actions.selectMarker}
                 onSelectRun={actions.selectRun}
                 onPlayReplay={actions.openReplayChoice}
-                onRender={render.open}
+                onRender={(run) => {
+                  replay.clearLevelFilePicker();
+                  render.openLevelChoice(run);
+                }}
                 onDeleteRun={actions.deleteRun}
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
@@ -130,6 +133,19 @@ export function ActivityPage() {
       <LegacyReplayNoticeDialog
         open={legacyReplayNotice.open}
         onConfirm={legacyReplayNotice.confirm}
+      />
+      <ReplayLevelChoiceDialog
+        purpose="render"
+        run={render.levelChoiceRun}
+        pickerResult={replay.pickerResult}
+        pickingRunId={replay.pickingRunId}
+        replayStatus={replay.status}
+        playError=""
+        playErrorRunId={null}
+        onClose={render.closeLevelChoice}
+        onPlay={render.chooseLevel}
+        onChooseAnother={(runId) => replay.pickLevelFile(runId, "render")}
+        onResetPicker={replay.clearLevelFilePicker}
       />
       <RenderDialog control={render} />
     </>

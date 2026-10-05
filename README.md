@@ -243,6 +243,8 @@ VITE_WEB_ADOFAI_EMBED_URL=http://127.0.0.1:5173/embed/chart ./scripts/run.sh web
 
 The web UI bundles English and Korean translation resources under `web/src/i18n/locales`. The language menu stores the explicit selection in `localStorage`; without a saved selection, Korean browser locales use Korean and all other locales use English.
 
+The run card's Render action opens the same original-or-matching-level chooser used for replay. Choosing another file verifies its gameplay with ADOFAI before opening the video settings. Render selection restores the game screen after verification instead of holding it black for immediate replay. The selected path belongs only to this render and is revalidated during bundle export; it is never saved as the default for another run. Selecting a level does not start replay playback.
+
 New runs refresh the current day's list in the background while retaining the selected tile/run, the open run sidebar, and the chart's current view. When viewing cards below the top of the list, new cards preserve the visible card's scroll position. Refresh failures keep the existing chart and list available with a retry action; changing the day or gameplay revision resets the selection for that scope.
 
 `VITE_WEB_ADOFAI_EMBED_URL` is required. When it is missing or invalid, the chart area shows a configuration warning instead of loading a hardcoded fallback URL.
@@ -347,7 +349,7 @@ Registered methods:
 - `replay.render-bundle.export` (`runId`, optional `levelPath`, `includeWebcam`, and `includeMicrophone`; starts background export after a game-thread settings snapshot)
 - `replay.render-bundle.status.get` (`jobId`; returns progress, terminal state, or the prepared `manifestPath`)
 - `replay.render-bundle.cancel` (`jobId`; cancels an active preparation job and removes its partial files)
-- `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
+- `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`; optional `purpose: "render"` restores the game screen after verification, while omitted or `"replay"` holds it for replay startup)
 - `microphone.devices.get`
 - `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
 - `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)

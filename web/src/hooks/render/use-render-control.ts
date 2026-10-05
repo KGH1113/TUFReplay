@@ -33,6 +33,8 @@ export function useRenderControl() {
   const apiPromise = useApiPromise();
   const queryClient = useQueryClient();
   const [run, setRun] = useState<ActivityRun | null>(null);
+  const [levelChoiceRun, setLevelChoiceRun] = useState<ActivityRun | null>(null);
+  const [levelPath, setLevelPath] = useState<string | undefined>();
   const [options, setOptions] = useState<RenderOptions>(defaultRenderOptions);
   const [health, setHealth] = useState<RenderHealth | null>(null);
   const [settings, setSettings] = useState<RenderSettings | null>(null);
@@ -94,12 +96,14 @@ export function useRenderControl() {
     setErrorDetails(null);
   }, []);
   const open = useCallback(
-    (selected: ActivityRun, opener?: HTMLElement) => {
+    (selected: ActivityRun, opener?: HTMLElement, selectedLevelPath?: string) => {
       if (busyRef.current) return;
       const current = ++generation.current;
       trigger.current =
         opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
       setRun(selected);
+      setLevelChoiceRun(null);
+      setLevelPath(selectedLevelPath);
       setHealth(null);
       setSettings(null);
       setJob(null);
@@ -125,6 +129,21 @@ export function useRenderControl() {
         });
     },
     [renderer, fail],
+  );
+  const openLevelChoice = useCallback((selected: ActivityRun, opener?: HTMLElement) => {
+    if (busyRef.current) return;
+    trigger.current =
+      opener ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setRun(null);
+    setLevelChoiceRun(selected);
+  }, []);
+  const chooseLevel = useCallback(
+    async (runId: string, selectedLevelPath?: string) => {
+      if (!levelChoiceRun || levelChoiceRun.id !== runId || busyRef.current) return false;
+      open(levelChoiceRun, trigger.current ?? undefined, selectedLevelPath);
+      return true;
+    },
+    [levelChoiceRun, open],
   );
   const start = useCallback(async () => {
     if (!run || busyRef.current) return;
@@ -203,7 +222,7 @@ export function useRenderControl() {
       }
       if (saveAsDefault) setSettings(await api.updateSettings(options));
       setPhase("exporting");
-      let bundle = await api.exportBundle(run.id, options);
+      let bundle = await api.exportBundle(run.id, options, levelPath);
       exportId.current = bundle.jobId;
       while (bundle.state === "preparing") {
         if (cancelledRef.current) {
@@ -277,7 +296,7 @@ export function useRenderControl() {
       }
       busyRef.current = false;
     }
-  }, [run, options, renderer, fail, saveAsDefault, apiPromise, queryClient]);
+  }, [run, options, levelPath, renderer, fail, saveAsDefault, apiPromise, queryClient]);
   const cancel = useCallback(async () => {
     cancelledRef.current = true;
     try {
@@ -361,6 +380,11 @@ export function useRenderControl() {
     phase === "compositing";
   return {
     run,
+    levelChoiceRun,
+    levelPath,
+    openLevelChoice,
+    chooseLevel,
+    closeLevelChoice: () => setLevelChoiceRun(null),
     options,
     setOptions,
     health,
