@@ -121,7 +121,7 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     });
   }
 
-  public async Task BeginAsync(string runId, string path, long maxBytes)
+  public async Task BeginAsync(string runId, string path, long maxBytes, long startTimestampTicks = 0)
   {
     if (_recording != null || _session?.Preview.HasFrame != true)
       throw new IOException("The camera is not sending video. Reconnect it before the next run.");
@@ -136,7 +136,7 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     {
       if (session != _session || session.IsDisposed || session.Error != null)
         throw new IOException(session.Error ?? "Camera capture was stopped before recording could start.");
-      recording.Attach(runId, path, maxBytes);
+      recording.Attach(runId, path, maxBytes, startTimestampTicks);
       session.SetRecording(recording);
       _recording = recording;
     }

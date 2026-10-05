@@ -321,7 +321,7 @@ public sealed class WebcamRecordingFeature
     );
   }
 
-  public bool BeginRun(string runId)
+  public bool BeginRun(string runId, long startTimestampTicks = 0)
   {
     IWebcamCaptureBackend backend;
     int generation;
@@ -369,13 +369,14 @@ public sealed class WebcamRecordingFeature
             budgetBytes = budget,
             retentionDays = retention,
             maxBytes,
+            startTimestampTicks,
           }
         );
         if (maxBytes < 2 * 1024 * 1024)
           throw new IOException(
             "Camera storage is full. Increase the storage limit or stop the replay using older footage."
           );
-        await backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes);
+        await backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes, startTimestampTicks);
       },
       runId
     );
