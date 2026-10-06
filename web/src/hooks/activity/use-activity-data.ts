@@ -1,17 +1,17 @@
-import { IpcVersionMismatchError } from "@adofai-ipc/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { useApiPromise, useMockEnabled } from "@/api/app-api-provider";
 import type { AppSession, ConnectionStatus } from "@/models/activity/activity-model";
 import { diagnosticErrorMessage } from "@/models/activity/localized-error";
 import type { Health } from "@/models/health/health-model";
+import type { SessionState } from "@/ports/local-message-peer";
 import { ApiError } from "@/shared/errors/api-error";
+import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
 import {
   activityQueryKeys,
   mergeRecentAppSessions,
   RECENT_ACTIVITY_SESSION_LIMIT,
 } from "@/state/activity/activity-queries";
-
-const POLL_INTERVAL_MS = 3000;
 
 interface ActivityDataSnapshot {
   sessions: AppSession[];
@@ -22,6 +22,31 @@ export function useActivityData() {
   const apiPromise = useApiPromise();
   const mockEnabled = useMockEnabled();
   const queryClient = useQueryClient();
+  const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  useEffect(() => {
+    let disposed = false;
+    let cleanup = () => {};
+    void apiPromise
+      .then((api) => {
+        if (disposed) return;
+        const activity = api.events.on("activity.changed", () => {
+          void queryClient.invalidateQueries({ queryKey: activityQueryKeys.all });
+        });
+        const connection = api.events.on("connection.changed", (state) => {
+          setSessionState(state);
+          if (state === "connected") void queryClient.invalidateQueries();
+        });
+        cleanup = () => {
+          activity();
+          connection();
+        };
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      cleanup();
+    };
+  }, [apiPromise, queryClient]);
   const query = useQuery({
     queryKey: activityQueryKeys.sessions,
     queryFn: async () => {
@@ -42,16 +67,21 @@ export function useActivityData() {
       });
       return { sessions, health };
     },
-    refetchInterval: POLL_INTERVAL_MS,
-    refetchIntervalInBackground: false,
   });
 
   return {
     sessions: query.data?.sessions ?? [],
     health: query.status === "success" ? query.data.health : null,
-    status: statusForQuery(query.status, query.error),
+    status:
+      sessionState === "incompatible"
+        ? "incompatible"
+        : sessionState === "reconnecting"
+          ? "connecting"
+          : sessionState === "disconnected" || sessionState === "closed"
+            ? "error"
+            : statusForQuery(query.status, query.error),
     error: diagnosticErrorMessage(query.error),
-    versionMismatch: query.error instanceof IpcVersionMismatchError ? query.error.direction : null,
+    versionMismatch: query.error instanceof IpcProtocolMismatchError ? query.error.direction : null,
     retry: query.refetch,
     mockEnabled,
   };
@@ -64,7 +94,7 @@ function statusForQuery(status: "pending" | "error" | "success", cause: unknown)
 }
 
 export function connectionStatusForError(cause: unknown): ConnectionStatus {
-  return cause instanceof IpcVersionMismatchError ||
+  return cause instanceof IpcProtocolMismatchError ||
     (cause instanceof ApiError && cause.kind === "protocol")
     ? "incompatible"
     : "error";

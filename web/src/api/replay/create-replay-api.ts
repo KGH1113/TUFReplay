@@ -1,3 +1,4 @@
+import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
 import {
   mapReplayLevelFilePickerResult,
   mapReplayStatus,
@@ -7,60 +8,41 @@ import {
   replayLevelFilePickerResultDtoSchema,
   replayStatusDtoSchema,
 } from "@/schemas/replay/replay-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 import type { ReplayApi } from "./replay-api";
-
-const FILE_PICKER_POLL_INTERVAL_MS = 100;
 
 export function createReplayApi(clients: AdofaiIpcClients): ReplayApi {
   return {
     async play(runId, levelPath) {
-      const dto = await callAdofaiIpc(
+      const dto = await sendDomainCommand(
         clients.namespace,
-        "replay.play",
+        "replay.start",
+        "replay.state.changed",
         levelPath ? { runId, levelPath } : { runId },
         replayStatusDtoSchema,
       );
       return mapReplayStatus(dto);
     },
-
     async getStatus() {
-      const dto = await callAdofaiIpc(
-        clients.namespace,
-        "replay.status.get",
-        {},
-        replayStatusDtoSchema,
+      return mapReplayStatus(
+        await sendDomainCommand(
+          clients.namespace,
+          "replay.state.read",
+          "replay.state.changed",
+          {},
+          replayStatusDtoSchema,
+        ),
       );
-      return mapReplayStatus(dto);
     },
-
     async pickLevelFile(runId): Promise<ReplayLevelFilePickerResult> {
-      let result = await pick(clients, "replay.level-file.pick", { runId });
-      while (result.outcome === "picking" && result.operationId) {
-        await delay(FILE_PICKER_POLL_INTERVAL_MS);
-        result = await pick(clients, "replay.level-file.status.get", {
-          operationId: result.operationId,
-        });
-      }
-      return result;
+      const dto = await sendDomainCommand(
+        clients.namespace,
+        "replay.level-file.choose",
+        "replay.level-file.finished",
+        { runId },
+        replayLevelFilePickerResultDtoSchema,
+        { timeoutMs: 180_000 },
+      );
+      return mapReplayLevelFilePickerResult(dto);
     },
   };
-}
-
-async function pick(
-  clients: AdofaiIpcClients,
-  method: string,
-  params: object,
-): Promise<ReplayLevelFilePickerResult> {
-  const dto = await callAdofaiIpc(
-    clients.pickerNamespace,
-    method,
-    params,
-    replayLevelFilePickerResultDtoSchema,
-  );
-  return mapReplayLevelFilePickerResult(dto);
-}
-
-function delay(milliseconds: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
 }

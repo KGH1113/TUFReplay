@@ -78,7 +78,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc 0.4.1 or newer; a missing installation is attempted automatically
+- AdofaiIpc 1.0.0 or newer; a missing installation is attempted automatically
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -207,7 +207,7 @@ shared clients/UI → schemas → models → api → state/mocks → hooks
                   → components → sections → pages → app
 ```
 
-AdofaiIpc and HTTP payloads enter the application as unknown data and are validated by Zod in the API layer. TanStack Query owns server and IPC state; calibration editing state stays in its feature reducer. Hooks act as page/component ViewModels: they own application state, derived display values, and commands, while pages and components focus on composition and rendering. The app composition root is the only place that selects the production or mock `AppApi` bundle. Canonical shadcn primitives live in `web/src/shared/ui` and cannot import domain code.
+High-level application services depend on application-owned message ports in `web/src/ports`; only the transport adapter and app composition root import the vendored AdofaiIpc SDK. WebSocket messages and HTTP metadata enter as unknown data and are validated by Zod in the API adapter layer. Feature messages update TanStack Query caches; calibration editing state stays in its feature reducer. Hooks act as page/component ViewModels: they own application state, derived display values, and commands, while pages and components focus on composition and rendering. The app composition root is the only place that selects the production or mock `AppApi` bundle. Canonical shadcn primitives live in `web/src/shared/ui` and cannot import domain code.
 
 Tests live separately under `web/tests`, mirror the source domains, and use purpose-specific suffixes such as `*.unit.test.ts`, `*.contract.test.ts`, and `*.integration.test.tsx`. The architecture contract test enforces the allowed import direction.
 
@@ -270,88 +270,62 @@ bun run web:biome
 
 The checked-in VS Code settings select CSharpier for C# and Biome for web files, with format-on-save enabled for both. Install the `csharpier.csharpier-vscode` and `biomejs.biome` extensions to use those settings.
 
-## AdofaiIpc API
+## AdofaiIpc messages
 
-The local API is intended for the companion web UI and development tools. TUFReplay requires
-AdofaiIpc protocol version 2. Clients should probe `/ipc/health`, wait for the `tuf-replay`
-namespace to reach `ready`, and then call TUFReplay through:
+TUFReplay requires **AdofaiIpc 1.0.0**, WebSocket wire protocol **3**, and TUFReplay
+namespace protocol **8**. The local connection uses `/ipc/ws` and the
+`adofai-ipc.v3` subprotocol. The companion uses the canonical TypeScript SDK
+source committed under `vendor/adofai-ipc`, with its license and source revision;
+no published npm SDK package, linked sibling checkout, or registry release is required.
 
-```http
-POST /ipc
-Content-Type: application/json
-```
+The `tuf-replay` namespace becomes ready after feature initialization. Both peers
+send named commands and domain events over one connection. A transport acceptance
+means a command was queued; the named result event indicates what happened.
+Every result carries the original command id as `correlationId`. Domain failures
+are `command.rejected` events with actionable `code` and `message` fields.
+Commands are never replayed automatically after reconnecting.
 
-```json
-{
-  "namespace": "tuf-replay",
-  "method": "health.get",
-  "params": {},
-  "id": "optional-client-id"
-}
-```
+| Command | Domain result |
+| --- | --- |
+| `health.read` | `health.snapshot` |
+| `activity.sessions.read` | `activity.sessions.snapshot` |
+| `activity.legacy-status.read` | `activity.legacy-status.snapshot` |
+| `activity.level.read` | `activity.level.snapshot` |
+| `activity.runs.read` | `activity.runs.snapshot` |
+| `activity.chart.read` | `activity.chart.snapshot` |
+| `activity.run.remove` | `activity.run.removed` |
+| `replay.start`, `replay.state.read` | `replay.state.changed` |
+| `replay.level-file.choose` | `replay.level-file.finished` |
+| `microphone.devices.refresh`, `microphone.access.change`, `microphone.device.choose` | `microphone.devices.changed` |
+| `microphone.offset.change`, `microphone.volume.change` | `microphone.timing.changed` |
+| `microphone.recording.remove`, `microphone.recording.retain` | `microphone.recording.removed`, `microphone.recording.retained` |
+| `microphone.recording.download` | `download.ready` |
+| `calibration.start`, `calibration.state.read`, `calibration.preview.start`, `calibration.preview.stop`, `calibration.offset.change`, `calibration.volume.change`, `calibration.close` | `calibration.state.changed` |
+| `calibration.result.read` | `calibration.result.ready` |
 
-Registered methods:
+The mod also sends `activity.changed` after database persistence commits, replay
+state changes at their lifecycle boundaries, microphone access changes when
+capture becomes locked or unlocked, and calibration state and preview clock
+updates. Preview clock updates are limited to 20 Hz; the UI interpolates its
+playhead between samples. These notifications replace activity, replay, picker,
+and calibration status polling. Activity history still loads bounded pages on
+demand. A fresh namespace subscription receives health, replay and calibration
+snapshots, and reconnecting refreshes the relevant application caches.
 
-- `health.get`
-- `activity.app-sessions.list`
-- `activity.level-session.get`
-- `activity.level-session.runs.list`
-- `activity.level-session.chart.get`
-- `activity.logical-level.get`
-- `activity.logical-level.runs.list` (`appSessionIds` scopes the logical level's runs to the selected day)
-- `activity.logical-level.chart.get`
-- `activity.run.delete` (`runId` identifies the run; active replays cannot be deleted)
-- `microphone.recording.export` (`runId` identifies a recorded run; returns a short-lived download URL)
-- `replay.play`
-- `replay.status.get`
-- `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`)
-- `microphone.devices.get`
-- `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
-- `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
-- `microphone.offset.set` (`offsetMs` updates the global replay microphone timing outside gameplay and calibration)
-- `microphone.volume.set` (`volumeDb` updates the global replay microphone gain outside gameplay and calibration)
-- `microphone.calibration.start`
-- `microphone.calibration.status.get`
-- `microphone.calibration.result.get`
-- `microphone.calibration.preview.play`
-- `microphone.calibration.preview.stop`
-- `microphone.calibration.offset.set`
-- `microphone.calibration.volume.set`
-- `microphone.calibration.close`
+The native file picker emits its final selected/mismatch/cancelled/error result
+when selection and gameplay verification finish. There is no picker-status loop
+or second HTTP client. Peer disconnect cancels its pending selection operation.
 
-The run card's microphone menu uses `microphone.recording.export` to request a one-use URL.
-The browser opens that URL as a normal download; AdofaiIpc sends the WAV directly from
-SQLite through its existing HTTP listener. The web UI never buffers or base64-encodes the
-recording. Expired or already-used URLs require another export request.
-The web workspace uses the matching `@adofai-ipc/client` 0.4.1 npm package.
+`download.ready` contains `{url, byteLength}` for a one-use local streaming URL.
+WAV bytes stream from SQLite through the dedicated download route; the browser
+opens the URL normally and does not buffer or base64 encode the complete file.
+The download route is a data path; command handling uses WebSocket messages.
 
-TUFReplay registers its namespace as `initializing` while handlers are being attached and marks it
-`ready` only after feature initialization completes. AdofaiIpc rejects premature calls with
-`namespace_initializing`; an initialization failure is exposed as `namespace_error`.
-
-`health.get` returns the TUFReplay namespace protocol and installed mod version:
-
-```json
-{
-  "Ok": true,
-  "Mod": "TUFReplay",
-  "ModVersion": "0.2.0-beta.4",
-  "BuildFlavor": "standard",
-  "AutoSubmissionProtocolVersion": 0,
-  "ProtocolVersion": 7,
-  "ReplayEngineId": "tufreplay.replay.v2",
-  "ReplayFormatVersion": 1,
-  "ServerVersion": 1
-}
-```
-
-Web clients must compare `ProtocolVersion` with the protocol they support before calling other
-TUFReplay methods. A missing or different protocol version means the installed mod is incompatible.
-The companion web UI asks the user to fully quit and restart ADOFAI so the startup updater can install
-a compatible TUFReplay release. `ServerVersion` remains as a legacy compatibility field and is not the
-TUFReplay namespace protocol version.
-
-The timing dialog first offers compact global offset and microphone-gain controls without opening a level. Starting precise calibration transitions the same dialog into the existing calibration progress UI and opens the packaged level. Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin native-input and microphone waveforms to the web editor. Every calibration starts from the raw, uncorrected microphone timing so repeated calibrations measure the absolute microphone delay instead of the residual after the previous correction. Preview playback runs in ADOFAI while the browser polls the game clock; the calibration's current offset and `-20 dB` to `+30 dB` microphone gain (`0 dB` by default, up to about `31.6x` before limiting) are applied to its preview, while the saved global values are applied to stored microphone replays. The true-peak limiter uses a `-0.3 dBFS` ceiling with a `30 ms` release so amplified playback remains protected while recovering quickly after transients.
+The microphone timing dialog retains global offset and gain editing, transient
+calibration waveforms, and game preview playback. Calibration recordings are not
+written into activity history. Every calibration starts from raw uncorrected
+capture timing. The saved offset and `-20 dB` to `+30 dB` gain remain applied to
+stored microphone playback, with the existing true-peak limiter.
 
 ## Tech Stack
 
