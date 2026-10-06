@@ -53,6 +53,22 @@ describe("authoritative render state subscriptions", () => {
     source.emit("render-bundle.changed", bundle("owned", "completed"));
     expect(updates).toBe(0);
   });
+  test("a renderer unload ends only its own waits while the gateway stays connected", async () => {
+    const source = createAppEventSource();
+    source.emit("connection.changed", "connected");
+    const abort = new AbortController();
+    const recorderWait = waitForAppState(source.events, "render-bundle.changed", () => false, {
+      namespace: "recorder",
+      signal: abort.signal,
+    });
+    const rendererWait = waitForAppState(source.events, "renderer.folder.changed", () => false, {
+      namespace: "renderer",
+    });
+    source.emit("renderer.status.changed", "unavailable");
+    await expect(rendererWait).rejects.toMatchObject({ code: "ipc_unavailable" });
+    abort.abort();
+    await expect(recorderWait).rejects.toMatchObject({ name: "AbortError" });
+  });
   test("abort releases folder waits and does not apply late selection", async () => {
     const source = createAppEventSource();
     const abort = new AbortController();
