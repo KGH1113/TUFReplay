@@ -12,6 +12,7 @@ internal static class Program
       MicrophonePermissionWarningSuite.RunAll();
       MicrophoneCalibrationSuite.RunAll(root);
       ActivityDatabaseSuite.RunAll(root);
+      ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
       CGEventCaptureRegressionSuite.RunAll();
       PerformanceRegressionSuite.RunAll(root);

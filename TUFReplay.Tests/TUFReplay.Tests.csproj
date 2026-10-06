@@ -7,6 +7,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="AdofaiIpc">
+      <HintPath>$(AdofaiIpcDll)</HintPath>
+    </Reference>
     <Reference Include="TUFReplay">
       <HintPath>$(TUFReplayDll)</HintPath>
     </Reference>
