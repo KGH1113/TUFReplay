@@ -1,0 +1,55 @@
+{
+  "title": "Downloads",
+  "view": "Details",
+  "continue": "Continue",
+  "close": "Close",
+  "done": "Done",
+  "background": "Continue in background",
+  "connectionIssue": "Unable to read installation status",
+  "loading": "Checking installed components…",
+  "description": {
+    "center": "Install the components needed for camera recording and rendering.",
+    "renderer": "Turn recorded runs into videos. Restart the game after installation.",
+    "ffmpeg": "Video encoding for rendering and Windows camera recording. Shared by both features."
+  },
+  "consent": {
+    "renderer": "With your consent, TUFReplay downloads the official Renderer release from GitHub and installs this separately licensed GPL mod into the game's Mods folder.",
+    "ffmpeg": "With your consent, TUFReplay downloads FFmpeg from the platform provider and verifies it before installation. The build may include GPL components. It is stored in TUFReplay's folder and reused for camera recording and rendering."
+  },
+  "status": {
+    "checking": "Checking installation…",
+    "missing": "Not installed",
+    "awaiting-consent": "Your approval is needed",
+    "resolving": "Finding the official release…",
+    "downloading": "Downloading…",
+    "extracting": "Extracting files…",
+    "validating": "Verifying download…",
+    "ready": "Installed",
+    "restart-required": "Installed · Restart required",
+    "declined": "Installation skipped",
+    "cancelled": "Installation cancelled",
+    "failed": "Installation failed"
+  },
+  "install": "Install",
+  "agreeInstall": "Agree and install",
+  "later": "Later",
+  "cancel": "Cancel",
+  "retry": "Try again",
+  "license": "View license",
+  "details": "Details",
+  "progress": "{{name}} download progress",
+  "installLocation": "Install location: {{path}}",
+  "restartHelp": "Fully quit and reopen ADOFAI, then enable TUFReplay-Renderer in Unity Mod Manager.",
+  "errors": {
+    "statusFailed": "Installation status could not be read. Check that the game is running with the latest TUFReplay enabled, then try again.",
+    "downloads_unavailable": "Update TUFReplay and fully restart ADOFAI to use the download center.",
+    "actionFailed": "The installation request could not be sent. Check your connection to the game, then try again.",
+    "renderer_download_timeout": "The Renderer download timed out. Check your connection and try again.",
+    "installFailed": "Installation could not finish. Check the details, available disk space and your connection, then try again.",
+    "renderer_release_unavailable": "The official Renderer release has not been published yet. Try again after a release is available.",
+    "renderer_release_inaccessible": "The Renderer repository could not be accessed. It may be private or unavailable. Try again once a public release is available.",
+    "renderer_release_invalid": "The published Renderer package or verification file is incomplete. Try again after the release is corrected.",
+    "renderer_checksum_mismatch": "The Renderer download did not match the published file. Try downloading it again.",
+    "renderer_directory_exists": "A Renderer folder already exists. Restart the game and check the installed mod. Move an incomplete installation aside before trying again."
+  }
+}

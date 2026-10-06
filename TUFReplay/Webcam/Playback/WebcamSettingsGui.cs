@@ -9,14 +9,22 @@ public static class WebcamSettingsGui
 {
   private static readonly JObject Pending = new JObject();
   private static string _error;
-  private static string _ffmpegDraft;
+  private static TUFReplay.Webcam.Ipc.WebcamStateDto _layoutState;
+  private static string _layoutError;
 
   public static void Draw()
   {
     var feature = FeatureRegistry.WebcamRecording;
     if (feature == null)
       return;
-    var state = feature.GetState();
+    // Use the same snapshot for Layout and its following input/repaint events.
+    // Camera discovery and capture errors can change the number of controls.
+    if (Event.current.type == EventType.Layout || _layoutState == null)
+    {
+      _layoutState = feature.GetState();
+      _layoutError = _error ?? _layoutState.Error;
+    }
+    var state = _layoutState;
     GUILayout.Space(12);
     GUILayout.Label("Camera");
     if (!state.Supported)
@@ -75,16 +83,6 @@ public static class WebcamSettingsGui
     Slider("retentionDays", "Keep videos for (days)", state.RetentionDays, 1, 30, true);
     GUILayout.Label("Videos older than this are removed automatically. Runs and replays stay in your history.");
     GUILayout.Label("Older videos are removed first. Each recording is limited to 128 MB.");
-    if (
-      System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.Windows)
-    )
-    {
-      _ffmpegDraft ??= state.FfmpegPath ?? "";
-      GUILayout.Label("FFmpeg executable (blank uses bundled FFmpeg or PATH)");
-      _ffmpegDraft = GUILayout.TextField(_ffmpegDraft);
-      if (GUILayout.Button("Apply FFmpeg path"))
-        Commit(new JObject { ["ffmpegPath"] = _ffmpegDraft });
-    }
     GUI.enabled = originalEnabled;
     bool liveVisible = GUILayout.Toggle(state.LiveVisible, "Show live camera while playing");
     if (liveVisible != state.LiveVisible)
@@ -117,8 +115,8 @@ public static class WebcamSettingsGui
       Commit((JObject)Pending.DeepClone());
       Pending.RemoveAll();
     }
-    if (!string.IsNullOrEmpty(_error ?? state.Error))
-      GUILayout.Label(_error ?? state.Error);
+    if (!string.IsNullOrEmpty(_layoutError))
+      GUILayout.Label(_layoutError);
   }
 
   private static void Slider(string key, string label, double value, float min, float max, bool integer)

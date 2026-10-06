@@ -41,7 +41,10 @@ export async function sendDomainCommand<TResult>(
       {
         kind: code === "ipc_unavailable" || code === "ipc_timeout" ? "connection" : "domain",
         code,
-        cause,
+        cause:
+          cause instanceof DomainCommandError && cause.details !== undefined
+            ? { details: cause.details }
+            : cause,
       },
     );
   }

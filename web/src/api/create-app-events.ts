@@ -1,13 +1,21 @@
 import { z } from "zod";
 import type { AppEvents } from "@/api/app-events";
 import { observeDomainEvent } from "@/api/domain-messages";
+import { downloadsStateSchema } from "@/api/downloads/downloads-api";
 import { mapCalibrationStatus } from "@/models/calibration/calibration-model";
 import { mapMicrophoneDevicesState } from "@/models/microphone/microphone-model";
 import { mapReplayStatus } from "@/models/replay/replay-model";
 import { mapWebcamState } from "@/models/webcam/webcam-model";
-import type { LocalAppChannels, SessionState } from "@/ports/local-message-peer";
+import type { LocalAppChannels, NamespaceStatus, SessionState } from "@/ports/local-message-peer";
 import { calibrationStatusDtoSchema } from "@/schemas/calibration/calibration-schema";
 import { microphoneDevicesStateDtoSchema } from "@/schemas/microphone/microphone-schema";
+import {
+  outputDirectoryChoiceSchema,
+  renderExportStatusSchema,
+  renderHealthSchema,
+  renderJobSchema,
+  renderSettingsSchema,
+} from "@/schemas/render/render-schema";
 import { replayStatusDtoSchema } from "@/schemas/replay/replay-schema";
 import { webcamStateDtoSchema } from "@/schemas/webcam/webcam-schema";
 
@@ -15,6 +23,68 @@ export function createAppEvents(channels: LocalAppChannels): AppEvents {
   return {
     on(name, listener) {
       switch (name) {
+        case "recorder.status.changed":
+          return (
+            channels.namespace.onStatus?.(listener as (value: NamespaceStatus) => void) ??
+            (() => {})
+          );
+        case "renderer.status.changed":
+          return (
+            channels.rendererNamespace?.onStatus?.(listener as (value: NamespaceStatus) => void) ??
+            (() => {})
+          );
+        case "downloads.changed":
+          return observeDomainEvent(
+            channels.namespace,
+            "downloads.state.changed",
+            downloadsStateSchema,
+            listener as (value: import("@/api/downloads/downloads-api").DownloadsState) => void,
+          );
+        case "render-bundle.changed":
+          return observeDomainEvent(
+            channels.namespace,
+            "render-bundle.state.changed",
+            renderExportStatusSchema,
+            listener as (value: import("@/models/render/render-model").RenderExportStatus) => void,
+          );
+        case "renderer.job.changed":
+          return channels.rendererNamespace
+            ? observeDomainEvent(
+                channels.rendererNamespace,
+                "renderer.job.changed",
+                renderJobSchema,
+                listener as (value: import("@/models/render/render-model").RenderJob) => void,
+              )
+            : () => {};
+        case "renderer.settings.changed":
+          return channels.rendererNamespace
+            ? observeDomainEvent(
+                channels.rendererNamespace,
+                "renderer.settings.changed",
+                renderSettingsSchema,
+                listener as (value: import("@/models/render/render-model").RenderSettings) => void,
+              )
+            : () => {};
+        case "renderer.folder.changed":
+          return channels.rendererNamespace
+            ? observeDomainEvent(
+                channels.rendererNamespace,
+                "renderer.folder-selection.changed",
+                outputDirectoryChoiceSchema,
+                listener as (
+                  value: import("@/models/render/render-model").OutputDirectorySelection,
+                ) => void,
+              )
+            : () => {};
+        case "renderer.health.changed":
+          return channels.rendererNamespace
+            ? observeDomainEvent(
+                channels.rendererNamespace,
+                "renderer.health.snapshot",
+                renderHealthSchema,
+                listener as (value: import("@/models/render/render-model").RenderHealth) => void,
+              )
+            : () => {};
         case "webcam.changed":
           return observeDomainEvent(
             channels.namespace,

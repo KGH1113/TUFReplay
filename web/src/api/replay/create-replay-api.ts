@@ -33,12 +33,12 @@ export function createReplayApi(clients: AdofaiIpcClients): ReplayApi {
         ),
       );
     },
-    async pickLevelFile(runId): Promise<ReplayLevelFilePickerResult> {
+    async pickLevelFile(runId, purpose): Promise<ReplayLevelFilePickerResult> {
       const dto = await sendDomainCommand(
         clients.namespace,
         "replay.level-file.choose",
         "replay.level-file.finished",
-        { runId },
+        { runId, ...(purpose ? { purpose } : {}) },
         replayLevelFilePickerResultDtoSchema,
         { timeoutMs: 180_000 },
       );

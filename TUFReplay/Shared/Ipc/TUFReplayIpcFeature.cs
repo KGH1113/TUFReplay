@@ -10,10 +10,13 @@ using TUFReplay.Calibration.Models;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Devices;
 using TUFReplay.Microphone.Ipc;
+using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Ipc;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Preparation;
+using TUFReplay.Shared.Downloads;
+using TUFReplay.Shared.Media;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Ipc;
@@ -47,6 +50,8 @@ public sealed class TUFReplayIpcFeature
           "https://tufreplay.impl1113.dev",
           "https://tufreplay-dev.impl1113.dev",
           "https://tufreplay-auto.impl1113.dev",
+          "https://guhyeons-macbook-pro.tail234c02.ts.net",
+          "http://guhyeons-macbook-pro.tail234c02.ts.net",
           "http://localhost",
           "http://127.0.0.1",
         },
@@ -277,6 +282,130 @@ public sealed class TUFReplayIpcFeature
       broadcast: true
     );
     FeatureRegistry.WebcamRecording.StateChanged += OnWebcamChanged;
+    RegisterOutcome(
+      ipc,
+      "media.ffmpeg.state.read",
+      "media.ffmpeg.state.changed",
+      _ => FfmpegInstallCoordinator.Status()
+    );
+    RegisterOutcome(
+      ipc,
+      "media.ffmpeg.request",
+      "media.ffmpeg.state.changed",
+      cmd => FfmpegInstallCoordinator.Request(cmd.PeerId),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "media.ffmpeg.confirm",
+      "media.ffmpeg.state.changed",
+      _ => FfmpegInstallCoordinator.Confirm(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "media.ffmpeg.decline",
+      "media.ffmpeg.state.changed",
+      _ => FfmpegInstallCoordinator.Decline(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "media.ffmpeg.cancel",
+      "media.ffmpeg.state.changed",
+      _ => FfmpegInstallCoordinator.Cancel(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "media.ffmpeg.release",
+      "media.ffmpeg.state.changed",
+      cmd =>
+      {
+        FfmpegInstallCoordinator.CancelPendingRequest(cmd.PeerId);
+        return FfmpegInstallCoordinator.Status();
+      },
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.state.read",
+      "downloads.state.changed",
+      _ => DownloadCenterCoordinator.Status(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.ffmpeg.request",
+      "downloads.state.changed",
+      cmd =>
+      {
+        FfmpegInstallCoordinator.Request(cmd.PeerId);
+        return DownloadCenterCoordinator.Status();
+      },
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.ffmpeg.confirm",
+      "downloads.state.changed",
+      _ =>
+      {
+        FfmpegInstallCoordinator.Confirm();
+        return DownloadCenterCoordinator.Status();
+      },
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.ffmpeg.cancel",
+      "downloads.state.changed",
+      _ =>
+      {
+        FfmpegInstallCoordinator.Cancel();
+        return DownloadCenterCoordinator.Status();
+      },
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.renderer.request",
+      "downloads.state.changed",
+      _ => DownloadCenterCoordinator.RequestRenderer(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.renderer.confirm",
+      "downloads.state.changed",
+      _ => DownloadCenterCoordinator.ConfirmRenderer(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "downloads.renderer.cancel",
+      "downloads.state.changed",
+      _ => DownloadCenterCoordinator.CancelRenderer(),
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "replay.render-bundle.prepare",
+      "render-bundle.state.changed",
+      RenderBundleIpcHandlers.Export,
+      mainThread: true
+    );
+    RegisterOutcome(
+      ipc,
+      "replay.render-bundle.state.read",
+      "render-bundle.state.changed",
+      RenderBundleIpcHandlers.GetStatus
+    );
+    RegisterOutcome(ipc, "replay.render-bundle.cancel", "render-bundle.state.changed", RenderBundleIpcHandlers.Cancel);
+    RenderBundleExportService.Changed += OnRenderBundleChanged;
+    FfmpegInstallCoordinator.Changed += OnDownloadsChanged;
+    DownloadCenterCoordinator.Changed += OnDownloadsChanged;
+    ipc.PeerDisconnected += OnPeerDisconnected;
     _namespace = ipc;
     ActivityChanges.Changed += OnActivityChanged;
     ReplayPlaybackCoordinator.StatusChanged += OnReplayChanged;
@@ -295,6 +424,12 @@ public sealed class TUFReplayIpcFeature
     _active = false;
     if (FeatureRegistry.WebcamRecording != null)
       FeatureRegistry.WebcamRecording.StateChanged -= OnWebcamChanged;
+    RenderBundleExportService.Changed -= OnRenderBundleChanged;
+    FfmpegInstallCoordinator.Changed -= OnDownloadsChanged;
+    DownloadCenterCoordinator.Changed -= OnDownloadsChanged;
+    if (_namespace != null)
+      _namespace.PeerDisconnected -= OnPeerDisconnected;
+    RenderBundleExportService.Shutdown();
     ActivityChanges.Changed -= OnActivityChanged;
     ReplayPlaybackCoordinator.StatusChanged -= OnReplayChanged;
     if (FeatureRegistry.Recording != null)
@@ -388,7 +523,16 @@ public sealed class TUFReplayIpcFeature
     ReplayLevelFilePickerCoordinator.Completed += finished;
     try
     {
-      ReplayLevelFilePickerResult initial = ReplayLevelFilePickerCoordinator.Start(runId);
+      string purpose = IpcParams.OptionalString(command, "purpose") ?? "replay";
+      if (purpose != "replay" && purpose != "render")
+      {
+        command.Reject("invalid_picker_purpose", "Choose replay or render when opening a level file.");
+        return;
+      }
+      ReplayLevelFilePickerResult initial = ReplayLevelFilePickerCoordinator.Start(
+        runId,
+        holdForReplay: purpose == "replay"
+      );
       operationId = initial.OperationId;
       if (initial.Outcome != ReplayLevelFilePickerOutcomes.Picking)
         completion.TrySetResult(initial);
@@ -414,6 +558,10 @@ public sealed class TUFReplayIpcFeature
     {
       if (!_active || _namespace == null)
         return;
+      _namespace.SendToPeer(peer.PeerId, "downloads.state.changed", DownloadCenterCoordinator.Status());
+      _namespace.SendToPeer(peer.PeerId, "media.ffmpeg.state.changed", FfmpegInstallCoordinator.Status());
+      foreach (object state in RenderBundleExportService.Snapshots())
+        _namespace.SendToPeer(peer.PeerId, "render-bundle.state.changed", state);
       _namespace.SendToPeer(peer.PeerId, "webcam.state.changed", FeatureRegistry.WebcamRecording.GetState());
       _namespace.SendToPeer(peer.PeerId, "health.snapshot", HealthResponseDto.Create());
       _namespace.SendToPeer(
@@ -428,6 +576,24 @@ public sealed class TUFReplayIpcFeature
       );
     });
   }
+
+  private void OnPeerDisconnected(IpcPeerInfo peer) =>
+    UnityMainThread.Post(() => FfmpegInstallCoordinator.CancelPendingRequest(peer.PeerId));
+
+  private void OnRenderBundleChanged(object state)
+  {
+    if (_active)
+      _namespace?.Publish("render-bundle.state.changed", state);
+  }
+
+  private void OnDownloadsChanged() =>
+    UnityMainThread.Post(() =>
+    {
+      if (!_active || _namespace == null)
+        return;
+      _namespace.Publish("downloads.state.changed", DownloadCenterCoordinator.Status());
+      _namespace.Publish("media.ffmpeg.state.changed", FfmpegInstallCoordinator.Status());
+    });
 
   private void OnWebcamChanged() =>
     UnityMainThread.Post(() =>

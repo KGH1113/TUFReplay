@@ -27,7 +27,13 @@ public static class ReplayIpcHandlers
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
 
-    return ReplayLevelFilePickerResultDto.From(ReplayLevelFilePickerCoordinator.Start(runId));
+    string purpose = IpcParams.OptionalString(request, "purpose") ?? "replay";
+    if (purpose != "replay" && purpose != "render")
+      return IpcDomainError.Create("invalid_picker_purpose", "purpose must be replay or render.");
+
+    return ReplayLevelFilePickerResultDto.From(
+      ReplayLevelFilePickerCoordinator.Start(runId, holdForReplay: purpose == "replay")
+    );
   }
 
   public static object GetLevelFilePickerStatus(IpcCommand request)

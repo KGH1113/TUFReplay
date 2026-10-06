@@ -10,6 +10,11 @@ import {
 } from "../../../vendor/adofai-ipc/src";
 
 const stateEvents = [
+  "downloads.state.changed",
+  "render-bundle.state.changed",
+  "renderer.job.changed",
+  "renderer.folder-selection.changed",
+  "renderer.health.snapshot",
   "health.snapshot",
   "activity.changed",
   "replay.state.changed",
@@ -54,9 +59,16 @@ async function connect(): Promise<LocalAppChannels> {
 }
 
 export function adaptChannel(channel: IpcChannel): LocalMessagePeer {
-  const snapshots = new Map<string, { payload: unknown; message: DomainMessage }>();
+  const snapshots = new Map<string, { name: string; payload: unknown; message: DomainMessage }>();
   for (const name of stateEvents)
-    channel.on(name, (payload, message) => snapshots.set(name, { payload, message }));
+    channel.on(name, (payload, message) => {
+      const state = payload as { jobId?: string; selectionId?: string } | null;
+      const identity = state?.jobId ?? state?.selectionId ?? "";
+      const key = `${name}:${identity}`;
+      snapshots.delete(key);
+      snapshots.set(key, { name, payload, message });
+      if (snapshots.size > 128) snapshots.delete(snapshots.keys().next().value as string);
+    });
   channel.onStatus((status) => {
     if (status === "unavailable") snapshots.clear();
   });
@@ -70,8 +82,8 @@ export function adaptChannel(channel: IpcChannel): LocalMessagePeer {
     },
     on(name, listener) {
       const off = channel.on(name, (payload, message: IpcMessage) => listener(payload, message));
-      const snapshot = snapshots.get(name);
-      if (snapshot) listener(snapshot.payload, snapshot.message);
+      for (const snapshot of snapshots.values())
+        if (snapshot.name === name) listener(snapshot.payload, snapshot.message);
       return off;
     },
     onStatus: (listener) => channel.onStatus(listener),
@@ -161,7 +173,18 @@ export function createLazyAppChannels(
       };
     },
     onStatus(listener) {
-      return current?.[name]?.onStatus?.(listener) ?? (() => {});
+      let off = () => {};
+      let disposed = false;
+      const bind = () => {
+        if (!disposed) off = current?.[name]?.onStatus?.(listener) ?? (() => {});
+      };
+      if (current) bind();
+      else waiting.add(bind);
+      return () => {
+        disposed = true;
+        waiting.delete(bind);
+        off();
+      };
     },
     async whenReady(options) {
       const peer = (await get())[name];

@@ -13,7 +13,6 @@ export function mapWebcamState(dto: WebcamStateDto) {
     captureError: dto.Error,
     devices: dto.Devices.map((device) => ({ id: device.Id, name: device.Name })),
     deviceId: dto.SelectedDeviceId,
-    ffmpegPath: dto.FfmpegPath,
     quality: dto.Quality,
     offsetMs: dto.OffsetMs,
     storageLimitMb: dto.StorageLimitMb,

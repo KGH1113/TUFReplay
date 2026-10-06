@@ -34,6 +34,7 @@ export const RunCard = memo(function RunCard({
   replayErrorRunId,
   onSelect,
   onPlayReplay,
+  onRender,
   onDeleteRun,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
@@ -49,6 +50,7 @@ export const RunCard = memo(function RunCard({
   replayErrorRunId: string | null;
   onSelect: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onRender?: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -94,6 +96,12 @@ export const RunCard = memo(function RunCard({
           run={run}
           disabled={readOnly}
           runDeleteDisabled={runDeleteDisabled}
+          onRender={onRender}
+          renderDisabled={
+            Boolean(run.replayUnavailableReason) ||
+            replayPendingRunId !== null ||
+            isReplayInProgress(replayStatus)
+          }
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
           onDownloadMicrophoneRecording={onDownloadMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}

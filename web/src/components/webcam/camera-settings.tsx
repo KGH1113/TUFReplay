@@ -23,8 +23,6 @@ export function CameraSettings({
 }) {
   const { t } = useTranslation("webcam");
   const id = useId();
-  const [ffmpegPath, setFfmpegPath] = useState(state.ffmpegPath ?? "");
-  useEffect(() => setFfmpegPath(state.ffmpegPath ?? ""), [state.ffmpegPath]);
   const captureDisabled = saving || !state.supported || state.captureLocked;
   const fieldClass =
     "h-9 w-full rounded-lg border border-border bg-background/60 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50";
@@ -166,27 +164,7 @@ export function CameraSettings({
         />
         <p className="text-xs leading-relaxed text-muted-foreground">{t("storageHint")}</p>
         {state.backend === "ffmpeg" ? (
-          <details className="space-y-3 border-t border-border/60 pt-4 text-sm">
-            <summary className="cursor-pointer font-medium">{t("windowsSetup")}</summary>
-            <p className="text-xs leading-relaxed text-muted-foreground">{t("ffmpegHint")}</p>
-            <label htmlFor={`${id}-ffmpeg`} className="block text-xs">
-              {t("ffmpegPath")}
-            </label>
-            <input
-              id={`${id}-ffmpeg`}
-              className={fieldClass}
-              value={ffmpegPath}
-              disabled={captureDisabled}
-              onChange={(event) => setFfmpegPath(event.target.value)}
-            />
-            <Button
-              size="sm"
-              disabled={captureDisabled}
-              onClick={() => onUpdate({ ffmpegPath: ffmpegPath || null })}
-            >
-              {t("applyPath")}
-            </Button>
-          </details>
+          <p className="text-xs leading-relaxed text-muted-foreground">{t("ffmpegHint")}</p>
         ) : null}
       </section>
       <section
