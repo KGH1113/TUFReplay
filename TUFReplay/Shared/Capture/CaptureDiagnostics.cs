@@ -32,7 +32,8 @@ internal static class CaptureDiagnostics
   {
     try
     {
-      Main.Instance?.Log("[Camera/Diagnostics] " + CreateRecord(eventName, data, exception).ToString(Formatting.None));
+      string message = "[Camera/Diagnostics] " + CreateRecord(eventName, data, exception).ToString(Formatting.None);
+      TUFReplay.Shared.Unity.UnityMainThread.Post(() => Main.Instance?.Log(message));
     }
     catch { }
   }

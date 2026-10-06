@@ -25,6 +25,31 @@ export function createWebcamApiMock(onState?: (state: WebcamState) => void): Web
     }),
   );
   return {
+    async getPreviewFrame() {
+      if (!state.enabled) return null;
+      const width = 640,
+        height = 360,
+        stride = width * 3;
+      const bytes = new Uint8Array(54 + stride * height);
+      const header = new DataView(bytes.buffer);
+      header.setUint16(0, 0x4d42, true);
+      header.setUint32(2, bytes.length, true);
+      header.setUint32(10, 54, true);
+      header.setUint32(14, 40, true);
+      header.setInt32(18, width, true);
+      header.setInt32(22, height, true);
+      header.setUint16(26, 1, true);
+      header.setUint16(28, 24, true);
+      header.setUint32(34, stride * height, true);
+      for (let y = 0; y < height; y++)
+        for (let x = 0; x < width; x++) {
+          const offset = 54 + y * stride + x * 3;
+          bytes[offset] = x < width / 2 ? 160 : 50;
+          bytes[offset + 1] = y < height / 2 ? 180 : 70;
+          bytes[offset + 2] = x > width / 2 ? 210 : 40;
+        }
+      return { bytes, width, height };
+    },
     async getSettings() {
       return structuredClone(state);
     },

@@ -281,6 +281,8 @@ public sealed class TUFReplayIpcFeature
       mainThread: true,
       broadcast: true
     );
+    var webcamPreview = new WebcamPreviewIpc();
+    ipc.RegisterCommand("webcam.preview.read", command => webcamPreview.Read(ipc, command));
     FeatureRegistry.WebcamRecording.StateChanged += OnWebcamChanged;
     RegisterOutcome(
       ipc,

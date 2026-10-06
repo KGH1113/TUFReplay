@@ -20,6 +20,7 @@ export function mapWebcamState(dto: WebcamStateDto) {
     playbackVisible: dto.PlaybackVisible,
     liveVisible: dto.LiveVisible,
     mirror: dto.Mirror,
+    flipVertical: dto.FlipVertical,
     crop: dto.Crop,
   };
 }

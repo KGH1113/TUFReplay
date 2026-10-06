@@ -40,8 +40,13 @@ public readonly struct WebcamCropRect
     * Width
     / Height;
 
-  public WebcamTextureCoordinates TextureCoordinates(bool mirror) =>
-    new WebcamTextureCoordinates(mirror ? X + Width : X, 1 - Y - Height, mirror ? -Width : Width, Height);
+  public WebcamTextureCoordinates TextureCoordinates(bool mirror, bool flipVertical = false) =>
+    new WebcamTextureCoordinates(
+      mirror ? X + Width : X,
+      flipVertical ? 1 - Y : 1 - Y - Height,
+      mirror ? -Width : Width,
+      flipVertical ? -Height : Height
+    );
 
   public void ApplyTo(TUFReplaySetting settings)
   {

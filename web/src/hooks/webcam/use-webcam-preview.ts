@@ -1,182 +1,106 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useMockEnabled } from "@/api/app-api-provider";
+import { useEffect, useRef, useState } from "react";
+import { useApiPromise } from "@/api/app-api-provider";
 import i18n from "@/i18n/i18n";
-import { createBrowserCameraMediaMock } from "@/mocks/webcam/create-browser-camera-media-mock";
-import { type BrowserCameraDevice, browserCameraErrorKey } from "@/models/webcam/browser-camera";
-import { browserCameraMedia } from "@/shared/clients/browser-camera-client";
-import { startBrowserCameraSession } from "@/state/webcam/browser-camera-session";
+import { startGameCameraSession } from "@/state/webcam/game-camera-session";
 
-type PreviewRequest = { target: string; browserDeviceId?: string };
-type PreviewStream = { request: PreviewRequest; stream: MediaStream };
-type PreviewSize = { stream: MediaStream; width: number; height: number; ready: boolean };
+type Request = { target: string };
+type Frame = { request: Request; url: string; width: number; height: number };
 
 export function useWebcamPreview(
   active: boolean,
   gameDeviceId: string | null,
   gameLabel: string | null,
 ) {
-  const mockEnabled = useMockEnabled();
-  const media = useMemo(
-    () => (mockEnabled ? createBrowserCameraMediaMock() : browserCameraMedia()),
-    [mockEnabled],
-  );
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const session = useRef<ReturnType<typeof startBrowserCameraSession> | null>(null);
+  const api = useApiPromise();
+  const session = useRef<ReturnType<typeof startGameCameraSession> | null>(null);
   const [visible, setVisible] = useState(() => document.visibilityState === "visible");
-  const [request, setRequest] = useState<PreviewRequest | null>(null);
-  const [current, setCurrent] = useState<PreviewStream | null>(null);
-  const [size, setSize] = useState<PreviewSize | null>(null);
-  const [devices, setDevices] = useState<BrowserCameraDevice[]>([]);
-  const [camera, setCamera] = useState<BrowserCameraDevice | null>(null);
-  const [selectionRequired, setSelectionRequired] = useState(false);
+  const [request, setRequest] = useState<Request | null>(null);
+  const [frame, setFrame] = useState<Frame | null>(null);
+  const [loaded, setLoaded] = useState<Request | null>(null);
   const [error, setError] = useState("");
   const target = JSON.stringify([gameDeviceId, gameLabel]);
   const revealed = active && visible && request?.target === target;
-  const stream = revealed && current?.request === request ? current.stream : null;
-
-  const stop = () => {
-    session.current?.stop();
-    session.current = null;
-    if (videoRef.current) {
-      videoRef.current.pause();
-      videoRef.current.srcObject = null;
-    }
-  };
+  const current = revealed && frame?.request === request ? frame : null;
 
   useEffect(() => {
     const hide = () => {
       session.current?.stop();
-      session.current = null;
-      if (videoRef.current) {
-        videoRef.current.pause();
-        videoRef.current.srcObject = null;
-      }
       setRequest(null);
-      setCurrent(null);
     };
-    const onVisibility = () => {
+    const visibility = () => {
       const next = document.visibilityState === "visible";
       setVisible(next);
       if (!next) hide();
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener("visibilitychange", visibility);
     window.addEventListener("pagehide", hide);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", visibility);
       window.removeEventListener("pagehide", hide);
     };
   }, []);
 
   useEffect(() => {
-    if (!active) setRequest(null);
-  }, [active]);
-
-  useEffect(() => {
-    if (request && request.target !== target) setRequest(null);
-  }, [request, target]);
+    if (!active || request?.target !== target) setRequest(null);
+  }, [active, target, request]);
 
   useEffect(() => {
     if (!revealed || !request) return;
-    setCurrent(null);
-    setSize(null);
-    setCamera(null);
-    setSelectionRequired(false);
+    setFrame(null);
+    setLoaded(null);
     setError("");
-    if (!media) {
-      setError(i18n.t("cropPreview.unsupported", { ns: "webcam" }));
-      return;
-    }
-    const next = startBrowserCameraSession({
-      media,
-      gameDeviceId,
-      gameLabel,
-      browserDeviceId: request.browserDeviceId,
-      onStream(nextStream, nextCamera) {
-        setCamera(nextCamera);
-        setCurrent({ request, stream: nextStream });
+    let url = "";
+    const next = startGameCameraSession({
+      async read(signal) {
+        const app = await api;
+        if (signal.aborted) return null;
+        return app.webcam.getPreviewFrame(gameDeviceId, { signal });
       },
-      onDevices: setDevices,
-      onSelectionRequired() {
-        setSelectionRequired(true);
+      onFrame(nextFrame) {
+        const previous = url;
+        url = URL.createObjectURL(new Blob([nextFrame.bytes], { type: "image/bmp" }));
+        setFrame({ request, url, width: nextFrame.width, height: nextFrame.height });
+        if (previous) URL.revokeObjectURL(previous);
       },
-      onError(cause) {
-        setCurrent(null);
-        setError(i18n.t(`cropPreview.${browserCameraErrorKey(cause)}`, { ns: "webcam" }));
+      onError() {
+        setFrame(null);
+        setError(i18n.t("cropPreview.failed", { ns: "webcam" }));
       },
     });
     session.current = next;
     return () => {
       next.stop();
       if (session.current === next) session.current = null;
+      if (url) URL.revokeObjectURL(url);
     };
-  }, [media, revealed, request, gameDeviceId, gameLabel]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !stream) return;
-    let cancelled = false;
-    video.srcObject = stream;
-    void video.play().catch(() => {
-      if (cancelled) return;
-      session.current?.stop();
-      setCurrent(null);
-      setError(i18n.t("cropPreview.failed", { ns: "webcam" }));
-    });
-    return () => {
-      cancelled = true;
-      video.pause();
-      video.srcObject = null;
-    };
-  }, [stream]);
-
-  const begin = (browserDeviceId?: string) => {
-    stop();
-    setCurrent(null);
-    setSize(null);
-    setError("");
-    setSelectionRequired(false);
-    setRequest({ target, browserDeviceId });
-  };
+  }, [api, revealed, request, gameDeviceId]);
 
   return {
-    videoRef,
     revealed,
-    available: Boolean(stream && size?.stream === stream && size.ready),
-    width: stream && size?.stream === stream ? size.width : 0,
-    height: stream && size?.stream === stream ? size.height : 0,
+    imageUrl: current?.url,
+    available: Boolean(current && loaded === request),
+    width: current?.width ?? 0,
+    height: current?.height ?? 0,
     error: revealed ? error : "",
-    camera: revealed ? camera : null,
-    devices,
-    selectionRequired: revealed && selectionRequired,
-    selectedDeviceId: request?.browserDeviceId ?? "",
-    reveal: () => begin(),
-    retry: () => begin(request?.browserDeviceId),
-    selectDevice: (id: string) => {
-      if (id) begin(id);
+    label: revealed ? gameLabel : null,
+    reveal() {
+      setRequest({ target });
+    },
+    retry() {
+      session.current?.stop();
+      setRequest({ target });
     },
     hide() {
-      stop();
+      session.current?.stop();
       setRequest(null);
-      setCurrent(null);
-      setError("");
     },
     fail() {
-      stop();
-      setCurrent(null);
+      session.current?.stop();
+      setFrame(null);
       setError(i18n.t("cropPreview.failed", { ns: "webcam" }));
     },
-    updateSize() {
-      const video = videoRef.current;
-      if (!stream || !video || video.srcObject !== stream) return;
-      setSize({
-        stream,
-        width: video.videoWidth,
-        height: video.videoHeight,
-        ready:
-          video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA &&
-          video.videoWidth > 0 &&
-          video.videoHeight > 0,
-      });
+    imageLoaded() {
+      if (current) setLoaded(current.request);
     },
   };
 }

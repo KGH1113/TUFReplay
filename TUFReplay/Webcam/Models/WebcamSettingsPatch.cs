@@ -35,6 +35,7 @@ public sealed class WebcamSettingsPatch
         case "playbackVisible":
         case "liveVisible":
         case "mirror":
+        case "flipVertical":
           if (token.Type != JTokenType.Boolean)
             return false;
           break;
@@ -108,6 +109,8 @@ public sealed class WebcamSettingsPatch
       settings.WebcamLiveVisible = _values["liveVisible"].Value<bool>();
     if (_values["mirror"] != null)
       settings.WebcamMirror = _values["mirror"].Value<bool>();
+    if (_values["flipVertical"] != null)
+      settings.WebcamFlipVertical = _values["flipVertical"].Value<bool>();
     if (_values["overlayX"] != null)
       settings.WebcamOverlayX = _values["overlayX"].Value<double>();
     if (_values["overlayY"] != null)

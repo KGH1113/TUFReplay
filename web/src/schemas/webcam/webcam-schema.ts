@@ -26,6 +26,7 @@ export const webcamSettingsPatchSchema = z
     playbackVisible: z.boolean().optional(),
     liveVisible: z.boolean().optional(),
     mirror: z.boolean().optional(),
+    flipVertical: z.boolean().optional(),
     crop: cameraCropSchema.optional(),
   })
   .strict();
@@ -46,6 +47,7 @@ export const webcamStateDtoSchema = z.object({
   PlaybackVisible: z.boolean(),
   LiveVisible: z.boolean().default(false),
   Mirror: z.boolean(),
+  FlipVertical: z.boolean().default(false),
   Crop: cameraCropDtoSchema.default({ x: 0, y: 0, width: 1, height: 1 }),
 });
 

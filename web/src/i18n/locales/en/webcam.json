@@ -16,7 +16,7 @@
   "unavailableDevice": "Selected camera is disconnected",
   "unsupported": "Camera recording is available on macOS and Windows.",
   "captureLocked": "Camera and recording quality can be changed after this recording finishes. Playback settings remain available.",
-  "captureError": "The camera could not start. Check camera permission and your selected camera, then try again.",
+  "captureError": "Camera recording needs attention. Check the details below; reconnect the camera if its connection failed.",
   "details": "Details",
   "retryCamera": "Reconnect camera",
   "status": {
@@ -56,14 +56,14 @@
     "se": "Resize crop from bottom right"
   },
   "cropPreview": {
-    "image": "Live browser camera preview",
+    "image": "Live game camera preview",
     "reveal": "Click to reveal",
-    "privacy": "Click to allow browser camera access and show the preview. Check what is in view before sharing your screen.",
+    "privacy": "Click to show the camera already open in the game. Check what is in view before sharing your screen.",
     "hide": "Hide preview",
     "off": "Turn the camera on to preview and crop it.",
-    "waiting": "Allow camera access in your browser to see the preview.",
+    "waiting": "Waiting for the game’s camera image…",
     "disconnected": "Connect to the game to preview your camera.",
-    "failed": "The camera preview stopped. Check browser camera permission and try again.",
+    "failed": "The game’s camera preview stopped. Check the game connection and camera settings, then try again.",
     "permission": "Camera access is blocked. Allow camera access for this page in your browser, then try again.",
     "notFound": "The preview camera is unavailable. Reconnect the camera and try again.",
     "inUse": "The browser could not open the camera. Check whether another app is using it, then try again.",
@@ -74,7 +74,7 @@
     "unnamedDevice": "Camera {{count}}",
     "retry": "Retry preview"
   },
-  "mirror": "Mirror video",
+  "mirror": "Flip horizontally",
   "inGamePlacementHint": "Move and resize the camera directly in the game. Drag the image to move it, or drag any edge or corner to resize. Changes are saved automatically.",
   "offset": "Sync correction",
   "syncHint": "The first frame is automatically aligned with the replay clock. To correct camera latency, pause near a key press and compare the image with the replay. Positive values show the image earlier; negative values show it later.",
@@ -88,5 +88,7 @@
     "webcam_unavailable": "Camera settings are unavailable. Restart the game and try again.",
     "webcam_settings_locked": "Finish the current recording before changing the camera or recording quality.",
     "webcam_settings_failed": "Camera settings could not be saved. Check available disk space and try again."
-  }
+  },
+  "flipTitle": "Flip camera",
+  "flipVertical": "Flip vertically"
 }

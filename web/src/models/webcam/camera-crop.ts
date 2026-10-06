@@ -4,8 +4,16 @@ export const FULL_CAMERA_CROP: CameraCrop = { x: 0, y: 0, width: 1, height: 1 };
 export const MIN_CAMERA_CROP = 0.05;
 export type CameraCropHandle = "move" | "nw" | "ne" | "sw" | "se";
 
-export function displayCameraCrop(crop: CameraCrop, mirrored: boolean): CameraCrop {
-  return mirrored ? { ...crop, x: 1 - crop.x - crop.width } : crop;
+export function displayCameraCrop(
+  crop: CameraCrop,
+  mirrored: boolean,
+  flippedVertical = false,
+): CameraCrop {
+  return {
+    ...crop,
+    x: mirrored ? 1 - crop.x - crop.width : crop.x,
+    y: flippedVertical ? 1 - crop.y - crop.height : crop.y,
+  };
 }
 
 export function changeCameraCrop(

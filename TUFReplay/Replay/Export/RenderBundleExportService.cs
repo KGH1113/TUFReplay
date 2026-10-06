@@ -242,6 +242,7 @@ public static class RenderBundleExportService
               }),
               offsetMs = job.Settings.WebcamOffsetMs,
               mirror = job.Settings.WebcamMirror,
+              flipVertical = job.Settings.WebcamFlipVertical,
               crop = new
               {
                 left = crop.X,

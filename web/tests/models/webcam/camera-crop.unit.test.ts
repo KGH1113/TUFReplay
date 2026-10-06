@@ -51,3 +51,15 @@ describe("camera crop geometry", () => {
     expect(displayCameraCrop(display, true).x).toBeCloseTo(source.x);
   });
 });
+
+test("vertical and combined flip preserve source coordinates through crop edits", () => {
+  const crop = { x: 0.2, y: 0.1, width: 0.5, height: 0.6 };
+  for (const horizontal of [false, true])
+    for (const vertical of [false, true]) {
+      const displayed = displayCameraCrop(crop, horizontal, vertical);
+      const restored = displayCameraCrop(displayed, horizontal, vertical);
+      expect(restored.x).toBeCloseTo(crop.x);
+      expect(restored.y).toBeCloseTo(crop.y);
+      expect(displayed.y).toBeCloseTo(vertical ? 0.3 : 0.1);
+    }
+});

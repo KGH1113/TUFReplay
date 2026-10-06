@@ -19,6 +19,7 @@ public sealed class CameraPreviewBuffer : IDisposable
   private readonly MemoryMappedFile _mapping;
   private MemoryMappedViewAccessor _view;
   private long _lastRead;
+  private long _browserRequestedUntil;
   private volatile bool _hasFrame;
 
   public CameraPreviewBuffer(int width, int height)
@@ -95,6 +96,23 @@ public sealed class CameraPreviewBuffer : IDisposable
     }
   }
 
+  public long Sequence
+  {
+    get
+    {
+      if (!Monitor.TryEnter(_gate))
+        return 0;
+      try
+      {
+        return _view?.ReadInt64(0) ?? 0;
+      }
+      finally
+      {
+        Monitor.Exit(_gate);
+      }
+    }
+  }
+
   public bool TryGetFrameSize(out CameraFrameSize size)
   {
     size = default;
@@ -116,13 +134,24 @@ public sealed class CameraPreviewBuffer : IDisposable
       return;
     try
     {
-      _view?.Write(PreviewRequestedOffset, requested ? 1 : 0);
+      _view?.Write(
+        PreviewRequestedOffset,
+        requested || DateTime.UtcNow.Ticks < Interlocked.Read(ref _browserRequestedUntil) ? 1 : 0
+      );
       Thread.MemoryBarrier();
     }
     finally
     {
       Monitor.Exit(_gate);
     }
+  }
+
+  // A short demand lease survives the game hiding its own preview. It expires
+  // without a close message when a browser tab or connection disappears.
+  public void RequestBrowserPreview()
+  {
+    Interlocked.Exchange(ref _browserRequestedUntil, DateTime.UtcNow.AddSeconds(1).Ticks);
+    SetPreviewRequested(true);
   }
 
   public bool ShouldPublish
@@ -155,7 +184,12 @@ public sealed class CameraPreviewBuffer : IDisposable
 
   public bool TryCopy(byte[] destination) => TryCopy(destination, out _);
 
-  public bool TryCopy(byte[] destination, out CameraFrameSize size)
+  public bool TryCopy(byte[] destination, out CameraFrameSize size) => TryCopyCore(destination, out size, true);
+
+  public bool TryCopySnapshot(byte[] destination, out CameraFrameSize size) =>
+    TryCopyCore(destination, out size, false);
+
+  private bool TryCopyCore(byte[] destination, out CameraFrameSize size, bool consume)
   {
     size = default;
     if (destination == null)
@@ -167,7 +201,7 @@ public sealed class CameraPreviewBuffer : IDisposable
       if (_view == null)
         return false;
       long sequence = _view.ReadInt64(0);
-      if (sequence <= 0 || sequence == _lastRead || (sequence & 1) != 0)
+      if (sequence <= 0 || (consume && sequence == _lastRead) || (sequence & 1) != 0)
         return false;
       Thread.MemoryBarrier();
       if (!TryGetFrameSizeLocked(out CameraFrameSize copiedSize) || destination.Length != copiedSize.ByteCount)
@@ -176,7 +210,8 @@ public sealed class CameraPreviewBuffer : IDisposable
       Thread.MemoryBarrier();
       if (_view.ReadInt64(0) != sequence)
         return false;
-      _lastRead = sequence;
+      if (consume)
+        _lastRead = sequence;
       size = copiedSize;
       return true;
     }

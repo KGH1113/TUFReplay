@@ -1,5 +1,7 @@
 # Camera web crop validation
 
+Historical validation for the browser-owned preview. The current dev build replaces this capture path with the [shared game-camera preview](camera-shared-preview-2026-10-06.md), avoiding exclusive-device conflicts. The geometry and privacy principles below remain relevant.
+
 The companion camera dialog now edits the camera's crop only. Web placement, corner placement presets, game-window width controls, and placement reset have been removed. Position and size are adjusted inside the game.
 
 The dialog opens a browser camera with `getUserMedia({ audio: false, video: ... })` only after **Click to reveal / 클릭해서 보기**. The stream is attached directly to `video.srcObject`; there is no preview IPC, PNG encoding, frame polling, or frame copying. Requested video constraints prefer 720p and 30 fps without browser cropping or scaling, and the editor uses the delivered video's actual width and height to preserve its source aspect ratio. Recording quality in the game remains independent of the browser preview.
