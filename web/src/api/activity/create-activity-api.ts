@@ -7,8 +7,9 @@ import {
   mapAppSession,
   mapLogicalLevel,
 } from "@/models/activity/activity-model";
+import type { TextDownloads } from "@/ports/text-download";
 import {
-  activityChartDtoSchema,
+  activityChartSnapshotDtoSchema,
   activityRunDtoSchema,
   appSessionDtoSchema,
   legacyReplayStatusDtoSchema,
@@ -17,7 +18,10 @@ import {
 
 const PAGE_SIZE = 200;
 
-export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
+export function createActivityApi(
+  clients: AdofaiIpcClients,
+  downloads: TextDownloads,
+): ActivityApi {
   const listAppSessions = async (offset: number, limit: number) => {
     const items = await sendDomainCommand(
       clients.namespace,
@@ -64,16 +68,17 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
         );
         return items.map(mapActivityRun);
       }, onPage),
-    async getLogicalLevelChart(id) {
-      return mapActivityChart(
-        await sendDomainCommand(
-          clients.namespace,
-          "activity.chart.read",
-          "activity.chart.snapshot",
-          { id },
-          activityChartDtoSchema,
-        ),
+    async getLogicalLevelChart(id, options) {
+      const snapshot = await sendDomainCommand(
+        clients.namespace,
+        "activity.chart.read",
+        "activity.chart.snapshot",
+        { id },
+        activityChartSnapshotDtoSchema,
+        options,
       );
+      const levelText = await downloads.readText(snapshot, options);
+      return mapActivityChart({ ...snapshot.metadata, LevelText: levelText });
     },
   };
 }
