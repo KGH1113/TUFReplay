@@ -4,6 +4,7 @@ using System.Text;
 using System.Threading;
 using AdofaiIpc;
 using AdofaiIpc.Core;
+using TUFReplay.Activity.Tracking;
 using TUFReplay.Microphone.Ipc;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Shared.Ipc;
@@ -12,7 +13,7 @@ namespace TUFReplay.Microphone.Ipc;
 
 public static class MicrophoneRecordingIpcHandlers
 {
-  public static object Export(IpcRequest request)
+  public static object Export(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return new IpcDownloadError("invalid_run_id", "runId must be a non-empty string.");
@@ -23,32 +24,30 @@ public static class MicrophoneRecordingIpcHandlers
     if (!byteLength.HasValue)
       return new IpcDownloadError("microphone_recording_not_found", "Microphone recording was not found.", 404);
 
-    return new IpcDownloadResponse(
-      "audio/wav",
-      byteLength.Value,
-      CreateDownloadFileName(runId),
+    return new IpcDownloadSource(
       destination =>
       {
         if (MicrophoneRecordingRepository.WriteTo(runId, destination, CancellationToken.None, byteLength.Value) == null)
           throw new FileNotFoundException("Microphone recording was removed before download.");
-      }
+      },
+      byteLength.Value,
+      CreateDownloadFileName(runId),
+      "audio/wav"
     );
   }
 
-  public static object Delete(IpcRequest request)
+  public static object Delete(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
       return IpcDomainError.Create("run_not_found", "Run was not found.");
-    return new MicrophoneRecordingDeleteResultDto
-    {
-      RunId = runId,
-      Deleted = MicrophoneRecordingRepository.Delete(runId),
-    };
+    bool deleted = MicrophoneRecordingRepository.Delete(runId);
+    ActivityChanges.Notify(runId);
+    return new MicrophoneRecordingDeleteResultDto { RunId = runId, Deleted = deleted };
   }
 
-  public static object KeepPermanently(IpcRequest request)
+  public static object KeepPermanently(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
@@ -58,6 +57,7 @@ public static class MicrophoneRecordingIpcHandlers
       return IpcDomainError.Create("microphone_recording_not_found", "Microphone recording was not found.");
 
     MicrophoneRecordingRepository.KeepPermanently(runId);
+    ActivityChanges.Notify(runId);
     return new MicrophoneRecordingKeepResultDto { RunId = runId, Permanent = true };
   }
 

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ActivityApi } from "@/api/activity/activity-api";
+import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
 import {
   mapActivityChart,
   mapActivityRun,
@@ -13,15 +14,15 @@ import {
   legacyReplayStatusDtoSchema,
   logicalLevelDtoSchema,
 } from "@/schemas/activity/activity-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 
 const PAGE_SIZE = 200;
 
 export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
   const listAppSessions = async (offset: number, limit: number) => {
-    const items = await callAdofaiIpc(
+    const items = await sendDomainCommand(
       clients.namespace,
-      "activity.app-sessions.list",
+      "activity.sessions.read",
+      "activity.sessions.snapshot",
       { offset, limit },
       z.array(appSessionDtoSchema),
     );
@@ -30,9 +31,10 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
 
   return {
     async getLegacyReplayStatus() {
-      const status = await callAdofaiIpc(
+      const status = await sendDomainCommand(
         clients.namespace,
-        "activity.legacy-replay-status.get",
+        "activity.legacy-status.read",
+        "activity.legacy-status.snapshot",
         {},
         legacyReplayStatusDtoSchema,
       );
@@ -42,9 +44,10 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
     listAllAppSessions: (onPage) => loadAllPages(listAppSessions, onPage),
     async getLogicalLevel(id) {
       return mapLogicalLevel(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "activity.logical-level.get",
+          "activity.level.read",
+          "activity.level.snapshot",
           { id },
           logicalLevelDtoSchema,
         ),
@@ -52,9 +55,10 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
     },
     listLogicalLevelRuns: (id, appSessionIds, onPage) =>
       loadAllPages(async (offset, limit) => {
-        const items = await callAdofaiIpc(
+        const items = await sendDomainCommand(
           clients.namespace,
-          "activity.logical-level.runs.list",
+          "activity.runs.read",
+          "activity.runs.snapshot",
           { id, appSessionIds, offset, limit },
           z.array(activityRunDtoSchema),
         );
@@ -62,9 +66,10 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
       }, onPage),
     async getLogicalLevelChart(id) {
       return mapActivityChart(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "activity.logical-level.chart.get",
+          "activity.chart.read",
+          "activity.chart.snapshot",
           { id },
           activityChartDtoSchema,
         ),

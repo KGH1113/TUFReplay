@@ -336,6 +336,7 @@ public sealed class WebcamReplayOverlay
     try
     {
       TUFReplaySettingStore.Save();
+      TUFReplay.Composition.FeatureRegistry.WebcamRecording?.NotifyStateChanged();
     }
     catch (Exception exception)
     {

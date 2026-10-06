@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using TUFReplay.Calibration.Models;
 using TUFReplay.Shared.Settings;
 
@@ -6,6 +7,8 @@ namespace TUFReplay.Calibration.Models;
 
 internal sealed class MicrophoneCalibrationState
 {
+  public event Action<MicrophoneCalibrationStatus> Changed;
+  private long _nextPositionNotification;
   private readonly object _gate = new object();
   private MicrophoneCalibrationStatus _status = new MicrophoneCalibrationStatus();
   private MicrophoneCalibrationResult _result;
@@ -82,6 +85,7 @@ internal sealed class MicrophoneCalibrationState
   {
     lock (_gate)
       _status = status;
+    NotifyChanged();
   }
 
   public void BeginMeasurement(string operationId, int microphoneVolumeDb)
@@ -98,25 +102,30 @@ internal sealed class MicrophoneCalibrationState
         MicrophoneVolumeDb = microphoneVolumeDb,
       };
     }
+    NotifyChanged();
   }
 
   public void Update(string state, string message)
   {
     lock (_gate)
     {
+      if (_status.State == state && _status.Message == message && _status.ErrorCode == null)
+        return;
       _status.State = state;
       _status.ErrorCode = null;
       _status.Message = message;
     }
+    NotifyChanged();
   }
 
   public int CompleteResult(string operationId, double durationMs, float[] songWaveform, float[] microphoneWaveform)
   {
+    int revision;
     lock (_gate)
     {
       if (!string.Equals(_status.OperationId, operationId, StringComparison.Ordinal))
         return 0;
-      int revision = _status.ResultRevision + 1;
+      revision = _status.ResultRevision + 1;
       _result = new MicrophoneCalibrationResult
       {
         OperationId = operationId,
@@ -131,26 +140,34 @@ internal sealed class MicrophoneCalibrationState
       _status.ResultRevision = revision;
       _status.State = MicrophoneCalibrationStates.Editing;
       _status.Message = "Drag the microphone waveform to align it with the game audio.";
-      return revision;
     }
+    NotifyChanged();
+    return revision;
   }
 
   public void SetPlaybackPosition(double positionMs)
   {
     lock (_gate)
       _status.PlaybackPositionMs = Math.Max(0d, Math.Min(_status.DurationMs, positionMs));
+    long now = Stopwatch.GetTimestamp();
+    if (now < _nextPositionNotification)
+      return;
+    _nextPositionNotification = now + Stopwatch.Frequency / 20;
+    NotifyChanged();
   }
 
   public void SetOffset(int offsetMs)
   {
     lock (_gate)
       _status.MicrophoneOffsetMs = offsetMs;
+    NotifyChanged();
   }
 
   public void SetVolume(int volumeDb)
   {
     lock (_gate)
       _status.MicrophoneVolumeDb = volumeDb;
+    NotifyChanged();
   }
 
   public void ClearResult()
@@ -180,8 +197,15 @@ internal sealed class MicrophoneCalibrationState
         MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
         MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
       };
-      return Clone(_status);
     }
+    NotifyChanged();
+    return GetStatus();
+  }
+
+  private void NotifyChanged()
+  {
+    if (Changed != null)
+      Changed(GetStatus());
   }
 
   public static MicrophoneCalibrationStatus Rejected(string code, string message) =>

@@ -1,12 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useApiPromise } from "@/api/app-api-provider";
 import i18n from "@/i18n/i18n";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
 import type { ReplayLevelFilePickerResult, ReplayStatus } from "@/models/replay/replay-model";
-import { isReplayActive, replayQueryKeys, setReplayStatus } from "@/state/replay/replay-queries";
+import { replayQueryKeys, setReplayStatus } from "@/state/replay/replay-queries";
 
 const IDLE_STATUS: ReplayStatus = {
   operationId: null,
@@ -15,8 +15,6 @@ const IDLE_STATUS: ReplayStatus = {
   errorCode: null,
   message: null,
 };
-
-const POLL_INTERVAL_MS = 500;
 
 export function useReplayControl(connectionStatus: ConnectionStatus) {
   const apiPromise = useApiPromise();
@@ -29,9 +27,24 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
     queryKey: replayQueryKeys.status,
     queryFn: async () => (await apiPromise).replay.getStatus(),
     enabled: connectionStatus === "online",
-    refetchInterval: (query) => (isReplayActive(query.state.data) ? POLL_INTERVAL_MS : false),
-    refetchIntervalInBackground: false,
   });
+
+  useEffect(() => {
+    let disposed = false;
+    let unsubscribe = () => {};
+    void apiPromise
+      .then((api) => {
+        if (!disposed)
+          unsubscribe = api.events.on("replay.changed", (status) =>
+            setReplayStatus(queryClient, status),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [apiPromise, queryClient]);
 
   const playMutation = useMutation({
     mutationFn: async ({ runId, levelPath }: { runId: string; levelPath?: string }) => {

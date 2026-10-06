@@ -1,4 +1,5 @@
 import type { AppApi } from "@/api/app-api";
+import { createAppEventSource } from "@/application/event-source";
 import { createActivityWireFixture } from "@/mocks/activity/activity-api-fixture";
 import { createReplayApiMock } from "@/mocks/replay/replay-api-mock";
 import { createWebcamApiMock } from "@/mocks/webcam/create-webcam-api-mock";
@@ -33,7 +34,9 @@ import {
 
 export function createMockApi(): AppApi {
   const fixture = createActivityWireFixture();
+  const source = createAppEventSource();
   return {
+    events: source.events,
     health: {
       async get() {
         return mapHealth(healthDtoSchema.parse(await fixture.health()));
@@ -106,8 +109,8 @@ export function createMockApi(): AppApi {
         return { runId: result.RunId, changed: result.Permanent };
       },
     },
-    replay: createReplayApiMock(),
-    webcam: createWebcamApiMock(),
+    replay: createReplayApiMock((status) => source.emit("replay.changed", status)),
+    webcam: createWebcamApiMock((state) => source.emit("webcam.changed", state)),
     microphone: {
       async getDevices() {
         return mapMicrophoneDevicesState(

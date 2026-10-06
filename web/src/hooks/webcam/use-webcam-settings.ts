@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useApiPromise } from "@/api/app-api-provider";
 import i18n from "@/i18n/i18n";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
@@ -20,10 +20,25 @@ export function useWebcamSettings(connectionStatus: ConnectionStatus) {
       return (await apiPromise).webcam.getSettings(refresh);
     },
     enabled: open && connectionStatus === "online",
-    refetchInterval: open ? 1000 : false,
     staleTime: 5000,
     retry: 1,
   });
+  useEffect(() => {
+    let disposed = false;
+    let off = () => {};
+    void apiPromise
+      .then((api) => {
+        if (!disposed)
+          off = api.events.on("webcam.changed", (state) =>
+            queryClient.setQueryData(webcamQueryKeys.settings, state),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      off();
+    };
+  }, [apiPromise, queryClient]);
   const mutation = useMutation({
     scope: { id: "camera-settings" },
     mutationFn: async (patch: WebcamSettingsPatch) =>
