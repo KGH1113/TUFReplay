@@ -7,6 +7,7 @@ node_modules
 **/node_modules
 web/.env
 web/dist
+web/public/adofai-ipc.json
 *.log
 TUFReplay/
 TUFReplay.*/

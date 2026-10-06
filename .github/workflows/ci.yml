@@ -38,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Verify unpublished ADOFAI-IPC source snapshot
+        run: ./scripts/run.sh ipc-check
+
       - name: Biome check
         run: bun run web:biome
 

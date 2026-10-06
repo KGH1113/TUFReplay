@@ -323,8 +323,17 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 TUFReplay requires **AdofaiIpc 1.0.0**, WebSocket wire protocol **3**, and TUFReplay
 namespace protocol **9**. The local connection uses `/ipc/ws` and the
 `adofai-ipc.v3` subprotocol. The companion uses the canonical TypeScript SDK
-source committed under `vendor/adofai-ipc`, with its license and source revision;
+source committed under `web/vendor/adofai-ipc`, with its license and source revision;
 no published npm SDK package, linked sibling checkout, or registry release is required.
+
+Update the snapshot from the canonical ADOFAI-IPC checkout with
+`./scripts/run.sh client-sync /path/to/TUFReplay/web/vendor/adofai-ipc`, then commit
+the generated source and provenance together. In TUFReplay, `./scripts/run.sh ipc-check`
+checks the file inventory, SHA-256 values, clean upstream revision, SDK/wire versions,
+and license. Every production web build repeats this check and emits `/adofai-ipc.json`
+from the verified snapshot. CI and Docker use only committed files; deployment verifies
+that the public SDK metadata matches the tested commit. This allows dev testers to use
+ADOFAI-IPC v1 before its mod or npm package is publicly released.
 
 The `tuf-replay` namespace becomes ready after feature initialization. Both peers
 send named commands and domain events over one connection. A transport acceptance
