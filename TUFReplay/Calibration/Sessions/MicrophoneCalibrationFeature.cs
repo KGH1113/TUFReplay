@@ -30,6 +30,12 @@ public sealed class MicrophoneCalibrationFeature
     _preview = new MicrophoneCalibrationPreview(_state);
   }
 
+  public event Action<MicrophoneCalibrationStatus> StatusChanged
+  {
+    add => _state.Changed += value;
+    remove => _state.Changed -= value;
+  }
+
   public bool Active => _state.Active;
 
   public void Enable()

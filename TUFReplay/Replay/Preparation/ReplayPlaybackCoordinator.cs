@@ -23,6 +23,7 @@ namespace TUFReplay.Replay.Preparation;
 
 public static partial class ReplayPlaybackCoordinator
 {
+  public static event Action<ReplayPlaybackStatus> StatusChanged;
   private const double LevelOpenTimeoutSeconds = 30d;
   private const double EditorTransitionTimeoutSeconds = 10d;
   private const double FocusHandoffDelaySeconds = 0.6d;
@@ -506,6 +507,7 @@ public static partial class ReplayPlaybackCoordinator
   {
     lock (Gate)
       _status = status;
+    StatusChanged?.Invoke(Clone(status));
   }
 
   private static void ShowPreparationNotice(string operationId)

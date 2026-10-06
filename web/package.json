@@ -8,14 +8,13 @@
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "bun test",
-    "format": "biome format --write .",
+    "format": "biome check --write .",
     "format:check": "biome format .",
     "biome:check": "biome check .",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
-    "@adofai-ipc/client": "0.4.1",
     "@fontsource-variable/figtree": "^5.2.10",
     "@hugeicons/core-free-icons": "4.1.4",
     "@hugeicons/react": "^1.1.6",
