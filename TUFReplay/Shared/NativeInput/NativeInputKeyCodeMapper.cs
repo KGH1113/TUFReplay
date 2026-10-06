@@ -129,7 +129,6 @@ internal static class NativeInputKeyCodeMapper
     MacVirtualKeyCodes
   );
 
-
   public static List<RecordedInput> NormalizeForPlayback(
     List<RecordedInput> inputs,
     ReplayMetadata meta,

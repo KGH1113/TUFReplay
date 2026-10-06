@@ -1,22 +1,23 @@
+import { z } from "zod";
+import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
 import type { RunApi } from "@/api/run/run-api";
 import {
   recordingDeleteResultDtoSchema,
-  recordingDownloadTicketDtoSchema,
   recordingKeepResultDtoSchema,
   runDeleteResultDtoSchema,
 } from "@/schemas/activity/activity-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 
 export function createRunApi(clients: AdofaiIpcClients): RunApi {
   return {
     async prepareMicrophoneRecordingDownload(runId) {
-      const ticket = await callAdofaiIpc(
+      const ticket = await sendDomainCommand(
         clients.namespace,
-        "microphone.recording.export",
+        "microphone.recording.download",
+        "download.ready",
         { runId },
-        recordingDownloadTicketDtoSchema,
+        z.object({ url: z.string(), byteLength: z.number().optional() }),
       );
-      const url = new URL(ticket.Url);
+      const url = new URL(ticket.url);
       if (
         url.protocol !== "http:" ||
         url.hostname !== "127.0.0.1" ||
@@ -29,30 +30,33 @@ export function createRunApi(clients: AdofaiIpcClients): RunApi {
         !/^\/ipc\/download\/[A-Za-z0-9_-]+$/.test(url.pathname)
       )
         throw new Error("Invalid local microphone download URL.");
-      return ticket.Url;
+      return ticket.url;
     },
     async deleteRun(runId) {
-      const result = await callAdofaiIpc(
+      const result = await sendDomainCommand(
         clients.namespace,
-        "activity.run.delete",
+        "activity.run.remove",
+        "activity.run.removed",
         { runId },
         runDeleteResultDtoSchema,
       );
       return { runId: result.RunId, changed: result.Deleted };
     },
     async deleteMicrophoneRecording(runId) {
-      const result = await callAdofaiIpc(
+      const result = await sendDomainCommand(
         clients.namespace,
-        "microphone.recording.delete",
+        "microphone.recording.remove",
+        "microphone.recording.removed",
         { runId },
         recordingDeleteResultDtoSchema,
       );
       return { runId: result.RunId, changed: result.Deleted };
     },
     async keepMicrophoneRecording(runId) {
-      const result = await callAdofaiIpc(
+      const result = await sendDomainCommand(
         clients.namespace,
-        "microphone.recording.keep",
+        "microphone.recording.retain",
+        "microphone.recording.retained",
         { runId },
         recordingKeepResultDtoSchema,
       );

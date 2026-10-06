@@ -8,8 +8,7 @@ import {
   createCalibrationOffsetReconciler,
   createCalibrationOffsetSaveQueue,
   extrapolateCalibrationPlaybackPosition,
-  installCalibrationStatusPolling,
-  isCalibrationPollingState,
+  installCalibrationStatusSubscription,
 } from "@/hooks/calibration/use-microphone-offset-calibration";
 
 const waitingStatus: MicrophoneCalibrationStatus = {
@@ -46,7 +45,7 @@ describe("microphone calibration offset saving", () => {
     expect(events).toEqual(["save started", "closed"]);
   });
 
-  test("keeps the latest optimistic offset while polling and older saves complete", () => {
+  test("keeps the latest optimistic offset while state messages arrive and older saves complete", () => {
     const reconciler = createCalibrationOffsetReconciler(0);
     const first = reconciler.begin(80);
     const second = reconciler.begin(140);
@@ -69,7 +68,7 @@ describe("microphone calibration offset saving", () => {
     expect(reconciler.synchronize(80)).toBe(80);
   });
 
-  test("does not confuse an old matching poll with confirmation of an unsaved commit", () => {
+  test("does not confuse an old matching state message with confirmation of an unsaved commit", () => {
     const reconciler = createCalibrationOffsetReconciler(80);
     const first = reconciler.begin(140);
     const second = reconciler.begin(80);
@@ -83,48 +82,35 @@ describe("microphone calibration offset saving", () => {
   });
 });
 
-describe("microphone calibration status polling", () => {
-  test("polls only active states", () => {
-    expect(isCalibrationPollingState("waiting_for_run")).toBe(true);
-    expect(isCalibrationPollingState("preview_playing")).toBe(true);
-    expect(isCalibrationPollingState("idle")).toBe(false);
-    expect(isCalibrationPollingState("editing")).toBe(false);
-    expect(isCalibrationPollingState("error")).toBe(false);
-  });
-
-  test("defers IPC calls while the document is hidden", async () => {
-    const scheduled: Array<() => void> = [];
-    let visible = false;
-    let calls = 0;
-    const cleanup = installCalibrationStatusPolling({
-      getGateway: () =>
-        ({
-          getMicrophoneCalibrationStatus: async () => {
-            calls += 1;
-            return waitingStatus;
-          },
-        }) as unknown as CalibrationGateway,
-      getOperationId: () => "calibration-2",
-      onStatus: () => {},
-      onError: () => {},
-      isVisible: () => visible,
-      schedule: (callback) => {
-        scheduled.push(callback);
-        return scheduled.length as unknown as ReturnType<typeof setTimeout>;
+describe("microphone calibration status subscriptions", () => {
+  test("accepts only the active operation and stops consuming messages on cleanup", async () => {
+    let receive = (_status: MicrophoneCalibrationStatus) => {};
+    let unsubscribeCount = 0;
+    const gateway = {
+      subscribeMicrophoneCalibrationStatus(listener: typeof receive) {
+        receive = listener;
+        return () => {
+          unsubscribeCount += 1;
+        };
       },
-      cancelSchedule: () => {},
+    } as unknown as CalibrationGateway;
+    const statuses: MicrophoneCalibrationStatus[] = [];
+    const cleanup = installCalibrationStatusSubscription({
+      getGateway: () => gateway,
+      getOperationId: () => "calibration-2",
+      onStatus: (status) => {
+        statuses.push(status);
+      },
+      onError: () => {},
     });
-
-    scheduled.shift()?.();
+    receive({ ...waitingStatus, OperationId: "older-operation" });
+    receive(waitingStatus);
     await Promise.resolve();
-    expect(calls).toBe(0);
-    expect(scheduled).toHaveLength(1);
-
-    visible = true;
-    scheduled.shift()?.();
-    await Promise.resolve();
-    expect(calls).toBe(1);
+    expect(statuses).toEqual([waitingStatus]);
     cleanup();
+    receive(waitingStatus);
+    expect(statuses).toHaveLength(1);
+    expect(unsubscribeCount).toBe(1);
   });
 
   test("keeps the playhead at zero until gameplay starts after countdown", () => {
@@ -136,37 +122,30 @@ describe("microphone calibration status polling", () => {
     ).toBe(375);
   });
 
-  test("keeps polling when the shared IPC gateway temporarily disappears", async () => {
-    const scheduled: Array<() => void> = [];
-    let gateway: CalibrationGateway | null = null;
-    const statuses: MicrophoneCalibrationStatus[] = [];
-    const cleanup = installCalibrationStatusPolling({
-      getGateway: () => gateway,
+  test("reports failed asynchronous state consumers without leaving subscriptions active", async () => {
+    let receive = (_status: MicrophoneCalibrationStatus) => {};
+    const error = new Error("Waveform unavailable");
+    const errors: unknown[] = [];
+    const cleanup = installCalibrationStatusSubscription({
+      getGateway: () =>
+        ({
+          subscribeMicrophoneCalibrationStatus(listener: typeof receive) {
+            receive = listener;
+            return () => {};
+          },
+        }) as unknown as CalibrationGateway,
       getOperationId: () => "calibration-2",
-      onStatus: (status) => {
-        statuses.push(status);
+      onStatus: async () => {
+        throw error;
       },
-      onError: () => {},
-      schedule: (callback) => {
-        scheduled.push(callback);
-        return scheduled.length as unknown as ReturnType<typeof setTimeout>;
+      onError: (cause) => {
+        errors.push(cause);
       },
-      cancelSchedule: () => {},
     });
-
-    scheduled.shift()?.();
-    await Promise.resolve();
-    expect(scheduled).toHaveLength(1);
-    expect(statuses).toHaveLength(0);
-
-    gateway = {
-      getMicrophoneCalibrationStatus: async () => waitingStatus,
-    } as unknown as CalibrationGateway;
-    scheduled.shift()?.();
+    receive(waitingStatus);
     await Promise.resolve();
     await Promise.resolve();
-    expect(statuses).toEqual([waitingStatus]);
-    expect(scheduled).toHaveLength(1);
+    expect(errors).toEqual([error]);
     cleanup();
   });
 });

@@ -21,6 +21,10 @@ namespace TUFReplay.Webcam.Recording;
 
 public sealed class WebcamRecordingFeature
 {
+  public event Action StateChanged;
+
+  public void NotifyStateChanged() => StateChanged?.Invoke();
+
   private readonly object _gate = new object();
   private Task _work = Task.CompletedTask;
   private IWebcamCaptureBackend _backend;
@@ -229,6 +233,7 @@ public sealed class WebcamRecordingFeature
           return Task.CompletedTask;
         }
       );
+    NotifyStateChanged();
     return true;
   }
 
@@ -468,6 +473,7 @@ public sealed class WebcamRecordingFeature
         try
         {
           bool saved = Store.Save(recording, budget, retention);
+          TUFReplay.Activity.Tracking.ActivityChanges.Notify(recording.RunId);
           CaptureDiagnostics.Record(
             "capture.storage.persisted",
             new
@@ -573,6 +579,7 @@ public sealed class WebcamRecordingFeature
 
   private void Queue(string operation, Func<Task> action, string runId = null)
   {
+    NotifyStateChanged();
     long operationId = Interlocked.Increment(ref _operationId);
     long queuedAt = Stopwatch.GetTimestamp();
     lock (_gate)
@@ -610,6 +617,10 @@ public sealed class WebcamRecordingFeature
             catch (Exception exception)
             {
               SetError(exception, operation, operationId, runId);
+            }
+            finally
+            {
+              NotifyStateChanged();
             }
           },
           CancellationToken.None,
@@ -660,6 +671,7 @@ public sealed class WebcamRecordingFeature
       _error = exception.Message;
       _armed = false;
     }
+    NotifyStateChanged();
     Main.Instance?.LogException("Webcam", exception);
     if (Main.Settings?.WebcamEnabled == true)
       UnityMainThread.Post(() =>

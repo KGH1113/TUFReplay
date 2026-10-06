@@ -250,15 +250,24 @@ FROM levels WHERE id=@id LIMIT 1";
     string identityKey
   )
   {
-    if (level.SourceKind != LevelSourceKind.Tuf || !level.TufLevelId.HasValue ||
-        !GameplayChartHash.IsSupported(level.GameplayHashVersion, level.GameplayHash))
+    if (
+      level.SourceKind != LevelSourceKind.Tuf
+      || !level.TufLevelId.HasValue
+      || !GameplayChartHash.IsSupported(level.GameplayHashVersion, level.GameplayHash)
+    )
       return;
 
-    string legacyKey = "tuf:" + level.TufLevelId.Value + ":" + level.GameplayHashVersion.Value +
-      ":" + Convert.ToBase64String(level.GameplayHash);
+    string legacyKey =
+      "tuf:"
+      + level.TufLevelId.Value
+      + ":"
+      + level.GameplayHashVersion.Value
+      + ":"
+      + Convert.ToBase64String(level.GameplayHash);
     using SqliteCommand command = connection.CreateCommand();
     command.Transaction = transaction;
-    command.CommandText = @"UPDATE OR IGNORE levels SET identity_key=@new
+    command.CommandText =
+      @"UPDATE OR IGNORE levels SET identity_key=@new
 WHERE identity_key=@legacy AND adofai_path=@path";
     command.Parameters.AddWithValue("@new", identityKey);
     command.Parameters.AddWithValue("@legacy", legacyKey);
