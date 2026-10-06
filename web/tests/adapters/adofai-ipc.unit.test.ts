@@ -22,6 +22,33 @@ describe("ADOFAI channel adapter", () => {
     peer.on("replay.state.changed", (payload) => second.push(payload))();
     expect(second).toEqual([]);
   });
+  test("captures a fast terminal bundle state even when another job publishes before subscription", () => {
+    const connection = new IpcConnection();
+    const channel = connection.namespace("tuf-replay");
+    const peer = adaptChannel(channel);
+    channel.receive({
+      kind: "event",
+      name: "render-bundle.state.changed",
+      id: "owned",
+      payload: { jobId: "owned", state: "completed" },
+    });
+    channel.receive({
+      kind: "event",
+      name: "render-bundle.state.changed",
+      id: "other",
+      payload: { jobId: "other", state: "preparing" },
+    });
+    const states: unknown[] = [];
+    peer.on("render-bundle.state.changed", (payload) => states.push(payload))();
+    expect(states).toEqual([
+      { jobId: "owned", state: "completed" },
+      { jobId: "other", state: "preparing" },
+    ]);
+    channel.disconnected();
+    const stale: unknown[] = [];
+    peer.on("render-bundle.state.changed", (payload) => stale.push(payload))();
+    expect(stale).toEqual([]);
+  });
   test("a failed initial connection can be retried through the same application ports", async () => {
     let attempts = 0;
     const channels = createLazyAppChannels(async () => {

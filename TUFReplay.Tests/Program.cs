@@ -11,6 +11,13 @@ internal static class Program
       NativeSqliteLoader.Initialize();
       MicrophonePermissionWarningSuite.RunAll();
       MicrophoneCalibrationSuite.RunAll(root);
+      WebcamSuite.RunAll(root);
+      ManagedFfmpegSuite.RunAll(root);
+      ManagedRendererSuite.RunAll(root);
+      WebcamCropSuite.RunAll();
+      WebcamOverlayInteractionSuite.RunAll();
+      RenderBundleSuite.RunAll();
+      CameraRenderStatisticsSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();

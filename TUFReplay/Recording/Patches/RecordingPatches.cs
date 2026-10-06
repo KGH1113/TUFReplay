@@ -9,6 +9,7 @@ using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Shared.Compatibility;
 using TUFReplay.Shared.NativeInput;
+using TUFReplay.Webcam.Playback;
 
 namespace TUFReplay.Recording.Patches;
 
@@ -415,17 +416,29 @@ public static class RecordingPatches
 
   [HarmonyPatch(typeof(scnEditor), "Play")]
   [HarmonyPrefix]
-  private static void OnEditorPlayPrefix()
+  [HarmonyPriority(Priority.First)]
+  private static bool OnEditorPlayPrefix(scnEditor __instance)
   {
     try
     {
       if (!IsActive)
-        return;
+        return true;
+      if (CameraFirstRunCoordinator.InterceptEditorPlay(__instance))
+        return false;
       RecordingFeature.Instance.OnEditorPlay();
     }
     catch (Exception exception)
     {
       Main.Instance?.LogException(nameof(OnEditorPlayPrefix), exception);
     }
+    return true;
+  }
+
+  [HarmonyPatch(typeof(scrController), "WaitForStartCo", new[] { typeof(int), typeof(bool) })]
+  [HarmonyPostfix]
+  private static void OnWaitForStartCoPostfix(ref System.Collections.IEnumerator __result)
+  {
+    if (IsActive)
+      __result = CameraFirstRunCoordinator.GateCountdown(__result);
   }
 }

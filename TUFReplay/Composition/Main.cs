@@ -12,6 +12,7 @@ using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
+using TUFReplay.Webcam.Playback;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -81,6 +82,7 @@ public sealed class Main
 
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
+    WebcamSettingsGui.Draw();
     GUILayout.Label("Updates");
     if (TUFReplayBuildFlavor.Name == "auto-submission")
     {
@@ -147,6 +149,8 @@ public sealed class Main
     ReplayLevelOpenService.Tick();
     ReplayPlaybackCoordinator.Tick();
     ReplaySessionService.TickStartup();
+    ReplaySessionService.TickWebcamPlayback();
+    CameraFirstRunCoordinator.Tick();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 

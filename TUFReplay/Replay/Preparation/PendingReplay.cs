@@ -11,6 +11,7 @@ using TUFReplay.Microphone.Processing;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
+using TUFReplay.Webcam.Repositories;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Preparation;
@@ -49,6 +50,8 @@ public static partial class ReplayPlaybackCoordinator
     public int? MicrophoneOffsetMs;
     public int? MicrophoneVolumeDb;
     public bool AllowBackground;
+    public WebcamRecordingLease WebcamLease;
+    public string WebcamWarning;
 
     public PendingReplay(
       string operationId,
@@ -82,6 +85,13 @@ public static partial class ReplayPlaybackCoordinator
       MicrophoneRecording = null;
       MicrophoneWave = null;
       ReplayMicrophonePlaybackFiles.Delete(path);
+    }
+
+    public void CleanupPreparedMedia()
+    {
+      CleanupPreparedMicrophone();
+      WebcamLease?.Dispose();
+      WebcamLease = null;
     }
   }
 

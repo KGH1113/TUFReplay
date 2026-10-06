@@ -177,6 +177,7 @@ public static class ActivityIpcHandlers
       }
 
       FeatureRegistry.MicrophoneRecording?.CompleteRunDeletion(runId);
+      FeatureRegistry.WebcamRecording?.Store?.DeleteRun(runId);
       ActivityChanges.Notify(runId);
       return new ActivityRunDeleteResultDto { RunId = runId, Deleted = true };
     }

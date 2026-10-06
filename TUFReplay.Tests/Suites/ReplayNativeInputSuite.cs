@@ -503,9 +503,21 @@ internal static class ReplayNativeInputSuite
     Assert(timeline.RecordInput(28_000L) == 30_000L, "An input crossed a committed clear/terminal boundary.");
     Assert(timeline.RecordInput(40_000L) == 40_000L, "Post-clear input stopped advancing.");
     Assert(timeline.RecordBoundary(39_000L) == 40_000L, "Terminal time preceded the latest input.");
+    Assert(
+      timeline.RecordTerminal(30_000L, 9_000_000L) == 40_000L,
+      "Final input draining left the committed terminal behind recorded events."
+    );
+    Assert(
+      timeline.RecordTerminal(40_000L, 9_000_000L) == 40_000L,
+      "Finalization added idle death-screen time to an already committed terminal."
+    );
     timeline.Reset();
     Assert(timeline.RecordInput(-5_000L) == -5_000L, "A retry retained the prior input floor.");
     Assert(timeline.RecordHit(1_000L) == 1_000L, "A retry retained the prior hit floor.");
+    Assert(
+      timeline.RecordTerminal(null, -1_000L) == 1_000L,
+      "A fresh terminal preceded its accepted hits after a clock reset."
+    );
   }
 
   private static void TestReplayLatenessHistogram()
@@ -1029,6 +1041,11 @@ internal static class ReplayNativeInputSuite
         scale.Denominator
       );
       ulong firstSample = hostOrigin + second;
+      Assert(before.ToMachTimestamp(frequency * 21) == firstSample, "Camera boundary lost host timestamp precision.");
+      Assert(
+        after.ToMachTimestamp(frequency * 21) == firstSample,
+        "Camera boundary shifted with delayed IPC delivery."
+      );
       Assert(
         Math.Abs(before.ToStopwatchTicks(firstSample) - frequency * 21) <= 1,
         "First sample clock mapping changed."

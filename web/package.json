@@ -11,8 +11,9 @@
     "format": "biome check --write .",
     "format:check": "biome format .",
     "biome:check": "biome check .",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "bun scripts/verify-ipc-sdk.ts --write-metadata && vite build",
+    "preview": "vite preview",
+    "ipc:check": "bun scripts/verify-ipc-sdk.ts"
   },
   "dependencies": {
     "@fontsource-variable/figtree": "^5.2.10",

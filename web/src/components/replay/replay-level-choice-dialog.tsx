@@ -15,6 +15,7 @@ import { Button } from "@/shared/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
 
 export function ReplayLevelChoiceDialog({
+  purpose = "replay",
   run,
   pickerResult,
   pickingRunId,
@@ -26,6 +27,7 @@ export function ReplayLevelChoiceDialog({
   onChooseAnother,
   onResetPicker,
 }: {
+  purpose?: "replay" | "render";
   run: ActivityRun | null;
   pickerResult: ReplayLevelFilePickerResult | null;
   pickingRunId: string | null;
@@ -38,6 +40,7 @@ export function ReplayLevelChoiceDialog({
   onResetPicker: () => void;
 }) {
   const { t } = useTranslation("replay");
+  const { t: renderT } = useTranslation("render");
   const { t: commonT } = useTranslation("common");
   const autoPlayKeyRef = useRef("");
   const [startingAction, setStartingAction] = useState<"original" | "picker" | null>(null);
@@ -45,6 +48,17 @@ export function ReplayLevelChoiceDialog({
   const isPicking = pickingRunId === run?.id;
   const replayRunId = replayStatus.runId;
   const replayState = replayStatus.state;
+
+  const confirmLevel = async (runId: string, levelPath?: string) => {
+    const started = await onPlay(runId, levelPath);
+    if (!started) setStartingAction(null);
+    else if (purpose === "render") {
+      autoPlayKeyRef.current = "";
+      setStartingAction(null);
+      onResetPicker();
+      onClose();
+    }
+  };
 
   useEffect(() => {
     if (!run || currentPicker?.outcome !== "selected" || !currentPicker.levelPath) return;
@@ -54,11 +68,17 @@ export function ReplayLevelChoiceDialog({
     setStartingAction("picker");
     void onPlay(run.id, currentPicker.levelPath).then((started) => {
       if (!started) setStartingAction(null);
+      else if (purpose === "render") {
+        autoPlayKeyRef.current = "";
+        setStartingAction(null);
+        onResetPicker();
+        onClose();
+      }
     });
-  }, [currentPicker, onPlay, run]);
+  }, [currentPicker, onClose, onPlay, onResetPicker, purpose, run]);
 
   useEffect(() => {
-    if (!run || !startingAction || replayRunId !== run.id) return;
+    if (purpose === "render" || !run || !startingAction || replayRunId !== run.id) return;
     if (replayState === "error" || replayState === "cancelled") {
       setStartingAction(null);
       return;
@@ -71,7 +91,7 @@ export function ReplayLevelChoiceDialog({
       onClose();
     }, 1_200);
     return () => clearTimeout(timeout);
-  }, [onClose, onResetPicker, replayRunId, replayState, run, startingAction]);
+  }, [onClose, onResetPicker, purpose, replayRunId, replayState, run, startingAction]);
 
   const close = () => {
     if (isPicking) return;
@@ -84,8 +104,7 @@ export function ReplayLevelChoiceDialog({
   const playRecorded = async () => {
     if (!run || isPicking || startingAction) return;
     setStartingAction("original");
-    const started = await onPlay(run.id);
-    if (!started) setStartingAction(null);
+    await confirmLevel(run.id);
   };
 
   const chooseAnother = async () => {
@@ -95,14 +114,16 @@ export function ReplayLevelChoiceDialog({
   };
 
   const currentPlayError =
-    playErrorRunId === run?.id
-      ? playError
-      : replayStatus.runId === run?.id && replayStatus.state === "error"
-        ? translatedDomainError(replayStatus.errorCode ?? "") ||
-          replayStatus.message ||
-          replayStatus.errorCode ||
-          t("dialog.failed")
-        : "";
+    purpose === "render"
+      ? ""
+      : playErrorRunId === run?.id
+        ? playError
+        : replayStatus.runId === run?.id && replayStatus.state === "error"
+          ? translatedDomainError(replayStatus.errorCode ?? "") ||
+            replayStatus.message ||
+            replayStatus.errorCode ||
+            t("dialog.failed")
+          : "";
   const pickerMessage =
     currentPlayError ||
     (currentPicker?.outcome === "mismatch" || currentPicker?.outcome === "error"
@@ -115,7 +136,8 @@ export function ReplayLevelChoiceDialog({
   const busy = isPicking || startingAction !== null;
   const originalBusy = startingAction === "original";
   const pickerBusy = isPicking || startingAction === "picker";
-  const handoff = startingAction ? replayHandoff(replayStatus, run?.id ?? null) : null;
+  const handoff =
+    purpose === "replay" && startingAction ? replayHandoff(replayStatus, run?.id ?? null) : null;
 
   return (
     <Dialog open={Boolean(run)} onOpenChange={(open) => !open && close()}>
@@ -126,12 +148,22 @@ export function ReplayLevelChoiceDialog({
         onPointerDownOutside={(event) => busy && event.preventDefault()}
       >
         <div className="px-5 pb-4 pt-5">
-          <DialogTitle>{handoff ? t(`handoff.${handoff}.title`) : t("dialog.title")}</DialogTitle>
+          <DialogTitle>
+            {handoff
+              ? t(`handoff.${handoff}.title`)
+              : purpose === "render"
+                ? renderT("levelChoice.title")
+                : t("dialog.title")}
+          </DialogTitle>
           <p
             id="replay-level-choice-description"
             className="mt-1.5 text-sm leading-relaxed text-muted-foreground"
           >
-            {handoff ? t(`handoff.${handoff}.description`) : t("dialog.description")}
+            {handoff
+              ? t(`handoff.${handoff}.description`)
+              : purpose === "render"
+                ? renderT("levelChoice.description")
+                : t("dialog.description")}
           </p>
         </div>
 
@@ -189,7 +221,11 @@ export function ReplayLevelChoiceDialog({
               <span className="min-w-0 flex-1">
                 <span className="block text-sm font-medium">{t("dialog.original")}</span>
                 <span className="mt-0.5 block text-xs text-muted-foreground">
-                  {originalBusy ? t("dialog.starting") : t("dialog.useRecorded")}
+                  {originalBusy
+                    ? purpose === "render"
+                      ? renderT("levelChoice.continuing")
+                      : t("dialog.starting")
+                    : t("dialog.useRecorded")}
                 </span>
               </span>
               {originalBusy ? (
@@ -227,7 +263,9 @@ export function ReplayLevelChoiceDialog({
                     ? t("dialog.choosingAndVerifying")
                     : startingAction === "picker"
                       ? currentPicker?.outcome === "selected"
-                        ? t("dialog.starting")
+                        ? purpose === "render"
+                          ? renderT("levelChoice.continuing")
+                          : t("dialog.starting")
                         : t("dialog.openingPicker")
                       : t("dialog.useAnother")}
                 </span>

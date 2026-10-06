@@ -104,7 +104,7 @@ public class RecordingSession
       IsCapturingInput = false;
       RefreshPitchLocked();
       FlushPendingNativeInputsLocked();
-      MarkTerminalLocked();
+      MarkTerminalLocked(finalizing: true);
     }
 
     RecordInputTracker.CopyDiagnosticsTo(Data);
@@ -351,7 +351,7 @@ public class RecordingSession
       RefreshPitchLocked();
       Data.XAccuracy = GetXAccuracy();
       CaptureJudgmentStats(Data);
-      MarkTerminalLocked();
+      MarkTerminalLocked(finalizing: true);
 
       run.EndedAtUtc = Data.EndedAtUtc ?? DateTime.UtcNow.ToString("O");
       run.LastTile = lastTile;
@@ -687,13 +687,18 @@ public class RecordingSession
     return _timeline.Clamp(timeUs);
   }
 
-  private void MarkTerminalLocked()
+  private void MarkTerminalLocked(bool finalizing = false)
   {
-    if (Data.TerminalTimeUs.HasValue)
+    if (Data.TerminalTimeUs.HasValue && !finalizing)
       return;
 
-    Data.TerminalTimeUs = _timeline.RecordBoundary(CurrentTimelineTimeUsLocked());
-    Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+    // Stopping capture drains native events and the final hit can finish after
+    // Fail committed its boundary. Include those actual events, without adding
+    // time spent on the death screen or waiting to return to the editor.
+    long terminalTimeUs = _timeline.RecordTerminal(Data.TerminalTimeUs, CurrentTimelineTimeUsLocked());
+    if (Data.TerminalTimeUs != terminalTimeUs)
+      Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+    Data.TerminalTimeUs = terminalTimeUs;
   }
 
   private void MapPendingNativeInputsLocked(InputTimelineAnchor current, bool discontinuity)
