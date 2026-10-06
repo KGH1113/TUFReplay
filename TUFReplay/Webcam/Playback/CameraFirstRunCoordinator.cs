@@ -142,7 +142,8 @@ internal static class CameraFirstRunCoordinator
       state.Error,
       feature.IsReady ? CameraLivePreview.Texture : null,
       state.Mirror,
-      new Rect((float)crop.X, (float)crop.Y, (float)crop.Width, (float)crop.Height)
+      new Rect((float)crop.X, (float)crop.Y, (float)crop.Width, (float)crop.Height),
+      state.FlipVertical
     );
   }
 

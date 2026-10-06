@@ -28,6 +28,8 @@ internal static class WebcamSuite
     CameraTailSurvivesMicrophoneCompletionUntilEditorOrRetry();
     FailureCameraTailUsesRealTime();
     CameraCompletionKeepsHealthyCaptureArmed(root);
+    EncoderFailureDoesNotReopenHealthyCamera(root);
+    BrowserSnapshotsDoNotConsumeGameFrames();
     CameraInstallationWaitDoesNotStartARun(root);
     CameraRunCannotUseAnInvalidatedBackend(root);
     WonTailAndLatencyHaveTheSameConventionAsMicrophone();
@@ -203,7 +205,17 @@ internal static class WebcamSuite
       source,
       WebcamRecordingStore.MaximumCaptureBytes
     );
-    unused.CancelAsync().GetAwaiter().GetResult();
+    unused.Attach(
+      "empty-retry",
+      Path.Combine(root, "camera-empty.mp4.partial"),
+      WebcamRecordingStore.MaximumCaptureBytes,
+      Ticks(10)
+    );
+    unused.Submit(new byte[source.Width * source.Height * 3 / 2], Ticks(9));
+    Check(
+      unused.FinishAsync().GetAwaiter().GetResult() == null,
+      "A retry before the first camera frame produced a video or camera error."
+    );
     Check(!File.Exists(unusedPath), "Cancelling an idle camera encoder leaked its temporary file.");
     Console.WriteLine("TUFReplay prepared FFmpeg camera encoder integration test passed (no camera access).");
   }
@@ -295,6 +307,68 @@ internal static class WebcamSuite
         "Discarding a camera run leaked the finalization counter."
       );
     }
+  }
+
+  private static void EncoderFailureDoesNotReopenHealthyCamera(string root)
+  {
+    WithEnabledCameraSettings(
+      root,
+      () =>
+      {
+        var backend = new CompletedCameraBackend(null) { FailNextEnd = true };
+        var camera = new WebcamRecordingFeature();
+        SetCameraField(camera, "_active", true);
+        SetCameraField(camera, "_armed", true);
+        SetCameraField(camera, "_backend", backend);
+        typeof(WebcamRecordingFeature)
+          .GetProperty(nameof(WebcamRecordingFeature.Store))
+          .SetValue(camera, new WebcamRecordingStore(Path.Combine(root, "camera-encoder-recovery")));
+        for (int attempt = 0; attempt < 2; attempt++)
+        {
+          Check(camera.BeginRun("encoder-retry-" + attempt), "Encoder failure rejected the next run.");
+          camera.EndRun(null, result => Check(result == null, "Synthetic encoder returned a video."));
+          WaitForCameraWork(camera);
+          Check(camera.IsReady && backend.DisarmCalls == 0, "An encoder failure reopened the camera.");
+        }
+        Check(
+          backend.BeginCalls == 2 && backend.EndCalls == 2 && camera.GetState().Error == null,
+          "Successful recording did not clear the previous encoder error."
+        );
+      }
+    );
+  }
+
+  private static void BrowserSnapshotsDoNotConsumeGameFrames()
+  {
+    using var buffer = new CameraPreviewBuffer(2, 2);
+    byte[] pixels = { 255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 255, 255 };
+    buffer.Publish(pixels);
+    buffer.SetPreviewRequested(false);
+    Check(!buffer.ShouldPublish, "Hidden preview continued publishing without demand.");
+    buffer.RequestBrowserPreview();
+    buffer.SetPreviewRequested(false);
+    Check(buffer.ShouldPublish, "Game preview hiding cancelled browser demand.");
+    var snapshot = new byte[16];
+    Check(buffer.TryCopySnapshot(snapshot, out var size), "Browser snapshot missed a complete frame.");
+    byte[] bitmap = CameraPreviewBitmap.Encode(snapshot, size, out var target);
+    Check(
+      target.Width == 2 && target.Height == 2 && bitmap.Length == 70,
+      "Preview bitmap dimensions or padding are incorrect."
+    );
+    Check(
+      bitmap[54] == 0 && bitmap[56] == 255 && bitmap[62] == 255 && bitmap[64] == 0,
+      "The bitmap lost bottom-up orientation or RGBA to BGR conversion."
+    );
+    Check(buffer.TryCopy(new byte[16]), "Browser snapshot consumed the game preview sequence.");
+    Check(
+      buffer.TryCopySnapshot(snapshot, out _) && !buffer.TryCopy(new byte[16]),
+      "Independent preview readers interfered."
+    );
+    typeof(CameraPreviewBuffer)
+      .GetField("_browserRequestedUntil", BindingFlags.NonPublic | BindingFlags.Instance)
+      .SetValue(buffer, 0L);
+    buffer.SetPreviewRequested(false);
+    Check(!buffer.ShouldPublish, "Expired browser demand kept publishing pixels.");
   }
 
   private static void SetCameraField(WebcamRecordingFeature camera, string name, object value) =>
@@ -425,6 +499,7 @@ internal static class WebcamSuite
   private sealed class CompletedCameraBackend : IWebcamCaptureBackend
   {
     private readonly WebcamRecording _recording;
+    public bool FailNextEnd;
     public int BeginCalls;
     public int EndCalls;
     public int DisarmCalls;
@@ -435,6 +510,11 @@ internal static class WebcamSuite
     public Task<WebcamRecording> EndAsync()
     {
       EndCalls++;
+      if (FailNextEnd)
+      {
+        FailNextEnd = false;
+        throw new IOException("Synthetic encoder failure");
+      }
       return Task.FromResult(_recording);
     }
 

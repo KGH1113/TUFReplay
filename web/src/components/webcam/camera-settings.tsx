@@ -202,17 +202,6 @@ export function CameraSettings({
             onCheckedChange={(playbackVisible) => onUpdate({ playbackVisible })}
           />
         </div>
-        <div className="flex items-center justify-between gap-4">
-          <label htmlFor={`${id}-mirror`} className="text-sm">
-            {t("mirror")}
-          </label>
-          <Switch
-            id={`${id}-mirror`}
-            checked={state.mirror}
-            disabled={saving}
-            onCheckedChange={(mirror) => onUpdate({ mirror })}
-          />
-        </div>
         <p className="text-xs leading-relaxed text-muted-foreground">{t("inGamePlacementHint")}</p>
         <details className="space-y-4 border-t border-border/60 pt-4">
           <summary className="cursor-pointer text-sm font-medium">{t("syncTitle")}</summary>

@@ -21,6 +21,7 @@ const outcomes: Record<string, string> = {
   "render.state.read": "renderer.job.changed",
   "render.cancel": "renderer.job.changed",
   "render.download": "download.ready",
+  "webcam.preview.read": "webcam.preview.frame",
   "webcam.state.refresh": "webcam.state.changed",
   "webcam.settings.change": "webcam.state.changed",
   "health.read": "health.snapshot",

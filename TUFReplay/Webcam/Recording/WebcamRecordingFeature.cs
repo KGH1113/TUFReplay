@@ -168,6 +168,7 @@ public sealed class WebcamRecordingFeature
         PlaybackVisible = settings.WebcamPlaybackVisible,
         LiveVisible = settings.WebcamLiveVisible,
         Mirror = settings.WebcamMirror,
+        FlipVertical = settings.WebcamFlipVertical,
         OverlayX = settings.WebcamOverlayX,
         OverlayY = settings.WebcamOverlayY,
         OverlayWidth = settings.WebcamOverlayWidth,
@@ -387,6 +388,8 @@ public sealed class WebcamRecordingFeature
             "Camera storage is full. Increase the storage limit or stop the replay using older footage."
           );
         await backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes, startTimestampTicks);
+        lock (_gate)
+          _error = null;
       },
       runId
     );
@@ -706,10 +709,12 @@ public sealed class WebcamRecordingFeature
     lock (_gate)
     {
       _error = exception.Message;
-      _armed = false;
+      // Finalizing one video does not invalidate a healthy shared camera.
+      if (operation != "capture.end")
+        _armed = false;
     }
     NotifyStateChanged();
-    Main.Instance?.LogException("Webcam", exception);
+    UnityMainThread.Post(() => Main.Instance?.LogException("Webcam", exception));
     if (Main.Settings?.WebcamEnabled == true)
       UnityMainThread.Post(() =>
         ReplayTimelineHud.ShowNotificationToast("Camera recording unavailable", exception.Message)
@@ -727,6 +732,7 @@ public sealed class WebcamRecordingFeature
     destination.WebcamPlaybackVisible = source.WebcamPlaybackVisible;
     destination.WebcamLiveVisible = source.WebcamLiveVisible;
     destination.WebcamMirror = source.WebcamMirror;
+    destination.WebcamFlipVertical = source.WebcamFlipVertical;
     destination.WebcamOverlayX = source.WebcamOverlayX;
     destination.WebcamOverlayY = source.WebcamOverlayY;
     destination.WebcamOverlayWidth = source.WebcamOverlayWidth;

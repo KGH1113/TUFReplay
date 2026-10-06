@@ -86,6 +86,22 @@ internal static class WebcamCropSuite
     Near(0.7, mirror.X);
     Near(-0.5, mirror.Width);
     Near(normal.Y, mirror.Y);
+    WebcamTextureCoordinates vertical = crop.TextureCoordinates(false, true);
+    WebcamTextureCoordinates both = crop.TextureCoordinates(true, true);
+    Near(0.9, vertical.Y);
+    Near(-0.6, vertical.Height);
+    Near(mirror.X, both.X);
+    Near(mirror.Width, both.Width);
+    Near(vertical.Y, both.Y);
+    Near(vertical.Height, both.Height);
+    Assert(
+      WebcamSettingsPatch.TryParse(JObject.Parse("{\"mirror\":true,\"flipVertical\":true}"), out var flips),
+      "Flip patch rejected."
+    );
+    Assert(!flips.ChangesCapture && !flips.RearmsCapture, "Flipping interrupted capture.");
+    var settings = new TUFReplaySetting();
+    flips.ApplyTo(settings);
+    Assert(settings.WebcamMirror && settings.WebcamFlipVertical, "Flip patch was not persisted.");
     Near(16d / 9 * 0.5 / 0.6, crop.AspectRatio(16d / 9));
     Near(0.5 / 0.6, crop.AspectRatio(double.NaN));
   }

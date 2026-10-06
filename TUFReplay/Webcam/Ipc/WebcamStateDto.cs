@@ -20,6 +20,7 @@ public sealed class WebcamStateDto
   public bool PlaybackVisible;
   public bool LiveVisible;
   public bool Mirror;
+  public bool FlipVertical;
   public double OverlayX;
   public double OverlayY;
   public double OverlayWidth;

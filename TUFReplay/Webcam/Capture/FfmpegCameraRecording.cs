@@ -42,6 +42,7 @@ internal sealed class FfmpegCameraRecording
   private volatile string _error;
   private volatile bool _limited;
   private long _writtenFrames;
+  private readonly ConcurrentQueue<string> _encoderMessages = new ConcurrentQueue<string>();
   private long _encodedDurationUs;
 
   public FfmpegCameraRecording(
@@ -118,6 +119,12 @@ internal sealed class FfmpegCameraRecording
     );
     _encoder.ErrorDataReceived += (_, args) =>
     {
+      if (args.Data != null)
+      {
+        _encoderMessages.Enqueue(args.Data);
+        while (_encoderMessages.Count > 16)
+          _encoderMessages.TryDequeue(out string ignored);
+      }
       if (args.Data != null && args.Data.Contains("Error"))
         _error = "Camera video could not be encoded. Check FFmpeg and choose a lower recording quality.";
     };
@@ -252,10 +259,33 @@ internal sealed class FfmpegCameraRecording
         }
         _encoder.WaitForExit();
       });
-      if (_error != null || _encoder.ExitCode != 0 || _writtenFrames == 0)
-        throw new IOException(
-          _error ?? "The camera did not finish recording. Check camera access and the FFmpeg installation."
+      if (_writtenFrames == 0 && _error == null)
+      {
+        TUFReplay.Shared.Capture.CaptureDiagnostics.Record(
+          "recording.empty",
+          new { _recording.RunId, exitCode = _encoder.ExitCode }
         );
+        WebcamRecordingStore.Discard(_recording);
+        return null;
+      }
+      if (_error != null || _encoder.ExitCode != 0)
+      {
+        TUFReplay.Shared.Capture.CaptureDiagnostics.Record(
+          "recording.encoder.failed",
+          new
+          {
+            _recording.RunId,
+            writtenFrames = _writtenFrames,
+            exitCode = _encoder.ExitCode,
+            error = _error,
+            stderr = _encoderMessages.ToArray(),
+          }
+        );
+        throw new IOException(
+          _error
+            ?? "This camera video could not be saved. Check available disk space and try a lower recording quality."
+        );
+      }
       _recording.DurationUs =
         _encodedDurationUs > 0 ? _encodedDurationUs : _writtenFrames * 1_000_000 / _recording.FrameRate;
       _recording.SizeLimited = _limited;

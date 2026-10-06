@@ -1,4 +1,9 @@
-import { Camera01Icon, RotateLeft01Icon } from "@hugeicons/core-free-icons";
+import {
+  Camera01Icon,
+  FlipHorizontalIcon,
+  FlipVerticalIcon,
+  RotateLeft01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -12,6 +17,7 @@ import {
 } from "@/models/webcam/camera-crop";
 import type { CameraCrop, WebcamSettingsPatch, WebcamState } from "@/models/webcam/webcam-model";
 import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
 
 type CropGesture = {
   pointerId: number;
@@ -22,6 +28,7 @@ type CropGesture = {
   bounds: DOMRect;
   crop: CameraCrop;
   mirrored: boolean;
+  flippedVertical: boolean;
 };
 
 export function CameraCropEditor({
@@ -51,7 +58,7 @@ export function CameraCropEditor({
   const [dragging, setDragging] = useState<CameraCropHandle | null>(null);
   const available = preview.available;
   const disabled = saving || !available;
-  const display = displayCameraCrop(draft, state.mirror);
+  const display = displayCameraCrop(draft, state.mirror, state.flipVertical);
 
   const updateDraft = (crop: CameraCrop) => {
     draftRef.current = crop;
@@ -79,7 +86,13 @@ export function CameraCropEditor({
 
   useEffect(() => {
     const current = gesture.current;
-    if (!current || (available && current.mirrored === state.mirror)) return;
+    if (
+      !current ||
+      (available &&
+        current.mirrored === state.mirror &&
+        current.flippedVertical === state.flipVertical)
+    )
+      return;
     gesture.current = null;
     if (current.target.hasPointerCapture(current.pointerId)) {
       current.target.releasePointerCapture(current.pointerId);
@@ -87,7 +100,7 @@ export function CameraCropEditor({
     setDragging(null);
     draftRef.current = state.crop;
     setDraft(state.crop);
-  }, [available, state.mirror, state.crop]);
+  }, [available, state.mirror, state.flipVertical, state.crop]);
 
   useEffect(() => {
     const element = surface.current;
@@ -105,7 +118,11 @@ export function CameraCropEditor({
           current.target.releasePointerCapture(current.pointerId);
         }
         setDragging(null);
-        draftRef.current = displayCameraCrop(current.crop, current.mirrored);
+        draftRef.current = displayCameraCrop(
+          current.crop,
+          current.mirrored,
+          current.flippedVertical,
+        );
         setDraft(draftRef.current);
       }
     });
@@ -134,8 +151,9 @@ export function CameraCropEditor({
       x: event.clientX,
       y: event.clientY,
       bounds,
-      crop: displayCameraCrop(draftRef.current, state.mirror),
+      crop: displayCameraCrop(draftRef.current, state.mirror, state.flipVertical),
       mirrored: state.mirror,
+      flippedVertical: state.flipVertical,
     };
     setDragging(handle);
   };
@@ -148,7 +166,7 @@ export function CameraCropEditor({
       (event.clientX - current.x) / current.bounds.width,
       (event.clientY - current.y) / current.bounds.height,
     );
-    updateDraft(displayCameraCrop(next, current.mirrored));
+    updateDraft(displayCameraCrop(next, current.mirrored, current.flippedVertical));
   };
   const finish = (event: PointerEvent<HTMLButtonElement>) => {
     if (gesture.current?.pointerId !== event.pointerId) return;
@@ -175,8 +193,13 @@ export function CameraCropEditor({
     if (!delta) return;
     event.preventDefault();
     const next = displayCameraCrop(
-      changeCameraCrop(displayCameraCrop(draftRef.current, state.mirror), handle, ...delta),
+      changeCameraCrop(
+        displayCameraCrop(draftRef.current, state.mirror, state.flipVertical),
+        handle,
+        ...delta,
+      ),
       state.mirror,
+      state.flipVertical,
     );
     if (cameraCropEqual(next, state.crop)) return;
     updateDraft(next);
@@ -235,18 +258,17 @@ export function CameraCropEditor({
             className="pointer-events-none absolute inset-0 overflow-hidden"
             style={{ borderRadius: 0 }}
           >
-            {preview.revealed ? (
-              <video
-                ref={preview.videoRef}
+            {preview.imageUrl ? (
+              <img
+                src={preview.imageUrl}
+                alt={t("cropPreview.image")}
                 aria-label={t("cropPreview.image")}
-                autoPlay
-                muted
-                playsInline
                 className="absolute inset-0 size-full object-contain"
-                style={{ borderRadius: 0, transform: state.mirror ? "scaleX(-1)" : undefined }}
-                onLoadedMetadata={preview.updateSize}
-                onLoadedData={preview.updateSize}
-                onResize={preview.updateSize}
+                style={{
+                  borderRadius: 0,
+                  transform: `scale(${state.mirror ? -1 : 1}, ${state.flipVertical ? -1 : 1})`,
+                }}
+                onLoad={preview.imageLoaded}
                 onError={preview.fail}
               />
             ) : null}
@@ -329,28 +351,6 @@ export function CameraCropEditor({
                       {t("cropPreview.privacy")}
                     </p>
                   </>
-                ) : preview.selectionRequired ? (
-                  <div className="w-full max-w-72 space-y-2 text-left">
-                    <label htmlFor={`${hintId}-device`} className="text-xs font-medium">
-                      {t("cropPreview.device")}
-                    </label>
-                    <select
-                      id={`${hintId}-device`}
-                      value={preview.selectedDeviceId}
-                      onChange={(event) => preview.selectDevice(event.target.value)}
-                      className="h-9 w-full rounded-lg border border-white/30 bg-black px-2 text-sm text-white outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    >
-                      <option value="">{t("cropPreview.chooseDevice")}</option>
-                      {preview.devices.map((device, index) => (
-                        <option key={device.id} value={device.id}>
-                          {device.label || t("cropPreview.unnamedDevice", { count: index + 1 })}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs leading-relaxed text-white/70">
-                      {t("cropPreview.deviceHint")}
-                    </p>
-                  </div>
                 ) : preview.error ? (
                   <>
                     <p role="alert" className="max-w-80 text-xs leading-relaxed">
@@ -373,10 +373,38 @@ export function CameraCropEditor({
             </div>
           )}
         </div>
+        <TooltipProvider>
+          <fieldset className="mt-2 flex justify-center gap-2" aria-label={t("flipTitle")}>
+            {(
+              [
+                { field: "mirror", icon: FlipHorizontalIcon },
+                { field: "flipVertical", icon: FlipVerticalIcon },
+              ] as const
+            ).map(({ field, icon }) => (
+              <Tooltip key={field}>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label={t(field)}
+                    aria-pressed={state[field]}
+                    className="aria-pressed:border-primary/50 aria-pressed:bg-primary/15 aria-pressed:text-primary"
+                    disabled={saving}
+                    onClick={() => onUpdate({ [field]: !state[field] })}
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={icon} size={18} strokeWidth={1.8} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t(field)}</TooltipContent>
+              </Tooltip>
+            ))}
+          </fieldset>
+        </TooltipProvider>
       </div>
-      {available && preview.camera?.label ? (
-        <p className="text-xs text-muted-foreground">{preview.camera.label}</p>
+      {available && preview.label ? (
+        <p className="text-xs text-muted-foreground">{preview.label}</p>
       ) : null}
+
       <p id={hintId} className="text-xs leading-relaxed text-muted-foreground">
         {t("cropHint")}
       </p>

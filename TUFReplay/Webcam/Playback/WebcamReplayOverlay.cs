@@ -178,7 +178,9 @@ public sealed class WebcamReplayOverlay
     WebcamOverlayBounds bounds = Bounds(settings);
     var position = new Vector2((float)bounds.X, -(float)bounds.Y);
     var size = new Vector2((float)bounds.Width, (float)bounds.Height);
-    WebcamTextureCoordinates coordinates = WebcamCropRect.Get(settings).TextureCoordinates(settings.WebcamMirror);
+    WebcamTextureCoordinates coordinates = WebcamCropRect
+      .Get(settings)
+      .TextureCoordinates(settings.WebcamMirror, settings.WebcamFlipVertical);
     var uv = new Rect((float)coordinates.X, (float)coordinates.Y, (float)coordinates.Width, (float)coordinates.Height);
     // Reuse the same quad and texture. A newly uploaded camera frame does not
     // require a Canvas mesh/layout rebuild when its dimensions are unchanged.

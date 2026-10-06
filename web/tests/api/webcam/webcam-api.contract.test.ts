@@ -3,6 +3,14 @@ import { createWebcamApi } from "@/api/webcam/create-webcam-api";
 import { createWebcamApiMock } from "@/mocks/webcam/create-webcam-api-mock";
 import { scriptedChannels as clientsWith } from "../../fixtures/local-message-peer";
 
+function createApi(clients: Parameters<typeof createWebcamApi>[0]) {
+  return createWebcamApi(clients, {
+    async readFrame() {
+      throw new Error("Unexpected preview");
+    },
+  });
+}
+
 function stateDto() {
   return {
     Supported: true,
@@ -27,7 +35,7 @@ function stateDto() {
 describe("webcam IPC contract", () => {
   test("maps crop state and sends display settings without enabling the camera", async () => {
     const calls: { method: string; params: unknown }[] = [];
-    const api = createWebcamApi(
+    const api = createApi(
       clientsWith((method, params) => {
         calls.push({ method, params });
         return stateDto();
@@ -54,7 +62,7 @@ describe("webcam IPC contract", () => {
 
   test("rejects unsafe settings before sending IPC", async () => {
     let calls = 0;
-    const api = createWebcamApi(
+    const api = createApi(
       clientsWith(() => {
         calls++;
         return stateDto();
@@ -80,14 +88,14 @@ describe("webcam IPC contract", () => {
   });
 
   test("rejects malformed state and preserves capture-lock domain errors", async () => {
-    const malformed = createWebcamApi(
+    const malformed = createApi(
       clientsWith(() => ({ ...stateDto(), Crop: { X: 0, Y: 0, Width: Number.NaN, Height: 1 } })),
     );
     await expect(malformed.getSettings()).rejects.toMatchObject({
       kind: "validation",
       code: "invalid_response",
     });
-    const locked = createWebcamApi(
+    const locked = createApi(
       clientsWith(() => ({
         error: { code: "webcam_settings_locked", message: "Capture is active" },
       })),

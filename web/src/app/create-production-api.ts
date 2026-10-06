@@ -1,3 +1,4 @@
+import { createCameraPreviewDownloads } from "@/adapters/adofai-ipc/camera-preview-download";
 import { createLazyAppChannels } from "@/adapters/adofai-ipc/connection";
 import { createLocalTextDownloads } from "@/adapters/adofai-ipc/text-download";
 import { createActivityApi } from "@/api/activity/create-activity-api";
@@ -25,7 +26,7 @@ export function getProductionApi(): Promise<AppApi> {
       replay: createReplayApi(clients),
       microphone: createMicrophoneApi(clients),
       calibration: createCalibrationApi(clients),
-      webcam: createWebcamApi(clients),
+      webcam: createWebcamApi(clients, createCameraPreviewDownloads()),
       render: createRenderApi(clients),
       downloads: createDownloadsApi(clients),
     });

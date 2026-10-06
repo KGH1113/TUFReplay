@@ -179,7 +179,8 @@ namespace TUFReplay.Unity.CameraSetup
       string error,
       Texture texture,
       bool mirror,
-      Rect? crop = null
+      Rect? crop = null,
+      bool flipVertical = false
     )
     {
       cameraToggle.SetIsOnWithoutNotify(enabled);
@@ -196,9 +197,9 @@ namespace TUFReplay.Unity.CameraSetup
       Rect area = crop ?? new Rect(0, 0, 1, 1);
       preview.uvRect = new Rect(
         mirror ? area.x + area.width : area.x,
-        1 - area.y - area.height,
+        flipVertical ? 1 - area.y : 1 - area.y - area.height,
         mirror ? -area.width : area.width,
-        area.height
+        flipVertical ? -area.height : area.height
       );
       AspectRatioFitter fit = preview.GetComponent<AspectRatioFitter>();
       if (fit != null && texture != null)

@@ -30,6 +30,7 @@ public sealed class TUFReplaySetting
   public bool WebcamPlaybackVisible { get; set; } = true;
   public bool WebcamLiveVisible { get; set; }
   public bool WebcamMirror { get; set; }
+  public bool WebcamFlipVertical { get; set; }
   public double WebcamOverlayX { get; set; } = 1d;
   public double WebcamOverlayY { get; set; } = 1d;
   public double WebcamOverlayWidth { get; set; } = 0.22d;
