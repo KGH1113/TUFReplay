@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createDownloadsApi } from "@/api/downloads/create-downloads-api";
 import { createDownloadsApiMock } from "@/mocks/downloads/create-downloads-api-mock";
-import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
+import { scriptedChannels } from "../../fixtures/local-message-peer";
 
 const state = () => ({
   Renderer: {
@@ -18,11 +18,7 @@ const state = () => ({
   },
   CameraNeedsFfmpeg: true,
 });
-function clients(call: (method: string) => unknown): AdofaiIpcClients {
-  return {
-    namespace: { call: async (method: string) => call(method) },
-  } as unknown as AdofaiIpcClients;
-}
+const clients = scriptedChannels;
 describe("download center IPC contract", () => {
   test("reads status through TUFReplay alone and keeps request separate from explicit consent", async () => {
     const calls: string[] = [];
@@ -34,23 +30,20 @@ describe("download center IPC contract", () => {
     );
     await api.getStatus();
     await api.act("renderer", "request");
-    expect(calls).toEqual(["downloads.status", "downloads.renderer.request"]);
+    expect(calls).toEqual(["downloads.state.read", "downloads.renderer.request"]);
     await api.act("renderer", "confirm");
     await api.act("ffmpeg", "request");
     await api.act("ffmpeg", "confirm");
     await api.act("ffmpeg", "cancel");
     await api.cancelPendingFfmpeg();
     expect(calls).toEqual([
-      "downloads.status",
+      "downloads.state.read",
       "downloads.renderer.request",
       "downloads.renderer.confirm",
-      "media.ffmpeg.request",
-      "downloads.status",
-      "media.ffmpeg.confirm",
-      "downloads.status",
-      "media.ffmpeg.cancel",
-      "downloads.status",
-      "media.ffmpeg.cancel-pending",
+      "downloads.ffmpeg.request",
+      "downloads.ffmpeg.confirm",
+      "downloads.ffmpeg.cancel",
+      "media.ffmpeg.release",
     ]);
   });
   test("rejects malformed installation states and retains precise failures", async () => {

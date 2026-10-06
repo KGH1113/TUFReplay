@@ -70,6 +70,7 @@ public sealed class RecordingActivityTracker
       {
         ensureApp?.Invoke();
         AppSessionRepository.CloseOrDeleteIfEmpty(id, endedAtUtc);
+        ActivityChanges.Notify();
       })
     );
     AppSessionId = null;
@@ -165,6 +166,7 @@ public sealed class RecordingActivityTracker
       {
         ensureLevel?.Invoke();
         LevelSessionRepository.CloseOrDeleteIfEmpty(id, closedAtUtc);
+        ActivityChanges.Notify();
       })
     );
     LevelSessionId = null;
@@ -213,6 +215,7 @@ public sealed class RecordingActivityTracker
       {
         ensureLevel?.Invoke();
         RunRepository.Save(run);
+        ActivityChanges.Notify(run.Id);
       })
     );
   }
@@ -243,6 +246,7 @@ public sealed class RecordingActivityTracker
       }
       result.TrySetResult(true);
       persisted?.Invoke();
+      ActivityChanges.Notify(run.Id);
     });
     return result.Task;
   }

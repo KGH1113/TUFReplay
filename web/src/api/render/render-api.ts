@@ -16,7 +16,6 @@ export interface RenderApi {
     preferences?: RenderPreferences,
   ): Promise<RenderSettings>;
   chooseOutputDirectory(initialPath?: string): Promise<OutputDirectorySelection>;
-  getOutputDirectorySelection(selectionId: string): Promise<OutputDirectorySelection>;
   cancelOutputDirectorySelection(selectionId: string): Promise<{ cancelled: boolean }>;
   openOutputDirectory(jobId?: string): Promise<{ opened: boolean }>;
   exportBundle(

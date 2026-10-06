@@ -1,11 +1,14 @@
 import { describe, expect, test } from "bun:test";
 
 const layerRank: Record<string, number> = {
+  ports: 0,
   shared: 0,
   i18n: 0,
   schemas: 1,
   models: 2,
+  application: 3,
   api: 3,
+  adapters: 4,
   state: 4,
   mocks: 4,
   hooks: 5,
@@ -79,6 +82,28 @@ describe("web import boundaries", () => {
       }
     }
 
+    expect(violations).toEqual([]);
+  });
+
+  test("application and domain depend on ports rather than transport or presentation frameworks", async () => {
+    const violations: string[] = [];
+    const glob = new Bun.Glob("{application,models,api}/**/*.{ts,tsx}");
+    for await (const path of glob.scan({ cwd: sourceRoot.pathname })) {
+      if (path === "api/app-api-provider.tsx") continue;
+      const source = await Bun.file(new URL(path, sourceRoot)).text();
+      for (const match of source.matchAll(/(?:from\s+|import\s*\()["']([^"']+)/g)) {
+        const dependency = match[1];
+        if (
+          dependency.startsWith("@/adapters/") ||
+          dependency.includes("vendor/adofai-ipc") ||
+          dependency === "@adofai-ipc/client" ||
+          dependency === "react" ||
+          dependency.startsWith("@tauri-apps/") ||
+          dependency.startsWith("@tanstack/")
+        )
+          violations.push(`${path}: ${dependency}`);
+      }
+    }
     expect(violations).toEqual([]);
   });
 });

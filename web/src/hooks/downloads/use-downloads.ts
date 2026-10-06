@@ -1,10 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useApiPromise } from "@/api/app-api-provider";
-import {
-  type DownloadAction,
-  type DownloadItemId,
-  installationBusy,
-} from "@/api/downloads/downloads-api";
+import type { DownloadAction, DownloadItemId } from "@/api/downloads/downloads-api";
 import { ApiError } from "@/shared/errors/api-error";
 
 export const downloadsQueryKey = ["downloads", "status"] as const;
@@ -24,13 +21,25 @@ export function useDownloads(enabled: boolean) {
     queryKey: downloadsQueryKey,
     queryFn: async () => (await api()).getStatus(),
     enabled,
-    refetchInterval: (query) =>
-      installationBusy(query.state.data?.Ffmpeg) || installationBusy(query.state.data?.Renderer)
-        ? 500
-        : 2000,
     staleTime: 500,
     retry: false,
   });
+  useEffect(() => {
+    let disposed = false;
+    let off = () => {};
+    void promise
+      .then((app) => {
+        if (!disposed)
+          off = app.events.on("downloads.changed", (state) =>
+            queryClient.setQueryData(downloadsQueryKey, state),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      off();
+    };
+  }, [promise, queryClient]);
   const mutation = useMutation({
     scope: { id: "download-center" },
     onMutate: () => queryClient.cancelQueries({ queryKey: downloadsQueryKey }),

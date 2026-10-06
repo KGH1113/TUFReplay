@@ -19,6 +19,24 @@ public sealed class ManagedRendererInstaller : IDisposable
   public const string Repository = "https://github.com/KGH1113/TUFReplay-Renderer";
   private const string ReleaseApi = "https://api.github.com/repos/KGH1113/TUFReplay-Renderer/releases?per_page=30";
   private const long MaximumBytes = 128L * 1024 * 1024;
+  public event Action Changed;
+  private long _nextProgressNotification;
+
+  private void NotifyChanged(bool progress = false)
+  {
+    if (progress)
+    {
+      long now = System.Diagnostics.Stopwatch.GetTimestamp();
+      lock (_gate)
+      {
+        if (now < _nextProgressNotification)
+          return;
+        _nextProgressNotification = now + System.Diagnostics.Stopwatch.Frequency / 10;
+      }
+    }
+    Changed?.Invoke();
+  }
+
   private readonly object _gate = new object();
   private readonly string _directory;
   private readonly Func<HttpMessageHandler> _transport;
@@ -86,6 +104,7 @@ public sealed class ManagedRendererInstaller : IDisposable
         _state.TotalBytes = null;
       }
     }
+    NotifyChanged();
   }
 
   public void Confirm()
@@ -99,6 +118,7 @@ public sealed class ManagedRendererInstaller : IDisposable
       _state.Status = "resolving";
       Work = Task.Run(() => InstallAsync(_cancel.Token));
     }
+    NotifyChanged();
   }
 
   public void Cancel()
@@ -109,6 +129,7 @@ public sealed class ManagedRendererInstaller : IDisposable
       if (_state.Status == "awaiting-consent")
         _state.Status = "cancelled";
     }
+    NotifyChanged();
   }
 
   private async Task InstallAsync(CancellationToken token)
@@ -213,6 +234,7 @@ public sealed class ManagedRendererInstaller : IDisposable
           await output.WriteAsync(buffer, 0, count, token).ConfigureAwait(false);
           lock (_gate)
             _state.DownloadedBytes = total;
+          NotifyChanged(progress: true);
         }
         if (total != expectedBytes)
           throw new InvalidDataException("The Renderer download is incomplete. Check your connection and retry.");
@@ -284,6 +306,7 @@ public sealed class ManagedRendererInstaller : IDisposable
     }
     finally
     {
+      NotifyChanged();
       if (staging != null)
         try
         {
@@ -356,6 +379,7 @@ public sealed class ManagedRendererInstaller : IDisposable
   {
     lock (_gate)
       _state.Status = status;
+    NotifyChanged();
   }
 
   public void Dispose()

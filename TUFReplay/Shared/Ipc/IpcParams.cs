@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using AdofaiIpc;
 using AdofaiIpc.Core;
 using Newtonsoft.Json.Linq;
 
@@ -6,7 +7,7 @@ namespace TUFReplay.Shared.Ipc;
 
 public static class IpcParams
 {
-  public static bool TryRequiredString(IpcRequest request, string name, out string value)
+  public static bool TryRequiredString(IpcCommand request, string name, out string value)
   {
     value = null;
     JToken token = GetToken(request, name);
@@ -21,7 +22,7 @@ public static class IpcParams
     return true;
   }
 
-  public static bool TryRequiredStringArray(IpcRequest request, string name, out List<string> values)
+  public static bool TryRequiredStringArray(IpcCommand request, string name, out List<string> values)
   {
     values = null;
     JToken token = GetToken(request, name);
@@ -41,7 +42,7 @@ public static class IpcParams
     return values.Count > 0;
   }
 
-  public static string OptionalString(IpcRequest request, string name)
+  public static string OptionalString(IpcCommand request, string name)
   {
     JToken token = GetToken(request, name);
     if (token == null || token.Type == JTokenType.Null)
@@ -49,10 +50,10 @@ public static class IpcParams
     return token.Type == JTokenType.String ? token.Value<string>() : token.ToString();
   }
 
-  public static bool TryNullableString(IpcRequest request, string name, out string value)
+  public static bool TryNullableString(IpcCommand request, string name, out string value)
   {
     value = null;
-    if (!(request?.Params is JObject obj) || !obj.TryGetValue(name, out JToken token))
+    if (!(request?.Payload is JObject obj) || !obj.TryGetValue(name, out JToken token))
       return false;
 
     if (token == null || token.Type == JTokenType.Null)
@@ -65,7 +66,7 @@ public static class IpcParams
     return true;
   }
 
-  public static int? OptionalInt(IpcRequest request, string name)
+  public static int? OptionalInt(IpcCommand request, string name)
   {
     JToken token = GetToken(request, name);
     if (token == null || token.Type == JTokenType.Null)
@@ -77,7 +78,7 @@ public static class IpcParams
     return int.TryParse(token.ToString(), out int value) ? value : null;
   }
 
-  public static bool TryBool(IpcRequest request, string name, out bool value)
+  public static bool TryBool(IpcCommand request, string name, out bool value)
   {
     value = false;
     JToken token = GetToken(request, name);
@@ -88,8 +89,8 @@ public static class IpcParams
     return true;
   }
 
-  private static JToken GetToken(IpcRequest request, string name)
+  private static JToken GetToken(IpcCommand request, string name)
   {
-    return request?.Params is JObject obj ? obj[name] : null;
+    return request?.Payload is JObject obj ? obj[name] : null;
   }
 }

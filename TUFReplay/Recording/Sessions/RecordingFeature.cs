@@ -17,6 +17,10 @@ namespace TUFReplay.Recording.Sessions;
 
 public partial class RecordingFeature
 {
+  public event System.Action GameplayStateChanged;
+
+  public void NotifyGameplayStateChanged() => GameplayStateChanged?.Invoke();
+
   public static RecordingFeature Instance;
   public static TUFReplaySetting Settings;
 
@@ -186,6 +190,7 @@ public partial class RecordingFeature
     var webcam = _pendingEditorWebcamRecording;
     _pendingEditorWebcamRecording = null;
     webcam?.CompleteDisposition(persist: true);
+    NotifyGameplayStateChanged();
     PendingMicrophoneDisposition recording = _pendingEditorRecording;
     _pendingEditorRecording = null;
     recording?.CompleteDisposition(persist: true);

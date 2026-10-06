@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createRenderApi } from "@/api/render/create-render-api";
 import { createRenderApiMock } from "@/mocks/render/create-render-api-mock";
 import { availableEncoders, defaultRenderOptions } from "@/models/render/render-model";
-import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
+import { scriptedChannels } from "../../fixtures/local-message-peer";
 
 const bundle = {
   jobId: "export-1",
@@ -24,12 +25,14 @@ const job = {
 function clients(
   tuf: (method: string, params: unknown) => unknown,
   render: (method: string, params: unknown) => unknown,
-): AdofaiIpcClients {
+): LocalAppChannels {
   return {
-    namespace: { call: async (method: string, params: unknown) => tuf(method, params) },
-    rendererNamespace: { call: async (method: string, params: unknown) => render(method, params) },
-  } as unknown as AdofaiIpcClients;
+    ...scriptedChannels(tuf),
+    rendererNamespace: scriptedChannels(render, { "health.read": "renderer.health.snapshot" })
+      .namespace,
+  };
 }
+
 describe("neutral render IPC contract", () => {
   test("remembers the chosen settings mode and quality with validated, independent snapshots", async () => {
     const calls: unknown[] = [];
@@ -46,7 +49,7 @@ describe("neutral render IPC contract", () => {
     await api.updateSettings(defaultRenderOptions, { mode: "recommended", quality: "low" });
     expect(calls).toEqual([
       {
-        method: "settings.update",
+        method: "renderer.settings.change",
         params: { ...defaultRenderOptions, preferences: { mode: "recommended", quality: "low" } },
       },
     ]);
@@ -75,7 +78,7 @@ describe("neutral render IPC contract", () => {
     await api.exportBundle("run-2", defaultRenderOptions);
     expect(calls).toEqual([
       {
-        method: "replay.render-bundle.export",
+        method: "replay.render-bundle.prepare",
         params: {
           runId: "run-1",
           levelPath: "/levels/visual edit.adofai",
@@ -84,7 +87,7 @@ describe("neutral render IPC contract", () => {
         },
       },
       {
-        method: "replay.render-bundle.export",
+        method: "replay.render-bundle.prepare",
         params: { runId: "run-2", includeWebcam: true, includeMicrophone: true },
       },
     ]);
@@ -112,7 +115,7 @@ describe("neutral render IPC contract", () => {
     expect(calls).toEqual([
       {
         namespace: "tuf-replay",
-        method: "replay.render-bundle.export",
+        method: "replay.render-bundle.prepare",
         params: { runId: "run-1", includeWebcam: true, includeMicrophone: true },
       },
       {
@@ -122,7 +125,7 @@ describe("neutral render IPC contract", () => {
       },
       {
         namespace: "tuf-replay",
-        method: "replay.render-bundle.status.get",
+        method: "replay.render-bundle.state.read",
         params: { jobId: "export-1" },
       },
       {
@@ -132,7 +135,7 @@ describe("neutral render IPC contract", () => {
       },
       {
         namespace: "tuf-replay-renderer",
-        method: "render.status.get",
+        method: "render.state.read",
         params: { jobId: "render-1" },
       },
       { namespace: "tuf-replay-renderer", method: "render.cancel", params: { jobId: "render-1" } },
@@ -194,25 +197,23 @@ describe("neutral render IPC contract", () => {
         () => bundle,
         (method, params) => {
           calls.push({ method, params });
-          if (method === "output-directory.selection.cancel") return { cancelled: true };
-          if (method === "output-directory.open") return { opened: true };
+          if (method === "renderer.folder.cancel") return { cancelled: true };
+          if (method === "renderer.folder.open") return { opened: true };
           return {
             selectionId: "pick-1",
-            pending: method === "output-directory.choose",
-            outputDirectory: method === "output-directory.choose" ? null : "/local/videos",
+            pending: method === "renderer.folder.choose",
+            outputDirectory: method === "renderer.folder.choose" ? null : "/local/videos",
           };
         },
       ),
     );
     expect((await api.chooseOutputDirectory("/local/start")).pending).toBe(true);
-    expect((await api.getOutputDirectorySelection("pick-1")).outputDirectory).toBe("/local/videos");
     await api.cancelOutputDirectorySelection("pick-1");
     await api.openOutputDirectory("render-1");
     expect(calls).toEqual([
-      { method: "output-directory.choose", params: { initialPath: "/local/start" } },
-      { method: "output-directory.selection.get", params: { selectionId: "pick-1" } },
-      { method: "output-directory.selection.cancel", params: { selectionId: "pick-1" } },
-      { method: "output-directory.open", params: { jobId: "render-1" } },
+      { method: "renderer.folder.choose", params: { initialPath: "/local/start" } },
+      { method: "renderer.folder.cancel", params: { selectionId: "pick-1" } },
+      { method: "renderer.folder.open", params: { jobId: "render-1" } },
     ]);
   });
   test("retains the precise invalid field and row returned by the renderer", async () => {
@@ -263,7 +264,7 @@ describe("neutral render IPC contract", () => {
       ),
     );
     await expect(unavailable.getHealth()).rejects.toMatchObject({
-      kind: "protocol",
+      kind: "domain",
       code: "namespace_not_found",
     });
   });
@@ -311,7 +312,7 @@ describe("neutral render IPC contract", () => {
       await createRenderApi(
         clients(
           () => bundle,
-          () => ({ Url: allowed }),
+          () => ({ url: allowed }),
         ),
       ).prepareDownload("render-1"),
     ).toBe(allowed);
@@ -324,7 +325,7 @@ describe("neutral render IPC contract", () => {
         createRenderApi(
           clients(
             () => bundle,
-            () => ({ Url: url }),
+            () => ({ url }),
           ),
         ).prepareDownload("render-1"),
       ).rejects.toMatchObject({ kind: "validation", code: "invalid_response" });

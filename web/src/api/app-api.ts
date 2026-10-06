@@ -1,4 +1,5 @@
 import type { ActivityApi } from "@/api/activity/activity-api";
+import type { AppEvents } from "@/api/app-events";
 import type { CalibrationApi } from "@/api/calibration/calibration-api";
 import type { DownloadsApi } from "@/api/downloads/downloads-api";
 import type { HealthApi } from "@/api/health/health-api";
@@ -9,6 +10,7 @@ import type { RunApi } from "@/api/run/run-api";
 import type { WebcamApi } from "@/api/webcam/webcam-api";
 
 export interface AppApi {
+  events: AppEvents;
   health: HealthApi;
   activity: ActivityApi;
   run: RunApi;

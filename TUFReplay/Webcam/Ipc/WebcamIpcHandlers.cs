@@ -1,5 +1,5 @@
 using System;
-using AdofaiIpc.Core;
+using AdofaiIpc;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Composition;
 using TUFReplay.Shared.Ipc;
@@ -9,9 +9,9 @@ namespace TUFReplay.Webcam.Ipc;
 
 public static class WebcamIpcHandlers
 {
-  public static object GetState(IpcRequest request)
+  public static object GetState(IpcCommand request)
   {
-    JToken refresh = (request?.Params as JObject)?["refreshDevices"];
+    JToken refresh = (request?.Payload as JObject)?["refreshDevices"];
     bool force = refresh?.Type == JTokenType.Boolean && refresh.Value<bool>();
     return FeatureRegistry.WebcamRecording?.GetState(refreshDevices: true, forceDeviceRefresh: force)
       ?? IpcDomainError.Create(
@@ -20,11 +20,11 @@ public static class WebcamIpcHandlers
       );
   }
 
-  public static object UpdateSettings(IpcRequest request)
+  public static object UpdateSettings(IpcCommand request)
   {
     try
     {
-      if (!WebcamSettingsPatch.TryParse(request?.Params as JObject, out WebcamSettingsPatch patch))
+      if (!WebcamSettingsPatch.TryParse(request?.Payload as JObject, out WebcamSettingsPatch patch))
         return IpcDomainError.Create("invalid_webcam_settings", "Check the camera setting values and try again.");
       var feature = FeatureRegistry.WebcamRecording;
       if (feature == null)

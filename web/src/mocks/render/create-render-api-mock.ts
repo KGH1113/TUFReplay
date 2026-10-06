@@ -1,3 +1,4 @@
+import type { AppEventMap } from "@/api/app-events";
 import type { RenderApi } from "@/api/render/render-api";
 import {
   defaultRenderOptions,
@@ -7,11 +8,14 @@ import {
   type RenderSettings,
 } from "@/models/render/render-model";
 
-export function createRenderApiMock(): RenderApi {
+export function createRenderApiMock(
+  emit: <K extends keyof AppEventMap>(name: K, state: AppEventMap[K]) => void = () => {},
+): RenderApi {
   let defaults = { ...defaultRenderOptions, outputDirectory: "/Users/example/Videos/TUFReplay" };
   let preferences: RenderPreferences = { mode: "recommended", quality: null };
   let currentJob: RenderJob | null = null;
   let renderStep = 0;
+  let renderTimer: ReturnType<typeof setInterval> | undefined;
   let exportCancelled = false;
   let pickerCancelled = false;
   const settings = (): RenderSettings => ({
@@ -71,18 +75,22 @@ export function createRenderApiMock(): RenderApi {
     async updateSettings(options, selectedPreferences) {
       defaults = { ...defaults, ...options };
       if (selectedPreferences) preferences = { ...selectedPreferences };
-      return settings();
+      const state = settings();
+      emit("renderer.settings.changed", state);
+      return state;
     },
     async chooseOutputDirectory() {
       pickerCancelled = false;
+      setTimeout(
+        () =>
+          emit("renderer.folder.changed", {
+            selectionId: "mock-folder",
+            pending: false,
+            outputDirectory: pickerCancelled ? null : "/Users/example/Videos/TUFReplay",
+          }),
+        10,
+      );
       return { selectionId: "mock-folder", pending: true, outputDirectory: null };
-    },
-    async getOutputDirectorySelection() {
-      return {
-        selectionId: "mock-folder",
-        pending: false,
-        outputDirectory: pickerCancelled ? null : "/Users/example/Videos/TUFReplay",
-      };
     },
     async cancelOutputDirectorySelection() {
       pickerCancelled = true;
@@ -93,6 +101,7 @@ export function createRenderApiMock(): RenderApi {
     },
     async exportBundle(runId) {
       exportCancelled = false;
+      setTimeout(() => emit("render-bundle.changed", bundle(runId)), 10);
       return { ...bundle(runId), state: "preparing", progress: 0, manifestPath: null };
     },
     async getExportStatus() {
@@ -100,7 +109,9 @@ export function createRenderApiMock(): RenderApi {
     },
     async cancelExport() {
       exportCancelled = true;
-      return bundle();
+      const state = bundle();
+      emit("render-bundle.changed", state);
+      return state;
     },
     async start(_manifestPath: string, options: RenderOptions) {
       renderStep = 0;
@@ -122,22 +133,31 @@ export function createRenderApiMock(): RenderApi {
         canOpenOutput: false,
         canDownload: false,
       };
-      return { ...currentJob };
-    },
-    async getStatus() {
-      if (!currentJob) throw new Error("Start a mock render first.");
-      if (currentJob.state !== "cancelled") {
+      clearInterval(renderTimer);
+      renderTimer = setInterval(() => {
+        if (!currentJob || currentJob.state === "cancelled") {
+          clearInterval(renderTimer);
+          return;
+        }
         renderStep++;
         currentJob.state =
           renderStep >= 4 ? "completed" : renderStep >= 3 ? "compositing" : "rendering";
         currentJob.progress = Math.min(1, renderStep / 4);
         currentJob.canOpenOutput = currentJob.state === "completed";
-      }
+        emit("renderer.job.changed", { ...currentJob });
+        if (currentJob.state === "completed") clearInterval(renderTimer);
+      }, 250);
+      return { ...currentJob };
+    },
+    async getStatus() {
+      if (!currentJob) throw new Error("Start a mock render first.");
       return { ...currentJob };
     },
     async cancel() {
       if (!currentJob) throw new Error("Start a mock render first.");
       currentJob.state = "cancelled";
+      clearInterval(renderTimer);
+      emit("renderer.job.changed", { ...currentJob });
       return { ...currentJob };
     },
     async prepareDownload() {

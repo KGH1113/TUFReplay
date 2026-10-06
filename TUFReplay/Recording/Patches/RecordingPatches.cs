@@ -208,6 +208,7 @@ public static class RecordingPatches
 
   public static void OnChangeState(States newState)
   {
+    RecordingFeature.Instance?.NotifyGameplayStateChanged();
     RecordingFeature recording = RecordingFeature.Instance;
     if (recording == null || !recording.Active)
       return;

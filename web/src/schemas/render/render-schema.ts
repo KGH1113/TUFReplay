@@ -201,7 +201,7 @@ export const outputDirectoryChoiceSchema = z.object({
 });
 export const outputDirectoryCancelSchema = z.object({ cancelled: z.boolean() });
 export const outputDirectoryOpenSchema = z.object({ opened: z.boolean() });
-export const renderDownloadSchema = z.union([
-  z.object({ Url: z.string() }).transform((value) => value.Url),
-  z.object({ url: z.string() }).transform((value) => value.url),
-]);
+export const renderDownloadSchema = z.object({
+  url: z.string(),
+  byteLength: z.number().optional(),
+});

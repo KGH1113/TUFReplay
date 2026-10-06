@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -10,18 +9,43 @@ namespace TUFReplay.Shared.Media;
 
 internal static class FfmpegInstallCoordinator
 {
+  public static event Action Changed;
+
+  private static void NotifyChanged()
+  {
+    Changed?.Invoke();
+    UnityMainThread.Post(() =>
+    {
+      if (!_requested || _installer == null)
+        return;
+      var state = _installer.Snapshot();
+      if (state.Status == "missing")
+      {
+        _installer.Request();
+        return;
+      }
+      if (state.Available || state.Status == "declined" || state.Status == "cancelled" || state.Status == "failed")
+      {
+        _requested = false;
+        Requesters.Clear();
+        if (state.Available && Main.Settings.WebcamEnabled)
+          FeatureRegistry.WebcamRecording?.ArmForLevel();
+      }
+    });
+  }
+
+  private static readonly System.Collections.Generic.HashSet<string> Requesters = new();
   private static ManagedFfmpegInstaller _installer;
   private static bool _requested;
-  private static bool _rendererRequested;
   private static int _cameraWaiters;
   private static string _initializationError;
-  private static long _nextRefresh;
 
   public static void Initialize()
   {
     try
     {
       _installer = new ManagedFfmpegInstaller(Main.Instance.InstallPath, FfmpegPlatform.Current());
+      _installer.Changed += NotifyChanged;
     }
     catch (Exception error)
     {
@@ -37,9 +61,9 @@ internal static class FfmpegInstallCoordinator
       Error = _initializationError ?? "Enable TUFReplay to install FFmpeg.",
     };
 
-  public static FfmpegInstallState Request()
+  public static FfmpegInstallState Request(string requester = "default")
   {
-    _rendererRequested = true;
+    Requesters.Add(requester);
     return RequestCore();
   }
 
@@ -69,15 +93,15 @@ internal static class FfmpegInstallCoordinator
     return Status();
   }
 
-  public static void CancelPendingRequest()
+  public static void CancelPendingRequest(string requester = "default")
   {
-    _rendererRequested = false;
+    Requesters.Remove(requester);
     CancelIfUnneeded();
   }
 
   private static void CancelIfUnneeded()
   {
-    if (_rendererRequested || Volatile.Read(ref _cameraWaiters) > 0)
+    if (Requesters.Count > 0 || Volatile.Read(ref _cameraWaiters) > 0)
       return;
     string state = Status().Status;
     if (state != "awaiting-consent" && state != "checking")
@@ -87,79 +111,60 @@ internal static class FfmpegInstallCoordinator
     _requested = false;
   }
 
-  public static async Task<string> EnsureAvailableAsync(Func<bool> stillNeeded)
+  public static async Task<string> EnsureAvailableAsync(CancellationToken cancellationToken)
   {
     var installer = _installer ?? throw new IOException(_initializationError ?? "Enable TUFReplay to install FFmpeg.");
+    cancellationToken.ThrowIfCancellationRequested();
     if (installer.Snapshot().Available)
       return installer.Snapshot().Path;
     Interlocked.Increment(ref _cameraWaiters);
-    try
+    var ready = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+    Action inspect = () =>
     {
-      var requested = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-      UnityMainThread.Post(() =>
-      {
-        if (stillNeeded())
-        {
-          RequestCore();
-          requested.TrySetResult(true);
-        }
-        else
-          requested.TrySetResult(false);
-      });
-      if (!await requested.Task.ConfigureAwait(false))
-        throw new OperationCanceledException();
-      while (stillNeeded())
-      {
-        var state = installer.Snapshot();
-        if (state.Available)
-          return state.Path;
-        if (state.Status == "declined" || state.Status == "cancelled")
-          throw new IOException(
+      var state = installer.Snapshot();
+      if (state.Available)
+        ready.TrySetResult(state.Path);
+      else if (state.Status == "declined" || state.Status == "cancelled")
+        ready.TrySetException(
+          new IOException(
             "FFmpeg installation was skipped. Turn the camera on again and install FFmpeg from the web download center."
-          );
-        if (state.Status == "failed")
-          throw new IOException(state.Error);
-        await Task.Delay(100).ConfigureAwait(false);
+          )
+        );
+      else if (state.Status == "failed")
+        ready.TrySetException(new IOException(state.Error));
+    };
+    installer.Changed += inspect;
+    using (cancellationToken.Register(() => ready.TrySetCanceled()))
+    {
+      try
+      {
+        UnityMainThread.Post(() =>
+        {
+          if (cancellationToken.IsCancellationRequested)
+            ready.TrySetCanceled();
+          else
+            RequestCore();
+        });
+        inspect();
+        return await ready.Task.ConfigureAwait(false);
       }
-      throw new OperationCanceledException();
-    }
-    finally
-    {
-      Interlocked.Decrement(ref _cameraWaiters);
-      if (!stillNeeded())
+      finally
+      {
+        installer.Changed -= inspect;
+        Interlocked.Decrement(ref _cameraWaiters);
         UnityMainThread.Post(CancelIfUnneeded);
-    }
-  }
-
-  public static void Tick()
-  {
-    if (!_requested || _installer == null)
-      return;
-    long now = Stopwatch.GetTimestamp();
-    if (now < _nextRefresh)
-      return;
-    _nextRefresh = now + Stopwatch.Frequency / 10;
-    var state = _installer.Snapshot();
-    if (state.Status == "checking")
-      return;
-    if (state.Status == "missing")
-      state = _installer.Request();
-    if (state.Available || state.Status == "declined" || state.Status == "cancelled")
-    {
-      _requested = false;
-      _rendererRequested = false;
-      if (state.Available && Main.Settings.WebcamEnabled)
-        FeatureRegistry.WebcamRecording?.ArmForLevel();
-      return;
+      }
     }
   }
 
   public static void Shutdown()
   {
+    if (_installer != null)
+      _installer.Changed -= NotifyChanged;
     _installer?.Dispose();
     _installer = null;
     _requested = false;
-    _rendererRequested = false;
+    Requesters.Clear();
     _initializationError = null;
   }
 }

@@ -8,6 +8,10 @@ namespace TUFReplay.Shared.Downloads;
 
 internal static class DownloadCenterCoordinator
 {
+  public static event Action Changed;
+
+  private static void NotifyChanged() => Changed?.Invoke();
+
   private static ManagedRendererInstaller _renderer;
   private static string _error;
 
@@ -20,6 +24,7 @@ internal static class DownloadCenterCoordinator
           .GetParent(Main.Instance.InstallPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
           .FullName
       );
+      _renderer.Changed += NotifyChanged;
     }
     catch (Exception error)
     {
@@ -62,6 +67,8 @@ internal static class DownloadCenterCoordinator
 
   public static void Shutdown()
   {
+    if (_renderer != null)
+      _renderer.Changed -= NotifyChanged;
     _renderer?.Dispose();
     _renderer = null;
     _error = null;
