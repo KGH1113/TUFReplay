@@ -7,6 +7,7 @@ export function waitForAppState<K extends keyof AppEventMap>(
   name: K,
   finished: (state: AppEventMap[K]) => boolean,
   options: {
+    namespace?: "recorder" | "renderer";
     signal?: AbortSignal;
     timeoutMs?: number;
     onState?: (state: AppEventMap[K]) => void;
@@ -55,6 +56,18 @@ export function waitForAppState<K extends keyof AppEventMap>(
                 "The game connection was interrupted. Reconnect before starting again.",
                 { kind: "connection", code: "ipc_unavailable" },
               ),
+            );
+        }),
+      );
+    if (!settled && options.namespace)
+      subscribe(
+        events.on(`${options.namespace}.status.changed`, (status) => {
+          if (status === "unavailable" || status === "error")
+            finish(
+              new ApiError("The mod is unavailable. Enable it and start this action again.", {
+                kind: "connection",
+                code: "ipc_unavailable",
+              }),
             );
         }),
       );

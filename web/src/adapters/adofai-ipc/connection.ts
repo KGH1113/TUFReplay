@@ -173,7 +173,18 @@ export function createLazyAppChannels(
       };
     },
     onStatus(listener) {
-      return current?.[name]?.onStatus?.(listener) ?? (() => {});
+      let off = () => {};
+      let disposed = false;
+      const bind = () => {
+        if (!disposed) off = current?.[name]?.onStatus?.(listener) ?? (() => {});
+      };
+      if (current) bind();
+      else waiting.add(bind);
+      return () => {
+        disposed = true;
+        waiting.delete(bind);
+        off();
+      };
     },
     async whenReady(options) {
       const peer = (await get())[name];

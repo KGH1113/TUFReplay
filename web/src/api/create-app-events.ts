@@ -6,7 +6,7 @@ import { mapCalibrationStatus } from "@/models/calibration/calibration-model";
 import { mapMicrophoneDevicesState } from "@/models/microphone/microphone-model";
 import { mapReplayStatus } from "@/models/replay/replay-model";
 import { mapWebcamState } from "@/models/webcam/webcam-model";
-import type { LocalAppChannels, SessionState } from "@/ports/local-message-peer";
+import type { LocalAppChannels, NamespaceStatus, SessionState } from "@/ports/local-message-peer";
 import { calibrationStatusDtoSchema } from "@/schemas/calibration/calibration-schema";
 import { microphoneDevicesStateDtoSchema } from "@/schemas/microphone/microphone-schema";
 import {
@@ -23,6 +23,16 @@ export function createAppEvents(channels: LocalAppChannels): AppEvents {
   return {
     on(name, listener) {
       switch (name) {
+        case "recorder.status.changed":
+          return (
+            channels.namespace.onStatus?.(listener as (value: NamespaceStatus) => void) ??
+            (() => {})
+          );
+        case "renderer.status.changed":
+          return (
+            channels.rendererNamespace?.onStatus?.(listener as (value: NamespaceStatus) => void) ??
+            (() => {})
+          );
         case "downloads.changed":
           return observeDomainEvent(
             channels.namespace,

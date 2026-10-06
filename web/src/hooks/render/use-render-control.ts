@@ -245,6 +245,7 @@ export function useRenderControl() {
               "downloads.changed",
               (next) => ["ready", "failed", "cancelled", "declined"].includes(next.Ffmpeg.Status),
               {
+                namespace: "recorder",
                 signal: abort.signal,
                 onState: (next) => queryClient.setQueryData(downloadsQueryKey, next),
               },
@@ -278,7 +279,12 @@ export function useRenderControl() {
             events,
             "renderer.settings.changed",
             (next) => next.system?.encoding.state !== "checking",
-            { signal: abort.signal, timeoutMs: 20_000, onState: setSettings },
+            {
+              namespace: "renderer",
+              signal: abort.signal,
+              timeoutMs: 20_000,
+              onState: setSettings,
+            },
           );
         if (!activeRef.current) return;
         if (cancelledRef.current) {
@@ -315,6 +321,7 @@ export function useRenderControl() {
           "render-bundle.changed",
           (next) => next.jobId === bundle.jobId && next.state !== "preparing",
           {
+            namespace: "recorder",
             signal: abort.signal,
             onState: (next) => {
               if (next.jobId === exportId.current && activeRef.current) setProgress(next.progress);
@@ -350,6 +357,7 @@ export function useRenderControl() {
           "renderer.job.changed",
           (next) => next.jobId === rendered.jobId && renderJobFinished(next),
           {
+            namespace: "renderer",
             signal: abort.signal,
             onState: (next) => {
               if (next.jobId !== renderId.current || !activeRef.current) return;
@@ -458,7 +466,7 @@ export function useRenderControl() {
           app.events,
           "renderer.folder.changed",
           (next) => next.selectionId === chosen.selectionId && !next.pending,
-          { signal: abort.signal },
+          { namespace: "renderer", signal: abort.signal },
         );
       }
       if (!activeRef.current || current !== generation.current) {

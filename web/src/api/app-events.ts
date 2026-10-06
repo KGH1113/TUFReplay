@@ -10,9 +10,11 @@ import type {
 } from "@/models/render/render-model";
 import type { ReplayStatus } from "@/models/replay/replay-model";
 import type { WebcamState } from "@/models/webcam/webcam-model";
-import type { Dispose, SessionState } from "@/ports/local-message-peer";
+import type { Dispose, NamespaceStatus, SessionState } from "@/ports/local-message-peer";
 
 export interface AppEventMap {
+  "recorder.status.changed": NamespaceStatus;
+  "renderer.status.changed": NamespaceStatus;
   "downloads.changed": DownloadsState;
   "render-bundle.changed": RenderExportStatus;
   "renderer.job.changed": RenderJob;
