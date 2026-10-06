@@ -86,13 +86,11 @@ public sealed class TUFReplayIpcFeature
       mainThread: false,
       broadcast: false
     );
-    RegisterOutcome(
+    RegisterChartOutcome(
       ipc,
       "activity.level-session.chart.read",
       "activity.level-session.chart.snapshot",
-      ActivityIpcHandlers.GetChart,
-      mainThread: false,
-      broadcast: false
+      ActivityIpcHandlers.GetChart
     );
     RegisterOutcome(
       ipc,
@@ -110,13 +108,11 @@ public sealed class TUFReplayIpcFeature
       mainThread: false,
       broadcast: false
     );
-    RegisterOutcome(
+    RegisterChartOutcome(
       ipc,
       "activity.chart.read",
       "activity.chart.snapshot",
-      ActivityIpcHandlers.GetLogicalLevelChart,
-      mainThread: false,
-      broadcast: false
+      ActivityIpcHandlers.GetLogicalLevelChart
     );
     RegisterOutcome(
       ipc,
@@ -311,6 +307,34 @@ public sealed class TUFReplayIpcFeature
 
     AdofaiIpc.AdofaiIpc.UnregisterNamespace(Namespace);
     Main.Instance.Log("[IPC] Unregistered namespace: " + Namespace);
+  }
+
+  private static void RegisterChartOutcome(
+    AdofaiIpcNamespace ipc,
+    string commandName,
+    string eventName,
+    Func<IpcCommand, object> handler
+  )
+  {
+    ipc.RegisterCommand(
+      commandName,
+      context =>
+      {
+        object result = handler(context);
+        if (result is IpcDomainFailure failure)
+        {
+          context.Reject(failure.error.code, failure.error.message);
+          return;
+        }
+        var chart = (ActivityChartDto)result;
+        ipc.ReplyDownload(
+          context,
+          eventName,
+          ActivityChartDownloads.Create(chart),
+          new { chart.LevelSessionId, chart.FloorCount }
+        );
+      }
+    );
   }
 
   private void RegisterOutcome(
