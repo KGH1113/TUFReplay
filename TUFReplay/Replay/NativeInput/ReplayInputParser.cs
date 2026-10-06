@@ -24,14 +24,16 @@ public static class ReplayInputParser
     List<RecordedInput> events = new List<RecordedInput>(Utf8Csv.CountNonEmptyLines(payload));
     long previousTimeUs = 0;
     int offset = 0;
+    int row = 0;
 
     while (Utf8Csv.TryReadNonEmptyLine(payload, ref offset, out ReadOnlySpan<byte> line))
     {
+      row++;
       if (!TryParseLine(line, out RecordedInput input))
-        throw new InvalidDataException("Replay input payload contains a malformed row.");
+        throw InvalidRow("Replay input payload contains a malformed row.", row);
 
       if (events.Count > 0 && input.TimeUs < previousTimeUs)
-        throw new InvalidDataException("Replay input timestamps must be monotonic.");
+        throw InvalidRow("Replay input timestamps must be monotonic.", row, "render_timeline_out_of_order", "timeUs");
       previousTimeUs = input.TimeUs;
       if (input.TimeUs > maxTimeUs)
         maxTimeUs = input.TimeUs;
@@ -39,6 +41,17 @@ public static class ReplayInputParser
     }
 
     return events;
+  }
+
+  private static InvalidDataException InvalidRow(string message, int row, string code = null, string field = null)
+  {
+    var exception = new InvalidDataException($"{message} (row {row})");
+    exception.Data["line"] = row;
+    if (code != null)
+      exception.Data["code"] = code;
+    if (field != null)
+      exception.Data["field"] = field;
+    return exception;
   }
 
   public static bool TryParseLine(string line, out RecordedInput input)

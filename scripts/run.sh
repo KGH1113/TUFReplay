@@ -18,8 +18,8 @@ Commands:
   web-test    Run web unit and contract tests (optional test filters)
   web-format  Format the companion web source
   web-lock    Refresh the local web dependency lockfile
+  ipc-check   Verify the committed unpublished ADOFAI-IPC SDK snapshot
   web-check   Run web tests, typecheck, Biome, and production build
-  web-format  Format and apply safe lint fixes to the web workspace
   web-dev     Run the companion web development server (extra arguments go to Vite)
   mac-helper  Build and verify the macOS microphone/webcam helper
   unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
@@ -58,11 +58,11 @@ case "$command_name" in
   web-lock)
     exec bun install --cwd "$SCRIPTS_DIR/../web" --lockfile-only
     ;;
+  ipc-check)
+    exec bun run --cwd "$SCRIPTS_DIR/../web" ipc:check
+    ;;
   web-check)
     run_task "Verify companion web workspace" "$SCRIPTS_DIR/tasks/verify/web.sh"
-    ;;
-  web-format)
-    run_task "Format companion web workspace" bash "$SCRIPTS_DIR/tasks/dev/web-format.sh"
     ;;
   web-dev)
     shift

@@ -13,7 +13,6 @@ public sealed class WebcamStateDto
   public string Error;
   public List<WebcamDevice> Devices;
   public string SelectedDeviceId;
-  public string FfmpegPath;
   public string Quality;
   public int OffsetMs;
   public int StorageLimitMb;

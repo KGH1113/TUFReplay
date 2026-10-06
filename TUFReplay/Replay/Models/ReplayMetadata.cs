@@ -4,6 +4,8 @@ public class ReplayMetadata
 {
   public int metadataVersion;
   public int? tufLevelId;
+  public string startedAtUtc;
+  public string endedAtUtc;
   public double? gameplayStartSongPosition;
   public long? wonTimeUs;
   public long? terminalTimeUs;
@@ -19,4 +21,7 @@ public class ReplayMetadata
   public string inputCapture;
   public string inputKeySpace;
   public string inputNativePlatform;
+  public long inputInvalidAnchors;
+  public long inputDiscontinuities;
+  public string inputLastDiscontinuity;
 }

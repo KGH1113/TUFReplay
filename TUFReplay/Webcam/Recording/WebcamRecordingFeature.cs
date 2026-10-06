@@ -37,8 +37,11 @@ public sealed class WebcamRecordingFeature
   private DateTime _lastDeviceRefreshUtc = DateTime.MinValue;
   private int _finalizing;
   private int _generation;
+  private CancellationTokenSource _armCancellation = new CancellationTokenSource();
   private long _operationId;
   private string _runId;
+  private IWebcamCaptureBackend _runBackend;
+  private int _runGeneration;
   private string _error;
   private System.Threading.Timer _retention;
 
@@ -112,6 +115,7 @@ public sealed class WebcamRecordingFeature
       _armed = false;
       _arming = false;
       _generation++;
+      _armCancellation.Cancel();
     }
     _retention?.Dispose();
     Queue(
@@ -157,7 +161,6 @@ public sealed class WebcamRecordingFeature
         Error = _error,
         Devices = new List<WebcamDevice>(_devices),
         SelectedDeviceId = settings.WebcamDeviceId,
-        FfmpegPath = settings.WebcamFfmpegPath,
         Quality = settings.WebcamQuality,
         OffsetMs = settings.WebcamOffsetMs,
         StorageLimitMb = settings.WebcamStorageLimitMb,
@@ -210,6 +213,7 @@ public sealed class WebcamRecordingFeature
         _arming = false;
         _error = null;
         _generation++;
+        _armCancellation.Cancel();
       }
       Queue(
         "settings.rearm.disarm",
@@ -244,11 +248,15 @@ public sealed class WebcamRecordingFeature
     string device = Main.Settings.WebcamDeviceId;
     WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality(Main.Settings.WebcamQuality);
     int generation;
+    CancellationToken armToken;
     lock (_gate)
     {
       if (_recording || _armed || _arming)
         return;
       generation = ++_generation;
+      _armCancellation.Cancel();
+      _armCancellation = new CancellationTokenSource();
+      armToken = _armCancellation.Token;
       _armed = false;
       _arming = true;
       _error = null;
@@ -259,6 +267,10 @@ public sealed class WebcamRecordingFeature
       {
         try
         {
+          if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            await TUFReplay.Shared.Media.FfmpegInstallCoordinator.EnsureAvailableAsync(armToken);
+          if (!_active || generation != _generation)
+            return;
           EnsureBackend();
           CaptureDiagnostics.Record(
             "capture.arm.request",
@@ -321,9 +333,11 @@ public sealed class WebcamRecordingFeature
 
   public bool BeginRun(string runId, long startTimestampTicks = 0)
   {
+    IWebcamCaptureBackend backend;
+    int generation;
     lock (_gate)
     {
-      if (!_active || !Main.Settings.WebcamEnabled || (!_armed && !_arming) || _recording)
+      if (!_active || !Main.Settings.WebcamEnabled || !_armed || _backend == null || _recording)
       {
         if (Main.Settings.WebcamEnabled)
         {
@@ -342,6 +356,8 @@ public sealed class WebcamRecordingFeature
       }
       _recording = true;
       _runId = runId;
+      backend = _runBackend = _backend;
+      generation = _runGeneration = _generation;
     }
     long budget = Main.Settings.WebcamStorageLimitMb * 1024L * 1024;
     int retention = Main.Settings.WebcamRetentionDays;
@@ -349,6 +365,11 @@ public sealed class WebcamRecordingFeature
       "capture.begin",
       async () =>
       {
+        // Readiness can change while this operation waits behind camera work.
+        // Keep this run bound to the backend that was ready at its start.
+        lock (_gate)
+          if (!_active || !_armed || generation != _generation || !ReferenceEquals(backend, _backend))
+            return;
         long maxBytes = Store.ReserveCaptureBytes(budget, retention);
         CaptureDiagnostics.Record(
           "capture.storage.reserved",
@@ -365,7 +386,7 @@ public sealed class WebcamRecordingFeature
           throw new IOException(
             "Camera storage is full. Increase the storage limit or stop the replay using older footage."
           );
-        await _backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes, startTimestampTicks);
+        await backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes, startTimestampTicks);
       },
       runId
     );
@@ -375,6 +396,8 @@ public sealed class WebcamRecordingFeature
   public void EndRun(WebcamCaptureTimeline timeline, Action<WebcamRecording> completed)
   {
     string runId;
+    IWebcamCaptureBackend backend;
+    int generation;
     lock (_gate)
     {
       if (!_recording)
@@ -386,6 +409,9 @@ public sealed class WebcamRecordingFeature
       _finalizing++;
       runId = _runId;
       _runId = null;
+      backend = _runBackend;
+      generation = _runGeneration;
+      _runBackend = null;
     }
     Queue(
       "capture.end",
@@ -394,7 +420,11 @@ public sealed class WebcamRecordingFeature
         WebcamRecording recording = null;
         try
         {
-          recording = await _backend.EndAsync();
+          bool current;
+          lock (_gate)
+            current = backend != null && generation == _generation && ReferenceEquals(backend, _backend);
+          if (current)
+            recording = await backend.EndAsync();
           if (recording != null)
           {
             CaptureDiagnostics.Record(
@@ -513,6 +543,7 @@ public sealed class WebcamRecordingFeature
       _armed = false;
       _arming = false;
       _generation++;
+      _armCancellation.Cancel();
     }
     Queue(
       "capture.disarm",
@@ -538,6 +569,11 @@ public sealed class WebcamRecordingFeature
       {
         try
         {
+          if (
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            && !TUFReplay.Shared.Media.FfmpegInstallCoordinator.Status().Available
+          )
+            return;
           EnsureBackend();
           List<WebcamDevice> devices = await _backend.ListDevicesAsync();
           CaptureDiagnostics.Record(
@@ -566,7 +602,7 @@ public sealed class WebcamRecordingFeature
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
       _backend = new MacOsWebcamCaptureBackend();
     else if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-      _backend = new FfmpegWebcamCaptureBackend(Main.Settings.WebcamFfmpegPath, Main.Instance.PayloadPath);
+      _backend = new FfmpegWebcamCaptureBackend(TUFReplay.Shared.Media.FfmpegInstallCoordinator.Status().Path);
     else
       throw new PlatformNotSupportedException("Camera recording is available on macOS and Windows.");
     CaptureDiagnostics.Record("capture.backend.created", new { backend = _backend.GetType().FullName });
@@ -614,6 +650,7 @@ public sealed class WebcamRecordingFeature
                 }
               );
             }
+            catch (OperationCanceledException) { }
             catch (Exception exception)
             {
               SetError(exception, operation, operationId, runId);
@@ -675,10 +712,7 @@ public sealed class WebcamRecordingFeature
     Main.Instance?.LogException("Webcam", exception);
     if (Main.Settings?.WebcamEnabled == true)
       UnityMainThread.Post(() =>
-        ReplayTimelineHud.ShowNotificationToast(
-          "Camera recording unavailable",
-          "This run will be saved without camera video. Check camera permission and the selected device in camera settings."
-        )
+        ReplayTimelineHud.ShowNotificationToast("Camera recording unavailable", exception.Message)
       );
   }
 
@@ -686,7 +720,6 @@ public sealed class WebcamRecordingFeature
   {
     destination.WebcamEnabled = source.WebcamEnabled;
     destination.WebcamDeviceId = source.WebcamDeviceId;
-    destination.WebcamFfmpegPath = source.WebcamFfmpegPath;
     destination.WebcamQuality = source.WebcamQuality;
     destination.WebcamOffsetMs = source.WebcamOffsetMs;
     destination.WebcamStorageLimitMb = source.WebcamStorageLimitMb;

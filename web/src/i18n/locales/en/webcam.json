@@ -80,8 +80,7 @@
   "syncHint": "The first frame is automatically aligned with the replay clock. To correct camera latency, pause near a key press and compare the image with the replay. Positive values show the image earlier; negative values show it later.",
   "resetOffset": "Reset sync correction",
   "windowsSetup": "Windows camera setup",
-  "ffmpegHint": "Windows uses FFmpeg with DirectShow and H.264 support. Leave the path blank to use bundled FFmpeg or your PATH, or select the full path to ffmpeg.exe.",
-  "ffmpegPath": "FFmpeg executable path",
+  "ffmpegHint": "Windows camera recording needs FFmpeg. Turn on the camera and approve installation in the web setup dialog. TUFReplay installs it for both recording and rendering.",
   "applyPath": "Apply path",
   "errors": {
     "readSettings": "Camera settings could not be read. Check the game connection and update TUFReplay if needed.",

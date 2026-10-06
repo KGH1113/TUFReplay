@@ -35,6 +35,8 @@ Replay engine v2 preserves OS-native input, the resolved margin of every accepte
 
 New recordings keep hit timestamps nondecreasing even when the game song clock moves backward. Buffered native inputs retain their independently mapped timestamps and input ordering; recording a hit does not push an earlier buffered input forward. Clear and terminal times include both recorded inputs and hits. The song-relative time base and game input offset remain unchanged.
 
+A new countdown starts a fresh payload when the previous capture already reached a terminal state, even if that attempt never obtained an activity draft. Final capture draining includes buffered inputs and the finishing hit in the terminal boundary without adding idle death-screen time. Render export can recover the specific older pre-start zero-terminal defect from its retained event timeline; it leaves the database unchanged and warns that pre-start key timestamps already saved as zero cannot be reconstructed. Other events after the recording boundary still fail validation.
+
 ## Features
 
 - Records OS-native input state changes and hit contexts for custom `.adofai` runs. Runs with forward progress and an input capture failure are retained as activity history with a specific reason and cannot be replayed, even when no input was collected.
@@ -61,6 +63,7 @@ New recordings keep hit timestamps nondecreasing even when the game song clock m
 - Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs.
 - Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization. New recordings align the first microphone sample to the native-input clock after the game timeline resumes, so EnhancedCountdown waits do not become replay offsets. On macOS the helper supplies the first written sample's host timestamp; other platforms anchor Unity's microphone cursor to the same monotonic clock.
 - Optionally records H.264 camera video alongside each run and plays it inside the game during replay. Camera recording starts disabled. The companion header's camera button configures capture, crop, visibility, mirroring, synchronization, quality, storage budget, and retention. Position and size are adjusted directly in the game.
+- Offers a Render action in each saved run's menu when TUFReplay-Renderer is installed. Its dialog configures the embedded OrbitRender engine's video, audio, display, and media options, including a 0–30 second wait after clear or death, and saves the finished video into a selected local folder. Mid-level/checkpoint recordings render from their recorded start tile; failures include the native death animation before the extra wait. Completion includes an action to open that folder. TUFReplay exports a validated neutral recording bundle, preserving the terminal outcome, signed countdown inputs, camera crop, mirror, position, timing, and microphone gain. The renderer reports overlay compatibility warnings. See [rendering integration](docs/replay-render-bundle.md).
 - Replays restore the recorded game input offset when available. Older records without that value keep the current game setting; input/hit timestamp differences are not used to guess calibration.
 - Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
 - Aggregates overlapping timeline judgments into display columns, preserving the most severe visible judgment and keeping dense replays below Unity's UI vertex limit. The progress fill rebuilds only after a visible half-pixel change while the playhead continues to track replay time.
@@ -98,7 +101,11 @@ Camera files are retained only after their activity run commits, without making 
 
 On macOS, the existing `TUFReplayMicrophoneCapture.app` helper keeps an AVFoundation capture session open and prepares AVAssetWriter before H.264 frames are appended during a run. Its video session starts at the first attached sample's presentation timestamp, and synchronization uses that sample's native host timestamp. It requests camera permission when capture is enabled and explains that access continues while the game is open. Allow **TUFReplay Microphone Capture** in **System Settings → Privacy & Security → Camera** if access was denied. The helper is built for both Apple silicon and Intel, with a macOS 12 deployment target. No FFmpeg installation is needed on macOS.
 
-Windows keeps one FFmpeg DirectShow capture process open and drains frames continuously. A separate `libx264` encoder process is started ahead of the run and receives frames through a bounded queue only after attachment, without reopening the camera. Idle capture rotates two reusable YUV buffers so the latest complete frame remains available without copying every idle frame. This repository does not bundle FFmpeg. Install a Windows FFmpeg build containing those features and enter the absolute `ffmpeg.exe` path in the camera settings, or add it to `PATH`. A separately supplied `Helpers/win/ffmpeg.exe` in the runtime payload is also recognized. Camera capture on Linux is currently unsupported.
+Windows keeps one FFmpeg DirectShow capture process open and drains frames continuously. A separate `libx264` encoder process is started ahead of the run and receives frames through a bounded queue only after attachment, without reopening the camera. Idle capture rotates two reusable YUV buffers so the latest complete frame remains available without copying every idle frame. When the Windows camera is first enabled or a render is first started without FFmpeg, the companion web dialog asks for consent before downloading the platform build into `Mods/TUFReplay/FFmpeg/<platform>/`. The web download center next to Camera shares the same consent, progress, cancellation and retry controls. Opening camera settings or the download center alone does not download anything. The Unity runtime bundle has no FFmpeg installation modal. Windows camera capture and TUFReplay-Renderer use this same installation; neither consults PATH, another mod's installation, or a manually configured executable. Existing executable-path settings are ignored. Camera capture on Linux is currently unsupported.
+
+FFmpeg downloads are separate from release ZIPs and survive TUFReplay runtime updates. The installer keeps vendor notices and a receipt containing the provider URL, version/build configuration and executable SHA-256. It checks the Windows provider's archive checksum and verifies the executable before publishing the installation. Download, hashing, extraction and executable checks run off the game thread. A cancelled or failed download never becomes a ready installation. macOS camera capture continues to use the native helper; FFmpeg setup on macOS is needed only for rendering. The independent renderer sends `media.ffmpeg.request` through an application-owned recorder port backed by the IPC local peer router and waits for `media.ffmpeg.state.changed`. It releases its own pending request with `media.ffmpeg.release`; camera and web request owners remain independent. The web download center sends `downloads.ffmpeg.confirm`, and pushed installation state resumes the waiting camera or render automatically. No loopback HTTP client or installation status polling is used.
+
+TUFReplay alone exposes `downloads.status` and `downloads.renderer.request|confirm|cancel`. The icon-only download center next to Camera lists installed components without nested cards. Installation consent, progress, errors and restart instructions appear in a separate web dialog after the dropdown closes. Requests from first-time camera activation or rendering open that same dialog automatically. The center can install the independent TUFReplay-Renderer mod from its most recently published official GitHub release, including betas, after explicit consent. That release must contain `TUFReplay-Renderer.zip` and its generated `TUFReplay-Renderer.download.json` verification manifest. The installer checks package size, SHA-256, mod identity and version, rejects unsafe ZIP paths and user-data entries, and publishes a staged folder atomically. It never overwrites an existing Renderer folder or hot-loads the DLL; fully restart ADOFAI and enable the mod after installation. A missing release or incomplete existing folder has a specific recovery message. No release lookup or download happens until installation is approved.
 
 The Windows encoder reuses pooled YUV frame buffers across runs and limits both filter workers and encoder workers to two threads. RGB preview conversion/rendering runs only while the game overlay or camera check consumes it; the first frame is always published for readiness. Busy preview writes are skipped by game-thread readers while the last complete texture remains displayed. These optimizations preserve capture rate, aspect ratio, colors, and recording presets.
 
@@ -238,6 +245,12 @@ VITE_WEB_ADOFAI_EMBED_URL=http://127.0.0.1:5173/embed/chart ./scripts/run.sh web
 
 The web UI bundles English and Korean translation resources under `web/src/i18n/locales`. The language menu stores the explicit selection in `localStorage`; without a saved selection, Korean browser locales use Korean and all other locales use English.
 
+The run card's Render action opens the same original-or-matching-level chooser used for replay. Choosing another file verifies its gameplay with ADOFAI before opening the video settings. Render selection restores the game screen after verification instead of holding it black for immediate replay. The selected path belongs only to this render and is revalidated during bundle export; it is never saved as the default for another run. Selecting a level does not start replay playback.
+
+Video settings start with **Recommended** quality: Lowest (720p30), Low (720p60), Medium (1080p60), High (1440p60), Highest (2160p60), or Extreme (2160p120). The independent Renderer reports the ADOFAI computer's CPU, memory, GPU and maximum texture size, and checks matching H.264 hardware encoders with two synthetic frames on a background worker. A passing hardware encoder is preferred; otherwise presets use software encoding. The suggested default is a conservative CPU/memory/GPU heuristic rather than a level benchmark, and Extreme always requires an explicit selection. The browser's own hardware is never used. First-use FFmpeg installation refreshes the recommendation before bundle export. **Advanced** exposes the existing individual video, codec, encoder and game-display options; entering it copies the currently shown recommendation, and quality changes retain the user's save location, media selections, audio gain and ending delay.
+
+**Remember these settings** also saves the video settings mode and quality. The automatic quality follows the next system recommendation; a selected tier or Advanced mode is restored. Clients that omit the optional preference fields retain the saved preference.
+
 New runs refresh the current day's list in the background while retaining the selected tile/run, the open run sidebar, and the chart's current view. When viewing cards below the top of the list, new cards preserve the visible card's scroll position. Refresh failures keep the existing chart and list available with a retry action; changing the day or gameplay revision resets the selection for that scope.
 
 `VITE_WEB_ADOFAI_EMBED_URL` is required. When it is missing or invalid, the chart area shows a configuration warning instead of loading a hardcoded fallback URL.
@@ -310,8 +323,17 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 TUFReplay requires **AdofaiIpc 1.0.0**, WebSocket wire protocol **3**, and TUFReplay
 namespace protocol **9**. The local connection uses `/ipc/ws` and the
 `adofai-ipc.v3` subprotocol. The companion uses the canonical TypeScript SDK
-source committed under `vendor/adofai-ipc`, with its license and source revision;
+source committed under `web/vendor/adofai-ipc`, with its license and source revision;
 no published npm SDK package, linked sibling checkout, or registry release is required.
+
+Update the snapshot from the canonical ADOFAI-IPC checkout with
+`./scripts/run.sh client-sync /path/to/TUFReplay/web/vendor/adofai-ipc`, then commit
+the generated source and provenance together. In TUFReplay, `./scripts/run.sh ipc-check`
+checks the file inventory, SHA-256 values, clean upstream revision, SDK/wire versions,
+and license. Every production web build repeats this check and emits `/adofai-ipc.json`
+from the verified snapshot. CI and Docker use only committed files; deployment verifies
+that the public SDK metadata matches the tested commit. This allows dev testers to use
+ADOFAI-IPC v1 before its mod or npm package is publicly released.
 
 The `tuf-replay` namespace becomes ready after feature initialization. Both peers
 send named commands and domain events over one connection. A transport acceptance
@@ -388,3 +410,24 @@ stored microphone playback, with the existing true-peak limiter.
 - **Potato** - Developed CReplay, a mod that was heavily referenced in this project.
 
 Camera control uses `webcam.state.refresh` and `webcam.settings.change`, which respond with `webcam.state.changed`. Device refresh remains explicit and uses the existing discovery cache. Capture warming/ready/recording/saving/error transitions, finished device discovery and saved in-game camera layout emit state changes; the browser subscribes without a camera settings polling timer. Camera pixels retain the existing native preview buffer and recording files, while browser crop preview uses its own MediaStream.
+
+### Render messages and state ownership
+
+Bundle preparation belongs to the `tuf-replay` namespace: `replay.render-bundle.prepare`,
+`replay.render-bundle.state.read` and `replay.render-bundle.cancel` produce
+`render-bundle.state.changed`. The independent `tuf-replay-renderer` namespace handles
+`render.start`, `render.state.read`, `render.cancel` and `render.download`; state changes
+arrive as `renderer.job.changed`, and downloads use `download.ready` one-use tickets.
+
+Renderer health, settings and asynchronous folder selection use `health.read`,
+`renderer.settings.read/change`, and `renderer.folder.choose/cancel/open` with named
+outcomes. Settings probe completion and final folder choice are pushed. The companion
+waits for matching job/selection state events, releases its listeners on cancellation
+or connection loss, and does not issue progress or folder status polling commands.
+Snapshots are captured before discovery and retained by job/selection identity so a
+fast completion between the initial command outcome and subscription is preserved.
+
+Download center actions use `downloads.state.read` and `downloads.<item>.<action>`;
+`downloads.state.changed` includes renderer and FFmpeg state. Installer progress is
+throttled to ten notifications per second. The installer performs network download,
+checksum verification and extraction on its existing background workers.
