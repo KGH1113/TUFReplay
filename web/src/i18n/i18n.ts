@@ -8,14 +8,28 @@ import {
 } from "./language";
 import activityEn from "./locales/en/activity.json";
 import commonEn from "./locales/en/common.json";
+import downloadsEn from "./locales/en/downloads.json";
 import microphoneEn from "./locales/en/microphone.json";
+import renderEn from "./locales/en/render.json";
 import replayEn from "./locales/en/replay.json";
+import webcamEn from "./locales/en/webcam.json";
 import activityKo from "./locales/ko/activity.json";
 import commonKo from "./locales/ko/common.json";
+import downloadsKo from "./locales/ko/downloads.json";
 import microphoneKo from "./locales/ko/microphone.json";
+import renderKo from "./locales/ko/render.json";
 import replayKo from "./locales/ko/replay.json";
+import webcamKo from "./locales/ko/webcam.json";
 
-export const namespaces = ["common", "activity", "microphone", "replay"] as const;
+export const namespaces = [
+  "common",
+  "activity",
+  "microphone",
+  "replay",
+  "webcam",
+  "render",
+  "downloads",
+] as const;
 
 let initialization: Promise<void> | null = null;
 
@@ -24,8 +38,24 @@ export function initializeI18n() {
     .use(initReactI18next)
     .init({
       resources: {
-        en: { common: commonEn, activity: activityEn, microphone: microphoneEn, replay: replayEn },
-        ko: { common: commonKo, activity: activityKo, microphone: microphoneKo, replay: replayKo },
+        en: {
+          common: commonEn,
+          activity: activityEn,
+          microphone: microphoneEn,
+          replay: replayEn,
+          render: renderEn,
+          webcam: webcamEn,
+          downloads: downloadsEn,
+        },
+        ko: {
+          common: commonKo,
+          activity: activityKo,
+          microphone: microphoneKo,
+          replay: replayKo,
+          render: renderKo,
+          webcam: webcamKo,
+          downloads: downloadsKo,
+        },
       },
       lng: detectInitialLanguage(),
       fallbackLng: "en",

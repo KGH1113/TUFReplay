@@ -1,6 +1,28 @@
 import type { DomainMessage, LocalAppChannels, LocalMessagePeer } from "@/ports/local-message-peer";
 
 const outcomes: Record<string, string> = {
+  "downloads.state.read": "downloads.state.changed",
+  "downloads.renderer.request": "downloads.state.changed",
+  "downloads.renderer.confirm": "downloads.state.changed",
+  "downloads.renderer.cancel": "downloads.state.changed",
+  "downloads.ffmpeg.request": "downloads.state.changed",
+  "downloads.ffmpeg.confirm": "downloads.state.changed",
+  "downloads.ffmpeg.cancel": "downloads.state.changed",
+  "media.ffmpeg.release": "media.ffmpeg.state.changed",
+  "replay.render-bundle.prepare": "render-bundle.state.changed",
+  "replay.render-bundle.state.read": "render-bundle.state.changed",
+  "replay.render-bundle.cancel": "render-bundle.state.changed",
+  "renderer.settings.read": "renderer.settings.changed",
+  "renderer.settings.change": "renderer.settings.changed",
+  "renderer.folder.choose": "renderer.folder-selection.changed",
+  "renderer.folder.cancel": "renderer.folder-selection.cancelled",
+  "renderer.folder.open": "renderer.folder.opened",
+  "render.start": "renderer.job.changed",
+  "render.state.read": "renderer.job.changed",
+  "render.cancel": "renderer.job.changed",
+  "render.download": "download.ready",
+  "webcam.state.refresh": "webcam.state.changed",
+  "webcam.settings.change": "webcam.state.changed",
   "health.read": "health.snapshot",
   "activity.sessions.read": "activity.sessions.snapshot",
   "activity.legacy-status.read": "activity.legacy-status.snapshot",
@@ -34,6 +56,7 @@ const outcomes: Record<string, string> = {
 
 export function scriptedChannels(
   handle: (command: string, payload: unknown) => unknown,
+  overrideOutcomes: Record<string, string> = {},
 ): LocalAppChannels {
   let id = 0;
   const listeners = new Map<string, Set<(payload: unknown, message: DomainMessage) => void>>();
@@ -58,7 +81,7 @@ export function scriptedChannels(
           const result = await handle(command, payload);
           if (result && typeof result === "object" && "error" in result)
             publish("command.rejected", correlationId, result.error);
-          else publish(outcomes[command], correlationId, result);
+          else publish(overrideOutcomes[command] ?? outcomes[command], correlationId, result);
         } catch (cause) {
           const error = cause as { code?: string; message?: string };
           publish("command.failed", correlationId, {

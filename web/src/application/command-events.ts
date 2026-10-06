@@ -2,10 +2,12 @@ import type { DomainMessage, LocalMessagePeer } from "@/ports/local-message-peer
 
 export class DomainCommandError extends Error {
   readonly code: string;
-  constructor(code: string, message: string) {
+  readonly details?: unknown;
+  constructor(code: string, message: string, details?: unknown) {
     super(message);
     this.name = "DomainCommandError";
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -39,13 +41,14 @@ export function awaitDomainEvent<T>(
       }
       if (message.correlationId !== commandId || settled) return;
       if (failure) {
-        const error = value as { code?: unknown; message?: unknown } | null;
+        const error = value as { code?: unknown; message?: unknown; details?: unknown } | null;
         finish(
           new DomainCommandError(
             typeof error?.code === "string" ? error.code : "command_failed",
             typeof error?.message === "string"
               ? error.message
               : "ADOFAI could not finish this action.",
+            error?.details,
           ),
         );
         return;

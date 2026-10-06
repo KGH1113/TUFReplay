@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { LanguageMenu } from "@/components/activity/language-menu";
+import { DownloadCenter } from "@/components/downloads/download-center";
 import { MicrophoneControls } from "@/components/microphone/microphone-controls";
+import { WebcamControls } from "@/components/webcam/webcam-controls";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
@@ -20,6 +22,8 @@ export function DashboardHeader({
       <h1 className="font-heading text-2xl font-semibold tracking-tight">{t("appName")}</h1>
       <div className="flex items-center gap-2">
         <MicrophoneControls connectionStatus={status} mockEnabled={mockEnabled} />
+        <WebcamControls connectionStatus={status} />
+        <DownloadCenter connectionStatus={status} />
         <span
           role="status"
           className={cn(

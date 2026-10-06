@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using TUFReplay.Webcam.Models;
 
 namespace TUFReplay;
 
@@ -19,6 +20,25 @@ public sealed class TUFReplaySetting
   public int MicrophoneOffsetMs { get; set; }
   public int MicrophoneOffsetConventionVersion { get; set; } = CurrentMicrophoneOffsetConventionVersion;
   public int MicrophoneVolumeDb { get; set; }
+
+  public bool WebcamEnabled { get; set; }
+  public string WebcamDeviceId { get; set; }
+  public string WebcamQuality { get; set; } = "compact";
+  public int WebcamOffsetMs { get; set; }
+  public int WebcamStorageLimitMb { get; set; } = 512;
+  public int WebcamRetentionDays { get; set; } = 7;
+  public bool WebcamPlaybackVisible { get; set; } = true;
+  public bool WebcamLiveVisible { get; set; }
+  public bool WebcamMirror { get; set; }
+  public double WebcamOverlayX { get; set; } = 1d;
+  public double WebcamOverlayY { get; set; } = 1d;
+  public double WebcamOverlayWidth { get; set; } = 0.22d;
+  public double? WebcamOverlayLeft { get; set; }
+  public double? WebcamOverlayTop { get; set; }
+  public double WebcamCropX { get; set; }
+  public double WebcamCropY { get; set; }
+  public double WebcamCropWidth { get; set; } = 1d;
+  public double WebcamCropHeight { get; set; } = 1d;
 
   public static TUFReplaySetting Load(string path)
   {
@@ -51,7 +71,23 @@ public sealed class TUFReplaySetting
   {
     MicrophoneOffsetMs = Math.Max(MinMicrophoneOffsetMs, Math.Min(MaxMicrophoneOffsetMs, MicrophoneOffsetMs));
     MicrophoneVolumeDb = Math.Max(MinMicrophoneVolumeDb, Math.Min(MaxMicrophoneVolumeDb, MicrophoneVolumeDb));
+    WebcamOffsetMs = Math.Max(-1000, Math.Min(1000, WebcamOffsetMs));
+    WebcamStorageLimitMb = Math.Max(64, Math.Min(8192, WebcamStorageLimitMb));
+    WebcamRetentionDays = Math.Max(1, Math.Min(30, WebcamRetentionDays));
+    WebcamQuality = WebcamQuality == "balanced" || WebcamQuality == "quality" ? WebcamQuality : "compact";
+    WebcamOverlayX = NormalizeFraction(WebcamOverlayX, 1d, -1d, 2d);
+    WebcamOverlayY = NormalizeFraction(WebcamOverlayY, 1d, -1d, 2d);
+    WebcamOverlayWidth = NormalizeFraction(WebcamOverlayWidth, 0.22d, 0.1d, 0.5d);
+    WebcamOverlayLeft = NormalizePosition(WebcamOverlayLeft);
+    WebcamOverlayTop = NormalizePosition(WebcamOverlayTop);
+    WebcamCropRect.Get(this).ApplyTo(this);
   }
+
+  private static double? NormalizePosition(double? value) =>
+    value.HasValue && (double.IsNaN(value.Value) || double.IsInfinity(value.Value)) ? null : value;
+
+  private static double NormalizeFraction(double value, double fallback, double min, double max) =>
+    double.IsNaN(value) || double.IsInfinity(value) ? fallback : Math.Max(min, Math.Min(max, value));
 
   private static int LegacyVolumePercentToDb(double volumePercent)
   {

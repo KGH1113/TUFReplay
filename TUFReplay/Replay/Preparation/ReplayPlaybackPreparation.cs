@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Queries;
 using TUFReplay.Activity.Repositories;
+using TUFReplay.Composition;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Playback;
 using TUFReplay.Microphone.Processing;
@@ -20,13 +21,14 @@ using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Unity;
+using TUFReplay.Webcam.Playback;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Preparation;
 
 public static partial class ReplayPlaybackCoordinator
 {
-  private static void QueueMicrophonePreparation(PendingReplay operation)
+  private static void QueueRecordedMediaPreparation(PendingReplay operation)
   {
     ThreadPool.QueueUserWorkItem(_ =>
     {
@@ -63,6 +65,16 @@ public static partial class ReplayPlaybackCoordinator
       }
       finally
       {
+        try
+        {
+          if (!operation.PreparationCancellation.IsCancellationRequested)
+            operation.WebcamLease = FeatureRegistry.WebcamRecording?.Store?.Acquire(operation.Run.Id);
+        }
+        catch (Exception exception)
+        {
+          Main.Instance?.Log("[Replay/Camera] Video unavailable. error=" + exception.Message);
+          operation.WebcamWarning = "The camera video could not be loaded. The replay will continue without it.";
+        }
         UnityMainThread.Post(() => BeginOnMainThread(operation));
       }
     });
@@ -82,7 +94,7 @@ public static partial class ReplayPlaybackCoordinator
 
     PendingReplay previous = _operation;
     ReplaySessionService.ClearActiveContext();
-    previous?.CleanupPreparedMicrophone();
+    previous?.CleanupPreparedMedia();
     _operation = null;
     ClearEditorTransitionState();
     _returnRequested = false;
@@ -217,7 +229,7 @@ public static partial class ReplayPlaybackCoordinator
   {
     if (!IsCurrent(operation.OperationId) || operation.PreparationCancellation.IsCancellationRequested)
     {
-      operation.CleanupPreparedMicrophone();
+      operation.CleanupPreparedMedia();
       return;
     }
 
@@ -237,7 +249,7 @@ public static partial class ReplayPlaybackCoordinator
       )
     )
     {
-      operation.CleanupPreparedMicrophone();
+      operation.CleanupPreparedMedia();
       SetError(operation.OperationId, operation.Run.Id, validationCode, validationMessage);
       return;
     }
@@ -375,9 +387,27 @@ public static partial class ReplayPlaybackCoordinator
       }
     }
 
+    IReplayWebcamPlayer webcamPlayer = null;
+    if (operation.WebcamLease != null)
+    {
+      try
+      {
+        webcamPlayer = new WebcamReplayPlayer(operation.WebcamLease);
+        operation.WebcamLease = null;
+      }
+      catch (Exception exception)
+      {
+        operation.WebcamLease?.Dispose();
+        operation.WebcamLease = null;
+        Main.Instance?.Log("[Replay/Camera] Video initialization failed. error=" + exception.Message);
+        operation.WebcamWarning = "The camera video could not be played. The replay will continue without it.";
+      }
+    }
     HidePreparationNotice();
     if (!string.IsNullOrEmpty(operation.MicrophoneWarning))
       ReplayTimelineHud.ShowNotificationToast("Microphone audio unavailable", operation.MicrophoneWarning);
+    if (!string.IsNullOrEmpty(operation.WebcamWarning))
+      ReplayTimelineHud.ShowNotificationToast("Camera video unavailable", operation.WebcamWarning);
 
     ActiveReplayContext context = new ActiveReplayContext
     {
@@ -402,6 +432,7 @@ public static partial class ReplayPlaybackCoordinator
       ),
       HitContextPlayer = new ReplayHitContextPlayer(operation.HitContexts),
       MicrophonePlayer = microphonePlayer,
+      WebcamPlayer = webcamPlayer,
       Meta = operation.Meta,
     };
 

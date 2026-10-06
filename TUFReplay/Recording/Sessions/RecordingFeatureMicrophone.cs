@@ -4,13 +4,20 @@ using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Microphone.Timing;
 using TUFReplay.Recording.Microphone;
+using TUFReplay.Webcam.Recording;
 
 namespace TUFReplay.Recording.Sessions;
 
 public partial class RecordingFeature
 {
-  private void EndMicrophoneRun(Action<CapturedMicrophoneRecording> completed)
+  private void EndMicrophoneRun(
+    Action<CapturedMicrophoneRecording> completed,
+    bool persistWebcam = false,
+    bool endWebcam = true
+  )
   {
+    if (endWebcam)
+      EndWebcamRun(persistWebcam);
     if (!_microphoneCaptureStarted)
     {
       completed?.Invoke(null);
@@ -63,6 +70,7 @@ public partial class RecordingFeature
 
   internal void TryAnchorMicrophoneTimeline()
   {
+    ObserveWebcamTimeline();
     if (!_microphoneCaptureStarted || _microphoneTimelineAnchor.HasValue)
       return;
 
@@ -77,6 +85,7 @@ public partial class RecordingFeature
   private void QueueEditorRecording()
   {
     DiscardPendingEditorRecording();
+    QueueEditorWebcamRecording();
     var pending = new PendingMicrophoneDisposition(RecordingMicrophoneDisposition.Complete);
     _pendingEditorRecording = pending;
     EndMicrophoneRun(pending.CompleteCapture);
@@ -84,6 +93,9 @@ public partial class RecordingFeature
 
   private void DiscardPendingEditorRecording()
   {
+    PendingWebcamDisposition webcam = _pendingEditorWebcamRecording;
+    _pendingEditorWebcamRecording = null;
+    webcam?.CompleteDisposition(persist: false);
     PendingMicrophoneDisposition recording = _pendingEditorRecording;
     _pendingEditorRecording = null;
     recording?.CompleteDisposition(persist: false);

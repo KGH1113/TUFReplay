@@ -92,7 +92,7 @@ public static partial class ReplayPlaybackCoordinator
 
     bool shouldRearmRecording = !operation.AllowBackground;
     ReplaySessionService.ClearActiveContext();
-    operation.CleanupPreparedMicrophone();
+    operation.CleanupPreparedMedia();
     SetTerminal(operation, ReplayPlaybackStates.Completed, message);
     _returnRequested = false;
     ClearEditorTransitionState();
@@ -151,7 +151,7 @@ public static partial class ReplayPlaybackCoordinator
   private static void FinishReturn(PendingReplay operation)
   {
     ReplaySessionService.ClearActiveContext();
-    operation.CleanupPreparedMicrophone();
+    operation.CleanupPreparedMedia();
     string terminalState = _returnTerminalState ?? ReplayPlaybackStates.Completed;
     SetTerminal(
       operation,

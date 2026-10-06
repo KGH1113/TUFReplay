@@ -56,7 +56,8 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
     },
   });
   const pickerMutation = useMutation({
-    mutationFn: async (runId: string) => (await apiPromise).replay.pickLevelFile(runId),
+    mutationFn: async ({ runId, purpose }: { runId: string; purpose: "replay" | "render" }) =>
+      (await apiPromise).replay.pickLevelFile(runId, purpose),
   });
 
   const play = useCallback(
@@ -75,11 +76,11 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
   );
 
   const pickLevelFile = useCallback(
-    async (runId: string) => {
+    async (runId: string, purpose: "replay" | "render" = "replay") => {
       const generation = ++pickerGeneration.current;
       setPickerResult(null);
       try {
-        const next = await pickerMutation.mutateAsync(runId);
+        const next = await pickerMutation.mutateAsync({ runId, purpose });
         if (generation !== pickerGeneration.current) return false;
         setPickerResult(next);
         return true;
@@ -119,7 +120,7 @@ export function useReplayControl(connectionStatus: ConnectionStatus) {
       : "",
     errorRunId: playMutation.isError ? (playMutation.variables?.runId ?? null) : null,
     pickerResult,
-    pickingRunId: pickerMutation.isPending ? (pickerMutation.variables ?? null) : null,
+    pickingRunId: pickerMutation.isPending ? (pickerMutation.variables?.runId ?? null) : null,
     play,
     pickLevelFile,
     clearLevelFilePicker,
