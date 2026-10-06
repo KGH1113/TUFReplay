@@ -135,6 +135,12 @@ export const activityChartDtoSchema = z
   })
   .passthrough();
 
+export const activityChartSnapshotDtoSchema = z.object({
+  url: z.url(),
+  byteLength: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+  metadata: activityChartDtoSchema.omit({ LevelText: true }),
+});
+
 export const runDeleteResultDtoSchema = z.object({ RunId: z.string(), Deleted: z.boolean() });
 export const recordingDeleteResultDtoSchema = runDeleteResultDtoSchema;
 export const recordingKeepResultDtoSchema = z.object({ RunId: z.string(), Permanent: z.boolean() });

@@ -36,7 +36,8 @@ export function useLevelSessionData(
   const runs = useQuery(runsOptions);
   const chart = useQuery({
     queryKey: chartKey,
-    queryFn: async () => (await apiPromise).activity.getLogicalLevelChart(id as string),
+    queryFn: async ({ signal }) =>
+      (await apiPromise).activity.getLogicalLevelChart(id as string, { signal }),
     enabled: Boolean(id && chartAvailable),
   });
 

@@ -19,6 +19,7 @@ internal static class Program
       RenderBundleSuite.RunAll();
       CameraRenderStatisticsSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
+      ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
       CGEventCaptureRegressionSuite.RunAll();
       PerformanceRegressionSuite.RunAll(root);
