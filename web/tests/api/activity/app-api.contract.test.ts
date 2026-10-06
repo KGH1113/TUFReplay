@@ -1,14 +1,22 @@
 import { describe, expect, test } from "bun:test";
 
-import { createActivityApi } from "@/api/activity/create-activity-api";
+import { createActivityApi as createActivityApiWithDownloads } from "@/api/activity/create-activity-api";
 import { createHealthApi, SUPPORTED_PROTOCOL_VERSION } from "@/api/health/create-health-api";
 import { createRunApi } from "@/api/run/create-run-api";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
 import { ApiError } from "@/shared/errors/api-error";
 import { scriptedChannels } from "../../fixtures/local-message-peer";
 
 type Call = { method: string; params: unknown };
 
 const clientsWith = scriptedChannels;
+
+const createActivityApi = (clients: LocalAppChannels) =>
+  createActivityApiWithDownloads(clients, {
+    readText: async () => {
+      throw new Error("This test should not download chart bytes.");
+    },
+  });
 
 function validAppSession() {
   return {
@@ -22,6 +30,74 @@ function validAppSession() {
 }
 
 describe("layered AppApi contract", () => {
+  test("loads large chart text through an injected download port and keeps control data small", async () => {
+    const calls: Call[] = [];
+    const signal = new AbortController().signal;
+    const levelText = `{"comment":"${'한🙂\n"'.repeat(400_000)}"}`;
+    const ticket = {
+      url: "http://127.0.0.1:32145/ipc/download/chart-ticket",
+      byteLength: new TextEncoder().encode(levelText).byteLength,
+      metadata: { LevelSessionId: "level-1", FloorCount: 4896 },
+    };
+    const api = createActivityApiWithDownloads(
+      clientsWith((method, params) => {
+        calls.push({ method, params });
+        if (method === "activity.sessions.read") return [validAppSession()];
+        return ticket;
+      }),
+      {
+        async readText(download, options) {
+          expect(download).toMatchObject({ url: ticket.url, byteLength: ticket.byteLength });
+          expect(options?.signal).toBe(signal);
+          return levelText;
+        },
+      },
+    );
+
+    expect(ticket.byteLength).toBeGreaterThan(2 * 1024 * 1024);
+    expect(JSON.stringify(ticket).length).toBeLessThan(256);
+    expect(await api.getLogicalLevelChart("level-1", { signal })).toEqual({
+      levelSessionId: "level-1",
+      levelText,
+      floorCount: 4896,
+    });
+    expect(calls).toEqual([{ method: "activity.chart.read", params: { id: "level-1" } }]);
+    expect((await api.listAppSessions(0, 20))[0].id).toBe("app-1");
+  });
+
+  test("rejects malformed chart tickets before downloading and preserves domain failures", async () => {
+    let downloads = 0;
+    const downloadPort = {
+      readText: async () => {
+        downloads++;
+        return "{}";
+      },
+    };
+    const malformed = createActivityApiWithDownloads(
+      clientsWith(() => ({
+        url: "http://127.0.0.1:32145/ipc/download/chart-ticket",
+        byteLength: -1,
+        metadata: { LevelSessionId: "level-1", FloorCount: 4896 },
+      })),
+      downloadPort,
+    );
+    await expect(malformed.getLogicalLevelChart("level-1")).rejects.toMatchObject({
+      kind: "validation",
+      code: "invalid_response",
+    });
+    const missing = createActivityApiWithDownloads(
+      clientsWith(() => ({
+        error: { code: "level_file_missing", message: "Choose the chart again." },
+      })),
+      downloadPort,
+    );
+    await expect(missing.getLogicalLevelChart("level-1")).rejects.toMatchObject({
+      kind: "domain",
+      code: "level_file_missing",
+    });
+    expect(downloads).toBe(0);
+  });
+
   test("validates health and maps its wire payload", async () => {
     const api = createHealthApi(
       clientsWith(() => ({

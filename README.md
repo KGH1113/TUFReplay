@@ -273,7 +273,7 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 ## AdofaiIpc messages
 
 TUFReplay requires **AdofaiIpc 1.0.0**, WebSocket wire protocol **3**, and TUFReplay
-namespace protocol **8**. The local connection uses `/ipc/ws` and the
+namespace protocol **9**. The local connection uses `/ipc/ws` and the
 `adofai-ipc.v3` subprotocol. The companion uses the canonical TypeScript SDK
 source committed under `vendor/adofai-ipc`, with its license and source revision;
 no published npm SDK package, linked sibling checkout, or registry release is required.
@@ -320,6 +320,13 @@ or second HTTP client. Peer disconnect cancels its pending selection operation.
 WAV bytes stream from SQLite through the dedicated download route; the browser
 opens the URL normally and does not buffer or base64 encode the complete file.
 The download route is a data path; command handling uses WebSocket messages.
+
+Chart snapshots contain `{url, byteLength, metadata: {LevelSessionId, FloorCount}}`.
+The chart's validated UTF-8 text streams through the same single-use download route;
+it is never embedded in a WebSocket control message. This allows charts larger than
+the IPC's 2MiB control-message limit without disconnecting or reloading activity history.
+The web application depends on a text-download port, injects its browser adapter at
+composition, verifies the received byte length, and cancels obsolete chart downloads.
 
 The microphone timing dialog retains global offset and gain editing, transient
 calibration waveforms, and game preview playback. Calibration recordings are not
