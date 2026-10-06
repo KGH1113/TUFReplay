@@ -1,3 +1,4 @@
+import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
 import type { RenderApi } from "@/api/render/render-api";
 import {
   outputDirectoryCancelSchema,
@@ -11,7 +12,6 @@ import {
   renderPreferencesSchema,
   renderSettingsSchema,
 } from "@/schemas/render/render-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 import { ApiError } from "@/shared/errors/api-error";
 
 export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
@@ -24,12 +24,27 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
     return clients.rendererNamespace;
   };
   return {
-    getHealth: () => callAdofaiIpc(renderer(), "health.get", {}, renderHealthSchema),
-    getSettings: () => callAdofaiIpc(renderer(), "settings.get", {}, renderSettingsSchema),
-    updateSettings: (options, preferences) =>
-      callAdofaiIpc(
+    getHealth: () =>
+      sendDomainCommand(
         renderer(),
-        "settings.update",
+        "health.read",
+        "renderer.health.snapshot",
+        {},
+        renderHealthSchema,
+      ),
+    getSettings: () =>
+      sendDomainCommand(
+        renderer(),
+        "renderer.settings.read",
+        "renderer.settings.changed",
+        {},
+        renderSettingsSchema,
+      ),
+    updateSettings: (options, preferences) =>
+      sendDomainCommand(
+        renderer(),
+        "renderer.settings.change",
+        "renderer.settings.changed",
         {
           ...options,
           ...(preferences ? { preferences: renderPreferencesSchema.parse(preferences) } : {}),
@@ -37,38 +52,35 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
         renderSettingsSchema,
       ),
     chooseOutputDirectory: (initialPath) =>
-      callAdofaiIpc(
+      sendDomainCommand(
         renderer(),
-        "output-directory.choose",
+        "renderer.folder.choose",
+        "renderer.folder-selection.changed",
         initialPath ? { initialPath } : {},
         outputDirectoryChoiceSchema,
       ),
-    getOutputDirectorySelection: (selectionId) =>
-      callAdofaiIpc(
-        renderer(),
-        "output-directory.selection.get",
-        { selectionId },
-        outputDirectoryChoiceSchema,
-      ),
     cancelOutputDirectorySelection: (selectionId) =>
-      callAdofaiIpc(
+      sendDomainCommand(
         renderer(),
-        "output-directory.selection.cancel",
+        "renderer.folder.cancel",
+        "renderer.folder-selection.cancelled",
         { selectionId },
         outputDirectoryCancelSchema,
       ),
     openOutputDirectory: (jobId) =>
-      callAdofaiIpc(
+      sendDomainCommand(
         renderer(),
-        "output-directory.open",
+        "renderer.folder.open",
+        "renderer.folder.opened",
         jobId ? { jobId } : {},
         outputDirectoryOpenSchema,
       ),
     exportBundle(runId, options, levelPath) {
       const validated = renderOptionsSchema.parse(options);
-      return callAdofaiIpc(
+      return sendDomainCommand(
         clients.namespace,
-        "replay.render-bundle.export",
+        "replay.render-bundle.prepare",
+        "render-bundle.state.changed",
         {
           runId,
           ...(levelPath ? { levelPath } : {}),
@@ -79,38 +91,55 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
       );
     },
     getExportStatus: (jobId) =>
-      callAdofaiIpc(
+      sendDomainCommand(
         clients.namespace,
-        "replay.render-bundle.status.get",
+        "replay.render-bundle.state.read",
+        "render-bundle.state.changed",
         { jobId },
         renderExportStatusSchema,
       ),
     cancelExport: (jobId) =>
-      callAdofaiIpc(
+      sendDomainCommand(
         clients.namespace,
         "replay.render-bundle.cancel",
+        "render-bundle.state.changed",
         { jobId },
         renderExportStatusSchema,
       ),
     start(manifestPath, options) {
-      return callAdofaiIpc(
+      return sendDomainCommand(
         renderer(),
         "render.start",
+        "renderer.job.changed",
         { manifestPath, ...renderOptionsSchema.parse(options) },
         renderJobSchema,
       );
     },
     getStatus: (jobId) =>
-      callAdofaiIpc(renderer(), "render.status.get", { jobId }, renderJobSchema),
-    cancel: (jobId) => callAdofaiIpc(renderer(), "render.cancel", { jobId }, renderJobSchema),
+      sendDomainCommand(
+        renderer(),
+        "render.state.read",
+        "renderer.job.changed",
+        { jobId },
+        renderJobSchema,
+      ),
+    cancel: (jobId) =>
+      sendDomainCommand(
+        renderer(),
+        "render.cancel",
+        "renderer.job.changed",
+        { jobId },
+        renderJobSchema,
+      ),
     async prepareDownload(jobId) {
-      const ticket = await callAdofaiIpc(
+      const ticket = await sendDomainCommand(
         renderer(),
         "render.download",
+        "download.ready",
         { jobId },
         renderDownloadSchema,
       );
-      const url = new URL(ticket);
+      const url = new URL(ticket.url);
       if (
         url.protocol !== "http:" ||
         url.hostname !== "127.0.0.1" ||
@@ -126,7 +155,7 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
           kind: "validation",
           code: "invalid_response",
         });
-      return ticket;
+      return ticket.url;
     },
   };
 }

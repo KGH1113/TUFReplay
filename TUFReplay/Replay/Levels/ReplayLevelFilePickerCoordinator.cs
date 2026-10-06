@@ -16,6 +16,8 @@ namespace TUFReplay.Replay.Levels;
 
 public static class ReplayLevelFilePickerCoordinator
 {
+  public static event Action<ReplayLevelFilePickerResult> Completed;
+
   private sealed class PickOperation
   {
     public readonly long Generation;
@@ -81,6 +83,17 @@ public static class ReplayLevelFilePickerCoordinator
         return Error(null, "file_picker_not_found", "The level file picker operation was not found.");
       return _active.Result ?? Pending(_active);
     }
+  }
+
+  public static void Cancel(string operationId)
+  {
+    lock (Gate)
+    {
+      if (_active == null || _active.Id != operationId)
+        return;
+      Shutdown();
+    }
+    UnityMainThread.Post(ReplayLevelOpenService.ReleaseHeldBlack);
   }
 
   public static void Shutdown()
@@ -363,8 +376,9 @@ public static class ReplayLevelFilePickerCoordinator
         return false;
       result.OperationId = operation.Id;
       operation.Result = result;
-      return true;
     }
+    Completed?.Invoke(result);
+    return true;
   }
 
   private static ReplayLevelFilePickerResult Pending(PickOperation operation) =>

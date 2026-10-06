@@ -1,6 +1,8 @@
 import type { DownloadsApi, DownloadsState } from "@/api/downloads/downloads-api";
 
-export function createDownloadsApiMock(): DownloadsApi {
+export function createDownloadsApiMock(
+  changed: (state: DownloadsState) => void = () => {},
+): DownloadsApi {
   const state: DownloadsState = {
     Renderer: {
       Status: "ready",
@@ -40,16 +42,21 @@ export function createDownloadsApiMock(): DownloadsApi {
             clearInterval(tick);
             target.Status = item === "renderer" ? "restart-required" : "ready";
           }
+          changed(snapshot());
         }, 500);
       }
       if (action === "cancel") {
         clearInterval(tick);
         target.Status = "cancelled";
       }
+      changed(snapshot());
       return snapshot();
     },
     async cancelPendingFfmpeg() {
-      if (state.Ffmpeg.Status === "awaiting-consent") state.Ffmpeg.Status = "cancelled";
+      if (state.Ffmpeg.Status === "awaiting-consent") {
+        state.Ffmpeg.Status = "cancelled";
+        changed(snapshot());
+      }
     },
   };
 }

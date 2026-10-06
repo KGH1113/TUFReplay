@@ -28,6 +28,22 @@ namespace TUFReplay.Replay.Export;
 // This module owns only neutral files. No renderer assembly is loaded or referenced.
 public static class RenderBundleExportService
 {
+  public static event Action<object> Changed;
+
+  public static object[] Snapshots()
+  {
+    lock (Gate)
+      return Jobs.Values.Select(StatusLocked).ToArray();
+  }
+
+  private static void Notify(Job job)
+  {
+    object state;
+    lock (Gate)
+      state = StatusLocked(job);
+    Changed?.Invoke(state);
+  }
+
   private static readonly object Gate = new object();
   private static readonly Dictionary<string, Job> Jobs = new Dictionary<string, Job>();
 
@@ -347,6 +363,10 @@ public static class RenderBundleExportService
           : "The recording could not be prepared. Check the level file and available disk space, then try again.";
       }
     }
+    finally
+    {
+      Notify(job);
+    }
   }
 
   private static async Task ValidateLevel(Job job, StoredReplayRun run, string target, CancellationToken token)
@@ -407,6 +427,7 @@ public static class RenderBundleExportService
   {
     lock (Gate)
       job.Progress = progress;
+    Notify(job);
   }
 
   private static object StatusLocked(Job job) =>
@@ -422,7 +443,7 @@ public static class RenderBundleExportService
       errorDetails = job.ErrorDetails,
     };
 
-  private static object Error(string code, string message) => new { error = new { code, message } };
+  private static object Error(string code, string message) => TUFReplay.Shared.Ipc.IpcDomainError.Create(code, message);
 
   private static void CleanupExpired(Job current)
   {

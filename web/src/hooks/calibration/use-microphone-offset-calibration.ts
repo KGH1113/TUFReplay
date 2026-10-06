@@ -23,21 +23,14 @@ import {
 
 const LEVEL_LAUNCH_DELAY_MS = 650;
 const MOCK_CLEAR_DELAY_MS = 1_350;
-const STATUS_POLL_INTERVAL_MS = 100;
 const VOLUME_UPDATE_INTERVAL_MS = 50;
 const TIMING_SETTINGS_SAVE_DELAY_MS = 120;
 
-type CalibrationPollTimer = ReturnType<typeof setTimeout>;
-
-interface CalibrationStatusPollingOptions {
+interface CalibrationStatusSubscriptionOptions {
   getGateway: () => CalibrationGateway | null;
   getOperationId: () => string | null;
   onStatus: (status: MicrophoneCalibrationStatus, operationId: string) => Promise<void> | void;
   onError: (cause: unknown) => void;
-  intervalMs?: number;
-  isVisible?: () => boolean;
-  schedule?: (callback: () => void, delayMs: number) => CalibrationPollTimer;
-  cancelSchedule?: (timer: CalibrationPollTimer) => void;
 }
 
 export function createCalibrationOffsetSaveQueue(onError: (cause: unknown) => void) {
@@ -106,52 +99,26 @@ export function createCalibrationOffsetReconciler(initialOffsetMs: number) {
   };
 }
 
-export function installCalibrationStatusPolling({
+export function installCalibrationStatusSubscription({
   getGateway,
   getOperationId,
   onStatus,
   onError,
-  intervalMs = STATUS_POLL_INTERVAL_MS,
-  isVisible = () => typeof document === "undefined" || document.visibilityState === "visible",
-  schedule = (callback, delayMs) => setTimeout(callback, delayMs),
-  cancelSchedule = (timer) => clearTimeout(timer),
-}: CalibrationStatusPollingOptions) {
-  let cancelled = false;
-  let pollingActive = true;
-  let timer: CalibrationPollTimer | null = null;
-
-  const poll = async () => {
-    if (cancelled) return;
-    if (!isVisible()) {
-      timer = schedule(() => void poll(), intervalMs);
-      return;
-    }
-    const gateway = getGateway();
-    const operationId = getOperationId();
-    try {
-      if (gateway && operationId) {
-        const status = await gateway.getMicrophoneCalibrationStatus(operationId);
-        if (!cancelled && status.OperationId === operationId && getOperationId() === operationId) {
-          await onStatus(status, operationId);
-          pollingActive = isCalibrationPollingState(status.State);
-        }
-      }
-    } catch (cause) {
-      if (!cancelled) onError(cause);
-    } finally {
-      if (!cancelled && pollingActive) timer = schedule(() => void poll(), intervalMs);
-    }
-  };
-
-  timer = schedule(() => void poll(), intervalMs);
+}: CalibrationStatusSubscriptionOptions) {
+  let disposed = false;
+  const gateway = getGateway();
+  const unsubscribe =
+    gateway?.subscribeMicrophoneCalibrationStatus((status) => {
+      const operationId = getOperationId();
+      if (disposed || !operationId || status.OperationId !== operationId) return;
+      void Promise.resolve(onStatus(status, operationId)).catch((error) => {
+        if (!disposed) onError(error);
+      });
+    }, onError) ?? (() => {});
   return () => {
-    cancelled = true;
-    if (timer !== null) cancelSchedule(timer);
+    disposed = true;
+    unsubscribe();
   };
-}
-
-export function isCalibrationPollingState(state: MicrophoneCalibrationStatus["State"]) {
-  return state !== "idle" && state !== "editing" && state !== "error";
 }
 
 export function useMicrophoneOffsetCalibration(
@@ -620,7 +587,7 @@ export function useMicrophoneOffsetCalibration(
       state.phase === "error"
     )
       return undefined;
-    return installCalibrationStatusPolling({
+    return installCalibrationStatusSubscription({
       getGateway: () => gatewayRef.current ?? activeGatewayRef.current,
       getOperationId: () => operationIdRef.current,
       onStatus: async (status, operationId) => {

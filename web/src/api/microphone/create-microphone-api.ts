@@ -1,3 +1,4 @@
+import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
 import type { MicrophoneApi } from "@/api/microphone/microphone-api";
 import {
   mapMicrophoneDevicesState,
@@ -7,15 +8,15 @@ import {
   microphoneDevicesStateDtoSchema,
   microphoneTimingSettingsDtoSchema,
 } from "@/schemas/microphone/microphone-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 
 export function createMicrophoneApi(clients: AdofaiIpcClients): MicrophoneApi {
   return {
     async getDevices() {
       return mapMicrophoneDevicesState(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "microphone.devices.get",
+          "microphone.devices.refresh",
+          "microphone.devices.changed",
           {},
           microphoneDevicesStateDtoSchema,
         ),
@@ -23,9 +24,10 @@ export function createMicrophoneApi(clients: AdofaiIpcClients): MicrophoneApi {
     },
     async setEnabled(enabled) {
       return mapMicrophoneDevicesState(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "microphone.enabled.set",
+          "microphone.access.change",
+          "microphone.devices.changed",
           { enabled },
           microphoneDevicesStateDtoSchema,
         ),
@@ -33,9 +35,10 @@ export function createMicrophoneApi(clients: AdofaiIpcClients): MicrophoneApi {
     },
     async selectDevice(deviceId) {
       return mapMicrophoneDevicesState(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "microphone.device.select",
+          "microphone.device.choose",
+          "microphone.devices.changed",
           { deviceId },
           microphoneDevicesStateDtoSchema,
         ),
@@ -43,9 +46,10 @@ export function createMicrophoneApi(clients: AdofaiIpcClients): MicrophoneApi {
     },
     async setOffset(offsetMs) {
       return mapMicrophoneTimingSettings(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "microphone.offset.set",
+          "microphone.offset.change",
+          "microphone.timing.changed",
           { offsetMs },
           microphoneTimingSettingsDtoSchema,
         ),
@@ -53,9 +57,10 @@ export function createMicrophoneApi(clients: AdofaiIpcClients): MicrophoneApi {
     },
     async setVolume(volumeDb) {
       return mapMicrophoneTimingSettings(
-        await callAdofaiIpc(
+        await sendDomainCommand(
           clients.namespace,
-          "microphone.volume.set",
+          "microphone.volume.change",
+          "microphone.timing.changed",
           { volumeDb },
           microphoneTimingSettingsDtoSchema,
         ),

@@ -1,8 +1,9 @@
 import type { WebcamApi } from "@/api/webcam/webcam-api";
+import type { WebcamState } from "@/models/webcam/webcam-model";
 import { mapWebcamState } from "@/models/webcam/webcam-model";
 import { webcamSettingsPatchSchema, webcamStateDtoSchema } from "@/schemas/webcam/webcam-schema";
 
-export function createWebcamApiMock(): WebcamApi {
+export function createWebcamApiMock(onState?: (state: WebcamState) => void): WebcamApi {
   let state = mapWebcamState(
     webcamStateDtoSchema.parse({
       Supported: true,
@@ -30,6 +31,7 @@ export function createWebcamApiMock(): WebcamApi {
     async updateSettings(patch) {
       state = { ...state, ...webcamSettingsPatchSchema.parse(patch) };
       state.status = state.enabled ? "ready" : "off";
+      onState?.(structuredClone(state));
       return structuredClone(state);
     },
   };

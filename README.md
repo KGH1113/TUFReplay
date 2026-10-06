@@ -82,7 +82,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc 0.4.1 or newer; a missing installation is attempted automatically
+- AdofaiIpc 1.0.0 or newer; a missing installation is attempted automatically
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -103,7 +103,7 @@ On macOS, the existing `TUFReplayMicrophoneCapture.app` helper keeps an AVFounda
 
 Windows keeps one FFmpeg DirectShow capture process open and drains frames continuously. A separate `libx264` encoder process is started ahead of the run and receives frames through a bounded queue only after attachment, without reopening the camera. Idle capture rotates two reusable YUV buffers so the latest complete frame remains available without copying every idle frame. When the Windows camera is first enabled or a render is first started without FFmpeg, the companion web dialog asks for consent before downloading the platform build into `Mods/TUFReplay/FFmpeg/<platform>/`. The web download center next to Camera shares the same consent, progress, cancellation and retry controls. Opening camera settings or the download center alone does not download anything. The Unity runtime bundle has no FFmpeg installation modal. Windows camera capture and TUFReplay-Renderer use this same installation; neither consults PATH, another mod's installation, or a manually configured executable. Existing executable-path settings are ignored. Camera capture on Linux is currently unsupported.
 
-FFmpeg downloads are separate from release ZIPs and survive TUFReplay runtime updates. The installer keeps vendor notices and a receipt containing the provider URL, version/build configuration and executable SHA-256. It checks the Windows provider's archive checksum and verifies the executable before publishing the installation. Download, hashing, extraction and executable checks run off the game thread. A cancelled or failed download never becomes a ready installation. macOS camera capture continues to use the native helper; FFmpeg setup on macOS is needed only for rendering. The independent renderer requests installation through `media.ffmpeg.request`, polls `media.ffmpeg.status`, and can dismiss a pending consent prompt with `media.ffmpeg.cancel-pending` over ADOFAI IPC. The web UI approves through `media.ffmpeg.confirm`; installation resumes the waiting camera or render automatically.
+FFmpeg downloads are separate from release ZIPs and survive TUFReplay runtime updates. The installer keeps vendor notices and a receipt containing the provider URL, version/build configuration and executable SHA-256. It checks the Windows provider's archive checksum and verifies the executable before publishing the installation. Download, hashing, extraction and executable checks run off the game thread. A cancelled or failed download never becomes a ready installation. macOS camera capture continues to use the native helper; FFmpeg setup on macOS is needed only for rendering. The independent renderer sends `media.ffmpeg.request` through an application-owned recorder port backed by the IPC local peer router and waits for `media.ffmpeg.state.changed`. It releases its own pending request with `media.ffmpeg.release`; camera and web request owners remain independent. The web download center sends `downloads.ffmpeg.confirm`, and pushed installation state resumes the waiting camera or render automatically. No loopback HTTP client or installation status polling is used.
 
 TUFReplay alone exposes `downloads.status` and `downloads.renderer.request|confirm|cancel`. The icon-only download center next to Camera lists installed components without nested cards. Installation consent, progress, errors and restart instructions appear in a separate web dialog after the dropdown closes. Requests from first-time camera activation or rendering open that same dialog automatically. The center can install the independent TUFReplay-Renderer mod from its most recently published official GitHub release, including betas, after explicit consent. That release must contain `TUFReplay-Renderer.zip` and its generated `TUFReplay-Renderer.download.json` verification manifest. The installer checks package size, SHA-256, mod identity and version, rejects unsafe ZIP paths and user-data entries, and publishes a staged folder atomically. It never overwrites an existing Renderer folder or hot-loads the DLL; fully restart ADOFAI and enable the mod after installation. A missing release or incomplete existing folder has a specific recovery message. No release lookup or download happens until installation is approved.
 
@@ -247,7 +247,7 @@ The web UI bundles English and Korean translation resources under `web/src/i18n/
 
 The run card's Render action opens the same original-or-matching-level chooser used for replay. Choosing another file verifies its gameplay with ADOFAI before opening the video settings. Render selection restores the game screen after verification instead of holding it black for immediate replay. The selected path belongs only to this render and is revalidated during bundle export; it is never saved as the default for another run. Selecting a level does not start replay playback.
 
-Video settings start with **Recommended** quality: Lowest (720p30), Low (720p60), Medium (1080p60), High (1440p60), Highest (2160p60), or Extreme (2160p120). The independent Renderer reports the ADOFAI computer's CPU, memory, GPU and maximum texture size, and checks matching H.264 hardware encoders with two synthetic frames on a background worker. A passing hardware encoder is preferred; otherwise presets use software encoding. The suggested default is a conservative CPU/memory/GPU heuristic rather than a level benchmark, and Extreme always requires an explicit selection. The browser's own hardware is never used. First-use FFmpeg installation refreshes the recommendation before bundle export. Older Renderers that omit system information use conservative software defaults. **Advanced** exposes the existing individual video, codec, encoder and game-display options; entering it copies the currently shown recommendation, and quality changes retain the user's save location, media selections, audio gain and ending delay.
+Video settings start with **Recommended** quality: Lowest (720p30), Low (720p60), Medium (1080p60), High (1440p60), Highest (2160p60), or Extreme (2160p120). The independent Renderer reports the ADOFAI computer's CPU, memory, GPU and maximum texture size, and checks matching H.264 hardware encoders with two synthetic frames on a background worker. A passing hardware encoder is preferred; otherwise presets use software encoding. The suggested default is a conservative CPU/memory/GPU heuristic rather than a level benchmark, and Extreme always requires an explicit selection. The browser's own hardware is never used. First-use FFmpeg installation refreshes the recommendation before bundle export. **Advanced** exposes the existing individual video, codec, encoder and game-display options; entering it copies the currently shown recommendation, and quality changes retain the user's save location, media selections, audio gain and ending delay.
 
 **Remember these settings** also saves the video settings mode and quality. The automatic quality follows the next system recommendation; a selected tier or Advanced mode is restored. Clients that omit the optional preference fields retain the saved preference.
 
@@ -264,7 +264,7 @@ shared clients/UI → schemas → models → api → state/mocks → hooks
                   → components → sections → pages → app
 ```
 
-AdofaiIpc and HTTP payloads enter the application as unknown data and are validated by Zod in the API layer. TanStack Query owns server and IPC state; calibration editing state stays in its feature reducer. Hooks act as page/component ViewModels: they own application state, derived display values, and commands, while pages and components focus on composition and rendering. The app composition root is the only place that selects the production or mock `AppApi` bundle. Canonical shadcn primitives live in `web/src/shared/ui` and cannot import domain code.
+High-level application services depend on application-owned message ports in `web/src/ports`; only the transport adapter and app composition root import the vendored AdofaiIpc SDK. WebSocket messages and HTTP metadata enter as unknown data and are validated by Zod in the API adapter layer. Feature messages update TanStack Query caches; calibration editing state stays in its feature reducer. Hooks act as page/component ViewModels: they own application state, derived display values, and commands, while pages and components focus on composition and rendering. The app composition root is the only place that selects the production or mock `AppApi` bundle. Canonical shadcn primitives live in `web/src/shared/ui` and cannot import domain code.
 
 Tests live separately under `web/tests`, mirror the source domains, and use purpose-specific suffixes such as `*.unit.test.ts`, `*.contract.test.ts`, and `*.integration.test.tsx`. The architecture contract test enforces the allowed import direction.
 
@@ -318,93 +318,62 @@ Format or check the web workspace:
 
 The checked-in VS Code settings select CSharpier for C# and Biome for web files, with format-on-save enabled for both. Install the `csharpier.csharpier-vscode` and `biomejs.biome` extensions to use those settings.
 
-## AdofaiIpc API
+## AdofaiIpc messages
 
-The local API is intended for the companion web UI and development tools. TUFReplay requires
-AdofaiIpc protocol version 2. Clients should probe `/ipc/health`, wait for the `tuf-replay`
-namespace to reach `ready`, and then call TUFReplay through:
+TUFReplay requires **AdofaiIpc 1.0.0**, WebSocket wire protocol **3**, and TUFReplay
+namespace protocol **8**. The local connection uses `/ipc/ws` and the
+`adofai-ipc.v3` subprotocol. The companion uses the canonical TypeScript SDK
+source committed under `vendor/adofai-ipc`, with its license and source revision;
+no published npm SDK package, linked sibling checkout, or registry release is required.
 
-```http
-POST /ipc
-Content-Type: application/json
-```
+The `tuf-replay` namespace becomes ready after feature initialization. Both peers
+send named commands and domain events over one connection. A transport acceptance
+means a command was queued; the named result event indicates what happened.
+Every result carries the original command id as `correlationId`. Domain failures
+are `command.rejected` events with actionable `code` and `message` fields.
+Commands are never replayed automatically after reconnecting.
 
-```json
-{
-  "namespace": "tuf-replay",
-  "method": "health.get",
-  "params": {},
-  "id": "optional-client-id"
-}
-```
+| Command | Domain result |
+| --- | --- |
+| `health.read` | `health.snapshot` |
+| `activity.sessions.read` | `activity.sessions.snapshot` |
+| `activity.legacy-status.read` | `activity.legacy-status.snapshot` |
+| `activity.level.read` | `activity.level.snapshot` |
+| `activity.runs.read` | `activity.runs.snapshot` |
+| `activity.chart.read` | `activity.chart.snapshot` |
+| `activity.run.remove` | `activity.run.removed` |
+| `replay.start`, `replay.state.read` | `replay.state.changed` |
+| `replay.level-file.choose` | `replay.level-file.finished` |
+| `microphone.devices.refresh`, `microphone.access.change`, `microphone.device.choose` | `microphone.devices.changed` |
+| `microphone.offset.change`, `microphone.volume.change` | `microphone.timing.changed` |
+| `microphone.recording.remove`, `microphone.recording.retain` | `microphone.recording.removed`, `microphone.recording.retained` |
+| `microphone.recording.download` | `download.ready` |
+| `calibration.start`, `calibration.state.read`, `calibration.preview.start`, `calibration.preview.stop`, `calibration.offset.change`, `calibration.volume.change`, `calibration.close` | `calibration.state.changed` |
+| `calibration.result.read` | `calibration.result.ready` |
 
-Registered methods:
+The mod also sends `activity.changed` after database persistence commits, replay
+state changes at their lifecycle boundaries, microphone access changes when
+capture becomes locked or unlocked, and calibration state and preview clock
+updates. Preview clock updates are limited to 20 Hz; the UI interpolates its
+playhead between samples. These notifications replace activity, replay, picker,
+and calibration status polling. Activity history still loads bounded pages on
+demand. A fresh namespace subscription receives health, replay and calibration
+snapshots, and reconnecting refreshes the relevant application caches.
 
-- `health.get`
-- `activity.app-sessions.list`
-- `activity.level-session.get`
-- `activity.level-session.runs.list`
-- `activity.level-session.chart.get`
-- `activity.logical-level.get`
-- `activity.logical-level.runs.list` (`appSessionIds` scopes the logical level's runs to the selected day)
-- `activity.logical-level.chart.get`
-- `activity.run.delete` (`runId` identifies the run; active replays cannot be deleted)
-- `microphone.recording.export` (`runId` identifies a recorded run; returns a short-lived download URL)
-- `replay.play`
-- `replay.status.get`
-- `replay.render-bundle.export` (`runId`, optional `levelPath`, `includeWebcam`, and `includeMicrophone`; starts background export after a game-thread settings snapshot)
-- `replay.render-bundle.status.get` (`jobId`; returns progress, terminal state, or the prepared `manifestPath`)
-- `replay.render-bundle.cancel` (`jobId`; cancels an active preparation job and removes its partial files)
-- `replay.level-file.pick` (waits for selection and in-game gameplay-hash verification, then returns `selected`, `mismatch`, `cancelled`, or `error`; optional `purpose: "render"` restores the game screen after verification, while omitted or `"replay"` holds it for replay startup)
-- `microphone.devices.get`
-- `microphone.enabled.set` (`enabled` is a boolean; access changes are locked during gameplay and calibration)
-- `microphone.device.select` (`deviceId` is the opaque ID returned by `microphone.devices.get`, or `null` for the system default)
-- `microphone.offset.set` (`offsetMs` updates the global replay microphone timing outside gameplay and calibration)
-- `microphone.volume.set` (`volumeDb` updates the global replay microphone gain outside gameplay and calibration)
-- `microphone.calibration.start`
-- `microphone.calibration.status.get`
-- `microphone.calibration.result.get`
-- `microphone.calibration.preview.play`
-- `microphone.calibration.preview.stop`
-- `microphone.calibration.offset.set`
-- `microphone.calibration.volume.set`
-- `microphone.calibration.close`
-- `webcam.settings.get` (`refreshDevices: true` forces camera discovery; ordinary polling uses a 30-second device cache)
-- `webcam.settings.update` (partial camelCase settings: `enabled`, `deviceId`, `quality`, `storageLimitMb`, `retentionDays`, `offsetMs`, `playbackVisible`, `liveVisible`, `mirror`, `crop: {x, y, width, height}`, and legacy `overlayX`, `overlayY`, `overlayWidth`; crop is an atomic normalized source rectangle, with each dimension at least 0.05. Capture settings are locked during recording/finalization, while display and synchronization remain adjustable.)
+The native file picker emits its final selected/mismatch/cancelled/error result
+when selection and gameplay verification finish. There is no picker-status loop
+or second HTTP client. Peer disconnect cancels its pending selection operation.
 
-The run card's microphone menu uses `microphone.recording.export` to request a one-use URL.
-The browser opens that URL as a normal download; AdofaiIpc sends the WAV directly from
-SQLite through its existing HTTP listener. The web UI never buffers or base64-encodes the
-recording. Expired or already-used URLs require another export request.
-The web workspace uses the matching `@adofai-ipc/client` 0.4.1 npm package.
+`download.ready` contains `{url, byteLength}` for a one-use local streaming URL.
+WAV bytes stream from SQLite through the dedicated download route; the browser
+opens the URL normally and does not buffer or base64 encode the complete file.
+The download route is a data path; command handling uses WebSocket messages.
 
-TUFReplay registers its namespace as `initializing` while handlers are being attached and marks it
-`ready` only after feature initialization completes. AdofaiIpc rejects premature calls with
-`namespace_initializing`; an initialization failure is exposed as `namespace_error`.
-
-`health.get` returns the TUFReplay namespace protocol and installed mod version:
-
-```json
-{
-  "Ok": true,
-  "Mod": "TUFReplay",
-  "ModVersion": "0.2.0-beta.4",
-  "BuildFlavor": "standard",
-  "AutoSubmissionProtocolVersion": 0,
-  "ProtocolVersion": 7,
-  "ReplayEngineId": "tufreplay.replay.v2",
-  "ReplayFormatVersion": 1,
-  "ServerVersion": 1
-}
-```
-
-Web clients must compare `ProtocolVersion` with the protocol they support before calling other
-TUFReplay methods. A missing or different protocol version means the installed mod is incompatible.
-The companion web UI asks the user to fully quit and restart ADOFAI so the startup updater can install
-a compatible TUFReplay release. `ServerVersion` remains as a legacy compatibility field and is not the
-TUFReplay namespace protocol version.
-
-The timing dialog first offers compact global offset and microphone-gain controls without opening a level. Starting precise calibration transitions the same dialog into the existing calibration progress UI and opens the packaged level. Calibration is a transient session: its run and WAV are not written to the activity database. A successful clear exposes 2,048-bin native-input and microphone waveforms to the web editor. Every calibration starts from the raw, uncorrected microphone timing so repeated calibrations measure the absolute microphone delay instead of the residual after the previous correction. Preview playback runs in ADOFAI while the browser polls the game clock; the calibration's current offset and `-20 dB` to `+30 dB` microphone gain (`0 dB` by default, up to about `31.6x` before limiting) are applied to its preview, while the saved global values are applied to stored microphone replays. The true-peak limiter uses a `-0.3 dBFS` ceiling with a `30 ms` release so amplified playback remains protected while recovering quickly after transients.
+The microphone timing dialog retains global offset and gain editing, transient
+calibration waveforms, and game preview playback. Calibration recordings are not
+written into activity history. Every calibration starts from raw uncorrected
+capture timing. The saved offset and `-20 dB` to `+30 dB` gain remain applied to
+stored microphone playback, with the existing true-peak limiter.
 
 ## Tech Stack
 
@@ -423,3 +392,26 @@ The timing dialog first offers compact global offset and microphone-gain control
 
 - **Teo** — Gave his idea to me and started this project.
 - **Potato** - Developed CReplay, a mod that was heavily referenced in this project.
+
+Camera control uses `webcam.state.refresh` and `webcam.settings.change`, which respond with `webcam.state.changed`. Device refresh remains explicit and uses the existing discovery cache. Capture warming/ready/recording/saving/error transitions, finished device discovery and saved in-game camera layout emit state changes; the browser subscribes without a camera settings polling timer. Camera pixels retain the existing native preview buffer and recording files, while browser crop preview uses its own MediaStream.
+
+### Render messages and state ownership
+
+Bundle preparation belongs to the `tuf-replay` namespace: `replay.render-bundle.prepare`,
+`replay.render-bundle.state.read` and `replay.render-bundle.cancel` produce
+`render-bundle.state.changed`. The independent `tuf-replay-renderer` namespace handles
+`render.start`, `render.state.read`, `render.cancel` and `render.download`; state changes
+arrive as `renderer.job.changed`, and downloads use `download.ready` one-use tickets.
+
+Renderer health, settings and asynchronous folder selection use `health.read`,
+`renderer.settings.read/change`, and `renderer.folder.choose/cancel/open` with named
+outcomes. Settings probe completion and final folder choice are pushed. The companion
+waits for matching job/selection state events, releases its listeners on cancellation
+or connection loss, and does not issue progress or folder status polling commands.
+Snapshots are captured before discovery and retained by job/selection identity so a
+fast completion between the initial command outcome and subscription is preserved.
+
+Download center actions use `downloads.state.read` and `downloads.<item>.<action>`;
+`downloads.state.changed` includes renderer and FFmpeg state. Installer progress is
+throttled to ten notifications per second. The installer performs network download,
+checksum verification and extraction on its existing background workers.

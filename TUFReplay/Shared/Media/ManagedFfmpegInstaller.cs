@@ -18,6 +18,24 @@ namespace TUFReplay.Shared.Media;
 public sealed class ManagedFfmpegInstaller : IDisposable
 {
   public const long MaximumBytes = 256L * 1024 * 1024;
+  public event Action Changed;
+  private long _nextProgressNotification;
+
+  private void NotifyChanged(bool progress = false)
+  {
+    if (progress)
+    {
+      long now = System.Diagnostics.Stopwatch.GetTimestamp();
+      lock (_gate)
+      {
+        if (now < _nextProgressNotification)
+          return;
+        _nextProgressNotification = now + System.Diagnostics.Stopwatch.Frequency / 10;
+      }
+    }
+    Changed?.Invoke();
+  }
+
   private readonly object _gate = new object();
   private readonly string _directory;
   private readonly FfmpegPlatform _platform;
@@ -85,6 +103,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
         _state.Status = "awaiting-consent";
         _state.Error = null;
       }
+      NotifyChanged();
       return _state.Clone();
     }
   }
@@ -94,6 +113,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     lock (_gate)
       if (_state.Status == "awaiting-consent")
         _state.Status = "declined";
+    NotifyChanged();
   }
 
   public void Cancel()
@@ -104,6 +124,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       if (_state.Status == "awaiting-consent")
         _state.Status = "cancelled";
     }
+    NotifyChanged();
   }
 
   public void Confirm()
@@ -121,6 +142,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       CancellationToken token = _cancel.Token;
       Work = Task.Run(() => InstallAsync(token));
     }
+    NotifyChanged();
   }
 
   private async Task InstallAsync(CancellationToken token)
@@ -172,6 +194,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
               {
                 lock (_gate)
                   _state.DownloadedBytes = bytes;
+                NotifyChanged(progress: true);
               }
             )
             .ConfigureAwait(false);
@@ -417,6 +440,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       _state.Path = path;
       _state.Error = error;
     }
+    NotifyChanged();
   }
 
   public void Dispose()

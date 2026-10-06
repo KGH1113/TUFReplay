@@ -1,12 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { createWebcamApi } from "@/api/webcam/create-webcam-api";
 import { createWebcamApiMock } from "@/mocks/webcam/create-webcam-api-mock";
-import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
-
-function clientsWith(call: (method: string, params: unknown) => unknown): AdofaiIpcClients {
-  const namespace = { call: async (method: string, params: unknown) => call(method, params) };
-  return { namespace, pickerNamespace: namespace } as unknown as AdofaiIpcClients;
-}
+import { scriptedChannels as clientsWith } from "../../fixtures/local-message-peer";
 
 function stateDto() {
   return {
@@ -44,15 +39,15 @@ describe("webcam IPC contract", () => {
     expect(state.crop).toEqual({ x: 0, y: 0, width: 1, height: 1 });
     await api.updateSettings({ crop: { x: 0.25, y: 0, width: 0.5, height: 0.6 }, offsetMs: 120 });
     expect(calls).toEqual([
-      { method: "webcam.settings.get", params: {} },
+      { method: "webcam.state.refresh", params: {} },
       {
-        method: "webcam.settings.update",
+        method: "webcam.settings.change",
         params: { crop: { x: 0.25, y: 0, width: 0.5, height: 0.6 }, offsetMs: 120 },
       },
     ]);
     await api.getSettings(true);
     expect(calls.at(-1)).toEqual({
-      method: "webcam.settings.get",
+      method: "webcam.state.refresh",
       params: { refreshDevices: true },
     });
   });

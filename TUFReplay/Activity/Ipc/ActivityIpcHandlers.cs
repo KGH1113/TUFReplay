@@ -1,12 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using AdofaiIpc;
 using AdofaiIpc.Core;
 using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Ipc;
 using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Queries;
 using TUFReplay.Activity.Repositories;
+using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Preparation;
@@ -18,7 +20,7 @@ namespace TUFReplay.Activity.Ipc;
 
 public static class ActivityIpcHandlers
 {
-  public static object ListAppSessions(IpcRequest request)
+  public static object ListAppSessions(IpcCommand request)
   {
     IpcPagination pagination = IpcPagination.Parse(request);
     var output = new List<ActivityAppSessionDto>();
@@ -34,10 +36,10 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetLegacyReplayStatus(IpcRequest request) =>
+  public static object GetLegacyReplayStatus(IpcCommand request) =>
     new ActivityLegacyReplayStatusDto { HasLegacyReplays = RunRepository.HasLegacyReplay() };
 
-  public static object GetLevelSession(IpcRequest request)
+  public static object GetLevelSession(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLevelSessionId();
@@ -48,7 +50,7 @@ public static class ActivityIpcHandlers
       : ActivityLevelSessionOverviewDto.From(session);
   }
 
-  public static object ListRuns(IpcRequest request)
+  public static object ListRuns(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLevelSessionId();
@@ -65,7 +67,7 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetChart(IpcRequest request)
+  public static object GetChart(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLevelSessionId();
@@ -94,7 +96,7 @@ public static class ActivityIpcHandlers
     }
   }
 
-  public static object GetLogicalLevel(IpcRequest request)
+  public static object GetLogicalLevel(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
@@ -104,7 +106,7 @@ public static class ActivityIpcHandlers
       : ActivityLogicalLevelOverviewDto.From(level);
   }
 
-  public static object ListLogicalLevelRuns(IpcRequest request)
+  public static object ListLogicalLevelRuns(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
@@ -127,7 +129,7 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetLogicalLevelChart(IpcRequest request)
+  public static object GetLogicalLevelChart(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
@@ -155,7 +157,7 @@ public static class ActivityIpcHandlers
     }
   }
 
-  public static object DeleteRun(IpcRequest request)
+  public static object DeleteRun(IpcCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
@@ -176,6 +178,7 @@ public static class ActivityIpcHandlers
 
       FeatureRegistry.MicrophoneRecording?.CompleteRunDeletion(runId);
       FeatureRegistry.WebcamRecording?.Store?.DeleteRun(runId);
+      ActivityChanges.Notify(runId);
       return new ActivityRunDeleteResultDto { RunId = runId, Deleted = true };
     }
     catch (Exception exception)

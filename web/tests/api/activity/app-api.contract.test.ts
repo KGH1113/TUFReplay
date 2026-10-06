@@ -3,15 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { createActivityApi } from "@/api/activity/create-activity-api";
 import { createHealthApi, SUPPORTED_PROTOCOL_VERSION } from "@/api/health/create-health-api";
 import { createRunApi } from "@/api/run/create-run-api";
-import type { AdofaiIpcClients } from "@/shared/clients/adofai-ipc-client";
 import { ApiError } from "@/shared/errors/api-error";
+import { scriptedChannels } from "../../fixtures/local-message-peer";
 
 type Call = { method: string; params: unknown };
 
-function clientsWith(call: (method: string, params: unknown) => unknown): AdofaiIpcClients {
-  const namespace = { call: async (method: string, params: unknown) => call(method, params) };
-  return { namespace, pickerNamespace: namespace } as unknown as AdofaiIpcClients;
-}
+const clientsWith = scriptedChannels;
 
 function validAppSession() {
   return {
@@ -89,7 +86,7 @@ describe("layered AppApi contract", () => {
       },
     ]);
     expect(calls).toEqual([
-      { method: "activity.app-sessions.list", params: { offset: 40, limit: 20 } },
+      { method: "activity.sessions.read", params: { offset: 40, limit: 20 } },
     ]);
   });
 
@@ -103,7 +100,7 @@ describe("layered AppApi contract", () => {
     );
 
     expect(await api.getLegacyReplayStatus()).toEqual({ hasLegacyReplays: true });
-    expect(calls).toEqual([{ method: "activity.legacy-replay-status.get", params: {} }]);
+    expect(calls).toEqual([{ method: "activity.legacy-status.read", params: {} }]);
 
     const malformed = createActivityApi(clientsWith(() => ({ HasLegacyReplays: "yes" })));
     expect(malformed.getLegacyReplayStatus()).rejects.toMatchObject({ kind: "validation" });
@@ -144,7 +141,7 @@ describe("layered AppApi contract", () => {
     const api = createRunApi(
       clientsWith((method, params) => {
         calls.push({ method, params });
-        if (method === "microphone.recording.keep") {
+        if (method === "microphone.recording.retain") {
           return { RunId: "run-7", Permanent: true };
         }
         return { RunId: "run-7", Deleted: true };
@@ -161,9 +158,9 @@ describe("layered AppApi contract", () => {
       changed: true,
     });
     expect(calls).toEqual([
-      { method: "activity.run.delete", params: { runId: "run-7" } },
-      { method: "microphone.recording.delete", params: { runId: "run-7" } },
-      { method: "microphone.recording.keep", params: { runId: "run-7" } },
+      { method: "activity.run.remove", params: { runId: "run-7" } },
+      { method: "microphone.recording.remove", params: { runId: "run-7" } },
+      { method: "microphone.recording.retain", params: { runId: "run-7" } },
     ]);
   });
 
@@ -172,13 +169,15 @@ describe("layered AppApi contract", () => {
     const api = createRunApi(
       clientsWith((method, params) => {
         calls.push({ method, params });
-        return { Url: "http://127.0.0.1:32145/ipc/download/test-ticket" };
+        return { url: "http://127.0.0.1:32145/ipc/download/test-ticket", byteLength: 44 };
       }),
     );
 
     expect(await api.prepareMicrophoneRecordingDownload("run-7")).toBe(
       "http://127.0.0.1:32145/ipc/download/test-ticket",
     );
-    expect(calls).toEqual([{ method: "microphone.recording.export", params: { runId: "run-7" } }]);
+    expect(calls).toEqual([
+      { method: "microphone.recording.download", params: { runId: "run-7" } },
+    ]);
   });
 });

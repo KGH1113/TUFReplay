@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using AdofaiIpc;
 using AdofaiIpc.Core;
 using TUFReplay.Microphone.Devices;
 using TUFReplay.Microphone.Ipc;
@@ -11,7 +12,7 @@ namespace TUFReplay.Microphone.Ipc;
 
 public static class MicrophoneIpcHandlers
 {
-  public static object GetDevices(IpcRequest request)
+  public static object GetDevices(IpcCommand request)
   {
     try
     {
@@ -24,7 +25,7 @@ public static class MicrophoneIpcHandlers
     }
   }
 
-  public static object SelectDevice(IpcRequest request)
+  public static object SelectDevice(IpcCommand request)
   {
     if (!IpcParams.TryNullableString(request, "deviceId", out string deviceId))
       return IpcDomainError.Create("invalid_microphone_device_id", "deviceId must be a string or null.");
@@ -57,7 +58,7 @@ public static class MicrophoneIpcHandlers
     }
   }
 
-  public static object SetEnabled(IpcRequest request)
+  public static object SetEnabled(IpcCommand request)
   {
     if (!IpcParams.TryBool(request, "enabled", out bool enabled))
       return IpcDomainError.Create("invalid_microphone_enabled", "enabled must be a boolean.");
@@ -88,7 +89,7 @@ public static class MicrophoneIpcHandlers
     }
   }
 
-  public static object SetOffset(IpcRequest request)
+  public static object SetOffset(IpcCommand request)
   {
     int? offsetMs = IpcParams.OptionalInt(request, "offsetMs");
     if (!offsetMs.HasValue)
@@ -105,7 +106,7 @@ public static class MicrophoneIpcHandlers
     return MicrophoneTimingSettingsDto.From(state);
   }
 
-  public static object SetVolume(IpcRequest request)
+  public static object SetVolume(IpcCommand request)
   {
     int? volumeDb = IpcParams.OptionalInt(request, "volumeDb");
     if (!volumeDb.HasValue)

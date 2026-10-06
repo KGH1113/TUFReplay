@@ -1,3 +1,4 @@
+using AdofaiIpc;
 using AdofaiIpc.Core;
 using TUFReplay.Calibration.Ipc;
 using TUFReplay.Calibration.Models;
@@ -8,10 +9,10 @@ namespace TUFReplay.Calibration.Ipc;
 
 public static class MicrophoneCalibrationIpcHandlers
 {
-  public static object Start(IpcRequest request) =>
+  public static object Start(IpcCommand request) =>
     MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.Start());
 
-  public static object GetStatus(IpcRequest request)
+  public static object GetStatus(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -20,7 +21,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.GetStatus());
   }
 
-  public static object GetResult(IpcRequest request)
+  public static object GetResult(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -33,7 +34,7 @@ public static class MicrophoneCalibrationIpcHandlers
       : MicrophoneCalibrationResultDto.From(result);
   }
 
-  public static object PlayPreview(IpcRequest request)
+  public static object PlayPreview(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -42,7 +43,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.PlayPreview(operationId));
   }
 
-  public static object StopPreview(IpcRequest request)
+  public static object StopPreview(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -51,7 +52,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.StopPreview());
   }
 
-  public static object SetOffset(IpcRequest request)
+  public static object SetOffset(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -65,7 +66,7 @@ public static class MicrophoneCalibrationIpcHandlers
     );
   }
 
-  public static object SetVolume(IpcRequest request)
+  public static object SetVolume(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -79,7 +80,7 @@ public static class MicrophoneCalibrationIpcHandlers
     );
   }
 
-  public static object Close(IpcRequest request)
+  public static object Close(IpcCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -88,7 +89,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.Close(operationId));
   }
 
-  private static bool TryOperationId(IpcRequest request, out string operationId, out object error)
+  private static bool TryOperationId(IpcCommand request, out string operationId, out object error)
   {
     if (IpcParams.TryRequiredString(request, "operationId", out operationId))
     {
