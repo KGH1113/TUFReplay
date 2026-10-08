@@ -55,7 +55,12 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 `hitsFile`, and `media`. The level object includes its absolute `path`, `fileSha256`,
 `gameplayHash`, and `gameplayHashVersion`. Replay metadata includes
 `gameplayStartSongPosition`, `effectivePitch`, `gameInputOffsetMs`, `noFailMode`,
-`judgmentSystem`, `judgmentDifficulty`, `startTile`, `result`, `wonTimeUs`, and `terminalTimeUs`.
+`judgmentSystem`, `judgmentDifficulty`, optional `hitMarginLimit`, `startTile`, `result`,
+`wonTimeUs`, and `terminalTimeUs`. New recordings capture ADOFAI's gameplay hit limit
+(`None`, `PerfectsOnly`, or `PurePerfectOnly`) when gameplay starts. Older recordings omit
+the setting; consumers must preserve their legacy behavior when it is absent.
+Renderer versions that do not read `hitMarginLimit` will continue to use their existing
+judgment behavior until updated.
 Version 1 exports runs from tile 0 and recorded mid-level/checkpoint starts. The renderer
 restores the native checkpoint state and music position. Negative start tiles are invalid;
 the renderer also checks that the tile exists in the loaded level. `result` preserves

@@ -50,6 +50,13 @@ public static class RenderBundleValidation
     Valid(Finite(metadata.effectivePitch.Value) && metadata.effectivePitch.Value > 0, "effectivePitch");
     Valid(metadata.terminalTimeUs.Value >= 0, "terminalTimeUs");
     Valid(
+      metadata.hitMarginLimit == null
+        || metadata.hitMarginLimit == "None"
+        || metadata.hitMarginLimit == "PerfectsOnly"
+        || metadata.hitMarginLimit == "PurePerfectOnly",
+      "hitMarginLimit"
+    );
+    Valid(
       !metadata.wonTimeUs.HasValue
         || (metadata.wonTimeUs.Value >= 0 && metadata.wonTimeUs.Value <= metadata.terminalTimeUs.Value),
       "wonTimeUs"

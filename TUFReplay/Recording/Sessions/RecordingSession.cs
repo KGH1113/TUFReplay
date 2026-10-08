@@ -139,6 +139,8 @@ public class RecordingSession
       RefreshPitchLocked();
       if (!Data.JudgmentDifficulty.HasValue)
         Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
+      if (Data.HitMarginLimit == null)
+        Data.HitMarginLimit = GetCurrentHitMarginLimit();
       Data.GameInputOffsetMs = GetCurrentGameInputOffsetMs() ?? Data.GameInputOffsetMs;
       if (!_gameplayStateReached)
       {
@@ -559,6 +561,19 @@ public class RecordingSession
       if (difficulty < (int)RunJudgmentDifficulty.Lenient || difficulty > (int)RunJudgmentDifficulty.Strict)
         return null;
       return (RunJudgmentDifficulty)difficulty;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private static string GetCurrentHitMarginLimit()
+  {
+    try
+    {
+      HitMarginLimit limit = GCS.hitMarginLimit;
+      return Enum.IsDefined(typeof(HitMarginLimit), limit) ? limit.ToString() : null;
     }
     catch
     {

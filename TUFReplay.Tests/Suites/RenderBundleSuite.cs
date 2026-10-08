@@ -69,6 +69,14 @@ internal static class RenderBundleSuite
       judgmentSystem = "ModernClassic",
     };
     RenderBundleValidation.ValidateMetadata(metadata);
+    var recordedLimit = new RecordedRunPayload { HitMarginLimit = "PerfectsOnly" };
+    var roundTrip = JsonConvert.DeserializeObject<ReplayMetadata>(recordedLimit.ToActivityMetaJson());
+    Assert(roundTrip.hitMarginLimit == "PerfectsOnly", "The recorded hit limit was lost from replay metadata.");
+    metadata.hitMarginLimit = roundTrip.hitMarginLimit;
+    RenderBundleValidation.ValidateMetadata(metadata);
+    metadata.hitMarginLimit = "Unknown";
+    Error(() => RenderBundleValidation.ValidateMetadata(metadata), "render_metadata_field_invalid", "hitMarginLimit");
+    metadata.hitMarginLimit = null;
     metadata.effectivePitch = null;
     Error(() => RenderBundleValidation.ValidateMetadata(metadata), "render_metadata_field_missing", "effectivePitch");
     metadata.effectivePitch = float.NaN;

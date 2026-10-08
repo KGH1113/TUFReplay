@@ -141,6 +141,7 @@ public static partial class ReplaySessionService
     RestoreReplayGameInputOffset();
     RestoreReplayPitch();
     RestoreReplayJudgmentDifficulty();
+    RestoreReplayHitMarginLimit();
     _activeContext = null;
     _pendingReplayPitchApplyFrame = -1;
     _suppressReplayMarkFail = false;
@@ -312,6 +313,7 @@ public static partial class ReplaySessionService
     _suppressReplayMarkFail = true;
 
     ApplyReplayNoFailNow();
+    ApplyReplayHitMarginLimitNow();
     return true;
   }
 
