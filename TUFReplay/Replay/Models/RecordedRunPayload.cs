@@ -51,6 +51,7 @@ public class RecordedRunPayload
   public float? EffectivePitch;
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
+  public string HitMarginLimit;
   public RunJudgmentSystem JudgmentSystem;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
@@ -80,6 +81,7 @@ public class RecordedRunPayload
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,
       judgmentSystem = JudgmentSystem.ToString(),
+      hitMarginLimit = HitMarginLimit,
       pitchSource = PitchSource,
       inputFormat = NativeInputFormatV2,
       inputTimeBase = InputTimeBase,

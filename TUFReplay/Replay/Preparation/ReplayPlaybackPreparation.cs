@@ -441,6 +441,7 @@ public static partial class ReplayPlaybackCoordinator
     ReplaySessionService.ApplyReplayGameInputOffsetNow();
     ReplaySessionService.ApplyReplayPitchNow();
     ReplaySessionService.ApplyReplayJudgmentDifficultyNow();
+    ReplaySessionService.ApplyReplayHitMarginLimitNow();
     editor.SelectFloor(editor.floors[operation.Run.StartTile]);
     SetOperationState(operation, ReplayPlaybackStates.Starting, "Starting replay.");
     lock (Gate)

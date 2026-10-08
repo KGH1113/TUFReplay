@@ -42,6 +42,8 @@ public class ActiveReplayContext
   public bool ReplayPitchApplied;
   public int? OriginalJudgmentDifficulty;
   public bool ReplayJudgmentDifficultyApplied;
+  public int? OriginalHitMarginLimit;
+  public bool ReplayHitMarginLimitApplied;
   public bool? OriginalNoFailMode;
   public bool ReplayNoFailApplied;
 }

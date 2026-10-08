@@ -304,6 +304,7 @@ public static class RenderBundleExportService
             noFailMode = meta.noFailMode ?? run.NoFailMode,
             judgmentSystem = meta.judgmentSystem,
             judgmentDifficulty = run.JudgmentDifficulty?.ToString(),
+            hitMarginLimit = meta.hitMarginLimit,
             startTile = run.StartTile,
             result = run.Result?.ToLowerInvariant(),
             wonTimeUs = meta.wonTimeUs,
