@@ -1,15 +1,15 @@
 {
   "source": "https://github.com/KGH1113/adofai-ipc",
-  "sourceRevision": "a7b62e2229444a456f18fe47534dd696acce1f41",
+  "sourceRevision": "4ec23d1a357ae706d1efd69509f586235f7e3bba",
   "sourceDirty": false,
   "version": "1.0.0",
   "protocolVersion": 3,
   "files": {
-    "browser-transport.ts": "e8469cfd3cef559c82bc56bc1a4ec1afb32f37fb2e109eea2597842ccc3e41c7",
-    "client.ts": "a83b07f46e31b2b5218af60b8931ccfe21074910e85246ce40e0198b04c06e21",
+    "browser-transport.ts": "2114b717829b35f14eaf4a600d696a9201afcea8aef87e1cb1be9b608618f513",
+    "client.ts": "5fd04aee9ac0a4c509f1ebbc891abfac25066437c7ff04398805194fcc13254b",
     "errors.ts": "fbedd686c09cc1093f03b7d2af487281f5adb138be671e2aad8a5baac11fc6d1",
     "index.ts": "95a382ac06471631d5463df67acb0ef8310d0e901bd23585abfb8c79b67d69d9",
-    "types.ts": "ca361963280572a0ded190f93fe55ba055703b8a8719e64e6e6e1c2e09a62d80",
+    "types.ts": "c205e7d38a079c7220115109d75166870cbfc733851cfa082972713019b7c8ed",
     "version.ts": "f05c5afbb53158d5d66ebcb9fd143094cf2fc4b0a3cf95a43cad1ca9d70b2dbc"
   }
 }
