@@ -45,8 +45,7 @@ public sealed class Main
   {
     try
     {
-      if (AdofaiIpcMigrationBridge.PrepareAndNotify(modEntry))
-        return true;
+      IpcRuntime.Connect(modEntry.Path);
 
       Instance = new Main(modEntry);
       TUFReplaySettingStore.Initialize(System.IO.Path.Combine(Instance.InstallPath, "Settings.json"));

@@ -10,6 +10,7 @@ source "$SCRIPTS_DIR/lib/context.sh"
 source "$SCRIPTS_DIR/lib/logging.sh"
 
 run_task "Validate local build inputs" "$TASKS_DIR/validate/local-build-inputs.sh"
+run_task "Verify bundled IPC v2" "$TASKS_DIR/verify/adofai-ipc.sh"
 
 if is_macos; then
   run_task "Build macOS microphone helper" "$TASKS_DIR/build/macos-microphone-helper.sh"

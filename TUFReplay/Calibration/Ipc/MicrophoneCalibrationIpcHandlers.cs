@@ -1,5 +1,3 @@
-using AdofaiIpc;
-using AdofaiIpc.Core;
 using TUFReplay.Calibration.Ipc;
 using TUFReplay.Calibration.Models;
 using TUFReplay.Composition;
@@ -9,10 +7,10 @@ namespace TUFReplay.Calibration.Ipc;
 
 public static class MicrophoneCalibrationIpcHandlers
 {
-  public static object Start(IpcCommand request) =>
+  public static object Start(JsonCommand request) =>
     MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.Start());
 
-  public static object GetStatus(IpcCommand request)
+  public static object GetStatus(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -21,7 +19,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.GetStatus());
   }
 
-  public static object GetResult(IpcCommand request)
+  public static object GetResult(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -34,7 +32,7 @@ public static class MicrophoneCalibrationIpcHandlers
       : MicrophoneCalibrationResultDto.From(result);
   }
 
-  public static object PlayPreview(IpcCommand request)
+  public static object PlayPreview(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -43,7 +41,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.PlayPreview(operationId));
   }
 
-  public static object StopPreview(IpcCommand request)
+  public static object StopPreview(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -52,7 +50,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.StopPreview());
   }
 
-  public static object SetOffset(IpcCommand request)
+  public static object SetOffset(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -66,7 +64,7 @@ public static class MicrophoneCalibrationIpcHandlers
     );
   }
 
-  public static object SetVolume(IpcCommand request)
+  public static object SetVolume(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -80,7 +78,7 @@ public static class MicrophoneCalibrationIpcHandlers
     );
   }
 
-  public static object Close(IpcCommand request)
+  public static object Close(JsonCommand request)
   {
     if (!TryOperationId(request, out string operationId, out object error))
       return error;
@@ -89,7 +87,7 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.Close(operationId));
   }
 
-  private static bool TryOperationId(IpcCommand request, out string operationId, out object error)
+  private static bool TryOperationId(JsonCommand request, out string operationId, out object error)
   {
     if (IpcParams.TryRequiredString(request, "operationId", out operationId))
     {

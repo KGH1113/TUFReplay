@@ -19,7 +19,7 @@ TUFREPLAY_MAC_INPUT_LIBRARY="$TUFREPLAY_MAC_INPUT_LIBRARY" \
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   "$DOTNET_EXE" run --project "$TUFREPLAY_PROJECT_ROOT/TUFReplay.Tests/TUFReplay.Tests.csproj" \
     -p:TUFReplayDll="$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" \
-    -p:AdofaiIpcDll="$ADOFAI_IPC_DLL" \
+    -p:AdofaiIpcBundle="$ADOFAI_IPC_BUNDLE" \
     -p:TUFReplayBootstrapDll="$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.Bootstrap.dll" \
     -p:TUFReplayUpdateEngineDll="$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll" \
     -p:UnityModManagerDll="$UNITY_MOD_MANAGER_DLL" \

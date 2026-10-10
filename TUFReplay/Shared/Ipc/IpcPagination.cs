@@ -1,6 +1,4 @@
 using System;
-using AdofaiIpc;
-using AdofaiIpc.Core;
 
 namespace TUFReplay.Shared.Ipc;
 
@@ -18,7 +16,7 @@ public readonly struct IpcPagination
   public int Offset { get; }
   public int Limit { get; }
 
-  public static IpcPagination Parse(IpcCommand request)
+  public static IpcPagination Parse(JsonCommand request)
   {
     int offset = Math.Max(0, IpcParams.OptionalInt(request, "offset") ?? 0);
     int limit = Math.Min(MaxLimit, Math.Max(1, IpcParams.OptionalInt(request, "limit") ?? DefaultLimit));

@@ -83,7 +83,7 @@ Required at runtime:
 
 - A Dance of Fire and Ice
 - UnityModManager
-- AdofaiIpc 1.0.0 or newer; a missing installation is attempted automatically
+- ADOFAI-IPC 2.0.0 bundled DLLs (included; no separate IPC mod installation)
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
 TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
@@ -184,9 +184,9 @@ The build script:
 - Runs the C# WAV, schema-generation/reset, incremental BLOB, and replay-contract tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.
 
-The fixed AdofaiIpc dependency shim selects a versioned bootstrap before TUFReplay starts. A missing AdofaiIpc installation is downloaded and verified once per process. Disabled, outdated, install-failure, and load-failure states stop the TUFReplay core and are shown in the shared AdofaiIpc dependency dialog without changing the user's UMM setting. The TUFReplay update engine verifies the complete ZIP and stages its bundled bootstrap as `Trial`; that bootstrap is used on the next game launch. If the matching TUFReplay runtime fails to initialize, its bootstrap trial is discarded while the current runtime remains active.
+TUFReplay bundles Contracts and Loader at the mod root and the runtime/manifest under `ipc/`. Builds verify the committed `vendor/adofai-ipc-runtime/SHA256SUMS`; no IPC dependency is downloaded or enabled automatically. The loader selects one compatible process runtime, and disabling TUFReplay disposes only its feature registration. The TUFReplay updater validates and copies its candidate bundle before loading its own payload; an already selected IPC host stays active until game restart.
 
-The first TUFReplay release using `AdofaiIpc.DependencyShim.dll` must be installed manually once. Later releases update the versioned bootstrap without overwriting a loaded DLL.
+Moving from the v1 dependency shim requires a full manual reinstall of this mod and a game restart once. The versioned TUFReplay launcher and its own update policy remain in place.
 
 Standard builds include a `Receive beta updates` toggle in the Unity Mod Manager GUI. Auto-submission builds show their separate update channel and version. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
@@ -196,11 +196,7 @@ Important environment variables:
 - `ADOFAI_MODS_DIR`: ADOFAI Mods directory.
 - `ADOFAI_MANAGED`: Unity managed assembly directory.
 - `DOTNET_EXE`: .NET SDK executable.
-- `ADOFAI_IPC_DLL`: AdofaiIpc assembly path.
-- `ADOFAI_IPC_BOOTSTRAP_DLL`: AdofaiIpc bootstrap assembly path.
-- `ADOFAI_IPC_DEPENDENCY_SHIM_DLL`: fixed AdofaiIpc dependency shim assembly path.
-- `ADOFAI_IPC_MIGRATION_DLL`: AdofaiIpc migration assembly path.
-- `ADOFAI_IPC_INFO_JSON`: AdofaiIpc metadata path used by the package workflow for version verification.
+- `ADOFAI_IPC_BUNDLE`: optional override for the committed IPC v2 bundle directory.
 - `TUFREPLAY_INSTALL_DIR`: install output override.
 - `TUFREPLAY_BUILD_FLAVOR`: `standard` (default) or `auto-submission`.
 - `TUFREPLAY_BUILD_VERSION`: explicit package version; required for auto-submission builds.
@@ -325,7 +321,7 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 
 ## AdofaiIpc messages
 
-TUFReplay requires **AdofaiIpc 1.0.0**, WebSocket wire protocol **3**, and TUFReplay
+TUFReplay requires **ADOFAI-IPC 2.0.0**, WebSocket wire protocol **3**, and TUFReplay
 namespace protocol **10**. The local connection uses `/ipc/ws` and the
 `adofai-ipc.v3` subprotocol. The companion uses the canonical TypeScript SDK
 source committed under `web/vendor/adofai-ipc`, with its license and source revision;
@@ -338,7 +334,7 @@ checks the file inventory, SHA-256 values, clean upstream revision, SDK/wire ver
 and license. Every production web build repeats this check and emits `/adofai-ipc.json`
 from the verified snapshot. CI and Docker use only committed files; deployment verifies
 that the public SDK metadata matches the tested commit. This allows dev testers to use
-ADOFAI-IPC v1 before its mod or npm package is publicly released.
+ADOFAI-IPC v2 before a public release.
 
 The `tuf-replay` namespace becomes ready after feature initialization. Both peers
 send named commands and domain events over one connection. A transport acceptance

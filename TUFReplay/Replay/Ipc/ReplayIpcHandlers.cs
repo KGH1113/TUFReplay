@@ -1,5 +1,3 @@
-using AdofaiIpc;
-using AdofaiIpc.Core;
 using TUFReplay.Replay.Ipc;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Preparation;
@@ -10,7 +8,7 @@ namespace TUFReplay.Replay.Ipc;
 
 public static class ReplayIpcHandlers
 {
-  public static object Play(IpcCommand request)
+  public static object Play(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
@@ -19,10 +17,10 @@ public static class ReplayIpcHandlers
     return ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.Play(runId, levelPath));
   }
 
-  public static object GetStatus(IpcCommand request) =>
+  public static object GetStatus(JsonCommand request) =>
     ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus());
 
-  public static object PickLevelFile(IpcCommand request)
+  public static object PickLevelFile(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
@@ -36,7 +34,7 @@ public static class ReplayIpcHandlers
     );
   }
 
-  public static object GetLevelFilePickerStatus(IpcCommand request)
+  public static object GetLevelFilePickerStatus(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "operationId", out string operationId))
       return IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");

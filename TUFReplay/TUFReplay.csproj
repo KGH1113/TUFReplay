@@ -1,5 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <AdofaiIpcBundle Condition="'$(AdofaiIpcBundle)' == ''">$(MSBuildThisFileDirectory)../vendor/adofai-ipc-runtime</AdofaiIpcBundle>
     <MSBuildWarningsAsMessages>$(MSBuildWarningsAsMessages);MSB3277</MSBuildWarningsAsMessages>
     <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
@@ -82,8 +83,12 @@
       Link="Unity/Camera/CameraToggleView.cs"
     />
 
-    <Reference Include="AdofaiIpc">
-      <HintPath>$(AdofaiIpcDll)</HintPath>
+    <Reference Include="AdofaiIpc.Contracts">
+      <HintPath>$(AdofaiIpcBundle)/AdofaiIpc.Contracts.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="AdofaiIpc.Loader">
+      <HintPath>$(AdofaiIpcBundle)/AdofaiIpc.Loader.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityModManager">

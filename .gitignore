@@ -34,3 +34,7 @@ TUFReplay.Unity/UserSettings/
 TUFReplay.MicrophoneCapture.Mac/**/xcuserdata/
 TUFReplay.MicrophoneCapture.Mac/**/*.xcuserstate
 TUFReplay.MicrophoneCapture.Mac/DerivedData/
+
+# Verified bundled IPC binaries are source dependencies.
+!vendor/adofai-ipc-runtime/*.dll
+!vendor/adofai-ipc-runtime/ipc/*.dll

@@ -1,5 +1,4 @@
 using System;
-using AdofaiIpc;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Composition;
 using TUFReplay.Shared.Ipc;
@@ -9,7 +8,7 @@ namespace TUFReplay.Webcam.Ipc;
 
 public static class WebcamIpcHandlers
 {
-  public static object GetState(IpcCommand request)
+  public static object GetState(JsonCommand request)
   {
     JToken refresh = (request?.Payload as JObject)?["refreshDevices"];
     bool force = refresh?.Type == JTokenType.Boolean && refresh.Value<bool>();
@@ -20,7 +19,7 @@ public static class WebcamIpcHandlers
       );
   }
 
-  public static object UpdateSettings(IpcCommand request)
+  public static object UpdateSettings(JsonCommand request)
   {
     try
     {

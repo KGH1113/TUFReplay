@@ -38,7 +38,7 @@ export function getAdofaiIpcClients(): Promise<LocalAppChannels> {
 async function connect(): Promise<LocalAppChannels> {
   const connection = new IpcConnection();
   // Capture subscriptions and state before discovery can deliver the first snapshot.
-  const recorder = adaptChannel(connection.namespace("tuf-replay"));
+  const recorder = adaptChannel(connection.namespace("tuf-replay", 10));
   const renderer = adaptChannel(connection.namespace("tuf-replay-renderer"));
   try {
     await connection.start();

@@ -381,14 +381,27 @@ internal static class UpdaterTests
       string root = $"TUFReplay/Runtime/versions/{version}/";
       AddEntry(archive, root + "TUFReplay.dll", "payload");
       AddEntry(archive, root + "TUFReplay.UpdateEngine.dll", "engine");
-      AddEntry(archive, root + "AdofaiIpc.Bootstrap.dll", "dependency-bootstrap");
-      AddEntry(archive, root + "AdofaiIpc.DependencyShim.dll", "dependency-shim");
-      AddEntry(archive, root + "AdofaiIpc.Migration.dll", "migration");
-      AddEntry(
-        archive,
-        root + "AdofaiIpcBootstrap.json",
-        "{\"MinimumAdofaiIpcVersion\":\"0.3.0\",\"AssemblyName\":\"TUFReplay.Bootstrap.dll\",\"EntryMethod\":\"TUFReplay.Bootstrap.Bootstrap.Load\"}"
-      );
+      foreach (
+        string file in new[]
+        {
+          "AdofaiIpc.Contracts.dll",
+          "AdofaiIpc.Loader.dll",
+          "ipc/AdofaiIpc.Runtime.dll",
+          "ipc/manifest.json",
+        }
+      )
+      {
+        ZipArchiveEntry bundled = archive.CreateEntry(root + file);
+        using Stream output = bundled.Open();
+        using Stream input = File.OpenRead(
+          Path.Combine(
+            Environment.GetEnvironmentVariable("ADOFAI_IPC_BUNDLE")
+              ?? throw new InvalidOperationException("Missing IPC bundle test input."),
+            file
+          )
+        );
+        input.CopyTo(output);
+      }
       AddEntry(archive, root + "Info.json", $"{{\"Version\":\"{version}\",\"BuildFlavor\":\"{buildFlavor}\"}}");
       if (includeResources)
       {
