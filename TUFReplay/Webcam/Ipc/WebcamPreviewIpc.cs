@@ -1,9 +1,9 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using AdofaiIpc;
 using Newtonsoft.Json.Linq;
 using TUFReplay.Composition;
+using TUFReplay.Shared.Ipc;
 using TUFReplay.Webcam.Capture;
 using TUFReplay.Webcam.Models;
 
@@ -21,7 +21,7 @@ internal sealed class WebcamPreviewIpc
   private long _sourceChangedAt;
   private long _lastRequestAt;
 
-  public void Read(AdofaiIpcNamespace ipc, IpcCommand command)
+  public void Read(JsonFeature ipc, JsonCommand command)
   {
     var state = FeatureRegistry.WebcamRecording?.GetState();
     var payload = command.Payload as JObject;
@@ -93,7 +93,7 @@ internal sealed class WebcamPreviewIpc
       ipc.ReplyDownload(
         command,
         "webcam.preview.frame",
-        new IpcDownloadSource(stream, stream.Length, "camera.bmp", "image/bmp"),
+        new DownloadSource(stream, stream.Length, "camera.bmp", "image/bmp"),
         new { width = _size.Width, height = _size.Height }
       );
     }

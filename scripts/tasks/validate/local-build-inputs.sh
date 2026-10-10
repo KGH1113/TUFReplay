@@ -14,7 +14,5 @@ require_command python3
 tufreplay_resolve_build_version "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" >/dev/null
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
-require_file "$ADOFAI_IPC_DLL"
-require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
-require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"
-require_file "$ADOFAI_IPC_MIGRATION_DLL"
+require_file "$ADOFAI_IPC_BUNDLE/AdofaiIpc.Contracts.dll"
+require_file "$ADOFAI_IPC_BUNDLE/AdofaiIpc.Loader.dll"

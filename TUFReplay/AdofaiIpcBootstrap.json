@@ -1,5 +1,0 @@
-{
-  "AssemblyName": "TUFReplay.Bootstrap.dll",
-  "EntryMethod": "TUFReplay.Bootstrap.Bootstrap.Load",
-  "MinimumAdofaiIpcVersion": "1.0.0"
-}

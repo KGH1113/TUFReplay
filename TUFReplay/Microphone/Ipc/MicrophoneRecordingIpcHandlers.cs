@@ -2,8 +2,6 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
-using AdofaiIpc;
-using AdofaiIpc.Core;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Microphone.Ipc;
 using TUFReplay.Microphone.Repositories;
@@ -13,18 +11,18 @@ namespace TUFReplay.Microphone.Ipc;
 
 public static class MicrophoneRecordingIpcHandlers
 {
-  public static object Export(IpcCommand request)
+  public static object Export(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return new IpcDownloadError("invalid_run_id", "runId must be a non-empty string.");
+      return new DownloadFailure("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
-      return new IpcDownloadError("run_not_found", "Run was not found.", 404);
+      return new DownloadFailure("run_not_found", "Run was not found.", 404);
 
     long? byteLength = MicrophoneRecordingRepository.GetByteLength(runId);
     if (!byteLength.HasValue)
-      return new IpcDownloadError("microphone_recording_not_found", "Microphone recording was not found.", 404);
+      return new DownloadFailure("microphone_recording_not_found", "Microphone recording was not found.", 404);
 
-    return new IpcDownloadSource(
+    return new DownloadSource(
       destination =>
       {
         if (MicrophoneRecordingRepository.WriteTo(runId, destination, CancellationToken.None, byteLength.Value) == null)
@@ -36,7 +34,7 @@ public static class MicrophoneRecordingIpcHandlers
     );
   }
 
-  public static object Delete(IpcCommand request)
+  public static object Delete(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
@@ -47,7 +45,7 @@ public static class MicrophoneRecordingIpcHandlers
     return new MicrophoneRecordingDeleteResultDto { RunId = runId, Deleted = deleted };
   }
 
-  public static object KeepPermanently(IpcCommand request)
+  public static object KeepPermanently(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");

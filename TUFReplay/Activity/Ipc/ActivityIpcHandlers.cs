@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using AdofaiIpc;
-using AdofaiIpc.Core;
 using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Ipc;
 using TUFReplay.Activity.Models;
@@ -20,7 +18,7 @@ namespace TUFReplay.Activity.Ipc;
 
 public static class ActivityIpcHandlers
 {
-  public static object ListAppSessions(IpcCommand request)
+  public static object ListAppSessions(JsonCommand request)
   {
     IpcPagination pagination = IpcPagination.Parse(request);
     var output = new List<ActivityAppSessionDto>();
@@ -36,10 +34,10 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetLegacyReplayStatus(IpcCommand request) =>
+  public static object GetLegacyReplayStatus(JsonCommand request) =>
     new ActivityLegacyReplayStatusDto { HasLegacyReplays = RunRepository.HasLegacyReplay() };
 
-  public static object GetLevelSession(IpcCommand request)
+  public static object GetLevelSession(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLevelSessionId();
@@ -50,7 +48,7 @@ public static class ActivityIpcHandlers
       : ActivityLevelSessionOverviewDto.From(session);
   }
 
-  public static object ListRuns(IpcCommand request)
+  public static object ListRuns(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLevelSessionId();
@@ -67,7 +65,7 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetChart(IpcCommand request)
+  public static object GetChart(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLevelSessionId();
@@ -96,7 +94,7 @@ public static class ActivityIpcHandlers
     }
   }
 
-  public static object GetLogicalLevel(IpcCommand request)
+  public static object GetLogicalLevel(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
@@ -106,7 +104,7 @@ public static class ActivityIpcHandlers
       : ActivityLogicalLevelOverviewDto.From(level);
   }
 
-  public static object ListLogicalLevelRuns(IpcCommand request)
+  public static object ListLogicalLevelRuns(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
@@ -129,7 +127,7 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetLogicalLevelChart(IpcCommand request)
+  public static object GetLogicalLevelChart(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "id", out string id))
       return InvalidLogicalLevelId();
@@ -157,7 +155,7 @@ public static class ActivityIpcHandlers
     }
   }
 
-  public static object DeleteRun(IpcCommand request)
+  public static object DeleteRun(JsonCommand request)
   {
     if (!IpcParams.TryRequiredString(request, "runId", out string runId))
       return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");

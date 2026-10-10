@@ -57,10 +57,12 @@ export class IpcConnection {
   }
   get state(): IpcConnectionState { return this._state; }
   onState(listener: (state: IpcConnectionState) => void): () => void { this.states.add(listener); listener(this._state); return () => this.states.delete(listener); }
-  namespace(name: string): IpcChannel {
+  namespace(name: string, protocolMajor?: number): IpcChannel {
+    if (protocolMajor !== undefined && (!Number.isInteger(protocolMajor) || protocolMajor < 1)) throw new TypeError("Invalid feature protocol major.");
     if (!/^[a-z0-9-]+$/.test(name)) throw new TypeError("Invalid IPC namespace.");
     let channel = this.channels.get(name);
-    if (!channel) { channel = new IpcChannel(this, name); this.channels.set(name, channel); if (this.state === "connected") this.subscribe(name); }
+    if (!channel) { channel = new IpcChannel(this, name, protocolMajor); this.channels.set(name, channel); if (this.state === "connected") this.subscribe(name); }
+    if (protocolMajor !== undefined && channel.protocolMajor !== protocolMajor) throw new TypeError("This namespace already uses a different feature protocol requirement.");
     return channel;
   }
   start(): Promise<void> {
@@ -220,15 +222,15 @@ export class IpcChannel {
   private readonly statuses = new Set<(status: IpcNamespaceStatus, error?: IpcErrorInfo) => void>();
   private _status: IpcNamespaceStatus = "unavailable";
   private _error: IpcErrorInfo | undefined;
-  constructor(private readonly connection: IpcConnection, readonly name: string) {}
+  constructor(private readonly connection: IpcConnection, readonly name: string, readonly protocolMajor?: number) {}
   get status(): IpcNamespaceStatus { return this._status; }
   get error(): IpcErrorInfo | undefined { return this._error; }
   on<T = unknown>(name: string, listener: (payload: T, message: IpcMessage<T>) => void): () => void { return this.listen(this.events, name, listener); }
   onCommand<T = unknown>(name: string, listener: (payload: T, message: IpcMessage<T>) => void): () => void { return this.listen(this.commands, name, listener); }
   onStatus(listener: (status: IpcNamespaceStatus, error?: IpcErrorInfo) => void): () => void { this.statuses.add(listener); listener(this.status, this.error); return () => this.statuses.delete(listener); }
-  send(name: string, payload?: unknown, options?: IpcCommandOptions): string { return this.connection.send("command", this.name, name, payload, options); }
-  emit(name: string, payload?: unknown): string { return this.connection.send("event", this.name, name, payload); }
-  reply(correlationId: string, name: string, payload?: unknown): string { return this.connection.send("event", this.name, name, payload, {}, correlationId); }
+  send(name: string, payload?: unknown, options?: IpcCommandOptions): string { this.requireCompatible(); return this.connection.send("command", this.name, name, payload, options); }
+  emit(name: string, payload?: unknown): string { this.requireCompatible(); return this.connection.send("event", this.name, name, payload); }
+  reply(correlationId: string, name: string, payload?: unknown): string { this.requireCompatible(); return this.connection.send("event", this.name, name, payload, {}, correlationId); }
   whenReady(options: IpcReadyOptions = {}): Promise<void> {
     if (options.signal?.aborted) return Promise.reject(options.signal.reason ?? new DOMException("Aborted", "AbortError"));
     if (this.status === "ready") return Promise.resolve();
@@ -245,13 +247,20 @@ export class IpcChannel {
   /** Internal transport adapter dispatch. */
   receive(message: IpcMessage): void {
     if (message.kind === "namespace") {
-      const payload = message.payload as { status: IpcNamespaceStatus; error?: IpcErrorInfo };
+      let payload = message.payload as { status: IpcNamespaceStatus; error?: IpcErrorInfo; featureProtocolMajor?: number };
+      if (payload?.status === "ready" && this.protocolMajor !== undefined && payload.featureProtocolMajor !== this.protocolMajor) {
+        payload = { status: "error", error: { code: "feature_protocol_mismatch", message: "The app and mod use different message versions. Update both, restart ADOFAI, and reconnect." } };
+      }
       if (["ready", "initializing", "error", "unavailable"].includes(payload?.status)) { this._status = payload.status; this._error = payload.error; for (const listener of [...this.statuses]) { try { listener(this.status, this.error); } catch { } } }
     }
+    if (this._error?.code === "feature_protocol_mismatch") return;
     const listeners = (message.kind === "command" ? this.commands : this.events).get(message.name);
     if (listeners) for (const listener of [...listeners]) { try { listener(message.payload, message); } catch { } }
   }
   disconnected(): void { this._status = "unavailable"; this._error = undefined; for (const listener of [...this.statuses]) { try { listener(this.status); } catch { } } }
+  private requireCompatible(): void {
+    if (this._error?.code === "feature_protocol_mismatch") throw new IpcNamespaceError(this._error.code, this._error.message);
+  }
   private listen<T>(map: Map<string, Set<Listener>>, name: string, listener: (payload: T, message: IpcMessage<T>) => void): () => void {
     let listeners = map.get(name); if (!listeners) { listeners = new Set(); map.set(name, listeners); }
     const stored = listener as Listener; listeners.add(stored);

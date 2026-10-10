@@ -20,7 +20,7 @@ afterEach(() => {
 describe("unpublished IPC SDK build contract", () => {
   test("the checked-in snapshot verifies without upstream files or npm", () => {
     expect(verifyIpcSdk(snapshot())).toMatchObject({
-      version: "1.0.0",
+      version: "2.0.0",
       protocolVersion: 3,
       sourceDirty: false,
     });
