@@ -1,3 +1,4 @@
+import { observeBrowserConnection } from "@/adapters/adofai-ipc/browser-connection-lifecycle";
 import { DomainCommandError } from "@/application/command-events";
 import type { DomainMessage, LocalAppChannels, LocalMessagePeer } from "@/ports/local-message-peer";
 import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
@@ -35,7 +36,7 @@ export function getAdofaiIpcClients(): Promise<LocalAppChannels> {
 }
 
 async function connect(): Promise<LocalAppChannels> {
-  const connection = new IpcConnection({ connectTimeoutMs: 500 });
+  const connection = new IpcConnection();
   // Capture subscriptions and state before discovery can deliver the first snapshot.
   const recorder = adaptChannel(connection.namespace("tuf-replay"));
   const renderer = adaptChannel(connection.namespace("tuf-replay-renderer"));
@@ -44,6 +45,16 @@ async function connect(): Promise<LocalAppChannels> {
   } catch (error) {
     connection.close();
     throw error;
+  }
+  if (typeof window !== "undefined" && typeof document !== "undefined") {
+    const stopObserving = observeBrowserConnection(connection);
+    let off = () => {};
+    off = connection.onState((state) => {
+      if (state === "closed" || state === "incompatible") {
+        stopObserving();
+        off();
+      }
+    });
   }
   return {
     namespace: recorder,

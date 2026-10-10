@@ -23,6 +23,9 @@ export interface ConnectIpcOptions {
   startPort?: number;
   endPort?: number;
   connectTimeoutMs?: number;
+  /** Check idle connections and replace sockets that no longer answer, even without a close event. */
+  heartbeatIntervalMs?: number;
+  heartbeatTimeoutMs?: number;
   transportFactory?: IpcTransportFactory;
   onProtocolMismatch?: (error: import("./errors").IpcProtocolMismatchError) => void;
 }

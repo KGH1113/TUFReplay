@@ -4,7 +4,6 @@ import { useApiPromise, useMockEnabled } from "@/api/app-api-provider";
 import type { AppSession, ConnectionStatus } from "@/models/activity/activity-model";
 import { diagnosticErrorMessage } from "@/models/activity/localized-error";
 import type { Health } from "@/models/health/health-model";
-import type { SessionState } from "@/ports/local-message-peer";
 import { ApiError } from "@/shared/errors/api-error";
 import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
 import {
@@ -12,6 +11,10 @@ import {
   mergeRecentAppSessions,
   RECENT_ACTIVITY_SESSION_LIMIT,
 } from "@/state/activity/activity-queries";
+import {
+  type ActivityConnectionSnapshot,
+  observeActivityConnection,
+} from "@/state/activity/connection-lifecycle";
 
 interface ActivityDataSnapshot {
   sessions: AppSession[];
@@ -22,7 +25,10 @@ export function useActivityData() {
   const apiPromise = useApiPromise();
   const mockEnabled = useMockEnabled();
   const queryClient = useQueryClient();
-  const [sessionState, setSessionState] = useState<SessionState | null>(null);
+  const [connectionState, setConnectionState] = useState<ActivityConnectionSnapshot>({
+    session: null,
+    recorder: null,
+  });
   useEffect(() => {
     let disposed = false;
     let cleanup = () => {};
@@ -32,9 +38,8 @@ export function useActivityData() {
         const activity = api.events.on("activity.changed", () => {
           void queryClient.invalidateQueries({ queryKey: activityQueryKeys.all });
         });
-        const connection = api.events.on("connection.changed", (state) => {
-          setSessionState(state);
-          if (state === "connected") void queryClient.invalidateQueries();
+        const connection = observeActivityConnection(api.events, setConnectionState, () => {
+          void queryClient.invalidateQueries({}, { cancelRefetch: false });
         });
         cleanup = () => {
           activity();
@@ -49,6 +54,9 @@ export function useActivityData() {
   }, [apiPromise, queryClient]);
   const query = useQuery({
     queryKey: activityQueryKeys.sessions,
+    retry: (failureCount, error) =>
+      failureCount < 2 && error instanceof ApiError && error.kind === "connection",
+    retryDelay: (attempt) => Math.min(5_000, 500 * 2 ** attempt),
     queryFn: async () => {
       const api = await apiPromise;
       const health = await api.health.get();
@@ -69,17 +77,22 @@ export function useActivityData() {
     },
   });
 
+  const status =
+    connectionState.session === "incompatible"
+      ? "incompatible"
+      : connectionState.session === "disconnected" || connectionState.session === "closed"
+        ? "error"
+        : connectionState.recorder === "error"
+          ? "error"
+          : connectionState.session === "reconnecting" ||
+              connectionState.recorder === "unavailable" ||
+              connectionState.recorder === "initializing"
+            ? "connecting"
+            : statusForQuery(query.status, query.error);
   return {
     sessions: query.data?.sessions ?? [],
-    health: query.status === "success" ? query.data.health : null,
-    status:
-      sessionState === "incompatible"
-        ? "incompatible"
-        : sessionState === "reconnecting"
-          ? "connecting"
-          : sessionState === "disconnected" || sessionState === "closed"
-            ? "error"
-            : statusForQuery(query.status, query.error),
+    health: status === "online" && query.status === "success" ? query.data.health : null,
+    status,
     error: diagnosticErrorMessage(query.error),
     versionMismatch: query.error instanceof IpcProtocolMismatchError ? query.error.direction : null,
     retry: query.refetch,
