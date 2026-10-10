@@ -39,7 +39,7 @@ async function connect(): Promise<LocalAppChannels> {
   const connection = new IpcConnection();
   // Capture subscriptions and state before discovery can deliver the first snapshot.
   const recorder = adaptChannel(connection.namespace("tuf-replay", 10));
-  const renderer = adaptChannel(connection.namespace("tuf-replay-renderer"));
+  const renderer = adaptChannel(connection.namespace("tuf-replay-renderer", 2));
   try {
     await connection.start();
   } catch (error) {
