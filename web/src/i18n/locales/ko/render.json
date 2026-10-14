@@ -1,6 +1,6 @@
 {
   "comingSoon": {
-    "title": "Render는 아직 준비 중이에요",
+    "title": "영상 렌더링은 준비 중이에요",
     "description": "저장된 플레이를 영상으로 만드는 기능을 개발하고 있어요. 기능이 공개되면 사용할 수 있어요."
   },
   "settingsMode": { "label": "영상 설정 방식", "recommended": "추천", "advanced": "고급" },
@@ -57,7 +57,7 @@
   },
   "errorDetails": "자세한 오류 정보",
   "ffmpegInstallHelp": "설치 안내 창이나 다운로드 센터에서 FFmpeg 설치에 동의해 주세요. 설치가 끝나면 렌더링이 이어져요.",
-  "button": "Render",
+  "button": "렌더링",
   "warnings": "오버레이 호환성",
   "title": "플레이 #{{runIndex}} 렌더링",
   "description": "저장된 플레이로 영상을 만듭니다. 인코딩, 포함할 기록, 얼불춤이 실행 중인 컴퓨터의 저장 폴더를 선택해 주세요.",

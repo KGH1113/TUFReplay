@@ -24,8 +24,8 @@ public sealed class WebcamCaptureProfile
   public static WebcamCaptureProfile ForQuality(string quality) =>
     quality switch
     {
-      "quality" => new WebcamCaptureProfile(1920, 1080, 30, 3_000_000),
-      "balanced" => new WebcamCaptureProfile(1280, 720, 30, 1_200_000),
-      _ => new WebcamCaptureProfile(640, 480, 30, 600_000),
+      "quality" => new WebcamCaptureProfile(1920, 1080, 60, 6_000_000),
+      "compact" => new WebcamCaptureProfile(640, 480, 30, 600_000),
+      _ => new WebcamCaptureProfile(1280, 720, 30, 1_200_000),
     };
 }

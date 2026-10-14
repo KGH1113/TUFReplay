@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Models;
+using TUFReplay.Composition;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Replay.Models;
 using TUFReplay.Shared.Database;
@@ -134,6 +135,7 @@ run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_cont
       return null;
     RunRecord result = Read(r);
     MicrophoneRecordingRepository.PopulateMetadata(new[] { result });
+    FeatureRegistry.WebcamRecording?.Store?.PopulateMetadata(new[] { result }, Main.Settings.WebcamRetentionDays);
     return result;
   }
 
@@ -218,6 +220,7 @@ WHERE id=@app
     while (x.Read())
       result.Add(Read(x));
     MicrophoneRecordingRepository.PopulateMetadata(result);
+    FeatureRegistry.WebcamRecording?.Store?.PopulateMetadata(result, Main.Settings.WebcamRetentionDays);
     return result;
   }
 
@@ -252,6 +255,7 @@ WHERE id=@app
     while (x.Read())
       result.Add(Read(x));
     MicrophoneRecordingRepository.PopulateMetadata(result);
+    FeatureRegistry.WebcamRecording?.Store?.PopulateMetadata(result, Main.Settings.WebcamRetentionDays);
     return result;
   }
 

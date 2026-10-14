@@ -15,7 +15,7 @@ export function mapWebcamState(dto: WebcamStateDto) {
     deviceId: dto.SelectedDeviceId,
     quality: dto.Quality,
     offsetMs: dto.OffsetMs,
-    storageLimitMb: dto.StorageLimitMb,
+    recordingLimitMb: dto.RecordingLimitMb,
     retentionDays: dto.RetentionDays,
     playbackVisible: dto.PlaybackVisible,
     liveVisible: dto.LiveVisible,

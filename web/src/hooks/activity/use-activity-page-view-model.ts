@@ -176,6 +176,37 @@ export function useActivityPageViewModel() {
   };
   const downloadMicrophoneRecording = async (run: ActivityRun) => {
     const url = await runActions.prepareMicrophoneRecordingDownload(run.id);
+    downloadRecording(url, `tufreplay-run-${run.runIndex}-microphone.wav`);
+  };
+  const deleteCameraRecording = async (run: ActivityRun) => {
+    await runActions.deleteCameraRecording(run.id);
+    await levelData.updateRun(run.id, {
+      hasCameraRecording: false,
+      cameraRecordingBytes: 0,
+      cameraRecordingPermanent: false,
+      cameraRecordingExpiresAtUtc: null,
+    });
+  };
+  const keepCameraRecording = async (run: ActivityRun) => {
+    await runActions.keepCameraRecording(run.id);
+    await levelData.updateRun(run.id, {
+      cameraRecordingPermanent: true,
+      cameraRecordingExpiresAtUtc: null,
+    });
+  };
+  const downloadCameraRecording = async (run: ActivityRun) => {
+    const url = await runActions.prepareCameraRecordingDownload(run.id);
+    downloadRecording(url, `tufreplay-run-${run.runIndex}-camera.mp4`);
+  };
+  const downloadRecording = (url: string, filename: string) => {
+    if (url.startsWith("blob:")) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      return;
+    }
     const frame = document.createElement("iframe");
     frame.hidden = true;
     frame.tabIndex = -1;
@@ -227,6 +258,9 @@ export function useActivityPageViewModel() {
       deleteMicrophoneRecording,
       keepMicrophoneRecording,
       downloadMicrophoneRecording,
+      deleteCameraRecording,
+      keepCameraRecording,
+      downloadCameraRecording,
     },
   };
 }

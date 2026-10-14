@@ -68,6 +68,7 @@ function domainErrorNamespace(
     code.startsWith("logical_level_") ||
     code.startsWith("chart_") ||
     code.startsWith("activity_") ||
+    code.startsWith("camera_recording_") ||
     code === "run_in_use" ||
     code === "run_delete_failed"
   )

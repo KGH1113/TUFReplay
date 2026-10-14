@@ -16,6 +16,7 @@ public sealed class WebcamRecording
   public double GameplayRate { get; set; } = 1d;
   public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
   public bool SizeLimited { get; set; }
+  public bool Permanent { get; set; }
   public WebcamTimelineSegment[] Timeline { get; set; } = Array.Empty<WebcamTimelineSegment>();
 
   [JsonIgnore]

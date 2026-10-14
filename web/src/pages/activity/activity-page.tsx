@@ -110,6 +110,9 @@ export function ActivityPage() {
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
                 onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
+                onDeleteCameraRecording={actions.deleteCameraRecording}
+                onKeepCameraRecording={actions.keepCameraRecording}
+                onDownloadCameraRecording={actions.downloadCameraRecording}
               />
             )}
           </section>

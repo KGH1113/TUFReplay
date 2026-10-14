@@ -50,6 +50,10 @@ interface ActivityWireFixture {
   deleteRun(runId: string): Promise<ActivityRunDeleteResult>;
   deleteMicrophoneRecording(runId: string): Promise<MicrophoneRecordingDeleteResult>;
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
+  deleteCameraRecording(runId: string): Promise<ActivityRunDeleteResult>;
+  keepCameraRecording(runId: string): Promise<{ RunId: string; Permanent: boolean }>;
+  setCameraRetentionDays(days: number): boolean;
+  assertCameraRecording(runId: string): void;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getReplayStatus(): Promise<ReplayStatus>;
   pickReplayLevelFile(runId: string): Promise<ReplayLevelFilePickerResult>;
@@ -124,7 +128,30 @@ class MockActivityDomainError extends Error {
   }
 }
 
+const activitySeed = { levels, appSessions };
+
 export function createActivityWireFixture(): ActivityWireFixture {
+  const { levels, appSessions } = structuredClone(activitySeed);
+  const findLevel = (id: string): MockLevel => {
+    const level = levels.find((candidate) => candidate.session.Id === id);
+    if (!level) throw new Error(`Unknown mock level session: ${id}`);
+    return level;
+  };
+  let cameraRetentionDays = 7;
+  const keptCameraRuns = new Set<string>();
+  const cameraRecordedAt = new Map(
+    levels.flatMap((level) =>
+      level.runs.map(
+        (run) =>
+          [
+            run.Id,
+            run.CameraRecordingExpiresAtUtc
+              ? Date.parse(run.CameraRecordingExpiresAtUtc) - 7 * 86_400_000
+              : Date.now(),
+          ] as const,
+      ),
+    ),
+  );
   let selectedMicrophoneDeviceId: string | null = null;
   let microphoneEnabled = true;
   let microphoneOffsetMs = mockMicrophoneOffsetCalibration.initialOffsetMs;
@@ -162,6 +189,34 @@ export function createActivityWireFixture(): ActivityWireFixture {
     MicrophoneVolumeDb: 0,
   };
   return {
+    assertCameraRecording: (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        if (!run.HasCameraRecording)
+          throw new MockActivityDomainError(
+            "camera_recording_not_found",
+            "Camera recording was not found",
+          );
+        return;
+      }
+      throw new MockActivityDomainError("run_not_found", "Run was not found");
+    },
+    setCameraRetentionDays: (days) => {
+      if (days === cameraRetentionDays) return false;
+      cameraRetentionDays = days;
+      for (const level of levels)
+        for (const run of level.runs) {
+          if (!run.HasCameraRecording) continue;
+          run.CameraRecordingPermanent = days === 0 || keptCameraRuns.has(run.Id);
+          run.CameraRecordingExpiresAtUtc = run.CameraRecordingPermanent
+            ? null
+            : new Date(
+                (cameraRecordedAt.get(run.Id) ?? Date.now()) + days * 86_400_000,
+              ).toISOString();
+        }
+      return true;
+    },
     health: async () => ({
       Ok: true,
       Mod: "TUFReplay",
@@ -264,6 +319,35 @@ export function createActivityWireFixture(): ActivityWireFixture {
           );
         run.MicrophoneRecordingPermanent = true;
         run.MicrophoneRecordingExpiresAtUtc = null;
+        return { RunId: runId, Permanent: true };
+      }
+      throw new MockActivityDomainError("run_not_found", "Run was not found");
+    },
+    deleteCameraRecording: async (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        const deleted = run.HasCameraRecording;
+        run.HasCameraRecording = false;
+        run.CameraRecordingBytes = 0;
+        run.CameraRecordingPermanent = false;
+        run.CameraRecordingExpiresAtUtc = null;
+        return { RunId: runId, Deleted: deleted };
+      }
+      throw new MockActivityDomainError("run_not_found", "Run was not found");
+    },
+    keepCameraRecording: async (runId) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        if (!run.HasCameraRecording)
+          throw new MockActivityDomainError(
+            "camera_recording_not_found",
+            "Camera recording was not found",
+          );
+        run.CameraRecordingPermanent = true;
+        keptCameraRuns.add(runId);
+        run.CameraRecordingExpiresAtUtc = null;
         return { RunId: runId, Permanent: true };
       }
       throw new MockActivityDomainError("run_not_found", "Run was not found");
@@ -439,6 +523,8 @@ function createRun(
   const cleared = index === 0 && startTile === 0;
   const lastTile = cleared ? floorCount - 1 : Math.min(floorCount - 1, startTile + 35 + index * 19);
   const hasMicrophoneRecording = index % 2 === 0;
+  const hasCameraRecording = index % 3 !== 2;
+  const expiresAt = new Date(Date.now() + 7 * 86_400_000).toISOString();
   const microphoneDurationSeconds = 42 + index * 6;
   return {
     Id: `${levelSessionId}-run-${index + 1}`,
@@ -484,7 +570,11 @@ function createRun(
     MicrophoneSampleRate: hasMicrophoneRecording ? 48_000 : null,
     MicrophoneChannels: hasMicrophoneRecording ? 1 : null,
     MicrophoneRecordingPermanent: false,
-    MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? "2026-07-27T12:00:00.000Z" : null,
+    MicrophoneRecordingExpiresAtUtc: hasMicrophoneRecording ? expiresAt : null,
+    HasCameraRecording: hasCameraRecording,
+    CameraRecordingBytes: hasCameraRecording ? (4 + index) * 1_048_576 : 0,
+    CameraRecordingPermanent: false,
+    CameraRecordingExpiresAtUtc: hasCameraRecording ? expiresAt : null,
     ReplayPlayable: true,
     ReplayUnavailableReason: null,
   };
@@ -495,10 +585,4 @@ function readFloorCount(levelText: string): number {
   if (pathData) return pathData.length;
   const angleData = levelText.match(/"angleData"\s*:\s*\[([^\]]*)\]/)?.[1];
   return angleData ? angleData.split(",").length : 0;
-}
-
-function findLevel(id: string): MockLevel {
-  const level = levels.find((candidate) => candidate.session.Id === id);
-  if (!level) throw new Error(`Unknown mock level session: ${id}`);
-  return level;
 }

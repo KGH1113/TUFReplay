@@ -5,6 +5,7 @@ import {
   Loading03Icon,
   PercentIcon,
   PlayIcon,
+  Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
@@ -39,6 +40,9 @@ export const RunCard = memo(function RunCard({
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
+  onKeepCameraRecording,
+  onDownloadCameraRecording,
+  onDeleteCameraRecording,
 }: {
   run: ActivityRun;
   active: boolean;
@@ -55,6 +59,9 @@ export const RunCard = memo(function RunCard({
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onKeepCameraRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadCameraRecording: (run: ActivityRun) => Promise<void>;
+  onDeleteCameraRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
   const statusMatches = replayStatus.runId === run.id;
@@ -91,6 +98,7 @@ export const RunCard = memo(function RunCard({
           <RunDifficultyIcon difficulty={run.judgmentDifficulty} />
           <RunNoFailIcon enabled={run.noFailMode} />
           {run.hasMicrophoneRecording ? <MicrophoneRecordingIndicator /> : null}
+          {run.hasCameraRecording ? <CameraRecordingIndicator /> : null}
         </div>
         <RunActionsMenu
           run={run}
@@ -105,6 +113,9 @@ export const RunCard = memo(function RunCard({
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
           onDownloadMicrophoneRecording={onDownloadMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
+          onKeepCameraRecording={onKeepCameraRecording}
+          onDownloadCameraRecording={onDownloadCameraRecording}
+          onDeleteCameraRecording={onDeleteCameraRecording}
           onDeleteRun={onDeleteRun}
         />
       </div>
@@ -148,6 +159,25 @@ function MicrophoneRecordingIndicator() {
               strokeLinecap="round"
             />
           </svg>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CameraRecordingIndicator() {
+  const { t } = useTranslation("activity");
+  const label = t("recordings.camera.name");
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={label}
+          className="grid size-6 shrink-0 place-items-center text-foreground"
+        >
+          <HugeiconsIcon aria-hidden="true" icon={Video01Icon} className="size-4" />
         </span>
       </TooltipTrigger>
       <TooltipContent side="top">{label}</TooltipContent>

@@ -217,7 +217,7 @@ describe("layered AppApi contract", () => {
     const api = createRunApi(
       clientsWith((method, params) => {
         calls.push({ method, params });
-        if (method === "microphone.recording.retain") {
+        if (method === "microphone.recording.retain" || method === "camera.recording.retain") {
           return { RunId: "run-7", Permanent: true };
         }
         return { RunId: "run-7", Deleted: true };
@@ -233,14 +233,18 @@ describe("layered AppApi contract", () => {
       runId: "run-7",
       changed: true,
     });
+    expect(await api.deleteCameraRecording("run-7")).toEqual({ runId: "run-7", changed: true });
+    expect(await api.keepCameraRecording("run-7")).toEqual({ runId: "run-7", changed: true });
     expect(calls).toEqual([
       { method: "activity.run.remove", params: { runId: "run-7" } },
       { method: "microphone.recording.remove", params: { runId: "run-7" } },
       { method: "microphone.recording.retain", params: { runId: "run-7" } },
+      { method: "camera.recording.remove", params: { runId: "run-7" } },
+      { method: "camera.recording.retain", params: { runId: "run-7" } },
     ]);
   });
 
-  test("prepares a local native microphone download", async () => {
+  test("prepares local native microphone and camera downloads", async () => {
     const calls: Call[] = [];
     const api = createRunApi(
       clientsWith((method, params) => {
@@ -252,8 +256,26 @@ describe("layered AppApi contract", () => {
     expect(await api.prepareMicrophoneRecordingDownload("run-7")).toBe(
       "http://127.0.0.1:32145/ipc/download/test-ticket",
     );
+    expect(await api.prepareCameraRecordingDownload("run-7")).toBe(
+      "http://127.0.0.1:32145/ipc/download/test-ticket",
+    );
     expect(calls).toEqual([
       { method: "microphone.recording.download", params: { runId: "run-7" } },
+      { method: "camera.recording.download", params: { runId: "run-7" } },
     ]);
+  });
+
+  test("rejects camera download tickets outside the local IPC gateway", async () => {
+    for (const url of [
+      "https://example.com/video.mp4",
+      "http://127.0.0.1:5198/ipc/download/test-ticket",
+      "http://127.0.0.1:32145/ipc/download/test-ticket?secret=1",
+      "http://user@127.0.0.1:32145/ipc/download/test-ticket",
+    ]) {
+      const api = createRunApi(clientsWith(() => ({ url })));
+      await expect(api.prepareCameraRecordingDownload("run-7")).rejects.toThrow(
+        "Invalid local camera download URL.",
+      );
+    }
   });
 });

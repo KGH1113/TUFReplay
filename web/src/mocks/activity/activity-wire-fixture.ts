@@ -81,6 +81,10 @@ export interface ActivityRun {
   MicrophoneChannels: number | null;
   MicrophoneRecordingPermanent: boolean;
   MicrophoneRecordingExpiresAtUtc: string | null;
+  HasCameraRecording: boolean;
+  CameraRecordingBytes: number;
+  CameraRecordingPermanent: boolean;
+  CameraRecordingExpiresAtUtc: string | null;
   ReplayPlayable: boolean;
   ReplayUnavailableReason:
     | "legacy_engine"

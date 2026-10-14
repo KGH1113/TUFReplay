@@ -23,9 +23,9 @@ public sealed class TUFReplaySetting
 
   public bool WebcamEnabled { get; set; }
   public string WebcamDeviceId { get; set; }
-  public string WebcamQuality { get; set; } = "compact";
+  public string WebcamQuality { get; set; } = "balanced";
   public int WebcamOffsetMs { get; set; }
-  public int WebcamStorageLimitMb { get; set; } = 512;
+  public int WebcamRecordingLimitMb { get; set; } = 128;
   public int WebcamRetentionDays { get; set; } = 7;
   public bool WebcamPlaybackVisible { get; set; } = true;
   public bool WebcamLiveVisible { get; set; }
@@ -73,9 +73,12 @@ public sealed class TUFReplaySetting
     MicrophoneOffsetMs = Math.Max(MinMicrophoneOffsetMs, Math.Min(MaxMicrophoneOffsetMs, MicrophoneOffsetMs));
     MicrophoneVolumeDb = Math.Max(MinMicrophoneVolumeDb, Math.Min(MaxMicrophoneVolumeDb, MicrophoneVolumeDb));
     WebcamOffsetMs = Math.Max(-1000, Math.Min(1000, WebcamOffsetMs));
-    WebcamStorageLimitMb = Math.Max(64, Math.Min(8192, WebcamStorageLimitMb));
-    WebcamRetentionDays = Math.Max(1, Math.Min(30, WebcamRetentionDays));
-    WebcamQuality = WebcamQuality == "balanced" || WebcamQuality == "quality" ? WebcamQuality : "compact";
+    WebcamRecordingLimitMb = Math.Max(64, Math.Min(8192, WebcamRecordingLimitMb));
+    WebcamRetentionDays = Math.Max(0, Math.Min(30, WebcamRetentionDays));
+    WebcamQuality =
+      WebcamQuality == "compact" || WebcamQuality == "balanced" || WebcamQuality == "quality"
+        ? WebcamQuality
+        : "balanced";
     WebcamOverlayX = NormalizeFraction(WebcamOverlayX, 1d, -1d, 2d);
     WebcamOverlayY = NormalizeFraction(WebcamOverlayY, 1d, -1d, 2d);
     WebcamOverlayWidth = NormalizeFraction(WebcamOverlayWidth, 0.22d, 0.1d, 0.5d);

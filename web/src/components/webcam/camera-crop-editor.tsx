@@ -1,9 +1,4 @@
-import {
-  Camera01Icon,
-  FlipHorizontalIcon,
-  FlipVerticalIcon,
-  RotateLeft01Icon,
-} from "@hugeicons/core-free-icons";
+import { Camera01Icon, FlipHorizontalIcon, FlipVerticalIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,6 +13,7 @@ import {
 import type { CameraCrop, WebcamSettingsPatch, WebcamState } from "@/models/webcam/webcam-model";
 import { Button } from "@/shared/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
+import { CameraSettingHelp } from "./camera-setting-help";
 
 type CropGesture = {
   pointerId: number;
@@ -30,6 +26,9 @@ type CropGesture = {
   mirrored: boolean;
   flippedVertical: boolean;
 };
+
+const cropAnchorClass =
+  "rounded-full border border-black/30 bg-white shadow-sm transition-[background-color,border-color] duration-150 ease-out group-hover/crop-handle:border-primary group-hover/crop-handle:bg-primary group-focus-visible/crop-handle:border-primary group-focus-visible/crop-handle:bg-primary group-data-[dragging=true]/crop-handle:border-primary group-data-[dragging=true]/crop-handle:bg-primary motion-reduce:transition-none";
 
 export function CameraCropEditor({
   state,
@@ -217,16 +216,29 @@ export function CameraCropEditor({
   return (
     <section className="space-y-3" aria-label={t("cropTitle")}>
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold">{t("cropTitle")}</h3>
+        <div className="flex min-w-0 items-center gap-1">
+          <h3 className="text-sm font-semibold">{t("cropTitle")}</h3>
+          <CameraSettingHelp label={t("cropTitle")}>
+            <p>{t("cropHint")}</p>
+            <p>{t("cropRecordingHint")}</p>
+            <p>{t("cropPreview.privacy")}</p>
+          </CameraSettingHelp>
+        </div>
         <div className="flex items-center gap-1">
           {preview.revealed ? (
-            <Button size="xs" variant="ghost" onClick={preview.hide}>
+            <Button
+              size="xs"
+              variant="ghost"
+              className="h-7 rounded-md px-2"
+              onClick={preview.hide}
+            >
               {t("cropPreview.hide")}
             </Button>
           ) : null}
           <Button
             size="xs"
             variant="ghost"
+            className="h-7 rounded-md px-2"
             disabled={saving || cameraCropEqual(draft, FULL_CAMERA_CROP)}
             onClick={() => {
               cancelGesture();
@@ -234,16 +246,15 @@ export function CameraCropEditor({
               onUpdate({ crop: FULL_CAMERA_CROP });
             }}
           >
-            <HugeiconsIcon aria-hidden="true" icon={RotateLeft01Icon} size={13} />
             {t("resetCrop")}
           </Button>
         </div>
       </div>
-      <div className="px-3 py-3">
+      <div className="p-6">
         <div
           ref={surface}
           data-camera-pixel-plane=""
-          className="relative isolate mx-auto w-full select-none bg-black"
+          className="relative isolate mx-auto w-full select-none bg-black [&:has([data-camera-crop-move]:focus-visible)_[data-camera-crop-anchor]]:border-primary [&:has([data-camera-crop-move]:focus-visible)_[data-camera-crop-anchor]]:bg-primary"
           style={{
             marginBlock: 0,
             padding: 0,
@@ -261,6 +272,8 @@ export function CameraCropEditor({
             {preview.imageUrl ? (
               <img
                 src={preview.imageUrl}
+                width={preview.width ?? 640}
+                height={preview.height ?? 360}
                 alt={t("cropPreview.image")}
                 aria-label={t("cropPreview.image")}
                 className="absolute inset-0 size-full object-contain"
@@ -290,10 +303,11 @@ export function CameraCropEditor({
             <>
               <button
                 type="button"
+                data-camera-crop-move=""
                 aria-label={t("moveCrop")}
                 aria-describedby={hintId}
                 disabled={disabled}
-                className="absolute touch-none bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary disabled:cursor-default"
+                className="absolute touch-none bg-transparent outline-none disabled:cursor-default"
                 style={{
                   margin: 0,
                   padding: 0,
@@ -308,15 +322,52 @@ export function CameraCropEditor({
                 onKeyDown={(event) => keyboard(event, "move")}
                 {...pointerHandlers}
               />
+              {(["n", "s", "w", "e"] as const).map((handle) => {
+                const horizontal = handle === "n" || handle === "s";
+                return (
+                  <button
+                    key={handle}
+                    type="button"
+                    data-camera-crop-handle={handle}
+                    data-dragging={dragging === handle}
+                    aria-label={t(`cropHandles.${handle}`)}
+                    aria-describedby={hintId}
+                    disabled={disabled}
+                    className="group/crop-handle absolute z-5 grid touch-none place-items-center bg-transparent outline-none disabled:cursor-default"
+                    style={{
+                      margin: 0,
+                      padding: 0,
+                      border: 0,
+                      boxSizing: "border-box",
+                      transform: horizontal ? "translateY(-50%)" : "translateX(-50%)",
+                      left: `${(display.x + (handle === "e" ? display.width : 0)) * 100}%`,
+                      top: `${(display.y + (handle === "s" ? display.height : 0)) * 100}%`,
+                      width: horizontal ? `${display.width * 100}%` : "2.75rem",
+                      height: horizontal ? "2.75rem" : `${display.height * 100}%`,
+                      cursor: horizontal ? "ns-resize" : "ew-resize",
+                    }}
+                    onPointerDown={(event) => begin(event, handle)}
+                    onKeyDown={(event) => keyboard(event, handle)}
+                    {...pointerHandlers}
+                  >
+                    <span
+                      aria-hidden="true"
+                      data-camera-crop-anchor=""
+                      className={`${horizontal ? "h-1 w-8" : "h-8 w-1"} ${cropAnchorClass}`}
+                    />
+                  </button>
+                );
+              })}
               {(["nw", "ne", "sw", "se"] as const).map((handle) => (
                 <button
                   key={handle}
                   type="button"
                   data-camera-crop-handle={handle}
+                  data-dragging={dragging === handle}
                   aria-label={t(`cropHandles.${handle}`)}
                   aria-describedby={hintId}
                   disabled={disabled}
-                  className="absolute z-10 grid size-12 touch-none place-items-center outline-none focus-visible:bg-primary/30 disabled:cursor-default"
+                  className="group/crop-handle absolute z-10 grid size-12 touch-none place-items-center bg-transparent outline-none disabled:cursor-default"
                   style={{
                     margin: 0,
                     padding: 0,
@@ -333,7 +384,8 @@ export function CameraCropEditor({
                 >
                   <span
                     aria-hidden="true"
-                    className="size-3 rounded-full border border-black/30 bg-white shadow-sm"
+                    data-camera-crop-anchor=""
+                    className={`size-3 ${cropAnchorClass}`}
                   />
                 </button>
               ))}
@@ -343,14 +395,9 @@ export function CameraCropEditor({
               <HugeiconsIcon aria-hidden="true" icon={Camera01Icon} size={26} strokeWidth={1.6} />
               {state.enabled && state.supported && active ? (
                 !preview.revealed ? (
-                  <>
-                    <Button variant="outline" onClick={preview.reveal}>
-                      {t("cropPreview.reveal")}
-                    </Button>
-                    <p className="max-w-72 text-xs leading-relaxed text-white/60">
-                      {t("cropPreview.privacy")}
-                    </p>
-                  </>
+                  <Button variant="outline" onClick={preview.reveal}>
+                    {t("cropPreview.reveal")}
+                  </Button>
                 ) : preview.error ? (
                   <>
                     <p role="alert" className="max-w-80 text-xs leading-relaxed">
@@ -405,10 +452,9 @@ export function CameraCropEditor({
         <p className="text-xs text-muted-foreground">{preview.label}</p>
       ) : null}
 
-      <p id={hintId} className="text-xs leading-relaxed text-muted-foreground">
+      <p id={hintId} className="sr-only">
         {t("cropHint")}
       </p>
-      <p className="text-xs leading-relaxed text-muted-foreground">{t("cropRecordingHint")}</p>
     </section>
   );
 }

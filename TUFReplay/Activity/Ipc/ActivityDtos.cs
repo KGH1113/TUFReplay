@@ -142,6 +142,10 @@ public sealed class ActivityRunDto
   public int? MicrophoneChannels;
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
+  public bool HasCameraRecording;
+  public long CameraRecordingBytes;
+  public bool CameraRecordingPermanent;
+  public string CameraRecordingExpiresAtUtc;
   public bool ReplayPlayable;
   public string ReplayUnavailableReason;
 
@@ -180,6 +184,10 @@ public sealed class ActivityRunDto
       MicrophoneChannels = r.MicrophoneChannels,
       MicrophoneRecordingPermanent = r.MicrophoneRecordingPermanent,
       MicrophoneRecordingExpiresAtUtc = r.MicrophoneRecordingExpiresAtUtc,
+      HasCameraRecording = r.CameraRecordingBytes > 0,
+      CameraRecordingBytes = r.CameraRecordingBytes,
+      CameraRecordingPermanent = r.CameraRecordingPermanent,
+      CameraRecordingExpiresAtUtc = r.CameraRecordingExpiresAtUtc,
       ReplayPlayable = r.ReplayPlayable,
       ReplayUnavailableReason = r.ReplayUnavailableReason,
     };
