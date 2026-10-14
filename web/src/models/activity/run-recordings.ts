@@ -8,6 +8,17 @@ export type RunRecordingActions = Record<
   Record<RecordingAction, RunRecordingAction>
 >;
 
+export function availableRecordingKind(
+  run: Pick<ActivityRun, "hasMicrophoneRecording" | "hasCameraRecording">,
+  preferred: RecordingKind,
+): RecordingKind | null {
+  if (preferred === "microphone" && run.hasMicrophoneRecording) return "microphone";
+  if (preferred === "camera" && run.hasCameraRecording) return "camera";
+  if (run.hasMicrophoneRecording) return "microphone";
+  if (run.hasCameraRecording) return "camera";
+  return null;
+}
+
 export function runRecording(run: ActivityRun, kind: RecordingKind) {
   return kind === "microphone"
     ? {

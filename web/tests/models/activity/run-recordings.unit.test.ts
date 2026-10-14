@@ -1,5 +1,34 @@
 import { describe, expect, test } from "bun:test";
-import { recordingTimeRemaining } from "@/models/activity/run-recordings";
+import { availableRecordingKind, recordingTimeRemaining } from "@/models/activity/run-recordings";
+
+describe("available recording tabs", () => {
+  test("uses the only available recording regardless of the preferred tab", () => {
+    for (const preferred of ["microphone", "camera"] as const) {
+      expect(
+        availableRecordingKind(
+          { hasMicrophoneRecording: true, hasCameraRecording: false },
+          preferred,
+        ),
+      ).toBe("microphone");
+      expect(
+        availableRecordingKind(
+          { hasMicrophoneRecording: false, hasCameraRecording: true },
+          preferred,
+        ),
+      ).toBe("camera");
+    }
+  });
+  test("preserves the preferred tab while both recordings are available", () => {
+    const run = { hasMicrophoneRecording: true, hasCameraRecording: true };
+    expect(availableRecordingKind(run, "microphone")).toBe("microphone");
+    expect(availableRecordingKind(run, "camera")).toBe("camera");
+  });
+  test("has no available tab after the last recording is deleted", () => {
+    const run = { hasMicrophoneRecording: false, hasCameraRecording: false };
+    expect(availableRecordingKind(run, "microphone")).toBeNull();
+    expect(availableRecordingKind(run, "camera")).toBeNull();
+  });
+});
 
 describe("recording retention labels", () => {
   const now = Date.parse("2026-10-15T00:00:00Z");
