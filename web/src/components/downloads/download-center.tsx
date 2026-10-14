@@ -12,7 +12,9 @@ import { DownloadDialog } from "./download-dialog";
 export function DownloadCenter({ connectionStatus }: { connectionStatus: ConnectionStatus }) {
   const { t } = useTranslation("downloads");
   const center = useDownloadCenter(connectionStatus === "online");
-  const installedState = center.state;
+  const ffmpeg = center.state?.Ffmpeg;
+  const busy = ffmpeg ? installationBusy(ffmpeg) : false;
+  const installed = ffmpeg?.Status === "ready" || ffmpeg?.Status === "restart-required";
   return (
     <>
       <Popover open={center.menuOpen} onOpenChange={center.setMenuOpen}>
@@ -48,42 +50,44 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
               <span className="text-xs text-muted-foreground">{t("view")}</span>
             </Button>
           ) : null}
-          {installedState ? (
-            <div className="divide-y divide-border/50 px-4 pb-1">
-              {(["renderer", "ffmpeg"] as const).map((item) => {
-                const state = item === "renderer" ? installedState.Renderer : installedState.Ffmpeg;
-                const busy = installationBusy(state);
-                const installed = state.Status === "ready" || state.Status === "restart-required";
-                return (
-                  <div key={item} className="flex min-h-18 items-center justify-between gap-4 py-3">
-                    <div className="min-w-0 space-y-1">
-                      <p className="text-sm font-medium">
-                        {item === "renderer" ? "TUFReplay-Renderer" : "FFmpeg"}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {t(`status.${state.Status}`)}
-                        {state.Version ? ` · ${state.Version}` : ""}
-                      </p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={installed || busy ? "ghost" : "outline"}
-                      disabled={state.Status === "checking" || center.pending}
-                      onClick={() =>
-                        center.showDetails(item, !installed && !busy && state.Status !== "failed")
-                      }
-                    >
-                      {installed || busy || state.Status === "failed"
-                        ? t("view")
-                        : state.Status === "awaiting-consent"
-                          ? t("continue")
-                          : t("install")}
-                    </Button>
-                  </div>
-                );
-              })}
+          <div className="divide-y divide-border/50 px-4 pb-1">
+            <div className="flex min-h-18 items-center justify-between gap-4 py-3">
+              <div className="min-w-0 space-y-1">
+                <p className="text-sm font-medium">TUFReplay-Renderer</p>
+                <p className="text-xs leading-relaxed text-muted-foreground">
+                  {t("rendererComingSoon")}
+                </p>
+              </div>
+              <Button size="sm" variant="outline" disabled>
+                {t("comingSoon")}
+              </Button>
             </div>
-          ) : null}
+            {ffmpeg ? (
+              <div className="flex min-h-18 items-center justify-between gap-4 py-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium">FFmpeg</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t(`status.${ffmpeg.Status}`)}
+                    {ffmpeg.Version ? ` · ${ffmpeg.Version}` : ""}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={installed || busy ? "ghost" : "outline"}
+                  disabled={ffmpeg.Status === "checking" || center.pending}
+                  onClick={() =>
+                    center.showDetails("ffmpeg", !installed && !busy && ffmpeg.Status !== "failed")
+                  }
+                >
+                  {installed || busy || ffmpeg.Status === "failed"
+                    ? t("view")
+                    : ffmpeg.Status === "awaiting-consent"
+                      ? t("continue")
+                      : t("install")}
+                </Button>
+              </div>
+            ) : null}
+          </div>
         </PopoverContent>
       </Popover>
       <DownloadDialog center={center} />

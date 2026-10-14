@@ -1,5 +1,7 @@
 {
   "title": "다운로드 센터",
+  "comingSoon": "준비 중",
+  "rendererComingSoon": "아직 준비 중인 기능이라 다운로드할 수 없어요.",
   "view": "자세히",
   "continue": "계속",
   "close": "닫기",

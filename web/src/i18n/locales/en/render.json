@@ -1,4 +1,8 @@
 {
+  "comingSoon": {
+    "title": "Render is coming soon",
+    "description": "Turning saved runs into videos is still in development. You can use this feature once it is released."
+  },
   "settingsMode": {
     "label": "Video settings",
     "recommended": "Recommended",

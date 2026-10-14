@@ -19,6 +19,7 @@ export function useDownloadCenter(enabled: boolean) {
       ["renderer", rendererStatus],
       ["ffmpeg", ffmpegStatus],
     ] as const) {
+      if (id === "renderer") continue;
       if (status === "awaiting-consent" && !prompted.current[id]) {
         setMenuOpen(false);
         if (currentItem.current !== id) {
@@ -40,11 +41,15 @@ export function useDownloadCenter(enabled: boolean) {
 
   return {
     ...downloads,
+    act: (id: DownloadItemId, action: Parameters<typeof downloads.act>[1]) => {
+      if (id !== "renderer") downloads.act(id, action);
+    },
     menuOpen,
     setMenuOpen,
     item,
     trigger,
     showDetails: (next: DownloadItemId, request = false) => {
+      if (next === "renderer") return;
       returnFocus.current = trigger.current;
       setMenuOpen(false);
       currentItem.current = next;
