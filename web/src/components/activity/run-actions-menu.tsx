@@ -60,6 +60,13 @@ export function RunActionsMenu({
   const [error, setError] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
   const openingDialog = useRef(false);
+  const recordingsLabel = run.hasMicrophoneRecording
+    ? run.hasCameraRecording
+      ? activityT("recordings.label")
+      : activityT("recordings.microphone.label")
+    : run.hasCameraRecording
+      ? activityT("recordings.camera.label")
+      : activityT("recordings.title");
 
   const deleteRun = async () => {
     if (disabled || runDeleteDisabled || deleting) return;
@@ -123,8 +130,12 @@ export function RunActionsMenu({
               setRecordingsOpen(true);
             }}
           >
-            <HugeiconsIcon aria-hidden="true" icon={Mic01Icon} className="size-4" />
-            {activityT("recordings.label")}
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={run.hasMicrophoneRecording ? Mic01Icon : Video01Icon}
+              className="size-4"
+            />
+            {recordingsLabel}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled>
