@@ -28,5 +28,11 @@ export interface RenderApi {
   start(manifestPath: string, options: RenderOptions): Promise<RenderJob>;
   getStatus(jobId: string): Promise<RenderJob>;
   cancel(jobId: string): Promise<RenderJob>;
+  resolveOverlay(
+    jobId: string,
+    decisionId: string,
+    sessionId: number,
+    action: "exclude" | "cancel",
+  ): Promise<RenderJob>;
   prepareDownload(jobId: string): Promise<string>;
 }

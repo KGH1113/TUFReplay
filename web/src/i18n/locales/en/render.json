@@ -1,4 +1,10 @@
 {
+  "overlayFailure": {
+    "title": "Rendering paused because an overlay could not update",
+    "description": "{{name}} encountered an error. You can continue the video without this overlay or cancel rendering.",
+    "exclude": "Exclude this overlay and continue",
+    "excluding": "Excluding overlay…"
+  },
   "settingsMode": {
     "label": "Video settings",
     "recommended": "Recommended",
@@ -82,6 +88,7 @@
     "exporting": "Preparing the recording…",
     "preparing": "Opening the level…",
     "rendering": "Rendering frames…",
+    "awaiting-overlay-decision": "Waiting for your overlay error choice",
     "compositing": "Adding recordings and overlays…",
     "completed": "Your video is ready",
     "cancelled": "Rendering cancelled",

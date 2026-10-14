@@ -131,6 +131,14 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
         { jobId },
         renderJobSchema,
       ),
+    resolveOverlay: (jobId, decisionId, sessionId, action) =>
+      sendDomainCommand(
+        renderer(),
+        "render.overlay.resolve",
+        "renderer.job.changed",
+        { jobId, decisionId, sessionId, action },
+        renderJobSchema,
+      ),
     async prepareDownload(jobId) {
       const ticket = await sendDomainCommand(
         renderer(),

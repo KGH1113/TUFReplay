@@ -30,6 +30,7 @@ type Phase =
   | "exporting"
   | "preparing"
   | "rendering"
+  | "awaiting-overlay-decision"
   | "compositing"
   | "completed"
   | "failed"
@@ -60,6 +61,8 @@ export function useRenderControl() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState(0);
   const [job, setJob] = useState<RenderJob | null>(null);
+  const [resolvingOverlay, setResolvingOverlay] = useState(false);
+  const overlayResponsePending = useRef(false);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [errorDetails, setErrorDetails] = useState<RenderExportStatus["errorDetails"]>(null);
@@ -347,6 +350,8 @@ export function useRenderControl() {
         includeDmNote: chosenOptions.includeDmNote && ready.dmNoteConfigured,
       });
       renderId.current = rendered.jobId;
+      setJob(rendered);
+      setPhase(rendered.state);
       if (abort.signal.aborted) {
         void api.cancel(rendered.jobId).catch(() => {});
         throw abort.signal.reason;
@@ -426,6 +431,34 @@ export function useRenderControl() {
       setErrorMessage(cause instanceof Error ? cause.message : "");
     }
   }, [renderer, apiPromise]);
+  const excludeOverlay = useCallback(async () => {
+    const decision = job?.overlayDecision;
+    if (!job || !decision || overlayResponsePending.current) return;
+    const current = generation.current;
+    overlayResponsePending.current = true;
+    setResolvingOverlay(true);
+    setErrorCode(null);
+    setErrorMessage("");
+    try {
+      const next = await (await renderer()).resolveOverlay(
+        job.jobId,
+        decision.decisionId,
+        decision.sessionId,
+        "exclude",
+      );
+      if (!activeRef.current || generation.current !== current || cancelledRef.current) return;
+      setJob(next);
+      setPhase(next.state);
+      setProgress(next.progress);
+    } catch (cause) {
+      if (!activeRef.current || generation.current !== current) return;
+      setErrorCode(cause instanceof ApiError ? cause.code : null);
+      setErrorMessage(cause instanceof Error ? cause.message : "");
+    } finally {
+      overlayResponsePending.current = false;
+      if (activeRef.current) setResolvingOverlay(false);
+    }
+  }, [job, renderer]);
   const openOutputDirectory = useCallback(async () => {
     if (!job?.canOpenOutput || openingDirectory) return;
     setOpeningDirectory(true);
@@ -503,6 +536,7 @@ export function useRenderControl() {
     phase === "exporting" ||
     phase === "preparing" ||
     phase === "rendering" ||
+    phase === "awaiting-overlay-decision" ||
     phase === "compositing";
   return {
     run,
@@ -532,6 +566,8 @@ export function useRenderControl() {
     phase,
     progress,
     job,
+    resolvingOverlay,
+    excludeOverlay,
     errorCode,
     errorMessage,
     errorDetails,

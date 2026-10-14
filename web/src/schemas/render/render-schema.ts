@@ -58,11 +58,30 @@ export const renderExportStatusSchema = z.object({
   errorDetails: renderErrorDetailsSchema,
 });
 export const renderJobSchema = z.object({
+  overlayDecision: z
+    .object({
+      decisionId: z.string().min(1),
+      sessionId: z.number().int().positive(),
+      participantId: z.string().min(1),
+      displayName: z.string(),
+      stage: z.string(),
+      message: z.string(),
+    })
+    .nullable()
+    .optional(),
   warnings: z.array(z.string()).optional().default([]),
   waitingForGameFocus: z.boolean().optional().default(false),
   waitingForFfmpeg: z.boolean().optional().default(false),
   jobId: z.string(),
-  state: z.enum(["preparing", "rendering", "compositing", "completed", "failed", "cancelled"]),
+  state: z.enum([
+    "preparing",
+    "rendering",
+    "awaiting-overlay-decision",
+    "compositing",
+    "completed",
+    "failed",
+    "cancelled",
+  ]),
   progress: z.number().min(0).max(1),
   errorMessage: z.string().nullable(),
   errorCode: z.string().nullable().optional().default(null),

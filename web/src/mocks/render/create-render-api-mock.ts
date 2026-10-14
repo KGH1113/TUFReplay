@@ -160,6 +160,13 @@ export function createRenderApiMock(
       emit("renderer.job.changed", { ...currentJob });
       return { ...currentJob };
     },
+    async resolveOverlay(_jobId, _decisionId, _sessionId, action) {
+      if (!currentJob) throw new Error("Start a mock render first.");
+      currentJob.overlayDecision = null;
+      currentJob.state = action === "cancel" ? "cancelled" : "rendering";
+      emit("renderer.job.changed", { ...currentJob });
+      return { ...currentJob };
+    },
     async prepareDownload() {
       return "http://127.0.0.1:32145/ipc/download/mock-render";
     },

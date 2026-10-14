@@ -34,6 +34,50 @@ function clients(
 }
 
 describe("neutral render IPC contract", () => {
+  test("carries overlay decisions and binds each response to the job, session and decision", async () => {
+    const calls: unknown[] = [];
+    const decision = {
+      decisionId: "decision-1",
+      sessionId: 2,
+      participantId: "sample.overlay",
+      displayName: "Sample overlay",
+      stage: "frame",
+      message: "UI update failed",
+    };
+    let response = {
+      ...job,
+      state: "awaiting-overlay-decision",
+      overlayDecision: decision as typeof decision | null,
+    };
+    const api = createRenderApi(
+      clients(
+        () => bundle,
+        (method, params) => {
+          calls.push({ method, params });
+          return response;
+        },
+      ),
+    );
+    expect((await api.getStatus("render-1")).overlayDecision).toEqual(decision);
+    response = { ...response, state: "rendering", overlayDecision: null };
+    expect((await api.resolveOverlay("render-1", "decision-1", 2, "exclude")).state).toBe(
+      "rendering",
+    );
+    response = { ...response, state: "cancelled" };
+    expect((await api.resolveOverlay("render-1", "decision-1", 2, "cancel")).state).toBe(
+      "cancelled",
+    );
+    expect(calls.slice(1)).toEqual([
+      {
+        method: "render.overlay.resolve",
+        params: { jobId: "render-1", decisionId: "decision-1", sessionId: 2, action: "exclude" },
+      },
+      {
+        method: "render.overlay.resolve",
+        params: { jobId: "render-1", decisionId: "decision-1", sessionId: 2, action: "cancel" },
+      },
+    ]);
+  });
   test("remembers the chosen settings mode and quality with validated, independent snapshots", async () => {
     const calls: unknown[] = [];
     const mock = createRenderApiMock();

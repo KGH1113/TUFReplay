@@ -30,6 +30,7 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
         ? t(`options.${field}` as never)
         : field;
   const completed = control.phase === "completed";
+  const awaitingOverlayDecision = control.phase === "awaiting-overlay-decision";
   const needsRendererSetup = control.errorCode === "renderer_missing" && !control.settings;
   const rendererState = downloads.state?.Renderer.Status;
   const setupStep =
@@ -122,8 +123,26 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
           </DialogDescription>
         </DialogHeader>
         <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-1">
-          {!completed && control.settings ? <RenderOptionsForm control={control} /> : null}
+          {!completed && !awaitingOverlayDecision && control.settings ? (
+            <RenderOptionsForm control={control} />
+          ) : null}
           <div aria-live="polite" className="space-y-2 text-sm">
+            {awaitingOverlayDecision && control.job?.overlayDecision ? (
+              <div role="alert" className="space-y-3 rounded-lg border border-border p-4">
+                <p className="font-medium">{t("overlayFailure.title")}</p>
+                <p className="leading-relaxed text-muted-foreground">
+                  {t("overlayFailure.description", {
+                    name: control.job.overlayDecision.displayName,
+                  })}
+                </p>
+                <details className="text-xs text-muted-foreground">
+                  <summary className="cursor-pointer">{t("errorDetails")}</summary>
+                  <p className="mt-2 break-words leading-relaxed">
+                    {control.job.overlayDecision.message}
+                  </p>
+                </details>
+              </div>
+            ) : null}
             {control.job?.warnings.length ? (
               <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs">
                 <p className="mb-1 font-medium">{t("warnings")}</p>
@@ -213,14 +232,23 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
             ) : null}
           </div>
         </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-muted/20 px-6 py-4">
+        <div className="flex shrink-0 flex-wrap justify-end gap-2 border-t border-border bg-muted/20 px-6 py-4">
           <Button
             variant="outline"
             onClick={control.busy ? () => void control.cancel() : control.close}
           >
             {control.busy ? t("cancel") : t("close")}
           </Button>
-          {completed ? (
+          {awaitingOverlayDecision ? (
+            <Button
+              disabled={control.resolvingOverlay}
+              onClick={() => void control.excludeOverlay()}
+            >
+              {control.resolvingOverlay
+                ? t("overlayFailure.excluding")
+                : t("overlayFailure.exclude")}
+            </Button>
+          ) : completed ? (
             <Button
               disabled={!control.job?.canOpenOutput || control.openingDirectory}
               onClick={() => void control.openOutputDirectory()}

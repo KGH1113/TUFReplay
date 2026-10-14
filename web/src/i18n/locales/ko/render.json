@@ -1,4 +1,10 @@
 {
+  "overlayFailure": {
+    "title": "오버레이를 갱신하지 못해 렌더링을 멈췄어요",
+    "description": "{{name}}에서 오류가 발생했어요. 이 오버레이를 빼고 영상을 계속 만들거나 렌더링을 취소할 수 있어요.",
+    "exclude": "이 오버레이 제외하고 계속",
+    "excluding": "오버레이 제외 중…"
+  },
   "settingsMode": { "label": "영상 설정 방식", "recommended": "추천", "advanced": "고급" },
   "qualities": {
     "lowest": "최저",
@@ -78,6 +84,7 @@
     "exporting": "플레이 기록 준비 중…",
     "preparing": "레벨 여는 중…",
     "rendering": "프레임 렌더링 중…",
+    "awaiting-overlay-decision": "오버레이 오류 처리 방법을 기다리고 있어요",
     "compositing": "녹화 영상과 오버레이 합성 중…",
     "completed": "영상이 완성됐어요",
     "cancelled": "렌더링을 취소했어요",

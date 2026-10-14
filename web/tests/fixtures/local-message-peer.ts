@@ -20,6 +20,7 @@ const outcomes: Record<string, string> = {
   "render.start": "renderer.job.changed",
   "render.state.read": "renderer.job.changed",
   "render.cancel": "renderer.job.changed",
+  "render.overlay.resolve": "renderer.job.changed",
   "render.download": "download.ready",
   "webcam.preview.read": "webcam.preview.frame",
   "webcam.state.refresh": "webcam.state.changed",
