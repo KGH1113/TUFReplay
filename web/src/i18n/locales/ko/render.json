@@ -1,4 +1,8 @@
 {
+  "comingSoon": {
+    "title": "Render는 아직 준비 중이에요",
+    "description": "저장된 플레이를 영상으로 만드는 기능을 개발하고 있어요. 기능이 공개되면 사용할 수 있어요."
+  },
   "settingsMode": { "label": "영상 설정 방식", "recommended": "추천", "advanced": "고급" },
   "qualities": {
     "lowest": "최저",
