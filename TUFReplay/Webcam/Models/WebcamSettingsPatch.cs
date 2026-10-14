@@ -16,10 +16,11 @@ public sealed class WebcamSettingsPatch
     _values["enabled"] != null
     || _values.ContainsKey("deviceId")
     || _values["quality"] != null
-    || _values["storageLimitMb"] != null
+    || _values["recordingLimitMb"] != null
     || _values["retentionDays"] != null;
   public bool RearmsCapture =>
     _values["enabled"] != null || _values.ContainsKey("deviceId") || _values["quality"] != null;
+  public bool ChangesRetention => _values["retentionDays"] != null;
 
   public static bool TryParse(JObject values, out WebcamSettingsPatch patch)
   {
@@ -58,12 +59,12 @@ public sealed class WebcamSettingsPatch
           if (!ValidInteger(token, -1000, 1000))
             return false;
           break;
-        case "storageLimitMb":
+        case "recordingLimitMb":
           if (!ValidInteger(token, 64, 8192))
             return false;
           break;
         case "retentionDays":
-          if (!ValidInteger(token, 1, 30))
+          if (!ValidInteger(token, 0, 30))
             return false;
           break;
         case "crop":
@@ -99,8 +100,8 @@ public sealed class WebcamSettingsPatch
       settings.WebcamQuality = _values["quality"].Value<string>();
     if (_values["offsetMs"] != null)
       settings.WebcamOffsetMs = _values["offsetMs"].Value<int>();
-    if (_values["storageLimitMb"] != null)
-      settings.WebcamStorageLimitMb = _values["storageLimitMb"].Value<int>();
+    if (_values["recordingLimitMb"] != null)
+      settings.WebcamRecordingLimitMb = _values["recordingLimitMb"].Value<int>();
     if (_values["retentionDays"] != null)
       settings.WebcamRetentionDays = _values["retentionDays"].Value<int>();
     if (_values["playbackVisible"] != null)

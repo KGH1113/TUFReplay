@@ -2,7 +2,7 @@ import type { CameraCrop } from "@/models/webcam/webcam-model";
 
 export const FULL_CAMERA_CROP: CameraCrop = { x: 0, y: 0, width: 1, height: 1 };
 export const MIN_CAMERA_CROP = 0.05;
-export type CameraCropHandle = "move" | "nw" | "ne" | "sw" | "se";
+export type CameraCropHandle = "move" | "n" | "s" | "w" | "e" | "nw" | "ne" | "sw" | "se";
 
 export function displayCameraCrop(
   crop: CameraCrop,

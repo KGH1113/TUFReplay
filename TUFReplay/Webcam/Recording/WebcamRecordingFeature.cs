@@ -163,7 +163,7 @@ public sealed class WebcamRecordingFeature
         SelectedDeviceId = settings.WebcamDeviceId,
         Quality = settings.WebcamQuality,
         OffsetMs = settings.WebcamOffsetMs,
-        StorageLimitMb = settings.WebcamStorageLimitMb,
+        RecordingLimitMb = settings.WebcamRecordingLimitMb,
         RetentionDays = settings.WebcamRetentionDays,
         PlaybackVisible = settings.WebcamPlaybackVisible,
         LiveVisible = settings.WebcamLiveVisible,
@@ -234,7 +234,7 @@ public sealed class WebcamRecordingFeature
         "settings.storage.cleanup",
         () =>
         {
-          Cleanup();
+          Cleanup(patch.ChangesRetention);
           return Task.CompletedTask;
         }
       );
@@ -360,7 +360,7 @@ public sealed class WebcamRecordingFeature
       backend = _runBackend = _backend;
       generation = _runGeneration = _generation;
     }
-    long budget = Main.Settings.WebcamStorageLimitMb * 1024L * 1024;
+    long maxBytes = Main.Settings.WebcamRecordingLimitMb * 1024L * 1024;
     int retention = Main.Settings.WebcamRetentionDays;
     Queue(
       "capture.begin",
@@ -371,22 +371,17 @@ public sealed class WebcamRecordingFeature
         lock (_gate)
           if (!_active || !_armed || generation != _generation || !ReferenceEquals(backend, _backend))
             return;
-        long maxBytes = Store.ReserveCaptureBytes(budget, retention);
         CaptureDiagnostics.Record(
           "capture.storage.reserved",
           new
           {
             runId,
-            budgetBytes = budget,
+            recordingLimitBytes = maxBytes,
             retentionDays = retention,
             maxBytes,
             startTimestampTicks,
           }
         );
-        if (maxBytes < 2 * 1024 * 1024)
-          throw new IOException(
-            "Camera storage is full. Increase the storage limit or stop the replay using older footage."
-          );
         await backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes, startTimestampTicks);
         lock (_gate)
           _error = null;
@@ -497,7 +492,7 @@ public sealed class WebcamRecordingFeature
   {
     if (recording == null)
       return;
-    long budget = Main.Settings.WebcamStorageLimitMb * 1024L * 1024;
+    long recordingLimit = Main.Settings.WebcamRecordingLimitMb * 1024L * 1024;
     int retention = Main.Settings.WebcamRetentionDays;
     Queue(
       "storage.persist",
@@ -505,7 +500,7 @@ public sealed class WebcamRecordingFeature
       {
         try
         {
-          bool saved = Store.Save(recording, budget, retention);
+          bool saved = Store.Save(recording, recordingLimit, retention);
           TUFReplay.Activity.Tracking.ActivityChanges.Notify(recording.RunId);
           CaptureDiagnostics.Record(
             "capture.storage.persisted",
@@ -514,17 +509,17 @@ public sealed class WebcamRecordingFeature
               recording.RunId,
               saved,
               recording.SizeLimited,
-              budgetBytes = budget,
+              recordingLimitBytes = recordingLimit,
               retentionDays = retention,
             }
           );
           if (!saved || recording.SizeLimited)
             UnityMainThread.Post(() =>
               ReplayTimelineHud.ShowNotificationToast(
-                "Camera storage limit",
+                "Camera recording limit",
                 saved
-                  ? "The saved video ends at the storage limit. Increase the camera storage limit for longer recordings."
-                  : "This video could not fit in camera storage. Increase the storage limit for the next run."
+                  ? "The camera video reached its recording limit. Microphone audio and replay recording continued. Increase the per-recording limit for longer videos."
+                  : "This camera video exceeded its recording limit. Increase the per-recording limit for the next run."
               )
             );
         }
@@ -611,9 +606,11 @@ public sealed class WebcamRecordingFeature
     CaptureDiagnostics.Record("capture.backend.created", new { backend = _backend.GetType().FullName });
   }
 
-  private void Cleanup()
+  private void Cleanup(bool retentionChanged = false)
   {
-    Store?.Cleanup(Main.Settings.WebcamStorageLimitMb * 1024L * 1024, Main.Settings.WebcamRetentionDays);
+    int removed = Store?.Cleanup(Main.Settings.WebcamRetentionDays) ?? 0;
+    if (removed > 0 || retentionChanged)
+      TUFReplay.Activity.Tracking.ActivityChanges.Notify();
   }
 
   private void Queue(string operation, Func<Task> action, string runId = null)
@@ -687,7 +684,7 @@ public sealed class WebcamRecordingFeature
         enabled = Main.Settings?.WebcamEnabled,
         selectedDeviceId = Main.Settings?.WebcamDeviceId,
         quality = Main.Settings?.WebcamQuality,
-        storageLimitMb = Main.Settings?.WebcamStorageLimitMb,
+        recordingLimitMb = Main.Settings?.WebcamRecordingLimitMb,
         retentionDays = Main.Settings?.WebcamRetentionDays,
       };
   }
@@ -727,7 +724,7 @@ public sealed class WebcamRecordingFeature
     destination.WebcamDeviceId = source.WebcamDeviceId;
     destination.WebcamQuality = source.WebcamQuality;
     destination.WebcamOffsetMs = source.WebcamOffsetMs;
-    destination.WebcamStorageLimitMb = source.WebcamStorageLimitMb;
+    destination.WebcamRecordingLimitMb = source.WebcamRecordingLimitMb;
     destination.WebcamRetentionDays = source.WebcamRetentionDays;
     destination.WebcamPlaybackVisible = source.WebcamPlaybackVisible;
     destination.WebcamLiveVisible = source.WebcamLiveVisible;

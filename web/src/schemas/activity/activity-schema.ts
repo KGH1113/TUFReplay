@@ -106,6 +106,10 @@ export const activityRunDtoSchema = z
     MicrophoneChannels: z.number().int().nullable(),
     MicrophoneRecordingPermanent: z.boolean(),
     MicrophoneRecordingExpiresAtUtc: z.string().nullable(),
+    HasCameraRecording: z.boolean().default(false),
+    CameraRecordingBytes: z.number().int().nonnegative().default(0),
+    CameraRecordingPermanent: z.boolean().default(false),
+    CameraRecordingExpiresAtUtc: z.string().nullable().default(null),
     ReplayPlayable: z.boolean(),
     ReplayUnavailableReason: z
       .enum([

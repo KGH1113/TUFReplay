@@ -4,6 +4,8 @@ using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay;
+using TUFReplay.Activity.Models;
+using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Recording.Sessions;
@@ -36,6 +38,7 @@ internal static class WebcamSuite
     WallClockPreservesLargeTimestampPrecision();
     FfmpegDiscoverySeparatesAudioFromVideo();
     SettingsRejectInvalidValuesAndKeepTheCameraOffByDefault();
+    LegacyTotalStorageSettingDoesNotBecomeARecordingLimit(root);
     OverlayAllowsOffscreenPlacementWithoutMargins();
     SharedPreviewFramesAreBoundedAndNeverTorn();
     MaximumPreviewFramesUseExactAllocationFreeCopies();
@@ -49,6 +52,8 @@ internal static class WebcamSuite
     DispositionCompletesOnceInEitherOrder();
     DispositionWaitsForActivityPersistence();
     StoreProtectsPlaybackAndEnforcesRetention(root);
+    StoreKeepsForeverAndExportsWithoutLoadingVideo(root);
+    CleanupNotifiesActivityWhenVideosOrRetentionChange(root);
     StoreDeletionRejectsLateCapture(root);
     StoreRejectsCorruptTimingAndDuplicateSaves(root);
     StoreReleaseNeverWaitsForRetention(root);
@@ -646,7 +651,9 @@ internal static class WebcamSuite
         "{\"overlayWidth\":0}",
         "{\"offsetMs\":1001}",
         "{\"offsetMs\":1.5}",
-        "{\"storageLimitMb\":1}",
+        "{\"recordingLimitMb\":1}",
+        "{\"storageLimitMb\":512}",
+        "{\"retentionDays\":-1}",
         "{\"otherSetting\":true}",
       }
     )
@@ -668,6 +675,17 @@ internal static class WebcamSuite
     settings.Normalize();
     Near(1, settings.WebcamOverlayX);
     Near(0.22, settings.WebcamOverlayWidth);
+    Check(settings.WebcamRecordingLimitMb == 128, "The default per-recording limit changed.");
+    Check(
+      WebcamSettingsPatch.TryParse(JObject.Parse("{\"recordingLimitMb\":2048,\"retentionDays\":0}"), out var forever),
+      "Forever retention or a larger per-recording limit was rejected."
+    );
+    forever.ApplyTo(settings);
+    settings.Normalize();
+    Check(
+      settings.WebcamRecordingLimitMb == 2048 && settings.WebcamRetentionDays == 0,
+      "The per-recording limit or forever retention was not preserved."
+    );
   }
 
   private static void FfmpegDiscoverySeparatesAudioFromVideo()
@@ -695,6 +713,22 @@ internal static class WebcamSuite
     Check(
       CaptureProcessArguments.Quote("camera\"name") == "\"camera\\\"name\"",
       "A camera name broke command-line quoting."
+    );
+  }
+
+  private static void LegacyTotalStorageSettingDoesNotBecomeARecordingLimit(string root)
+  {
+    string path = Path.Combine(root, "legacy-webcam-settings.json");
+    File.WriteAllText(path, "{\"WebcamStorageLimitMb\":8192,\"WebcamRetentionDays\":0}");
+    TUFReplaySetting settings = TUFReplaySetting.Load(path);
+    Check(
+      settings.WebcamRecordingLimitMb == 128 && settings.WebcamRetentionDays == 0,
+      "The removed total-storage budget was reused as a per-recording limit."
+    );
+    settings.Save(path);
+    Check(
+      !File.ReadAllText(path).Contains("WebcamStorageLimitMb"),
+      "The removed total-storage setting was saved again."
     );
   }
 
@@ -727,6 +761,7 @@ internal static class WebcamSuite
       Near(-bounds.Height / 2, moved.Y);
     }
     var corner = new TUFReplaySetting();
+    Check(corner.WebcamQuality == "balanced", "A new camera must default to Balanced quality.");
     WebcamOverlayBounds right = WebcamOverlayLayout.Get(corner, 1920, 1080, 16d / 9);
     Near(1920, right.X + right.Width);
     Near(1080, right.Y + right.Height);
@@ -748,7 +783,7 @@ internal static class WebcamSuite
     );
     WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality(corner.WebcamQuality);
     Check(
-      profile.Width == 1920 && profile.Height == 1080 && profile.FrameRate == 30 && profile.BitRate == 3_000_000,
+      profile.Width == 1920 && profile.Height == 1080 && profile.FrameRate == 60 && profile.BitRate == 6_000_000,
       "Quality profile changed."
     );
   }
@@ -815,6 +850,9 @@ internal static class WebcamSuite
   private static void CameraDownscalingPreservesNativeAspect()
   {
     var compact = WebcamCaptureProfile.ForQuality("compact");
+    var settings = new TUFReplaySetting { WebcamQuality = "compact" };
+    settings.Normalize();
+    Check(settings.WebcamQuality == "compact", "Saved Compact quality must remain selected.");
     var widescreen = compact.FitToSource(1920, 1080);
     Check(
       widescreen.Width == 640 && widescreen.Height == 360 && widescreen.FrameRate == 30,
@@ -1100,20 +1138,77 @@ internal static class WebcamSuite
     string directory = Path.Combine(root, "webcam-store");
     var store = new WebcamRecordingStore(directory);
     var first = WriteVideo(store, "first", 1024 * 1024);
-    Check(store.Save(first, 4 * 1024 * 1024, 30), "Video save failed.");
-    File.SetLastWriteTimeUtc(first.FilePath, DateTime.UtcNow.AddDays(-10));
+    first.CreatedAtUtc = DateTime.UtcNow.AddDays(-10);
+    Check(store.Save(first, 1024 * 1024, 30), "Video save failed.");
     using (var lease = store.Acquire("first"))
     {
       var second = WriteVideo(store, "second", 1024 * 1024);
-      Check(store.Save(second, 4 * 1024 * 1024, 30), "Second video save failed.");
-      store.Cleanup(1024 * 1024, 7);
-      Check(File.Exists(first.FilePath) && !File.Exists(second.FilePath), "Cleanup removed footage being replayed.");
+      Check(store.Save(second, 1024 * 1024, 7), "Second video save failed.");
+      Check(File.Exists(first.FilePath) && File.Exists(second.FilePath), "A new recording evicted older footage.");
+      store.Cleanup(7);
+      Check(
+        File.Exists(first.FilePath) && File.Exists(second.FilePath),
+        "Cleanup removed leased or unexpired footage."
+      );
       Check(lease.Recording.RunId == "first", "Playback metadata changed.");
     }
     store.PendingReleases.GetAwaiter().GetResult();
-    store.Cleanup(1024 * 1024, 7);
+    store.Cleanup(7);
     Check(!File.Exists(first.FilePath), "Expired footage was not removed after playback ended.");
-    Check(store.ReserveCaptureBytes(64L * 1024 * 1024, 7) == 64L * 1024 * 1024, "Capture exceeded its storage budget.");
+    Check(
+      File.Exists(Path.Combine(directory, Path.GetFileName(store.TemporaryPath("second")).Replace(".partial", ""))),
+      "Retention deleted a video that had not expired."
+    );
+  }
+
+  private static void StoreKeepsForeverAndExportsWithoutLoadingVideo(string root)
+  {
+    string directory = Path.Combine(root, "camera-forever");
+    var store = new WebcamRecordingStore(directory);
+    WebcamRecording expired = WriteVideo(store, "global-forever", 64);
+    expired.CreatedAtUtc = DateTime.UtcNow.AddDays(-60);
+    Check(store.Save(expired, 1024, 7), "Global forever fixture was not saved.");
+    var expiredRun = new RunRecord { Id = expired.RunId };
+    store.PopulateMetadata(new[] { expiredRun }, 7);
+    Check(expiredRun.CameraRecordingBytes == 0, "Expired legacy-compatible metadata remained available.");
+    store.Cleanup(0);
+    Check(File.Exists(expired.FilePath), "Forever retention removed an old video.");
+    Check(store.KeepPermanently(expired.RunId), "An existing video could not be kept permanently.");
+    WebcamRecording forever = WriteVideo(store, "new-forever", 64);
+    forever.CreatedAtUtc = DateTime.UtcNow.AddDays(-90);
+    Check(store.Save(forever, 1024, 0), "A forever video was not saved.");
+    WebcamRecording extended = WriteVideo(store, "extended-retention", 64);
+    extended.CreatedAtUtc = DateTime.UtcNow.AddDays(-10);
+    Check(store.Save(extended, 1024, 7), "Extended retention fixture was not saved.");
+    store.Cleanup(30);
+    var extendedRun = new RunRecord { Id = extended.RunId };
+    store.PopulateMetadata(new[] { extendedRun }, 30);
+    Check(
+      File.Exists(extended.FilePath) && extendedRun.CameraRecordingBytes == 64,
+      "Increasing retention did not extend an existing temporary recording."
+    );
+    var reopened = new WebcamRecordingStore(directory);
+    reopened.Cleanup(1);
+    Check(File.Exists(expired.FilePath) && File.Exists(forever.FilePath), "Permanent videos expired after reopening.");
+    var run = new RunRecord { Id = expired.RunId };
+    reopened.PopulateMetadata(new[] { run }, 7);
+    Check(
+      run.CameraRecordingBytes == 64 && run.CameraRecordingPermanent && run.CameraRecordingExpiresAtUtc == null,
+      "Camera management metadata did not report permanent storage."
+    );
+    using var exported = new MemoryStream();
+    reopened.WriteTo(expired.RunId, exported, 64);
+    Check(exported.ToArray().SequenceEqual(File.ReadAllBytes(expired.FilePath)), "Export changed camera video bytes.");
+    using (var lease = reopened.Acquire(expired.RunId))
+    {
+      Check(reopened.DeleteRun(expired.RunId), "Camera-only deletion did not report the existing video.");
+      Check(
+        reopened.GetMetadata(expired.RunId) == null && File.Exists(expired.FilePath),
+        "Deleted leased video remained visible or was physically removed too early."
+      );
+    }
+    reopened.PendingReleases.GetAwaiter().GetResult();
+    Check(!File.Exists(expired.FilePath), "Deleted camera video survived its final lease.");
   }
 
   private static void StoreDeletionRejectsLateCapture(string root)
@@ -1135,6 +1230,44 @@ internal static class WebcamSuite
     Check(
       !File.Exists(active.FilePath) && store.Acquire("active") == null,
       "Deleted footage was not removed after release."
+    );
+  }
+
+  private static void CleanupNotifiesActivityWhenVideosOrRetentionChange(string root)
+  {
+    WithEnabledCameraSettings(
+      root,
+      () =>
+      {
+        Main.Settings.WebcamRetentionDays = 7;
+        var store = new WebcamRecordingStore(Path.Combine(root, "camera-cleanup-events"));
+        var camera = new WebcamRecordingFeature();
+        typeof(WebcamRecordingFeature).GetProperty(nameof(WebcamRecordingFeature.Store)).SetValue(camera, store);
+        var cleanup = typeof(WebcamRecordingFeature).GetMethod(
+          "Cleanup",
+          BindingFlags.Instance | BindingFlags.NonPublic
+        );
+        int notifications = 0;
+        void OnChanged(string runId) => notifications++;
+        ActivityChanges.Changed += OnChanged;
+        try
+        {
+          cleanup.Invoke(camera, new object[] { false });
+          Check(notifications == 0, "An unchanged retention scan invalidated play history.");
+          WebcamRecording expired = WriteVideo(store, "cleanup-expired", 64);
+          expired.CreatedAtUtc = DateTime.UtcNow.AddDays(-10);
+          Check(store.Save(expired, 1024, 7), "Cleanup event fixture was not saved.");
+          cleanup.Invoke(camera, new object[] { false });
+          Check(notifications == 1 && !File.Exists(expired.FilePath), "Expired footage did not refresh play history.");
+          Main.Settings.WebcamRetentionDays = 0;
+          cleanup.Invoke(camera, new object[] { true });
+          Check(notifications == 2, "Changing to forever did not refresh derived recording metadata.");
+        }
+        finally
+        {
+          ActivityChanges.Changed -= OnChanged;
+        }
+      }
     );
   }
 
@@ -1278,11 +1411,13 @@ internal static class WebcamSuite
       rejected = true;
     }
     Check(rejected, "An invalid timeline reached replay playback.");
-    var oversized = WriteVideo(store, "oversized", 128L * 1024 * 1024 + 1);
+    var oversized = WriteVideo(store, "oversized", 1025);
     Check(
-      !store.Save(oversized, 512L * 1024 * 1024, 7) && !File.Exists(oversized.FilePath),
+      !store.Save(oversized, 1024, 7) && !File.Exists(oversized.FilePath),
       "A recording exceeded its per-run size limit."
     );
+    var larger = WriteVideo(store, "larger-per-recording-limit", 129L * 1024 * 1024);
+    Check(store.Save(larger, 256L * 1024 * 1024, 7), "The old hard-coded 128 MB limit still rejected a valid video.");
   }
 
   private static void Near(double expected, double actual) =>

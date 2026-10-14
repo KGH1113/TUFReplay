@@ -1,12 +1,23 @@
-import { RotateLeft01Icon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, RefreshIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { WebcamSettingsPatch, WebcamState } from "@/models/webcam/webcam-model";
 import { Button } from "@/shared/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { Slider } from "@/shared/ui/slider";
 import { Switch } from "@/shared/ui/switch";
 import { CameraCropEditor } from "./camera-crop-editor";
+import { CameraSettingHelp } from "./camera-setting-help";
+
+const defaultCamera = "__tufreplay_system_default__";
 
 export function CameraSettings({
   state,
@@ -23,28 +34,12 @@ export function CameraSettings({
 }) {
   const { t } = useTranslation("webcam");
   const id = useId();
+  const [syncOpen, setSyncOpen] = useState(false);
   const captureDisabled = saving || !state.supported || state.captureLocked;
-  const fieldClass =
-    "h-9 w-full rounded-lg border border-border bg-background/60 px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-50";
+
   return (
     <div className="grid gap-7 md:grid-cols-2 md:gap-8">
       <section className="min-w-0 space-y-5" aria-label={t("recordingTitle")}>
-        <div className="flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-muted/20 p-4">
-          <div className="space-y-1">
-            <label htmlFor={`${id}-enabled`} className="text-sm font-semibold">
-              {t("enabled")}
-            </label>
-            <p className="max-w-72 text-xs leading-relaxed text-muted-foreground">
-              {t("permissionHint")}
-            </p>
-          </div>
-          <Switch
-            id={`${id}-enabled`}
-            checked={state.enabled}
-            disabled={captureDisabled}
-            onCheckedChange={(enabled) => onUpdate({ enabled })}
-          />
-        </div>
         {state.status === "recording" || state.status === "saving" ? (
           <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
             <span className="size-1.5 rounded-full bg-primary" aria-hidden="true" />
@@ -76,39 +71,67 @@ export function CameraSettings({
         ) : null}
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3">
-            <label htmlFor={`${id}-device`} className="text-sm font-medium">
-              {t("device")}
-            </label>
+            <div className="flex items-center gap-1">
+              <label htmlFor={`${id}-device`} className="text-sm font-medium">
+                {t("device")}
+              </label>
+              <CameraSettingHelp label={t("device")}>
+                <p>{t("deviceDescription")}</p>
+                {state.backend === "ffmpeg" ? <p>{t("ffmpegHint")}</p> : null}
+              </CameraSettingHelp>
+            </div>
             <Button
-              size="icon-sm"
+              type="button"
+              size="xs"
               variant="ghost"
-              aria-label={t("refresh")}
-              title={t("refresh")}
+              className="h-7 rounded-md px-2"
+              disabled={saving}
               onClick={onRefresh}
             >
-              <HugeiconsIcon aria-hidden="true" icon={RotateLeft01Icon} size={15} />
+              <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} size={14} />
+              {t("refresh")}
             </Button>
           </div>
-          <select
-            id={`${id}-device`}
-            className={fieldClass}
-            value={state.deviceId ?? ""}
+          <Select
+            value={state.deviceId ?? defaultCamera}
             disabled={captureDisabled}
-            onChange={(event) => onUpdate({ deviceId: event.target.value || null })}
+            onValueChange={(value) =>
+              onUpdate({ deviceId: value === defaultCamera ? null : value })
+            }
           >
-            <option value="">{t("systemDefault")}</option>
-            {state.deviceId && !state.devices.some((device) => device.id === state.deviceId) ? (
-              <option value={state.deviceId}>{t("unavailableDevice")}</option>
-            ) : null}
-            {state.devices.map((device) => (
-              <option key={device.id} value={device.id}>
-                {device.name}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              id={`${id}-device`}
+              aria-label={t("device")}
+              className="w-full rounded-lg"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent position="popper" align="start" className="rounded-xl">
+              <SelectGroup>
+                <SelectItem value={defaultCamera} className="rounded-lg">
+                  {t("systemDefault")}
+                </SelectItem>
+                {state.deviceId && !state.devices.some((device) => device.id === state.deviceId) ? (
+                  <SelectItem value={state.deviceId} className="rounded-lg" disabled>
+                    {t("unavailableDevice")}
+                  </SelectItem>
+                ) : null}
+                {state.devices.map((device) => (
+                  <SelectItem key={device.id} value={device.id} className="rounded-lg">
+                    {device.name}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
         </div>
         <div className="space-y-2">
-          <p className="text-sm font-medium">{t("qualityLabel")}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-sm font-medium">{t("qualityLabel")}</p>
+            <CameraSettingHelp label={t("qualityLabel")}>
+              {t("qualityDescription")}
+            </CameraSettingHelp>
+          </div>
           <div className="grid grid-cols-3 gap-2">
             {(["compact", "balanced", "quality"] as const).map((quality) => {
               const selected = state.quality === quality;
@@ -141,31 +164,79 @@ export function CameraSettings({
           </div>
         </div>
         <SettingSlider
-          label={t("storageLimit")}
-          description={t("storageDescription")}
-          value={state.storageLimitMb}
+          label={t("recordingLimit")}
+          description={t("recordingLimitDescription")}
+          value={state.recordingLimitMb}
           min={64}
           max={8192}
           step={64}
           format={(value) => `${value} MB`}
           disabled={captureDisabled}
-          onCommit={(storageLimitMb) => onUpdate({ storageLimitMb })}
+          onCommit={(recordingLimitMb) => onUpdate({ recordingLimitMb })}
         />
         <SettingSlider
           label={t("retention")}
           description={t("retentionDescription")}
-          value={state.retentionDays}
+          value={state.retentionDays === 0 ? 31 : state.retentionDays}
           min={1}
-          max={30}
+          max={31}
           step={1}
-          format={(count) => t("days", { count })}
+          format={(count) => (count === 31 ? t("forever") : t("days", { count }))}
+          endLabels={[t("days", { count: 1 }), t("forever")]}
           disabled={captureDisabled}
-          onCommit={(retentionDays) => onUpdate({ retentionDays })}
+          onCommit={(value) => onUpdate({ retentionDays: value === 31 ? 0 : value })}
         />
-        <p className="text-xs leading-relaxed text-muted-foreground">{t("storageHint")}</p>
-        {state.backend === "ffmpeg" ? (
-          <p className="text-xs leading-relaxed text-muted-foreground">{t("ffmpegHint")}</p>
-        ) : null}
+        <div className="space-y-4 border-t border-border/60 pt-4">
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              id={`${id}-sync-trigger`}
+              variant="ghost"
+              size="sm"
+              aria-expanded={syncOpen}
+              aria-controls={`${id}-sync`}
+              className="h-7 justify-start rounded-md px-2 text-xs"
+              onClick={() => setSyncOpen((open) => !open)}
+            >
+              <HugeiconsIcon
+                aria-hidden="true"
+                icon={ArrowDown01Icon}
+                size={16}
+                className={syncOpen ? "rotate-180" : ""}
+              />
+              {t("syncTitle")}
+            </Button>
+            <CameraSettingHelp label={t("syncTitle")}>{t("syncHint")}</CameraSettingHelp>
+          </div>
+          <section
+            id={`${id}-sync`}
+            aria-labelledby={`${id}-sync-trigger`}
+            hidden={!syncOpen}
+            className="ml-3 space-y-4 border-l border-border/70 py-1 pl-4"
+          >
+            <SettingSlider
+              label={t("offset")}
+              description={t("offsetDescription")}
+              value={state.offsetMs}
+              min={-1000}
+              max={1000}
+              step={1}
+              format={(value) => `${value > 0 ? "+" : ""}${value} ms`}
+              disabled={saving}
+              onCommit={(offsetMs) => onUpdate({ offsetMs })}
+            />
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              disabled={saving || state.offsetMs === 0}
+              className="-ml-2 h-7 rounded-md px-2 text-xs"
+              onClick={() => onUpdate({ offsetMs: 0 })}
+            >
+              {t("resetOffset")}
+            </Button>
+          </section>
+        </div>
       </section>
       <section
         className="min-w-0 space-y-4 border-t border-border/60 pt-5 md:border-l md:border-t-0 md:pl-8 md:pt-0"
@@ -177,13 +248,21 @@ export function CameraSettings({
           saving={saving}
           onUpdate={onUpdate}
         />
-        <h3 className="border-t border-border/60 pt-5 text-sm font-semibold">
-          {t("playbackTitle")}
-        </h3>
+        <div className="flex items-center gap-1 border-t border-border/60 pt-4">
+          <h3 className="text-sm font-semibold">{t("playbackTitle")}</h3>
+          <CameraSettingHelp label={t("playbackTitle")}>
+            {t("inGamePlacementHint")}
+          </CameraSettingHelp>
+        </div>
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor={`${id}-live`} className="text-sm">
-            {t("liveVisible")}
-          </label>
+          <div className="flex items-center gap-1">
+            <label htmlFor={`${id}-live`} className="text-sm">
+              {t("liveVisible")}
+            </label>
+            <CameraSettingHelp label={t("liveVisible")}>
+              {t("liveVisibleDescription")}
+            </CameraSettingHelp>
+          </div>
           <Switch
             id={`${id}-live`}
             checked={state.liveVisible}
@@ -192,9 +271,14 @@ export function CameraSettings({
           />
         </div>
         <div className="flex items-center justify-between gap-4">
-          <label htmlFor={`${id}-visible`} className="text-sm">
-            {t("playbackVisible")}
-          </label>
+          <div className="flex items-center gap-1">
+            <label htmlFor={`${id}-visible`} className="text-sm">
+              {t("playbackVisible")}
+            </label>
+            <CameraSettingHelp label={t("playbackVisible")}>
+              {t("playbackVisibleDescription")}
+            </CameraSettingHelp>
+          </div>
           <Switch
             id={`${id}-visible`}
             checked={state.playbackVisible}
@@ -202,29 +286,6 @@ export function CameraSettings({
             onCheckedChange={(playbackVisible) => onUpdate({ playbackVisible })}
           />
         </div>
-        <p className="text-xs leading-relaxed text-muted-foreground">{t("inGamePlacementHint")}</p>
-        <details className="space-y-4 border-t border-border/60 pt-4">
-          <summary className="cursor-pointer text-sm font-medium">{t("syncTitle")}</summary>
-          <SettingSlider
-            label={t("offset")}
-            value={state.offsetMs}
-            min={-1000}
-            max={1000}
-            step={1}
-            format={(value) => `${value > 0 ? "+" : ""}${value} ms`}
-            disabled={saving}
-            onCommit={(offsetMs) => onUpdate({ offsetMs })}
-          />
-          <p className="text-xs leading-relaxed text-muted-foreground">{t("syncHint")}</p>
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={saving || state.offsetMs === 0}
-            onClick={() => onUpdate({ offsetMs: 0 })}
-          >
-            {t("resetOffset")}
-          </Button>
-        </details>
       </section>
     </div>
   );
@@ -238,6 +299,7 @@ function SettingSlider({
   min,
   max,
   step,
+  endLabels,
   disabled,
   onCommit,
 }: {
@@ -248,6 +310,7 @@ function SettingSlider({
   min: number;
   max: number;
   step: number;
+  endLabels?: [string, string];
   disabled: boolean;
   onCommit: (value: number) => void;
 }) {
@@ -260,13 +323,17 @@ function SettingSlider({
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between gap-3 text-sm">
-        <span className="font-medium">{label}</span>
+        <div className="flex items-center gap-1">
+          <span className="font-medium">{label}</span>
+          {description ? <CameraSettingHelp label={label}>{description}</CameraSettingHelp> : null}
+        </div>
         <span className="font-mono text-xs tabular-nums text-muted-foreground">
           {format(draft)}
         </span>
       </div>
       <Slider
         aria-label={label}
+        aria-valuetext={format(draft)}
         aria-describedby={description ? id : undefined}
         min={min}
         max={max}
@@ -282,8 +349,14 @@ function SettingSlider({
           onCommit(next);
         }}
       />
+      {endLabels ? (
+        <div aria-hidden="true" className="flex justify-between text-xs text-muted-foreground">
+          <span>{endLabels[0]}</span>
+          <span>{endLabels[1]}</span>
+        </div>
+      ) : null}
       {description ? (
-        <p id={id} className="text-xs leading-relaxed text-muted-foreground">
+        <p id={id} className="sr-only">
           {description}
         </p>
       ) : null}

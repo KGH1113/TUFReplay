@@ -5,6 +5,7 @@ import { createDownloadsApiMock } from "@/mocks/downloads/create-downloads-api-m
 import { createRenderApiMock } from "@/mocks/render/create-render-api-mock";
 import { createReplayApiMock } from "@/mocks/replay/replay-api-mock";
 import { createWebcamApiMock } from "@/mocks/webcam/create-webcam-api-mock";
+import { mockCameraRecording } from "@/mocks/webcam/mock-camera-recording";
 import {
   mapActivityChart,
   mapActivityRun,
@@ -37,6 +38,7 @@ import {
 export function createMockApi(): AppApi {
   const fixture = createActivityWireFixture();
   const source = createAppEventSource();
+  let activityRevision = 0;
   return {
     events: source.events,
     health: {
@@ -78,6 +80,18 @@ export function createMockApi(): AppApi {
       },
     },
     run: {
+      async prepareCameraRecordingDownload(runId) {
+        fixture.assertCameraRecording(runId);
+        return URL.createObjectURL(mockCameraRecording());
+      },
+      async deleteCameraRecording(runId) {
+        const result = await fixture.deleteCameraRecording(runId);
+        return { runId: result.RunId, changed: result.Deleted };
+      },
+      async keepCameraRecording(runId) {
+        const result = await fixture.keepCameraRecording(runId);
+        return { runId: result.RunId, changed: result.Permanent };
+      },
       async prepareMicrophoneRecordingDownload() {
         const header = new Uint8Array(44);
         const view = new DataView(header.buffer);
@@ -112,7 +126,11 @@ export function createMockApi(): AppApi {
       },
     },
     replay: createReplayApiMock((status) => source.emit("replay.changed", status)),
-    webcam: createWebcamApiMock((state) => source.emit("webcam.changed", state)),
+    webcam: createWebcamApiMock((state) => {
+      source.emit("webcam.changed", state);
+      if (fixture.setCameraRetentionDays(state.retentionDays))
+        source.emit("activity.changed", { revision: ++activityRevision, runId: null });
+    }),
     downloads: createDownloadsApiMock((state) => source.emit("downloads.changed", state)),
     render: createRenderApiMock(source.emit),
     microphone: {
