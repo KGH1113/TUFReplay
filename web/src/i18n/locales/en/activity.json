@@ -1,4 +1,55 @@
 {
+  "recordings": {
+    "label": "Microphone and Camera",
+    "title": "Recordings",
+    "description": "View file details and manage your stored audio and video.",
+    "size": "Size",
+    "retention": "Retention",
+    "permanent": "Forever",
+    "keep": "Keep forever",
+    "kept": "Kept forever",
+    "keeping": "Saving retention…",
+    "downloading": "Preparing export…",
+    "deleting": "Deleting…",
+    "deleteAction": "Delete",
+    "exportAction": "Export",
+    "exportTitle": "Export file",
+    "empty": "All recordings have been deleted. Your replay is still available.",
+    "cancel": "Cancel",
+    "close": "Close",
+    "deletesSoon": "Deleting soon",
+    "remainingHours_one": "{{count}} hour left",
+    "remainingHours_other": "{{count}} hours left",
+    "remainingDays_one": "{{count}} day left",
+    "remainingDays_other": "{{count}} days left",
+    "replayLocked": "Stop this run's replay before deleting its recording.",
+    "microphone": {
+      "label": "Microphone",
+      "name": "Microphone recording",
+      "download": "Export audio",
+      "delete": "Delete audio",
+      "deleteTitle": "Delete the microphone recording?",
+      "deleteDescription": "This {{size}} audio will be permanently deleted. Your replay will be kept.",
+      "deleteHint": "Only the audio is removed. Your replay stays.",
+      "empty": "No microphone recording was saved for this run.",
+      "downloadFailed": "The audio could not be exported. Check your game connection and try again.",
+      "keepFailed": "The audio could not be kept forever. Check your game connection and try again.",
+      "deleteFailed": "The audio could not be deleted. Stop the replay and try again."
+    },
+    "camera": {
+      "label": "Camera",
+      "name": "Camera recording",
+      "download": "Export video",
+      "delete": "Delete video",
+      "deleteTitle": "Delete the camera recording?",
+      "deleteDescription": "This {{size}} video will be permanently deleted. Your replay will be kept.",
+      "deleteHint": "Only the video is removed. Your replay stays.",
+      "empty": "No camera video was saved for this run.",
+      "downloadFailed": "The video could not be exported. Check your game connection and try again.",
+      "keepFailed": "The video could not be kept forever. Check your game connection and try again.",
+      "deleteFailed": "The video could not be deleted. Stop the replay and try again."
+    }
+  },
   "days": "Days",
   "counts": {
     "runs_one": "run",
@@ -67,6 +118,7 @@
     "protocolMismatch": "Update TUFReplay to a build with the current auto-submission protocol, then refresh this page. Activity and replay remain available."
   },
   "errors": {
+    "camera_recording_not_found": "The camera recording for this run could not be found. Refresh the activity list and try again.",
     "load": "Could not load play history. Make sure ADOFAI is running, then refresh the page.",
     "connect": "Could not connect to TUFReplay. Make sure ADOFAI and AdofaiIPC are running.",
     "loadSession": "Could not load the level. Please try again.",

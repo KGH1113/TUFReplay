@@ -2,11 +2,11 @@ import { AutoSubmissionBuildNotice } from "@/components/activity/auto-submission
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
 import { DashboardHeader } from "@/components/activity/dashboard-header";
 import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
-import { RenderDialog } from "@/components/render/render-dialog";
+import { RenderComingSoonDialog } from "@/components/render/render-coming-soon-dialog";
 import { ReplayLevelChoiceDialog } from "@/components/replay/replay-level-choice-dialog";
 import { useActivityPageViewModel } from "@/hooks/activity/use-activity-page-view-model";
 import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice";
-import { useRenderControl } from "@/hooks/render/use-render-control";
+import { useRenderComingSoon } from "@/hooks/render/use-render-coming-soon";
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { DayRail } from "@/sections/activity/day-rail";
 import { LevelStrip } from "@/sections/activity/level-strip";
@@ -14,7 +14,7 @@ import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
-  const render = useRenderControl();
+  const renderNotice = useRenderComingSoon();
   const { activity, replay, actions } = viewModel;
   const legacyReplayNotice = useLegacyReplayNotice(activity.status);
 
@@ -105,14 +105,14 @@ export function ActivityPage() {
                 onSelectMarker={actions.selectMarker}
                 onSelectRun={actions.selectRun}
                 onPlayReplay={actions.openReplayChoice}
-                onRender={(run) => {
-                  replay.clearLevelFilePicker();
-                  render.openLevelChoice(run);
-                }}
+                onRender={renderNotice.show}
                 onDeleteRun={actions.deleteRun}
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
                 onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
+                onDeleteCameraRecording={actions.deleteCameraRecording}
+                onKeepCameraRecording={actions.keepCameraRecording}
+                onDownloadCameraRecording={actions.downloadCameraRecording}
               />
             )}
           </section>
@@ -134,20 +134,7 @@ export function ActivityPage() {
         open={legacyReplayNotice.open}
         onConfirm={legacyReplayNotice.confirm}
       />
-      <ReplayLevelChoiceDialog
-        purpose="render"
-        run={render.levelChoiceRun}
-        pickerResult={replay.pickerResult}
-        pickingRunId={replay.pickingRunId}
-        replayStatus={replay.status}
-        playError=""
-        playErrorRunId={null}
-        onClose={render.closeLevelChoice}
-        onPlay={render.chooseLevel}
-        onChooseAnother={(runId) => replay.pickLevelFile(runId, "render")}
-        onResetPicker={replay.clearLevelFilePicker}
-      />
-      <RenderDialog control={render} />
+      <RenderComingSoonDialog notice={renderNotice} />
     </>
   );
 }

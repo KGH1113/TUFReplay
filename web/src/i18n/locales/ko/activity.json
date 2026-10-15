@@ -1,4 +1,55 @@
 {
+  "recordings": {
+    "label": "마이크 및 카메라",
+    "title": "녹음 및 녹화",
+    "description": "저장된 녹음과 영상의 용량과 보관 상태를 확인하고 관리해요.",
+    "size": "용량",
+    "retention": "보관 상태",
+    "permanent": "영구 보관",
+    "keep": "영구 보관",
+    "kept": "영구 보관됨",
+    "keeping": "보관 설정 중…",
+    "downloading": "추출 준비 중…",
+    "deleting": "삭제 중…",
+    "deleteAction": "삭제",
+    "exportAction": "추출",
+    "exportTitle": "파일 추출",
+    "empty": "녹음과 영상이 모두 삭제됐어요. 리플레이는 계속 사용할 수 있어요.",
+    "cancel": "취소",
+    "close": "닫기",
+    "deletesSoon": "곧 자동 삭제",
+    "remainingHours_one": "{{count}}시간 남음",
+    "remainingHours_other": "{{count}}시간 남음",
+    "remainingDays_one": "{{count}}일 남음",
+    "remainingDays_other": "{{count}}일 남음",
+    "replayLocked": "이 플레이의 리플레이를 종료하면 삭제할 수 있어요.",
+    "microphone": {
+      "label": "마이크",
+      "name": "마이크 녹음",
+      "download": "녹음 추출",
+      "delete": "녹음 삭제",
+      "deleteTitle": "마이크 녹음을 삭제할까요?",
+      "deleteDescription": "{{size}} 녹음을 영구 삭제해요. 복구할 수 없으며 리플레이는 그대로 남아요.",
+      "deleteHint": "녹음만 삭제하고 리플레이는 유지해요.",
+      "empty": "이 플레이에 저장된 마이크 녹음이 없어요.",
+      "downloadFailed": "녹음을 추출하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
+      "keepFailed": "녹음을 영구 보관하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
+      "deleteFailed": "녹음을 삭제하지 못했어요. 리플레이를 종료한 뒤 다시 시도해 주세요."
+    },
+    "camera": {
+      "label": "카메라",
+      "name": "카메라 영상",
+      "download": "영상 추출",
+      "delete": "영상 삭제",
+      "deleteTitle": "카메라 영상을 삭제할까요?",
+      "deleteDescription": "{{size}} 영상을 영구 삭제해요. 복구할 수 없으며 리플레이는 그대로 남아요.",
+      "deleteHint": "영상만 삭제하고 리플레이는 유지해요.",
+      "empty": "이 플레이에 저장된 카메라 영상이 없어요.",
+      "downloadFailed": "영상을 추출하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
+      "keepFailed": "영상을 영구 보관하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
+      "deleteFailed": "영상을 삭제하지 못했어요. 리플레이를 종료한 뒤 다시 시도해 주세요."
+    }
+  },
   "days": "날짜",
   "counts": {
     "runs_one": "플레이",
@@ -67,6 +118,7 @@
     "protocolMismatch": "현재 자동 제출 프로토콜을 지원하는 TUFReplay 빌드로 업데이트한 뒤 페이지를 새로고침해 주세요. 활동 기록과 리플레이는 계속 이용할 수 있어요."
   },
   "errors": {
+    "camera_recording_not_found": "이 플레이의 카메라 영상을 찾을 수 없어요. 활동 목록을 새로고침해 주세요.",
     "load": "플레이 기록을 불러오지 못했어요. 얼불춤이 실행 중인지 확인한 뒤 새로고침해 주세요.",
     "connect": "TUFReplay에 연결하지 못했어요. 얼불춤과 AdofaiIPC가 실행 중인지 확인해 주세요.",
     "loadSession": "레벨 정보를 불러오지 못했어요. 다시 시도해 주세요.",

@@ -78,11 +78,16 @@ public static class WebcamSettingsGui
             : "compact",
         }
       );
-    Slider("storageLimitMb", "Total video storage (MB)", state.StorageLimitMb, 64, 8192, true);
-    GUILayout.Label("Maximum space for all saved camera videos. When full, the oldest videos are removed first.");
-    Slider("retentionDays", "Keep videos for (days)", state.RetentionDays, 1, 30, true);
-    GUILayout.Label("Videos older than this are removed automatically. Runs and replays stay in your history.");
-    GUILayout.Label("Older videos are removed first. Each recording is limited to 128 MB.");
+    Slider("recordingLimitMb", "Maximum size of one recording (MB)", state.RecordingLimitMb, 64, 8192, true);
+    GUILayout.Label("At the limit, only camera video stops. Microphone audio and replay recording continue.");
+    int retentionPosition = state.RetentionDays == 0 ? 31 : state.RetentionDays;
+    int nextRetention = (int)System.Math.Round(GUILayout.HorizontalSlider(retentionPosition, 1, 31));
+    GUILayout.Label(
+      state.RetentionDays == 0 ? "Keep videos forever" : "Keep videos for " + state.RetentionDays + " days"
+    );
+    if (nextRetention != retentionPosition)
+      Commit(new JObject { ["retentionDays"] = nextRetention == 31 ? 0 : nextRetention });
+    GUILayout.Label("Permanently kept videos stay until you delete them. Runs and replays stay in your history.");
     GUI.enabled = originalEnabled;
     bool liveVisible = GUILayout.Toggle(state.LiveVisible, "Show live camera while playing");
     if (liveVisible != state.LiveVisible)

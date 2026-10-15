@@ -24,7 +24,7 @@ function stateDto() {
     FfmpegPath: null,
     Quality: "compact",
     OffsetMs: 0,
-    StorageLimitMb: 512,
+    RecordingLimitMb: 128,
     RetentionDays: 7,
     PlaybackVisible: true,
     Mirror: false,
@@ -77,8 +77,9 @@ describe("webcam IPC contract", () => {
       { crop: { x: 0, y: 0, width: Number.NaN, height: 1 } },
       { offsetMs: 1001 },
       { offsetMs: 0.5 },
-      { storageLimitMb: 1 },
-      { retentionDays: 0 },
+      { recordingLimitMb: 1 },
+      { storageLimitMb: 512 },
+      { retentionDays: -1 },
       { enabled: "true" },
       { unknown: true },
     ]) {
@@ -104,6 +105,22 @@ describe("webcam IPC contract", () => {
       kind: "domain",
       code: "webcam_settings_locked",
     });
+  });
+
+  test("sends a per-recording size limit and forever retention", async () => {
+    const calls: { method: string; params: unknown }[] = [];
+    const api = createApi(
+      clientsWith((method, params) => {
+        calls.push({ method, params });
+        return { ...stateDto(), RecordingLimitMb: 2048, RetentionDays: 0 };
+      }),
+    );
+    const state = await api.updateSettings({ recordingLimitMb: 2048, retentionDays: 0 });
+    expect(calls).toEqual([
+      { method: "webcam.settings.change", params: { recordingLimitMb: 2048, retentionDays: 0 } },
+    ]);
+    expect(state.recordingLimitMb).toBe(2048);
+    expect(state.retentionDays).toBe(0);
   });
 
   test("keeps mock camera opt-in and returned snapshots independent", async () => {

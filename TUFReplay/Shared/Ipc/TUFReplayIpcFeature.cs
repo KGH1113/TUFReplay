@@ -149,6 +149,23 @@ public sealed class TUFReplayIpcFeature
         ipc.RegisterDownloadCommand("microphone.recording.download", MicrophoneRecordingIpcHandlers.Export);
         RegisterOutcome(
           ipc,
+          "camera.recording.remove",
+          "camera.recording.removed",
+          WebcamRecordingIpcHandlers.Delete,
+          mainThread: false,
+          broadcast: false
+        );
+        RegisterOutcome(
+          ipc,
+          "camera.recording.retain",
+          "camera.recording.retained",
+          WebcamRecordingIpcHandlers.KeepPermanently,
+          mainThread: false,
+          broadcast: false
+        );
+        ipc.RegisterDownloadCommand("camera.recording.download", WebcamRecordingIpcHandlers.Export);
+        RegisterOutcome(
+          ipc,
           "replay.start",
           "replay.state.changed",
           ReplayIpcHandlers.Play,

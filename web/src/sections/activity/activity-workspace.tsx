@@ -62,6 +62,9 @@ export function ActivityWorkspace({
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
+  onDeleteCameraRecording,
+  onKeepCameraRecording,
+  onDownloadCameraRecording,
 }: {
   chartAvailable: boolean;
   chart: ActivityChart | null;
@@ -87,6 +90,9 @@ export function ActivityWorkspace({
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onDeleteCameraRecording: (run: ActivityRun) => Promise<void>;
+  onKeepCameraRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadCameraRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
   const chartRef = useRef<EmbeddedChartHandle>(null);
@@ -105,6 +111,9 @@ export function ActivityWorkspace({
   const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
   const downloadMicrophoneRecording = useStableCallback(onDownloadMicrophoneRecording);
   const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
+  const keepCameraRecording = useStableCallback(onKeepCameraRecording);
+  const downloadCameraRecording = useStableCallback(onDownloadCameraRecording);
+  const deleteCameraRecording = useStableCallback(onDeleteCameraRecording);
   const captureRunSortLayout = useCallback(() => {
     const runList = runListRef.current;
     const scroller = runScrollRef.current;
@@ -408,6 +417,9 @@ export function ActivityWorkspace({
                             onDeleteRun={deleteRun}
                             onKeepMicrophoneRecording={keepMicrophoneRecording}
                             onDownloadMicrophoneRecording={downloadMicrophoneRecording}
+                            onKeepCameraRecording={keepCameraRecording}
+                            onDownloadCameraRecording={downloadCameraRecording}
+                            onDeleteCameraRecording={deleteCameraRecording}
                             onDeleteMicrophoneRecording={deleteMicrophoneRecording}
                           />
                         </div>

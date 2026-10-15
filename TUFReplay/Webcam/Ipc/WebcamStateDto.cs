@@ -15,7 +15,7 @@ public sealed class WebcamStateDto
   public string SelectedDeviceId;
   public string Quality;
   public int OffsetMs;
-  public int StorageLimitMb;
+  public int RecordingLimitMb;
   public int RetentionDays;
   public bool PlaybackVisible;
   public bool LiveVisible;
