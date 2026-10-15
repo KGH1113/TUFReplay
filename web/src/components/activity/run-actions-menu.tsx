@@ -1,9 +1,8 @@
 import {
   Delete02Icon,
-  Mic01Icon,
+  FolderLibraryIcon,
   MoreVerticalIcon,
   Upload04Icon,
-  Video01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRef, useState } from "react";
@@ -60,13 +59,6 @@ export function RunActionsMenu({
   const [error, setError] = useState("");
   const trigger = useRef<HTMLButtonElement>(null);
   const openingDialog = useRef(false);
-  const recordingsLabel = run.hasMicrophoneRecording
-    ? run.hasCameraRecording
-      ? activityT("recordings.label")
-      : activityT("recordings.microphone.label")
-    : run.hasCameraRecording
-      ? activityT("recordings.camera.label")
-      : activityT("recordings.title");
 
   const deleteRun = async () => {
     if (disabled || runDeleteDisabled || deleting) return;
@@ -116,7 +108,7 @@ export function RunActionsMenu({
                   onRender(run, trigger.current ?? undefined);
                 }}
               >
-                <HugeiconsIcon aria-hidden="true" icon={Video01Icon} className="size-4" />
+                <RenderSlateIcon />
                 {renderT("button")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
@@ -130,12 +122,8 @@ export function RunActionsMenu({
               setRecordingsOpen(true);
             }}
           >
-            <HugeiconsIcon
-              aria-hidden="true"
-              icon={run.hasMicrophoneRecording ? Mic01Icon : Video01Icon}
-              className="size-4"
-            />
-            {recordingsLabel}
+            <HugeiconsIcon aria-hidden="true" icon={FolderLibraryIcon} className="size-4" />
+            {activityT("recordings.label")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled>
@@ -220,5 +208,23 @@ export function RunActionsMenu({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function RenderSlateIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m3 10-.7-3.8 17.6-3.3.7 3.9L3 10Z" />
+      <path d="m6.7 5.4 2.7 3.4m3.5-4.6 2.7 3.5M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" />
+    </svg>
   );
 }
