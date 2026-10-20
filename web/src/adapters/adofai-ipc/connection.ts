@@ -1,144 +1,137 @@
+import { type ReplayApiAppHandlers, ReplayApiContract, type ReplayApiMod } from "@tuf-replay/ipc";
+import { createIpc } from "adofai-ipc";
+import { PROTOCOL_VERSION } from "adofai-ipc/transport";
 import { observeBrowserConnection } from "@/adapters/adofai-ipc/browser-connection-lifecycle";
-import { DomainCommandError } from "@/application/command-events";
-import type { DomainMessage, LocalAppChannels, LocalMessagePeer } from "@/ports/local-message-peer";
+import { abortable } from "@/api/recorder-call";
+import type {
+  LocalAppChannels,
+  RecorderClient,
+  RecorderEvent,
+  RecorderEventName,
+  SessionState,
+} from "@/ports/local-message-peer";
 import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
-import {
-  type IpcChannel,
-  IpcConnection,
-  type IpcMessage,
-  PROTOCOL_VERSION,
-  IpcProtocolMismatchError as TransportProtocolMismatchError,
-} from "../../../vendor/adofai-ipc/src";
 
-const stateEvents = [
-  "downloads.state.changed",
-  "render-bundle.state.changed",
-  "renderer.job.changed",
-  "renderer.folder-selection.changed",
-  "renderer.health.snapshot",
-  "health.snapshot",
-  "activity.changed",
-  "replay.state.changed",
-  "calibration.state.changed",
-  "microphone.devices.changed",
-  "webcam.state.changed",
-  "renderer.state.changed",
-  "renderer.settings.changed",
-];
-let channelsPromise: Promise<LocalAppChannels> | undefined;
-
-export function getAdofaiIpcClients(): Promise<LocalAppChannels> {
-  channelsPromise ??= connect().catch((error: unknown) => {
-    channelsPromise = undefined;
-    throw translateError(error);
-  });
-  return channelsPromise;
+export function createRecorderSnapshots() {
+  const latest = new Map<string, { name: RecorderEventName; value: unknown }>();
+  const listeners = new Map<RecorderEventName, Set<(value: never) => void>>();
+  const publish = <K extends RecorderEventName>(name: K, value: RecorderEvent<K>) => {
+    const identity =
+      name === "renderBundleStateChanged"
+        ? (value as RecorderEvent<"renderBundleStateChanged">).jobId
+        : "";
+    const key = `${name}:${identity}`;
+    latest.delete(key);
+    latest.set(key, { name, value });
+    if (latest.size > 128) latest.delete(latest.keys().next().value as string);
+    for (const listener of listeners.get(name) ?? []) listener(value as never);
+  };
+  const handlers: ReplayApiAppHandlers = {
+    healthSnapshot: ({ value }) => publish("healthSnapshot", value),
+    activityChanged: ({ value }) => publish("activityChanged", value),
+    replayStateChanged: ({ value }) => publish("replayStateChanged", value),
+    microphoneDevicesChanged: ({ value }) => publish("microphoneDevicesChanged", value),
+    microphoneTimingChanged: ({ value }) => publish("microphoneTimingChanged", value),
+    calibrationStateChanged: ({ value }) => publish("calibrationStateChanged", value),
+    webcamStateChanged: ({ value }) => publish("webcamStateChanged", value),
+    ffmpegStateChanged: ({ value }) => publish("ffmpegStateChanged", value),
+    downloadsStateChanged: ({ value }) => publish("downloadsStateChanged", value),
+    renderBundleStateChanged: ({ value }) => publish("renderBundleStateChanged", value),
+  };
+  const on: RecorderClient["on"] = (name, listener) => {
+    const set = listeners.get(name) ?? new Set();
+    set.add(listener as (value: never) => void);
+    listeners.set(name, set);
+    for (const entry of latest.values()) if (entry.name === name) listener(entry.value as never);
+    return () => {
+      set.delete(listener as (value: never) => void);
+    };
+  };
+  return { handlers, on, clear: () => latest.clear() };
 }
 
-async function connect(): Promise<LocalAppChannels> {
-  const connection = new IpcConnection();
-  // Capture subscriptions and state before discovery can deliver the first snapshot.
-  const recorder = adaptChannel(connection.namespace("tuf-replay", 10));
-  const renderer = adaptChannel(connection.namespace("tuf-replay-renderer", 2));
-  try {
-    await connection.start();
-  } catch (error) {
-    connection.close();
-    throw error;
-  }
+export async function getAdofaiIpcClients(): Promise<LocalAppChannels> {
+  const snapshots = createRecorderSnapshots();
+  let mismatch: IpcProtocolMismatchError | undefined;
+  const app = createIpc({
+    requestTimeoutMs: 180_000,
+    onProtocolMismatch(error) {
+      const direction =
+        error.protocolVersion === null
+          ? "legacy_server"
+          : error.protocolVersion > PROTOCOL_VERSION
+            ? "client_outdated"
+            : "server_outdated";
+      mismatch = new IpcProtocolMismatchError(direction, error.message);
+    },
+  }).registerApp({ displayName: "TUFReplay Companion" });
+  // The generated handlers exist before use() starts discovery and snapshot delivery.
+  const channel = app.use(ReplayApiContract, snapshots.handlers);
+  let state: SessionState = "reconnecting";
+  let closed = false;
+  const states = new Set<(value: SessionState) => void>();
+  channel.onStatus((status, error) => {
+    if (status !== "ready") snapshots.clear();
+    state = closed
+      ? "closed"
+      : status === "ready"
+        ? "connected"
+        : status === "initializing"
+          ? "reconnecting"
+          : error?.code === "contract_mismatch" ||
+              error?.code === "protocol_mismatch" ||
+              error?.code === "feature_protocol_mismatch"
+            ? "incompatible"
+            : "disconnected";
+    for (const listener of states) listener(state);
+  });
   if (typeof window !== "undefined" && typeof document !== "undefined") {
-    const stopObserving = observeBrowserConnection(connection);
-    let off = () => {};
-    off = connection.onState((state) => {
-      if (state === "closed" || state === "incompatible") {
-        stopObserving();
-        off();
-      }
+    observeBrowserConnection({
+      checkConnection: () => app.checkConnection(),
+      dispose() {
+        closed = true;
+        app.dispose();
+      },
     });
   }
   return {
-    namespace: recorder,
-    pickerNamespace: recorder,
-    rendererNamespace: renderer,
+    recorder: {
+      mod: channel,
+      async whenReady(options) {
+        try {
+          await abortable(channel.ready(), options);
+        } catch (error) {
+          throw mismatch ?? error;
+        }
+      },
+      on: snapshots.on,
+      onStatus: (listener) => channel.onStatus(listener),
+    },
     session: {
       get state() {
-        return connection.state;
+        return state;
       },
-      onState: (listener) => connection.onState(listener),
+      onState(listener) {
+        states.add(listener);
+        listener(state);
+        return () => {
+          states.delete(listener);
+        };
+      },
     },
   };
 }
 
-export function adaptChannel(channel: IpcChannel): LocalMessagePeer {
-  const snapshots = new Map<string, { name: string; payload: unknown; message: DomainMessage }>();
-  for (const name of stateEvents)
-    channel.on(name, (payload, message) => {
-      const state = payload as { jobId?: string; selectionId?: string } | null;
-      const identity = state?.jobId ?? state?.selectionId ?? "";
-      const key = `${name}:${identity}`;
-      snapshots.delete(key);
-      snapshots.set(key, { name, payload, message });
-      if (snapshots.size > 128) snapshots.delete(snapshots.keys().next().value as string);
-    });
-  channel.onStatus((status) => {
-    if (status === "unavailable") snapshots.clear();
-  });
-  return {
-    send(command, payload) {
-      try {
-        return channel.send(command, payload);
-      } catch (error) {
-        throw translateError(error);
-      }
-    },
-    on(name, listener) {
-      const off = channel.on(name, (payload, message: IpcMessage) => listener(payload, message));
-      for (const snapshot of snapshots.values())
-        if (snapshot.name === name) listener(snapshot.payload, snapshot.message);
-      return off;
-    },
-    onStatus: (listener) => channel.onStatus(listener),
-    async whenReady(options) {
-      try {
-        await channel.whenReady(options);
-      } catch (error) {
-        throw translateError(error);
-      }
-    },
-  };
-}
-
-function translateError(error: unknown): unknown {
-  if (error instanceof TransportProtocolMismatchError) {
-    const direction =
-      error.protocolVersion === null
-        ? "legacy_server"
-        : error.protocolVersion > PROTOCOL_VERSION
-          ? "client_outdated"
-          : "server_outdated";
-    return new IpcProtocolMismatchError(direction, error.message);
-  }
-  if (error && typeof error === "object" && "code" in error) {
-    const code = String(error.code);
-    if (code === "UNAVAILABLE" || code === "TIMEOUT")
-      return new DomainCommandError(
-        code === "TIMEOUT" ? "ipc_timeout" : "ipc_unavailable",
-        error instanceof Error ? error.message : "The game connection failed.",
-      );
-  }
-  return error;
-}
-
-/** Keeps the injected application ports stable while first connection attempts can be retried. */
+/** Keeps application ports stable across a failed initial discovery attempt. */
 export function createLazyAppChannels(
   load: () => Promise<LocalAppChannels> = getAdofaiIpcClients,
 ): LocalAppChannels {
   let current: LocalAppChannels | undefined;
   let pending: Promise<LocalAppChannels> | undefined;
-  let state: import("@/ports/local-message-peer").SessionState = "disconnected";
-  const states = new Set<(value: typeof state) => void>();
+  let state: SessionState = "disconnected";
+  const states = new Set<(value: SessionState) => void>();
   const waiting = new Set<() => void>();
-  const setState = (next: typeof state) => {
+  const setState = (next: SessionState) => {
     state = next;
     for (const listener of states) listener(next);
   };
@@ -159,59 +152,44 @@ export function createLazyAppChannels(
     })();
     return pending;
   };
-  const proxy = (name: "namespace" | "rendererNamespace"): LocalMessagePeer => ({
-    send(command, payload) {
-      const peer = current?.[name];
-      if (!peer)
-        throw new DomainCommandError(
-          "ipc_unavailable",
-          "Connect to the game before trying this action.",
-        );
-      return peer.send(command, payload);
-    },
-    on(event, listener) {
-      let off = () => {};
-      let disposed = false;
-      const bind = () => {
-        if (!disposed) off = current?.[name]?.on(event, listener) ?? (() => {});
+  const bindLater = (subscribe: (clients: LocalAppChannels) => () => void) => {
+    let disposed = false;
+    let off = () => {};
+    const bind = () => {
+      if (!disposed && current) off = subscribe(current);
+    };
+    if (current) bind();
+    else waiting.add(bind);
+    return () => {
+      disposed = true;
+      waiting.delete(bind);
+      off();
+    };
+  };
+  // This proxy preserves the generated method signatures while delaying app registration.
+  // It never maps methods to transport commands; the generated channel owns that contract.
+  const mod = new Proxy({} as ReplayApiMod, {
+    get(_target, name) {
+      if (name === "then") return undefined;
+      return async (...args: unknown[]) => {
+        const clients = await get();
+        const method = clients.recorder.mod[name as keyof ReplayApiMod] as (
+          ...args: unknown[]
+        ) => unknown;
+        return method(...args);
       };
-      if (current) bind();
-      else waiting.add(bind);
-      return () => {
-        disposed = true;
-        waiting.delete(bind);
-        off();
-      };
-    },
-    onStatus(listener) {
-      let off = () => {};
-      let disposed = false;
-      const bind = () => {
-        if (!disposed) off = current?.[name]?.onStatus?.(listener) ?? (() => {});
-      };
-      if (current) bind();
-      else waiting.add(bind);
-      return () => {
-        disposed = true;
-        waiting.delete(bind);
-        off();
-      };
-    },
-    async whenReady(options) {
-      const peer = (await get())[name];
-      if (!peer)
-        throw new DomainCommandError(
-          "renderer_missing",
-          "Install TUFReplay-Renderer and restart the game.",
-        );
-      await peer.whenReady(options);
     },
   });
-  const recorder = proxy("namespace");
   return {
-    namespace: recorder,
-    pickerNamespace: recorder,
-    rendererNamespace: proxy("rendererNamespace"),
+    recorder: {
+      mod,
+      async whenReady(options) {
+        const clients = await abortable(get(), options);
+        await clients.recorder.whenReady(options);
+      },
+      on: (name, listener) => bindLater((clients) => clients.recorder.on(name, listener)),
+      onStatus: (listener) => bindLater((clients) => clients.recorder.onStatus(listener)),
+    },
     session: {
       get state() {
         return state;

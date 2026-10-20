@@ -1,0 +1,14 @@
+{
+  "contract": "ipc/main.tsp",
+  "typescript": {
+    "output": "web/vendor/tuf-replay-ipc",
+    "packageName": "@tuf-replay/ipc",
+    "version": "1.0.0",
+    "private": true,
+    "runtimeDependency": "2.1.0"
+  },
+  "csharp": {
+    "output": "TUFReplay/Shared/Ipc/Generated",
+    "namespace": "TUFReplay.Shared.Ipc.Generated"
+  }
+}

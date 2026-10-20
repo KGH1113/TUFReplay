@@ -1,6 +1,26 @@
 import { expect, test } from "bun:test";
 import { observeBrowserConnection } from "@/adapters/adofai-ipc/browser-connection-lifecycle";
 
+test("a cached page retains its app, and a later actual departure disposes it", () => {
+  const browser = new EventTarget();
+  const page = Object.assign(new EventTarget(), { visibilityState: "visible" as const });
+  let disposed = 0;
+  let checked = 0;
+  observeBrowserConnection(
+    { checkConnection: () => checked++, dispose: () => disposed++ },
+    browser,
+    page,
+  );
+  browser.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: true }));
+  browser.dispatchEvent(new Event("pageshow"));
+  expect(disposed).toBe(0);
+  expect(checked).toBe(1);
+  browser.dispatchEvent(Object.assign(new Event("pagehide"), { persisted: false }));
+  browser.dispatchEvent(new Event("pageshow"));
+  expect(disposed).toBe(1);
+  expect(checked).toBe(1);
+});
+
 test("browser resume checks the retained session and cleanup releases every listener", () => {
   const browser = new EventTarget();
   const page = Object.assign(new EventTarget(), {

@@ -6,7 +6,9 @@ export interface CameraPreviewFrame {
 
 export interface CameraPreviewDownloads {
   readFrame(
-    ticket: { url: string; byteLength: number; metadata: { width: number; height: number } },
+    frame: { file: TransferredFile; width: number; height: number },
     options?: { signal?: AbortSignal },
   ): Promise<CameraPreviewFrame>;
 }
+
+import type { TransferredFile } from "@/ports/received-file";

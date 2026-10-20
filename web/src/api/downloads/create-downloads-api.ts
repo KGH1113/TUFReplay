@@ -1,32 +1,29 @@
-import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
-import { type DownloadsApi, downloadsStateSchema, installStateSchema } from "./downloads-api";
-
-export function createDownloadsApi(clients: AdofaiIpcClients): DownloadsApi {
+import { callRecorder, decodeRecorder } from "@/api/recorder-call";
+import { toDownloadsStateDto } from "@/api/recorder-dtos";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
+import { type DownloadsApi, downloadsStateSchema } from "./downloads-api";
+export function createDownloadsApi(clients: LocalAppChannels): DownloadsApi {
   return {
-    getStatus: () =>
-      sendDomainCommand(
-        clients.namespace,
-        "downloads.state.read",
-        "downloads.state.changed",
-        {},
+    getStatus: async () =>
+      decodeRecorder(
         downloadsStateSchema,
+        toDownloadsStateDto(await callRecorder(clients, (mod) => mod.readDownloadsState())),
       ),
-    act: (item, action) =>
-      sendDomainCommand(
-        clients.namespace,
-        `downloads.${item}.${action}`,
-        "downloads.state.changed",
-        {},
-        downloadsStateSchema,
-      ),
+    async act(item, action) {
+      const state = await callRecorder(clients, (mod) => {
+        if (item === "renderer") {
+          if (action === "request") return mod.requestRendererDownload();
+          if (action === "confirm") return mod.confirmRendererDownload();
+          return mod.cancelRendererDownload();
+        }
+        if (action === "request") return mod.requestFfmpegDownload();
+        if (action === "confirm") return mod.confirmFfmpegDownload();
+        return mod.cancelFfmpegDownload();
+      });
+      return decodeRecorder(downloadsStateSchema, toDownloadsStateDto(state));
+    },
     async cancelPendingFfmpeg() {
-      await sendDomainCommand(
-        clients.namespace,
-        "media.ffmpeg.release",
-        "media.ffmpeg.state.changed",
-        {},
-        installStateSchema,
-      );
+      await callRecorder(clients, (mod) => mod.releaseFfmpeg());
     },
   };
 }

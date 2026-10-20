@@ -1,4 +1,5 @@
 import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
+import { callRecorder, decodeRecorder } from "@/api/recorder-call";
 import type { RenderApi } from "@/api/render/render-api";
 import {
   outputDirectoryCancelSchema,
@@ -75,36 +76,29 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
         jobId ? { jobId } : {},
         outputDirectoryOpenSchema,
       ),
-    exportBundle(runId, options, levelPath) {
+    async exportBundle(runId, options, levelPath) {
       const validated = renderOptionsSchema.parse(options);
-      return sendDomainCommand(
-        clients.namespace,
-        "replay.render-bundle.prepare",
-        "render-bundle.state.changed",
-        {
-          runId,
-          ...(levelPath ? { levelPath } : {}),
-          includeWebcam: validated.includeWebcam,
-          includeMicrophone: validated.includeMicrophone,
-        },
+      return decodeRecorder(
         renderExportStatusSchema,
+        await callRecorder(clients, (mod) =>
+          mod.prepareRenderBundle({
+            runId,
+            ...(levelPath ? { levelPath } : {}),
+            includeWebcam: validated.includeWebcam,
+            includeMicrophone: validated.includeMicrophone,
+          }),
+        ),
       );
     },
-    getExportStatus: (jobId) =>
-      sendDomainCommand(
-        clients.namespace,
-        "replay.render-bundle.state.read",
-        "render-bundle.state.changed",
-        { jobId },
+    getExportStatus: async (jobId) =>
+      decodeRecorder(
         renderExportStatusSchema,
+        await callRecorder(clients, (mod) => mod.readRenderBundleState({ jobId })),
       ),
-    cancelExport: (jobId) =>
-      sendDomainCommand(
-        clients.namespace,
-        "replay.render-bundle.cancel",
-        "render-bundle.state.changed",
-        { jobId },
+    cancelExport: async (jobId) =>
+      decodeRecorder(
         renderExportStatusSchema,
+        await callRecorder(clients, (mod) => mod.cancelRenderBundle({ jobId })),
       ),
     start(manifestPath, options) {
       return sendDomainCommand(

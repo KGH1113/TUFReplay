@@ -7,97 +7,75 @@ namespace TUFReplay.Calibration.Ipc;
 
 public static class MicrophoneCalibrationIpcHandlers
 {
-  public static object Start(JsonCommand request) =>
+  public static MicrophoneCalibrationStatusDto Start() =>
     MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.Start());
 
-  public static object GetStatus(JsonCommand request)
+  public static MicrophoneCalibrationStatusDto GetStatus(string operationId)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      return StaleOperationError();
+      throw StaleOperationError();
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.GetStatus());
   }
 
-  public static object GetResult(JsonCommand request)
+  public static MicrophoneCalibrationResultDto GetResult(string operationId, int revision = 0)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
-    int revision = IpcParams.OptionalInt(request, "revision") ?? 0;
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (revision < 0)
-      return IpcDomainError.Create("invalid_result_revision", "revision must be zero or a positive integer.");
+      throw IpcDomainError.Create("invalid_result_revision", "revision must be zero or a positive integer.");
     MicrophoneCalibrationResult result = FeatureRegistry.MicrophoneCalibration.GetResult(operationId, revision);
     return result == null
-      ? IpcDomainError.Create("calibration_result_unavailable", "The calibration result is not available.")
+      ? throw IpcDomainError.Create("calibration_result_unavailable", "The calibration result is not available.")
       : MicrophoneCalibrationResultDto.From(result);
   }
 
-  public static object PlayPreview(JsonCommand request)
+  public static MicrophoneCalibrationStatusDto PlayPreview(string operationId)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      return StaleOperationError();
+      throw StaleOperationError();
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.PlayPreview(operationId));
   }
 
-  public static object StopPreview(JsonCommand request)
+  public static MicrophoneCalibrationStatusDto StopPreview(string operationId)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      return StaleOperationError();
+      throw StaleOperationError();
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.StopPreview());
   }
 
-  public static object SetOffset(JsonCommand request)
+  public static MicrophoneCalibrationStatusDto SetOffset(string operationId, int offsetMs)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
-    int? offsetMs = IpcParams.OptionalInt(request, "offsetMs");
-    if (!offsetMs.HasValue)
-      return IpcDomainError.Create("invalid_microphone_offset", "offsetMs must be an integer.");
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      return StaleOperationError();
-    return MicrophoneCalibrationStatusDto.From(
-      FeatureRegistry.MicrophoneCalibration.SetOffset(operationId, offsetMs.Value)
-    );
+      throw StaleOperationError();
+    return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.SetOffset(operationId, offsetMs));
   }
 
-  public static object SetVolume(JsonCommand request)
+  public static MicrophoneCalibrationStatusDto SetVolume(string operationId, int volumeDb)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
-    int? volumeDb = IpcParams.OptionalInt(request, "volumeDb");
-    if (!volumeDb.HasValue)
-      return IpcDomainError.Create("invalid_microphone_volume", "volumeDb must be an integer.");
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      return StaleOperationError();
-    return MicrophoneCalibrationStatusDto.From(
-      FeatureRegistry.MicrophoneCalibration.SetVolume(operationId, volumeDb.Value)
-    );
+      throw StaleOperationError();
+    return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.SetVolume(operationId, volumeDb));
   }
 
-  public static object Close(JsonCommand request)
+  public static MicrophoneCalibrationStatusDto Close(string operationId)
   {
-    if (!TryOperationId(request, out string operationId, out object error))
-      return error;
+    if (string.IsNullOrWhiteSpace(operationId))
+      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
     if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      return StaleOperationError();
+      throw StaleOperationError();
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.Close(operationId));
   }
 
-  private static bool TryOperationId(JsonCommand request, out string operationId, out object error)
-  {
-    if (IpcParams.TryRequiredString(request, "operationId", out operationId))
-    {
-      error = null;
-      return true;
-    }
-    error = IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
-    return false;
-  }
-
-  private static object StaleOperationError() =>
+  private static AdofaiIpc.IpcCallException StaleOperationError() =>
     IpcDomainError.Create("calibration_operation_stale", "The calibration operation is no longer active.");
 }

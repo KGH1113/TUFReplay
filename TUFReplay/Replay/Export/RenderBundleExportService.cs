@@ -17,6 +17,7 @@ using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Preparation;
+using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Models;
 using TUFReplay.Webcam.Playback;
@@ -28,9 +29,9 @@ namespace TUFReplay.Replay.Export;
 // This module owns only neutral files. No renderer assembly is loaded or referenced.
 public static class RenderBundleExportService
 {
-  public static event Action<object> Changed;
+  public static event Action<RenderBundleState> Changed;
 
-  public static object[] Snapshots()
+  public static RenderBundleState[] Snapshots()
   {
     lock (Gate)
       return Jobs.Values.Select(StatusLocked).ToArray();
@@ -38,7 +39,7 @@ public static class RenderBundleExportService
 
   private static void Notify(Job job)
   {
-    object state;
+    RenderBundleState state;
     lock (Gate)
       state = StatusLocked(job);
     Changed?.Invoke(state);
@@ -47,14 +48,14 @@ public static class RenderBundleExportService
   private static readonly object Gate = new object();
   private static readonly Dictionary<string, Job> Jobs = new Dictionary<string, Job>();
 
-  public static object Start(string runId, string levelPath, bool webcam, bool microphone)
+  public static RenderBundleState Start(string runId, string levelPath, bool webcam, bool microphone)
   {
     lock (Gate)
     {
       if (Jobs.Values.Any(job => !job.Finished))
-        return Error("render_export_busy", "Another recording is being prepared. Wait or cancel it first.");
+        throw Error("render_export_busy", "Another recording is being prepared. Wait or cancel it first.");
       if (ReplayPlaybackCoordinator.IsBusy)
-        return Error("replay_busy", "Stop replay playback before preparing a render.");
+        throw Error("replay_busy", "Stop replay playback before preparing a render.");
       var settings = JsonConvert.DeserializeObject<TUFReplaySetting>(JsonConvert.SerializeObject(Main.Settings));
       settings.Normalize();
       var job = new Job
@@ -75,20 +76,20 @@ public static class RenderBundleExportService
     }
   }
 
-  public static object GetStatus(string jobId)
+  public static RenderBundleState GetStatus(string jobId)
   {
     lock (Gate)
       return Jobs.TryGetValue(jobId, out Job job)
         ? StatusLocked(job)
-        : Error("render_export_not_found", "This preparation job has expired. Start rendering again.");
+        : throw Error("render_export_not_found", "This preparation job has expired. Start rendering again.");
   }
 
-  public static object Cancel(string jobId)
+  public static RenderBundleState Cancel(string jobId)
   {
     lock (Gate)
     {
       if (!Jobs.TryGetValue(jobId, out Job job))
-        return Error("render_export_not_found", "This preparation job has expired. Start rendering again.");
+        throw Error("render_export_not_found", "This preparation job has expired. Start rendering again.");
       if (!job.Finished)
         job.Cancellation.Cancel();
       return StatusLocked(job);
@@ -350,11 +351,11 @@ public static class RenderBundleExportService
         job.ErrorDetails =
           validation == null
             ? null
-            : new
+            : new RenderErrorDetails
             {
-              field = validation.Field,
-              line = validation.Line,
-              file = validation.File,
+              Field = validation.Field,
+              Line = validation.Line,
+              File = validation.File,
             };
         job.ErrorMessage =
           validation != null ? exception.Message
@@ -432,20 +433,21 @@ public static class RenderBundleExportService
     Notify(job);
   }
 
-  private static object StatusLocked(Job job) =>
-    new
+  private static RenderBundleState StatusLocked(Job job) =>
+    new RenderBundleState
     {
-      jobId = job.Id,
-      runId = job.RunId,
-      state = job.State,
-      progress = job.Progress,
-      manifestPath = job.ManifestPath,
-      errorCode = job.ErrorCode,
-      errorMessage = job.ErrorMessage,
-      errorDetails = job.ErrorDetails,
+      JobId = job.Id,
+      RunId = job.RunId,
+      State = job.State,
+      Progress = job.Progress,
+      ManifestPath = job.ManifestPath,
+      ErrorCode = job.ErrorCode,
+      ErrorMessage = job.ErrorMessage,
+      ErrorDetails = job.ErrorDetails,
     };
 
-  private static object Error(string code, string message) => TUFReplay.Shared.Ipc.IpcDomainError.Create(code, message);
+  private static AdofaiIpc.IpcCallException Error(string code, string message) =>
+    TUFReplay.Shared.Ipc.IpcDomainError.Create(code, message);
 
   private static void CleanupExpired(Job current)
   {
@@ -494,7 +496,7 @@ public static class RenderBundleExportService
     public int ScreenWidth,
       ScreenHeight;
     public TUFReplaySetting Settings;
-    public object ErrorDetails;
+    public RenderErrorDetails ErrorDetails;
     public readonly DateTime CreatedAt = DateTime.UtcNow;
     public readonly CancellationTokenSource Cancellation = new CancellationTokenSource();
     public bool Finished => State == "completed" || State == "failed" || State == "cancelled";

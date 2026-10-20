@@ -1,15 +1,26 @@
 {
   "source": "https://github.com/KGH1113/adofai-ipc",
-  "sourceRevision": "5b2863f250001a83535c8530f5a6f9303677dc7a",
+  "sourceRevision": "e9086112a6f85069a632a742ffaddb724a3aafc8",
   "sourceDirty": false,
-  "version": "2.0.0",
+  "version": "2.1.0",
   "protocolVersion": 3,
+  "registry": "https://registry.npmjs.org/",
+  "integrity": "sha512-7Ofoi9nQuNec8iP6/G7LYPn8Sq1Bgvvp5QDjnnAoyda7H+xivn9CAZJB5DDRfeQy49sFYCx8qpm7FpifwPsbfA==",
   "files": {
-    "browser-transport.ts": "2114b717829b35f14eaf4a600d696a9201afcea8aef87e1cb1be9b608618f513",
-    "client.ts": "ba31326d64b986eecf26d25989079ad60aea44cf8b3535f6e2410ac90d6fee94",
-    "errors.ts": "fbedd686c09cc1093f03b7d2af487281f5adb138be671e2aad8a5baac11fc6d1",
-    "index.ts": "95a382ac06471631d5463df67acb0ef8310d0e901bd23585abfb8c79b67d69d9",
-    "types.ts": "c205e7d38a079c7220115109d75166870cbfc733851cfa082972713019b7c8ed",
-    "version.ts": "7ea5e04462df8b15e8cd3a8e1299ec7dacf59769ba1b12ece2ab06b77f66cf05"
+    "LICENSE": "257454d675b9c85eb92e8d1fc3fbc92839455ba2fb4b737f86c39a1763640f7f",
+    "README.md": "5245c216809a2b99d9283d712ff7506ba31cc714a05657860a767ec80f618127",
+    "dist/chunk-6BSF5RIG.js": "3a30012bb87a24e5582500663e700168964afd4117633d7fdbc759c77bfdfb92",
+    "dist/chunk-B72UQEJA.cjs": "af14cb02134c0e51371df12cf070f2c8e34f909b29fc269c3bf17510d49faed9",
+    "dist/index.cjs": "8520408737352c1151736673efea31391669bdcb005637d9f82324e5ad5573c3",
+    "dist/index.d.cts": "dee0e05f69b718e3e093e1ac9f74fc76381c3c1c2999d7738702d3c1f9975f91",
+    "dist/index.d.ts": "c99399ef24255a105766a77e8aed0693e3521d2506dc255cb07b6dd174e066d1",
+    "dist/index.js": "56e873bce4243f210219b81e685d074d7a36f0934ca098c088713dc0340814e2",
+    "dist/message-session-B0rHERF3.d.cts": "109e8adb08637ff8eb4814bb2fd1720be2d1dce7a63242d78843be89ba421e7c",
+    "dist/message-session-B0rHERF3.d.ts": "109e8adb08637ff8eb4814bb2fd1720be2d1dce7a63242d78843be89ba421e7c",
+    "dist/transport.cjs": "743c7a006f4e11dc2b4155edb64fc1d440ab2e2b77e4d09c4f15fc0297321b9e",
+    "dist/transport.d.cts": "4a1fa98c1d65122fbef533bdecac788d80b6fa809343d6a2584be228c0e8fa68",
+    "dist/transport.d.ts": "5011ad4befbed9680de1af482e7387bb90cafd7ecf57b1a02f2907e92dfba33a",
+    "dist/transport.js": "d0a6a02f9633c3a64b0a1284f4441b2ddb361eef9960885c83c01d08569b9ae2",
+    "package.json": "17b48f526ca397fc19e1759e235309a5261f50a3a273c22eef6125d8f0493306"
   }
 }

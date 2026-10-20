@@ -1,15 +1,21 @@
 import { z } from "zod";
 import type { ActivityApi } from "@/api/activity/activity-api";
-import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
+import { callRecorder, decodeRecorder } from "@/api/recorder-call";
+import {
+  toAppSessionDto,
+  toLegacyReplayStatusDto,
+  toLogicalLevelDto,
+  toRunDto,
+} from "@/api/recorder-dtos";
 import {
   mapActivityChart,
   mapActivityRun,
   mapAppSession,
   mapLogicalLevel,
 } from "@/models/activity/activity-model";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
 import type { TextDownloads } from "@/ports/text-download";
 import {
-  activityChartSnapshotDtoSchema,
   activityRunDtoSchema,
   appSessionDtoSchema,
   legacyReplayStatusDtoSchema,
@@ -17,30 +23,21 @@ import {
 } from "@/schemas/activity/activity-schema";
 
 const PAGE_SIZE = 200;
-
 export function createActivityApi(
-  clients: AdofaiIpcClients,
+  clients: LocalAppChannels,
   downloads: TextDownloads,
 ): ActivityApi {
   const listAppSessions = async (offset: number, limit: number) => {
-    const items = await sendDomainCommand(
-      clients.namespace,
-      "activity.sessions.read",
-      "activity.sessions.snapshot",
-      { offset, limit },
-      z.array(appSessionDtoSchema),
+    const items = await callRecorder(clients, (mod) => mod.listAppSessions({ offset, limit }));
+    return decodeRecorder(z.array(appSessionDtoSchema), items.map(toAppSessionDto)).map(
+      mapAppSession,
     );
-    return items.map(mapAppSession);
   };
-
   return {
     async getLegacyReplayStatus() {
-      const status = await sendDomainCommand(
-        clients.namespace,
-        "activity.legacy-status.read",
-        "activity.legacy-status.snapshot",
-        {},
+      const status = decodeRecorder(
         legacyReplayStatusDtoSchema,
+        toLegacyReplayStatusDto(await callRecorder(clients, (mod) => mod.readLegacyReplayStatus())),
       );
       return { hasLegacyReplays: status.HasLegacyReplays };
     },
@@ -48,41 +45,36 @@ export function createActivityApi(
     listAllAppSessions: (onPage) => loadAllPages(listAppSessions, onPage),
     async getLogicalLevel(id) {
       return mapLogicalLevel(
-        await sendDomainCommand(
-          clients.namespace,
-          "activity.level.read",
-          "activity.level.snapshot",
-          { id },
+        decodeRecorder(
           logicalLevelDtoSchema,
+          toLogicalLevelDto(await callRecorder(clients, (mod) => mod.readLogicalLevel({ id }))),
         ),
       );
     },
     listLogicalLevelRuns: (id, appSessionIds, onPage) =>
       loadAllPages(async (offset, limit) => {
-        const items = await sendDomainCommand(
-          clients.namespace,
-          "activity.runs.read",
-          "activity.runs.snapshot",
-          { id, appSessionIds, offset, limit },
-          z.array(activityRunDtoSchema),
+        const items = await callRecorder(clients, (mod) =>
+          mod.listLogicalLevelRuns({ id, appSessionIds, offset, limit }),
         );
-        return items.map(mapActivityRun);
+        return decodeRecorder(z.array(activityRunDtoSchema), items.map(toRunDto)).map(
+          mapActivityRun,
+        );
       }, onPage),
     async getLogicalLevelChart(id, options) {
-      const snapshot = await sendDomainCommand(
-        clients.namespace,
-        "activity.chart.read",
-        "activity.chart.snapshot",
-        { id },
-        activityChartSnapshotDtoSchema,
+      const chart = await callRecorder(
+        clients,
+        (mod) => mod.readLogicalLevelChart({ id }),
         options,
       );
-      const levelText = await downloads.readText(snapshot, options);
-      return mapActivityChart({ ...snapshot.metadata, LevelText: levelText });
+      const levelText = await downloads.readText(chart.file, options);
+      return mapActivityChart({
+        LevelSessionId: chart.levelSessionId,
+        FloorCount: chart.floorCount,
+        LevelText: levelText,
+      });
     },
   };
 }
-
 async function loadAllPages<T>(
   load: (offset: number, limit: number) => Promise<T[]>,
   onPage?: (items: T[]) => void,

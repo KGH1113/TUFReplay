@@ -38,8 +38,18 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Verify unpublished ADOFAI-IPC source snapshot
+      - name: Setup Node for TypeSpec
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify generated IPC and pinned SDK
         run: ./scripts/run.sh ipc-check
+
+      - name: Test generated IPC against the bundled runtime
+        env:
+          DOTNET_EXE: dotnet
+        run: ./scripts/run.sh ipc-test
 
       - name: Biome check
         run: bun run web:biome

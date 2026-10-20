@@ -16,6 +16,8 @@
     "ipc:check": "bun scripts/verify-ipc-sdk.ts"
   },
   "dependencies": {
+    "adofai-ipc": "2.1.0",
+    "@tuf-replay/ipc": "file:vendor/tuf-replay-ipc",
     "@fontsource-variable/figtree": "^5.2.10",
     "@hugeicons/core-free-icons": "4.1.4",
     "@hugeicons/react": "^1.1.6",

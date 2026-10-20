@@ -1,23 +1,42 @@
 import { expect, test } from "bun:test";
 import { QueryClient, QueryObserver } from "@tanstack/react-query";
-import { adaptChannel } from "@/adapters/adofai-ipc/connection";
+import { createRecorderSnapshots } from "@/adapters/adofai-ipc/connection";
 import { createAppEvents } from "@/api/create-app-events";
-import type { SessionState } from "@/ports/local-message-peer";
+import type { NamespaceStatus, RecorderClient, SessionState } from "@/ports/local-message-peer";
 import {
   type ActivityConnectionSnapshot,
   observeActivityConnection,
 } from "@/state/activity/connection-lifecycle";
-import { IpcConnection } from "../../../vendor/adofai-ipc/src";
+import { scriptedChannels } from "../../fixtures/local-message-peer";
 
 test("late recorder readiness recovers a failed active query and a second game session", async () => {
-  const sdk = new IpcConnection();
-  const recorder = sdk.namespace("tuf-replay");
-  const peer = adaptChannel(recorder);
+  const recorderSnapshots = createRecorderSnapshots();
+  let namespaceStatus: NamespaceStatus = "unavailable";
+  const statusListeners = new Set<(value: NamespaceStatus) => void>();
+  const peer: RecorderClient = {
+    mod: scriptedChannels(() => ({})).recorder.mod,
+    on: recorderSnapshots.on,
+    async whenReady() {
+      if (namespaceStatus !== "ready") throw new Error("Recorder is starting");
+    },
+    onStatus(listener) {
+      statusListeners.add(listener);
+      listener(namespaceStatus);
+      return () => {
+        statusListeners.delete(listener);
+      };
+    },
+  };
+  const status = (value: NamespaceStatus) => {
+    if (namespaceStatus === value) return;
+    namespaceStatus = value;
+    if (value !== "ready") recorderSnapshots.clear();
+    for (const listener of statusListeners) listener(value);
+  };
   let session: SessionState = "connected";
   const listeners = new Set<(value: SessionState) => void>();
   const events = createAppEvents({
-    namespace: peer,
-    pickerNamespace: peer,
+    recorder: peer,
     session: {
       get state() {
         return session;
@@ -53,13 +72,6 @@ test("late recorder readiness recovers a failed active query and a second game s
   try {
     await observer.refetch();
     expect(observer.getCurrentResult().status).toBe("error");
-    const status = (value: "ready" | "initializing") =>
-      recorder.receive({
-        kind: "namespace",
-        name: "namespace.changed",
-        id: "status",
-        payload: { status: value },
-      });
     status("ready");
     await observer.refetch({ cancelRefetch: false });
     expect(observer.getCurrentResult().status).toBe("success");
@@ -67,7 +79,7 @@ test("late recorder readiness recovers a failed active query and a second game s
     status("ready");
     await Promise.resolve();
     expect(reads).toBe(2);
-    recorder.disconnected();
+    status("unavailable");
     session = "reconnecting";
     for (const listener of listeners) listener(session);
     expect(snapshots.at(-1)).toEqual({ session: "reconnecting", recorder: "unavailable" });
@@ -84,7 +96,7 @@ test("late recorder readiness recovers a failed active query and a second game s
     stopConnection();
     stopQuery();
     client.clear();
-    sdk.close();
+    recorderSnapshots.clear();
   }
   expect(listeners.size).toBe(0);
 });

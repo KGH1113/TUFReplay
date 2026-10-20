@@ -18,7 +18,9 @@ Commands:
   web-test    Run web unit and contract tests (optional test filters)
   web-format  Format the companion web source
   web-lock    Refresh the local web dependency lockfile
-  ipc-check   Verify the committed unpublished ADOFAI-IPC SDK snapshot
+  ipc-generate Generate the typed C# and TS IPC contract
+  ipc-check   Verify generated IPC code and the pinned npm SDK
+  ipc-test    Test the generated contract against the bundled IPC runtime
   web-check   Run web tests, typecheck, Biome, and production build
   web-dev     Run the companion web development server (extra arguments go to Vite)
   mac-helper  Build and verify the macOS microphone/webcam helper
@@ -59,7 +61,15 @@ case "$command_name" in
     exec bun install --cwd "$SCRIPTS_DIR/../web" --lockfile-only
     ;;
   ipc-check)
+    bash "$SCRIPTS_DIR/tasks/verify/ipc-generated.sh" --check
     exec bun run --cwd "$SCRIPTS_DIR/../web" ipc:check
+    ;;
+  ipc-generate)
+    shift
+    exec bash "$SCRIPTS_DIR/tasks/verify/ipc-generated.sh" "$@"
+    ;;
+  ipc-test)
+    exec bash "$SCRIPTS_DIR/tasks/verify/ipc-runtime.sh"
     ;;
   web-check)
     run_task "Verify companion web workspace" "$SCRIPTS_DIR/tasks/verify/web.sh"

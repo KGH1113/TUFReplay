@@ -6,6 +6,8 @@ WORKDIR /app
 
 COPY package.json bun.lock ./
 COPY web/package.json ./web/package.json
+COPY vendor/adofai-ipc-typespec ./vendor/adofai-ipc-typespec
+COPY web/vendor/tuf-replay-ipc ./web/vendor/tuf-replay-ipc
 # The auto-submission branch has a second Bun workspace that main/dev do not.
 # Bind-mount the source context only long enough to make Bun's workspace graph
 # complete; do not require that branch-only path to exist on main or dev.

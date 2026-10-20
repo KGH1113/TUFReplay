@@ -1,36 +1,22 @@
 import type { CameraPreviewDownloads } from "@/ports/camera-preview";
 
-export function createCameraPreviewDownloads(
-  fetchFrame: (input: string, init?: RequestInit) => Promise<Response> = globalThis.fetch,
-): CameraPreviewDownloads {
+export function createCameraPreviewDownloads(): CameraPreviewDownloads {
   return {
-    async readFrame(ticket, options) {
-      const url = new URL(ticket.url);
-      const { width, height } = ticket.metadata;
+    async readFrame({ file, width, height }, options) {
       const stride = (width * 3 + 3) & ~3;
       if (
-        url.protocol !== "http:" ||
-        url.hostname !== "127.0.0.1" ||
-        Number(url.port) < 32145 ||
-        Number(url.port) > 32155 ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !/^\/ipc\/download\/[A-Za-z0-9_-]+$/.test(url.pathname) ||
-        ticket.byteLength !== 54 + stride * height ||
-        ticket.byteLength > 921654
+        !Number.isInteger(width) ||
+        width < 2 ||
+        width > 640 ||
+        !Number.isInteger(height) ||
+        height < 2 ||
+        height > 480 ||
+        file.size !== 54 + stride * height ||
+        file.size > 921654
       )
-        throw new Error("Invalid camera preview ticket");
-      const response = await fetchFrame(url.href, {
-        signal: options?.signal,
-        cache: "no-store",
-        credentials: "omit",
-        redirect: "error",
-      });
-      if (!response.ok || !response.body) throw new Error("Camera preview download failed");
-      const bytes = new Uint8Array(ticket.byteLength);
-      const reader = response.body.getReader();
+        throw new Error("Invalid camera preview dimensions");
+      const bytes = new Uint8Array(file.size);
+      const reader = file.stream(options).getReader();
       let offset = 0;
       let complete = false;
       try {

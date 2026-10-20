@@ -5,3 +5,4 @@ source "$TASK_DIR/../../lib/context.sh"
 source "$TASK_DIR/../../lib/guards.sh"
 source "$TASK_DIR/../../lib/ipc-bundle.sh"
 verify_ipc_bundle
+bash "$TASK_DIR/ipc-generated.sh" --check

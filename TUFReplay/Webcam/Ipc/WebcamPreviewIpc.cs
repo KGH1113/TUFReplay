@@ -1,9 +1,10 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using Newtonsoft.Json.Linq;
+using AdofaiIpc;
 using TUFReplay.Composition;
 using TUFReplay.Shared.Ipc;
+using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Webcam.Capture;
 using TUFReplay.Webcam.Models;
 
@@ -21,31 +22,19 @@ internal sealed class WebcamPreviewIpc
   private long _sourceChangedAt;
   private long _lastRequestAt;
 
-  public void Read(JsonFeature ipc, JsonCommand command)
+  public WebcamPreview Read(string deviceId)
   {
     var state = FeatureRegistry.WebcamRecording?.GetState();
-    var payload = command.Payload as JObject;
-    if (
-      payload == null
-      || !payload.ContainsKey("deviceId")
-      || (payload["deviceId"].Type != JTokenType.Null && payload["deviceId"].Type != JTokenType.String)
-    )
+    if (state?.Enabled != true || deviceId != state.SelectedDeviceId)
     {
-      command.Reject("invalid_preview_request", "Choose a camera before opening the preview.");
-      return;
-    }
-    if (state?.Enabled != true || (string)payload["deviceId"] != state.SelectedDeviceId)
-    {
-      command.Reject("camera_preview_changed", "The camera changed. Open the preview again.");
-      return;
+      throw IpcDomainError.Create("camera_preview_changed", "The camera changed. Open the preview again.");
     }
     lock (_gate)
     {
       CameraPreviewBuffer buffer = FeatureRegistry.WebcamRecording.Preview;
       if (buffer == null)
       {
-        command.Reply("webcam.preview.frame", new { ready = false });
-        return;
+        return null;
       }
       buffer.RequestBrowserPreview();
       long now = Stopwatch.GetTimestamp();
@@ -54,8 +43,7 @@ internal sealed class WebcamPreviewIpc
       if (resumed)
       {
         _sourceChangedAt = now;
-        command.Reply("webcam.preview.frame", new { ready = false });
-        return;
+        return null;
       }
       long sequence = buffer.Sequence;
       if (_buffer != buffer || sequence != _sourceSequence)
@@ -65,37 +53,34 @@ internal sealed class WebcamPreviewIpc
       }
       else if (now - _sourceChangedAt > 3 * Stopwatch.Frequency)
       {
-        command.Reject(
+        throw IpcDomainError.Create(
           "camera_preview_stalled",
           "The camera stopped sending video. Reconnect it and retry the preview."
         );
-        return;
       }
       if (_buffer != buffer || _bitmap == null || now - _snapshotAt >= Stopwatch.Frequency / 8)
       {
         if (!buffer.TryGetFrameSize(out CameraFrameSize size))
         {
-          command.Reply("webcam.preview.frame", new { ready = false });
-          return;
+          return null;
         }
         if (_pixels?.Length != size.ByteCount)
           _pixels = new byte[size.ByteCount];
         if (!buffer.TryCopySnapshot(_pixels, out size))
         {
-          command.Reply("webcam.preview.frame", new { ready = false });
-          return;
+          return null;
         }
         _bitmap = CameraPreviewBitmap.Encode(_pixels, size, out _size);
         _buffer = buffer;
         _snapshotAt = now;
       }
       var stream = new MemoryStream(_bitmap, writable: false);
-      ipc.ReplyDownload(
-        command,
-        "webcam.preview.frame",
-        new DownloadSource(stream, stream.Length, "camera.bmp", "image/bmp"),
-        new { width = _size.Width, height = _size.Height }
-      );
+      return new WebcamPreview
+      {
+        Width = _size.Width,
+        Height = _size.Height,
+        File = IpcFile.FromStream(stream, stream.Length, "camera.bmp", "image/bmp"),
+      };
     }
   }
 }

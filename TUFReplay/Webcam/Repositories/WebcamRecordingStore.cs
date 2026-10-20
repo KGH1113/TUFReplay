@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Activity.Models;
@@ -184,15 +185,27 @@ public sealed class WebcamRecordingStore
     }
   }
 
-  public void WriteTo(string runId, Stream destination, long expectedBytes)
+  public void WriteTo(
+    string runId,
+    Stream destination,
+    long expectedBytes,
+    CancellationToken cancellationToken = default
+  )
   {
+    cancellationToken.ThrowIfCancellationRequested();
     using WebcamRecordingLease lease = Acquire(runId);
     if (lease == null)
       throw new FileNotFoundException("Camera recording was removed before download.");
     using var source = new FileStream(lease.Recording.FilePath, FileMode.Open, FileAccess.Read, FileShare.Read);
     if (source.Length != expectedBytes)
       throw new InvalidDataException("The camera recording changed before download.");
-    source.CopyTo(destination, 65536);
+    var buffer = new byte[65536];
+    int count;
+    while ((count = source.Read(buffer, 0, buffer.Length)) != 0)
+    {
+      cancellationToken.ThrowIfCancellationRequested();
+      destination.Write(buffer, 0, count);
+    }
   }
 
   private WebcamRecording ReadMetadataLocked(string runId)

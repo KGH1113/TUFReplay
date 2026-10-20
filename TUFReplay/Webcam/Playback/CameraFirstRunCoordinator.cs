@@ -1,9 +1,10 @@
 using System;
 using System.Collections;
-using Newtonsoft.Json.Linq;
+using AdofaiIpc;
 using TUFReplay.Composition;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Unity.CameraSetup;
 using TUFReplay.Webcam.Models;
 using UnityEngine;
@@ -92,12 +93,12 @@ internal static class CameraFirstRunCoordinator
       _view.Show(
         Application.systemLanguage == SystemLanguage.Korean,
         canCancel,
-        enabled => Update(new JObject { ["enabled"] = enabled }),
-        visible => Update(new JObject { ["liveVisible"] = visible }),
+        enabled => Update(new WebcamSettings { Enabled = enabled }),
+        visible => Update(new WebcamSettings { LiveVisible = visible }),
         Continue,
         WithoutCamera,
         Cancel,
-        () => Update(new JObject { ["enabled"] = true })
+        () => Update(new WebcamSettings { Enabled = true })
       );
       Tick();
       return true;
@@ -147,9 +148,9 @@ internal static class CameraFirstRunCoordinator
     );
   }
 
-  private static bool Update(JObject values)
+  private static bool Update(WebcamSettings values)
   {
-    if (!WebcamSettingsPatch.TryParse(values, out var patch))
+    if (!WebcamSettingsPatch.TryCreate(values, out var patch))
       return false;
     if (FeatureRegistry.WebcamRecording.TryUpdate(patch, out string message))
     {
@@ -177,7 +178,7 @@ internal static class CameraFirstRunCoordinator
 
   private static void WithoutCamera()
   {
-    if (Update(new JObject { ["enabled"] = false }))
+    if (Update(new WebcamSettings { Enabled = false }))
       Continue();
   }
 

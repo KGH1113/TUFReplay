@@ -30,20 +30,20 @@ describe("download center IPC contract", () => {
     );
     await api.getStatus();
     await api.act("renderer", "request");
-    expect(calls).toEqual(["downloads.state.read", "downloads.renderer.request"]);
+    expect(calls).toEqual(["readDownloadsState", "requestRendererDownload"]);
     await api.act("renderer", "confirm");
     await api.act("ffmpeg", "request");
     await api.act("ffmpeg", "confirm");
     await api.act("ffmpeg", "cancel");
     await api.cancelPendingFfmpeg();
     expect(calls).toEqual([
-      "downloads.state.read",
-      "downloads.renderer.request",
-      "downloads.renderer.confirm",
-      "downloads.ffmpeg.request",
-      "downloads.ffmpeg.confirm",
-      "downloads.ffmpeg.cancel",
-      "media.ffmpeg.release",
+      "readDownloadsState",
+      "requestRendererDownload",
+      "confirmRendererDownload",
+      "requestFfmpegDownload",
+      "confirmFfmpegDownload",
+      "cancelFfmpegDownload",
+      "releaseFfmpeg",
     ]);
   });
   test("rejects malformed installation states and retains precise failures", async () => {

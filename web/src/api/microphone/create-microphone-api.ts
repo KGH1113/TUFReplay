@@ -1,70 +1,36 @@
-import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
+import type { MicrophoneDevices, MicrophoneTiming } from "@tuf-replay/ipc";
 import type { MicrophoneApi } from "@/api/microphone/microphone-api";
+import { callRecorder, decodeRecorder } from "@/api/recorder-call";
+import { toMicrophoneDevicesDto, toMicrophoneTimingDto } from "@/api/recorder-dtos";
 import {
   mapMicrophoneDevicesState,
   mapMicrophoneTimingSettings,
 } from "@/models/microphone/microphone-model";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
 import {
   microphoneDevicesStateDtoSchema,
   microphoneTimingSettingsDtoSchema,
 } from "@/schemas/microphone/microphone-schema";
 
-export function createMicrophoneApi(clients: AdofaiIpcClients): MicrophoneApi {
+export function createMicrophoneApi(clients: LocalAppChannels): MicrophoneApi {
+  const devices = (value: MicrophoneDevices) =>
+    mapMicrophoneDevicesState(
+      decodeRecorder(microphoneDevicesStateDtoSchema, toMicrophoneDevicesDto(value)),
+    );
+  const timing = (value: MicrophoneTiming) =>
+    mapMicrophoneTimingSettings(
+      decodeRecorder(microphoneTimingSettingsDtoSchema, toMicrophoneTimingDto(value)),
+    );
   return {
-    async getDevices() {
-      return mapMicrophoneDevicesState(
-        await sendDomainCommand(
-          clients.namespace,
-          "microphone.devices.refresh",
-          "microphone.devices.changed",
-          {},
-          microphoneDevicesStateDtoSchema,
-        ),
-      );
-    },
-    async setEnabled(enabled) {
-      return mapMicrophoneDevicesState(
-        await sendDomainCommand(
-          clients.namespace,
-          "microphone.access.change",
-          "microphone.devices.changed",
-          { enabled },
-          microphoneDevicesStateDtoSchema,
-        ),
-      );
-    },
-    async selectDevice(deviceId) {
-      return mapMicrophoneDevicesState(
-        await sendDomainCommand(
-          clients.namespace,
-          "microphone.device.choose",
-          "microphone.devices.changed",
-          { deviceId },
-          microphoneDevicesStateDtoSchema,
-        ),
-      );
-    },
-    async setOffset(offsetMs) {
-      return mapMicrophoneTimingSettings(
-        await sendDomainCommand(
-          clients.namespace,
-          "microphone.offset.change",
-          "microphone.timing.changed",
-          { offsetMs },
-          microphoneTimingSettingsDtoSchema,
-        ),
-      );
-    },
-    async setVolume(volumeDb) {
-      return mapMicrophoneTimingSettings(
-        await sendDomainCommand(
-          clients.namespace,
-          "microphone.volume.change",
-          "microphone.timing.changed",
-          { volumeDb },
-          microphoneTimingSettingsDtoSchema,
-        ),
-      );
-    },
+    getDevices: async () =>
+      devices(await callRecorder(clients, (mod) => mod.refreshMicrophoneDevices())),
+    setEnabled: async (enabled) =>
+      devices(await callRecorder(clients, (mod) => mod.changeMicrophoneAccess({ enabled }))),
+    selectDevice: async (deviceId) =>
+      devices(await callRecorder(clients, (mod) => mod.chooseMicrophoneDevice({ deviceId }))),
+    setOffset: async (offsetMs) =>
+      timing(await callRecorder(clients, (mod) => mod.changeMicrophoneOffset({ offsetMs }))),
+    setVolume: async (volumeDb) =>
+      timing(await callRecorder(clients, (mod) => mod.changeMicrophoneVolume({ volumeDb }))),
   };
 }

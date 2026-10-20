@@ -24,6 +24,7 @@ internal static class WebcamSuite
 {
   public static void RunAll(string root)
   {
+    StoreDownloadCancellationReleasesItsLease(root);
     TimelineSkipsRecordedPausesAndHandlesRateChanges();
     LatestFrameOwnershipRemainsStableAndRejectsStaleFrames();
     AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
@@ -651,15 +652,22 @@ internal static class WebcamSuite
         "{\"overlayWidth\":0}",
         "{\"offsetMs\":1001}",
         "{\"offsetMs\":1.5}",
+        "{\"offsetMs\":null}",
         "{\"recordingLimitMb\":1}",
         "{\"storageLimitMb\":512}",
         "{\"retentionDays\":-1}",
         "{\"otherSetting\":true}",
       }
     )
-      Check(!WebcamSettingsPatch.TryParse(JObject.Parse(invalid), out _), "Invalid settings were accepted: " + invalid);
+      Check(
+        !WebcamSettingsPatchParser.TryParse(JObject.Parse(invalid), out _),
+        "Invalid settings were accepted: " + invalid
+      );
     Check(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"offsetMs\":120,\"overlayX\":0,\"mirror\":true}"), out var patch),
+      WebcamSettingsPatchParser.TryParse(
+        JObject.Parse("{\"offsetMs\":120,\"overlayX\":0,\"mirror\":true}"),
+        out var patch
+      ),
       "Valid settings were rejected."
     );
     patch.ApplyTo(settings);
@@ -670,6 +678,15 @@ internal static class WebcamSuite
         && !settings.WebcamEnabled,
       "Partial webcam settings changed unrelated settings."
     );
+    settings.WebcamDeviceId = "camera-to-preserve";
+    patch.ApplyTo(settings);
+    Check(settings.WebcamDeviceId == "camera-to-preserve", "An omitted typed deviceId reset the selected camera.");
+    Check(
+      WebcamSettingsPatchParser.TryParse(JObject.Parse("{\"deviceId\":null}"), out var defaultCamera),
+      "An explicit typed null deviceId was rejected."
+    );
+    defaultCamera.ApplyTo(settings);
+    Check(settings.WebcamDeviceId == null, "An explicit typed null did not restore the default camera.");
     settings.WebcamOverlayX = double.NaN;
     settings.WebcamOverlayWidth = double.PositiveInfinity;
     settings.Normalize();
@@ -677,7 +694,10 @@ internal static class WebcamSuite
     Near(0.22, settings.WebcamOverlayWidth);
     Check(settings.WebcamRecordingLimitMb == 128, "The default per-recording limit changed.");
     Check(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"recordingLimitMb\":2048,\"retentionDays\":0}"), out var forever),
+      WebcamSettingsPatchParser.TryParse(
+        JObject.Parse("{\"recordingLimitMb\":2048,\"retentionDays\":0}"),
+        out var forever
+      ),
       "Forever retention or a larger per-recording limit was rejected."
     );
     forever.ApplyTo(settings);
@@ -766,7 +786,7 @@ internal static class WebcamSuite
     Near(1920, right.X + right.Width);
     Near(1080, right.Y + right.Height);
     Check(
-      WebcamSettingsPatch.TryParse(
+      WebcamSettingsPatchParser.TryParse(
         JObject.Parse("{\"quality\":\"quality\",\"liveVisible\":true,\"overlayX\":-0.1,\"overlayY\":1.1}"),
         out var patch
       ),
@@ -1361,6 +1381,47 @@ internal static class WebcamSuite
     finally
     {
       pool.Return(reused);
+    }
+  }
+
+  private static void StoreDownloadCancellationReleasesItsLease(string root)
+  {
+    var store = new WebcamRecordingStore(Path.Combine(root, "webcam-download-cancellation"));
+    var recording = WriteVideo(store, "cancelled-download", 256 * 1024);
+    Check(store.Save(recording, 512 * 1024, 7), "The cancellation recording was not saved.");
+    using var cancellation = new CancellationTokenSource();
+    using var destination = new CancelAfterWriteStream(cancellation);
+    bool cancelled = false;
+    try
+    {
+      store.WriteTo(recording.RunId, destination, 256 * 1024, cancellation.Token);
+    }
+    catch (OperationCanceledException)
+    {
+      cancelled = true;
+    }
+    Check(
+      cancelled && destination.Length == 65536,
+      "A disconnected camera export continued reading the full recording."
+    );
+    store.PendingReleases.GetAwaiter().GetResult();
+    Check(store.DeleteRun(recording.RunId), "Cancelled export lost its recording.");
+    Check(!File.Exists(recording.FilePath), "Cancelled export retained its file lease.");
+  }
+
+  private sealed class CancelAfterWriteStream : MemoryStream
+  {
+    private readonly CancellationTokenSource _cancellation;
+
+    public CancelAfterWriteStream(CancellationTokenSource cancellation)
+    {
+      _cancellation = cancellation;
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+      base.Write(buffer, offset, count);
+      _cancellation.Cancel();
     }
   }
 

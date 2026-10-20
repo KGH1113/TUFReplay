@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AdofaiIpc;
 using TUFReplay.Activity.Ipc;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Calibration.Ipc;
@@ -14,19 +16,19 @@ using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Shared.Downloads;
+using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Media;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Ipc;
+using static TUFReplay.Shared.Ipc.IpcDtoMapper;
 
 namespace TUFReplay.Shared.Ipc;
 
 public sealed class TUFReplayIpcFeature
 {
-  private const string Namespace = "tuf-replay";
-
   private bool _active;
-  private JsonFeature _namespace;
+  private ModRegistration<ReplayApiApp> _namespace;
   private long _activityRevision;
   private MicrophoneDevicesResponseDto _microphoneState;
 
@@ -34,509 +36,359 @@ public sealed class TUFReplayIpcFeature
   {
     if (_active)
       return;
-    JsonFeature feature = JsonFeature.Register(
-      new AdofaiIpc.Contracts.FeatureDescription(
-        Namespace,
-        Main.Instance.Version.ToString(),
-        protocolMajor: 10,
-        displayName: "TUFReplay",
-        allowedOrigins: new[]
-        {
-          "https://tuforums.com",
-          "https://tufreplay.impl1113.dev",
-          "https://tufreplay-dev.impl1113.dev",
-          "https://tufreplay-auto.impl1113.dev",
-          "https://guhyeons-macbook-pro.tail234c02.ts.net",
-          "http://guhyeons-macbook-pro.tail234c02.ts.net",
-          "http://localhost",
-          "http://127.0.0.1",
-        }
-      ),
-      ipc =>
+    _namespace = IpcRuntime.Current.RegisterMod(
+      ReplayApiContract.Instance,
+      "TUFReplay",
+      new[]
       {
-        RegisterOutcome(
-          ipc,
-          "health.read",
-          "health.snapshot",
-          HealthIpcHandlers.Get,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.sessions.read",
-          "activity.sessions.snapshot",
-          ActivityIpcHandlers.ListAppSessions,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.legacy-status.read",
-          "activity.legacy-status.snapshot",
-          ActivityIpcHandlers.GetLegacyReplayStatus,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.level-session.read",
-          "activity.level-session.snapshot",
-          ActivityIpcHandlers.GetLevelSession,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.level-session.runs.read",
-          "activity.level-session.runs.snapshot",
-          ActivityIpcHandlers.ListRuns,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterChartOutcome(
-          ipc,
-          "activity.level-session.chart.read",
-          "activity.level-session.chart.snapshot",
-          ActivityIpcHandlers.GetChart
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.level.read",
-          "activity.level.snapshot",
-          ActivityIpcHandlers.GetLogicalLevel,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.runs.read",
-          "activity.runs.snapshot",
-          ActivityIpcHandlers.ListLogicalLevelRuns,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterChartOutcome(
-          ipc,
-          "activity.chart.read",
-          "activity.chart.snapshot",
-          ActivityIpcHandlers.GetLogicalLevelChart
-        );
-        RegisterOutcome(
-          ipc,
-          "activity.run.remove",
-          "activity.run.removed",
-          ActivityIpcHandlers.DeleteRun,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "microphone.recording.remove",
-          "microphone.recording.removed",
-          MicrophoneRecordingIpcHandlers.Delete,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "microphone.recording.retain",
-          "microphone.recording.retained",
-          MicrophoneRecordingIpcHandlers.KeepPermanently,
-          mainThread: false,
-          broadcast: false
-        );
-        ipc.RegisterDownloadCommand("microphone.recording.download", MicrophoneRecordingIpcHandlers.Export);
-        RegisterOutcome(
-          ipc,
-          "camera.recording.remove",
-          "camera.recording.removed",
-          WebcamRecordingIpcHandlers.Delete,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "camera.recording.retain",
-          "camera.recording.retained",
-          WebcamRecordingIpcHandlers.KeepPermanently,
-          mainThread: false,
-          broadcast: false
-        );
-        ipc.RegisterDownloadCommand("camera.recording.download", WebcamRecordingIpcHandlers.Export);
-        RegisterOutcome(
-          ipc,
-          "replay.start",
-          "replay.state.changed",
-          ReplayIpcHandlers.Play,
-          mainThread: false,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "replay.state.read",
-          "replay.state.changed",
-          ReplayIpcHandlers.GetStatus,
-          mainThread: false,
-          broadcast: false
-        );
-        ipc.RegisterAsyncCommand("replay.level-file.choose", ChooseLevelFile);
-        RegisterOutcome(
-          ipc,
-          "microphone.devices.refresh",
-          "microphone.devices.changed",
-          MicrophoneIpcHandlers.GetDevices,
-          mainThread: true,
-          broadcast: true
-        );
-        RegisterOutcome(
-          ipc,
-          "microphone.access.change",
-          "microphone.devices.changed",
-          MicrophoneIpcHandlers.SetEnabled,
-          mainThread: true,
-          broadcast: true
-        );
-        RegisterOutcome(
-          ipc,
-          "microphone.device.choose",
-          "microphone.devices.changed",
-          MicrophoneIpcHandlers.SelectDevice,
-          mainThread: true,
-          broadcast: true
-        );
-        RegisterOutcome(
-          ipc,
-          "microphone.offset.change",
-          "microphone.timing.changed",
-          MicrophoneIpcHandlers.SetOffset,
-          mainThread: true,
-          broadcast: true
-        );
-        RegisterOutcome(
-          ipc,
-          "microphone.volume.change",
-          "microphone.timing.changed",
-          MicrophoneIpcHandlers.SetVolume,
-          mainThread: true,
-          broadcast: true
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.start",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.Start,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.state.read",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.GetStatus,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.result.read",
-          "calibration.result.ready",
-          MicrophoneCalibrationIpcHandlers.GetResult,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.preview.start",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.PlayPreview,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.preview.stop",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.StopPreview,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.offset.change",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.SetOffset,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.volume.change",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.SetVolume,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "calibration.close",
-          "calibration.state.changed",
-          MicrophoneCalibrationIpcHandlers.Close,
-          mainThread: true,
-          broadcast: false
-        );
-        RegisterOutcome(
-          ipc,
-          "webcam.state.refresh",
-          "webcam.state.changed",
-          WebcamIpcHandlers.GetState,
-          mainThread: true,
-          broadcast: true
-        );
-        RegisterOutcome(
-          ipc,
-          "webcam.settings.change",
-          "webcam.state.changed",
-          WebcamIpcHandlers.UpdateSettings,
-          mainThread: true,
-          broadcast: true
-        );
-        var webcamPreview = new WebcamPreviewIpc();
-        ipc.RegisterCommand("webcam.preview.read", command => webcamPreview.Read(ipc, command));
-        RegisterOutcome(
-          ipc,
-          "media.ffmpeg.state.read",
-          "media.ffmpeg.state.changed",
-          _ => FfmpegInstallCoordinator.Status()
-        );
-        RegisterOutcome(
-          ipc,
-          "media.ffmpeg.request",
-          "media.ffmpeg.state.changed",
-          cmd => FfmpegInstallCoordinator.Request(cmd.PeerId),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "media.ffmpeg.confirm",
-          "media.ffmpeg.state.changed",
-          _ => FfmpegInstallCoordinator.Confirm(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "media.ffmpeg.decline",
-          "media.ffmpeg.state.changed",
-          _ => FfmpegInstallCoordinator.Decline(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "media.ffmpeg.cancel",
-          "media.ffmpeg.state.changed",
-          _ => FfmpegInstallCoordinator.Cancel(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "media.ffmpeg.release",
-          "media.ffmpeg.state.changed",
-          cmd =>
-          {
-            FfmpegInstallCoordinator.CancelPendingRequest(cmd.PeerId);
-            return FfmpegInstallCoordinator.Status();
-          },
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.state.read",
-          "downloads.state.changed",
-          _ => DownloadCenterCoordinator.Status(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.ffmpeg.request",
-          "downloads.state.changed",
-          cmd =>
-          {
-            FfmpegInstallCoordinator.Request(cmd.PeerId);
-            return DownloadCenterCoordinator.Status();
-          },
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.ffmpeg.confirm",
-          "downloads.state.changed",
-          _ =>
-          {
-            FfmpegInstallCoordinator.Confirm();
-            return DownloadCenterCoordinator.Status();
-          },
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.ffmpeg.cancel",
-          "downloads.state.changed",
-          _ =>
-          {
-            FfmpegInstallCoordinator.Cancel();
-            return DownloadCenterCoordinator.Status();
-          },
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.renderer.request",
-          "downloads.state.changed",
-          _ => DownloadCenterCoordinator.RequestRenderer(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.renderer.confirm",
-          "downloads.state.changed",
-          _ => DownloadCenterCoordinator.ConfirmRenderer(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "downloads.renderer.cancel",
-          "downloads.state.changed",
-          _ => DownloadCenterCoordinator.CancelRenderer(),
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "replay.render-bundle.prepare",
-          "render-bundle.state.changed",
-          RenderBundleIpcHandlers.Export,
-          mainThread: true
-        );
-        RegisterOutcome(
-          ipc,
-          "replay.render-bundle.state.read",
-          "render-bundle.state.changed",
-          RenderBundleIpcHandlers.GetStatus
-        );
-        RegisterOutcome(
-          ipc,
-          "replay.render-bundle.cancel",
-          "render-bundle.state.changed",
-          RenderBundleIpcHandlers.Cancel
-        );
-        ipc.PeerDisconnected += OnPeerDisconnected;
-        ipc.PeerSubscribed += OnPeerSubscribed;
+        "https://tuforums.com",
+        "https://tufreplay.impl1113.dev",
+        "https://tufreplay-dev.impl1113.dev",
+        "https://tufreplay-auto.impl1113.dev",
+        "https://guhyeons-macbook-pro.tail234c02.ts.net",
+        "http://guhyeons-macbook-pro.tail234c02.ts.net",
+        "http://localhost",
+        "http://127.0.0.1",
       }
     );
-    _namespace = feature;
-    _active = true;
-    FeatureRegistry.WebcamRecording.StateChanged += OnWebcamChanged;
-    RenderBundleExportService.Changed += OnRenderBundleChanged;
-    FfmpegInstallCoordinator.Changed += OnDownloadsChanged;
-    DownloadCenterCoordinator.Changed += OnDownloadsChanged;
-    ActivityChanges.Changed += OnActivityChanged;
-    ReplayPlaybackCoordinator.StatusChanged += OnReplayChanged;
-    FeatureRegistry.MicrophoneCalibration.StatusChanged += OnCalibrationChanged;
-    FeatureRegistry.Recording.GameplayStateChanged += PublishMicrophoneAccess;
-    feature.MarkReady();
-
-    Main.Instance.Log("[IPC] Namespace ready: " + Namespace);
-  }
-
-  public void Disable()
-  {
-    if (!_active)
-      return;
-    _active = false;
-    if (FeatureRegistry.WebcamRecording != null)
-      FeatureRegistry.WebcamRecording.StateChanged -= OnWebcamChanged;
-    RenderBundleExportService.Changed -= OnRenderBundleChanged;
-    FfmpegInstallCoordinator.Changed -= OnDownloadsChanged;
-    DownloadCenterCoordinator.Changed -= OnDownloadsChanged;
-    if (_namespace != null)
-      _namespace.PeerDisconnected -= OnPeerDisconnected;
-    RenderBundleExportService.Shutdown();
-    ActivityChanges.Changed -= OnActivityChanged;
-    ReplayPlaybackCoordinator.StatusChanged -= OnReplayChanged;
-    if (FeatureRegistry.Recording != null)
-      FeatureRegistry.Recording.GameplayStateChanged -= PublishMicrophoneAccess;
-    if (FeatureRegistry.MicrophoneCalibration != null)
-      FeatureRegistry.MicrophoneCalibration.StatusChanged -= OnCalibrationChanged;
-    if (_namespace != null)
-      _namespace.PeerSubscribed -= OnPeerSubscribed;
-    _namespace?.Dispose();
-    _namespace = null;
-    Main.Instance.Log("[IPC] Unregistered namespace: " + Namespace);
-  }
-
-  private static void RegisterChartOutcome(
-    JsonFeature ipc,
-    string commandName,
-    string eventName,
-    Func<JsonCommand, object> handler
-  )
-  {
-    ipc.RegisterCommand(
-      commandName,
-      context =>
+    try
+    {
+      RegisterHandlers();
+      _namespace.AppConnected += OnAppConnected;
+      _namespace.AppDisconnected += OnAppDisconnected;
+      _namespace.AppEventFailed += LogNotificationFailure;
+      _active = true;
+      FeatureRegistry.WebcamRecording.StateChanged += OnWebcamChanged;
+      RenderBundleExportService.Changed += OnRenderBundleChanged;
+      FfmpegInstallCoordinator.Changed += OnDownloadsChanged;
+      DownloadCenterCoordinator.Changed += OnDownloadsChanged;
+      ActivityChanges.Changed += OnActivityChanged;
+      ReplayPlaybackCoordinator.StatusChanged += OnReplayChanged;
+      FeatureRegistry.MicrophoneCalibration.StatusChanged += OnCalibrationChanged;
+      FeatureRegistry.Recording.GameplayStateChanged += PublishMicrophoneAccess;
+      _namespace.MarkReady();
+      Main.Instance.Log("[IPC] Typed API ready: tuf-replay");
+    }
+    catch
+    {
+      if (_active)
+        Disable();
+      else
       {
-        object result = handler(context);
-        if (result is IpcDomainFailure failure)
+        _namespace.Dispose();
+        _namespace = null;
+      }
+      throw;
+    }
+  }
+
+  private void RegisterHandlers()
+  {
+    Register(ReplayApiMethods.ReadHealth, (_, _) => Map(HealthResponseDto.Create()));
+    Register(
+      ReplayApiMethods.ListAppSessions,
+      (r, _) => ActivityIpcHandlers.ListAppSessions(Optional(r.Offset), Optional(r.Limit)).Select(Map).ToArray()
+    );
+    Register(ReplayApiMethods.ReadLegacyReplayStatus, (_, _) => Map(ActivityIpcHandlers.GetLegacyReplayStatus()));
+    Register(
+      ReplayApiMethods.ReadLevelSession,
+      (r, _) => Map(ActivityIpcHandlers.GetLevelSession(Required(r.Id, "invalid_level_session_id")))
+    );
+    Register(
+      ReplayApiMethods.ListLevelSessionRuns,
+      (r, _) =>
+        ActivityIpcHandlers
+          .ListRuns(Required(r.Id, "invalid_level_session_id"), Optional(r.Offset), Optional(r.Limit))
+          .Select(Map)
+          .ToArray()
+    );
+    Register(
+      ReplayApiMethods.ReadLevelSessionChart,
+      (r, _) => Map(ActivityIpcHandlers.GetChart(Required(r.Id, "invalid_level_session_id")))
+    );
+    Register(
+      ReplayApiMethods.ReadLogicalLevel,
+      (r, _) => Map(ActivityIpcHandlers.GetLogicalLevel(Required(r.Id, "invalid_logical_level_id")))
+    );
+    Register(
+      ReplayApiMethods.ListLogicalLevelRuns,
+      (r, _) =>
+        ActivityIpcHandlers
+          .ListLogicalLevelRuns(
+            Required(r.Id, "invalid_logical_level_id"),
+            r.AppSessionIds.Select(id => Required(id, "invalid_app_session_ids"))
+              .Distinct(StringComparer.Ordinal)
+              .ToArray(),
+            Optional(r.Offset),
+            Optional(r.Limit)
+          )
+          .Select(Map)
+          .ToArray()
+    );
+    Register(
+      ReplayApiMethods.ReadLogicalLevelChart,
+      (r, _) => Map(ActivityIpcHandlers.GetLogicalLevelChart(Required(r.Id, "invalid_logical_level_id")))
+    );
+    Register(ReplayApiMethods.RemoveRun, (r, _) => Map(ActivityIpcHandlers.DeleteRun(Required(r.RunId))));
+    Register(
+      ReplayApiMethods.RemoveMicrophoneRecording,
+      (r, _) => Map(MicrophoneRecordingIpcHandlers.Delete(Required(r.RunId)))
+    );
+    Register(
+      ReplayApiMethods.RetainMicrophoneRecording,
+      (r, _) => Map(MicrophoneRecordingIpcHandlers.KeepPermanently(Required(r.RunId)))
+    );
+    Register(
+      ReplayApiMethods.ExportMicrophoneRecording,
+      (r, c) => MicrophoneRecordingIpcHandlers.Export(Required(r.RunId), c.App.CancellationToken)
+    );
+    Register(
+      ReplayApiMethods.RemoveCameraRecording,
+      (r, _) => Map(WebcamRecordingIpcHandlers.Delete(Required(r.RunId)))
+    );
+    Register(
+      ReplayApiMethods.RetainCameraRecording,
+      (r, _) => Map(WebcamRecordingIpcHandlers.KeepPermanently(Required(r.RunId)))
+    );
+    Register(
+      ReplayApiMethods.ExportCameraRecording,
+      (r, c) => WebcamRecordingIpcHandlers.Export(Required(r.RunId), c.App.CancellationToken)
+    );
+    Register(
+      ReplayApiMethods.StartReplay,
+      (r, _) =>
+        Map(ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.Play(Required(r.RunId), OptionalText(r.LevelPath))))
+    );
+    Register(
+      ReplayApiMethods.ReadReplayState,
+      (_, _) => Map(ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus()))
+    );
+    _namespace.Handle(ReplayApiMethods.ChooseLevelFile, ChooseLevelFile);
+    Register(
+      ReplayApiMethods.RefreshMicrophoneDevices,
+      (_, _) => MicrophoneState(MicrophoneIpcHandlers.GetDevices()),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChangeMicrophoneAccess,
+      (r, _) => MicrophoneState(MicrophoneIpcHandlers.SetEnabled(r.Enabled)),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChooseMicrophoneDevice,
+      (r, _) =>
+        MicrophoneState(
+          MicrophoneIpcHandlers.SelectDevice(string.IsNullOrWhiteSpace(r.DeviceId) ? null : r.DeviceId.Trim())
+        ),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChangeMicrophoneOffset,
+      (r, _) => MicrophoneTiming(MicrophoneIpcHandlers.SetOffset(r.OffsetMs)),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChangeMicrophoneVolume,
+      (r, _) => MicrophoneTiming(MicrophoneIpcHandlers.SetVolume(r.VolumeDb)),
+      true
+    );
+    Register(ReplayApiMethods.StartCalibration, (_, _) => Map(MicrophoneCalibrationIpcHandlers.Start()), true);
+    Register(
+      ReplayApiMethods.ReadCalibrationState,
+      (r, _) => Map(MicrophoneCalibrationIpcHandlers.GetStatus(RequiredOperation(r.OperationId))),
+      true
+    );
+    Register(
+      ReplayApiMethods.ReadCalibrationResult,
+      (r, _) =>
+        Map(MicrophoneCalibrationIpcHandlers.GetResult(RequiredOperation(r.OperationId), Optional(r.Revision) ?? 0)),
+      true
+    );
+    Register(
+      ReplayApiMethods.StartCalibrationPreview,
+      (r, _) => Map(MicrophoneCalibrationIpcHandlers.PlayPreview(RequiredOperation(r.OperationId))),
+      true
+    );
+    Register(
+      ReplayApiMethods.StopCalibrationPreview,
+      (r, _) => Map(MicrophoneCalibrationIpcHandlers.StopPreview(RequiredOperation(r.OperationId))),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChangeCalibrationOffset,
+      (r, _) => Map(MicrophoneCalibrationIpcHandlers.SetOffset(RequiredOperation(r.OperationId), r.OffsetMs)),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChangeCalibrationVolume,
+      (r, _) => Map(MicrophoneCalibrationIpcHandlers.SetVolume(RequiredOperation(r.OperationId), r.VolumeDb)),
+      true
+    );
+    Register(
+      ReplayApiMethods.CloseCalibration,
+      (r, _) => Map(MicrophoneCalibrationIpcHandlers.Close(RequiredOperation(r.OperationId))),
+      true
+    );
+    Register(
+      ReplayApiMethods.RefreshWebcamState,
+      (r, _) => WebcamState(WebcamIpcHandlers.GetState(r.RefreshDevices.IsSpecified && r.RefreshDevices.Value)),
+      true
+    );
+    Register(
+      ReplayApiMethods.ChangeWebcamSettings,
+      (r, _) => WebcamState(WebcamIpcHandlers.UpdateSettings(r.Settings)),
+      true
+    );
+    var preview = new WebcamPreviewIpc();
+    Register(ReplayApiMethods.ReadWebcamPreview, (r, _) => preview.Read(r.DeviceId));
+    Register(ReplayApiMethods.ReadFfmpegState, (_, _) => Map(FfmpegInstallCoordinator.Status()));
+    Register(ReplayApiMethods.RequestFfmpeg, (_, c) => Map(FfmpegInstallCoordinator.Request(c.App.SessionId)), true);
+    Register(ReplayApiMethods.ConfirmFfmpeg, (_, _) => Map(FfmpegInstallCoordinator.Confirm()), true);
+    Register(ReplayApiMethods.DeclineFfmpeg, (_, _) => Map(FfmpegInstallCoordinator.Decline()), true);
+    Register(ReplayApiMethods.CancelFfmpeg, (_, _) => Map(FfmpegInstallCoordinator.Cancel()), true);
+    Register(
+      ReplayApiMethods.ReleaseFfmpeg,
+      (_, c) =>
+      {
+        FfmpegInstallCoordinator.CancelPendingRequest(c.App.SessionId);
+        return Map(FfmpegInstallCoordinator.Status());
+      },
+      true
+    );
+    Register(ReplayApiMethods.ReadDownloadsState, (_, _) => DownloadCenterCoordinator.Status(), true);
+    Register(
+      ReplayApiMethods.RequestFfmpegDownload,
+      (_, c) =>
+      {
+        FfmpegInstallCoordinator.Request(c.App.SessionId);
+        return DownloadCenterCoordinator.Status();
+      },
+      true
+    );
+    Register(
+      ReplayApiMethods.ConfirmFfmpegDownload,
+      (_, _) =>
+      {
+        FfmpegInstallCoordinator.Confirm();
+        return DownloadCenterCoordinator.Status();
+      },
+      true
+    );
+    Register(
+      ReplayApiMethods.CancelFfmpegDownload,
+      (_, _) =>
+      {
+        FfmpegInstallCoordinator.Cancel();
+        return DownloadCenterCoordinator.Status();
+      },
+      true
+    );
+    Register(ReplayApiMethods.RequestRendererDownload, (_, _) => DownloadCenterCoordinator.RequestRenderer(), true);
+    Register(ReplayApiMethods.ConfirmRendererDownload, (_, _) => DownloadCenterCoordinator.ConfirmRenderer(), true);
+    Register(ReplayApiMethods.CancelRendererDownload, (_, _) => DownloadCenterCoordinator.CancelRenderer(), true);
+    Register(
+      ReplayApiMethods.PrepareRenderBundle,
+      (r, _) =>
+        RenderBundleExportService.Start(
+          Required(r.RunId),
+          OptionalText(r.LevelPath),
+          !r.IncludeWebcam.IsSpecified || r.IncludeWebcam.Value,
+          !r.IncludeMicrophone.IsSpecified || r.IncludeMicrophone.Value
+        ),
+      true
+    );
+    Register(
+      ReplayApiMethods.ReadRenderBundleState,
+      (r, _) => RenderBundleExportService.GetStatus(Required(r.JobId, "invalid_job_id"))
+    );
+    Register(
+      ReplayApiMethods.CancelRenderBundle,
+      (r, _) => RenderBundleExportService.Cancel(Required(r.JobId, "invalid_job_id"))
+    );
+  }
+
+  private void Register<TRequest, TResult>(
+    IpcMethod<TRequest, TResult> method,
+    Func<TRequest, ModCallContext<ReplayApiApp>, TResult> handler,
+    bool mainThread = false
+  ) =>
+    _namespace.Handle(
+      method,
+      (request, context) =>
+        mainThread
+          ? OnGameThread(() => handler(request, context), context.CancellationToken)
+          : Task.FromResult(handler(request, context))
+    );
+
+  private static async Task<T> OnGameThread<T>(Func<T> action, CancellationToken cancellationToken)
+  {
+    var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (cancellationToken.Register(() => completion.TrySetCanceled()))
+    {
+      UnityMainThread.Post(() =>
+      {
+        if (cancellationToken.IsCancellationRequested)
         {
-          context.Reject(failure.error.code, failure.error.message);
+          completion.TrySetCanceled();
           return;
         }
-        var chart = (ActivityChartDto)result;
-        ipc.ReplyDownload(
-          context,
-          eventName,
-          ActivityChartDownloads.Create(chart),
-          new { chart.LevelSessionId, chart.FloorCount }
-        );
-      }
-    );
+        try
+        {
+          completion.TrySetResult(action());
+        }
+        catch (Exception error)
+        {
+          completion.TrySetException(error);
+        }
+      });
+      return await completion.Task.ConfigureAwait(false);
+    }
   }
 
-  private void RegisterOutcome(
-    JsonFeature ipc,
-    string commandName,
-    string eventName,
-    Func<JsonCommand, object> handler,
-    bool mainThread = false,
-    bool broadcast = false
+  private static int? Optional(IpcOptional<int> value) => value.IsSpecified ? value.Value : (int?)null;
+
+  private static string OptionalText(IpcOptional<string> value) => value.IsSpecified ? value.Value : null;
+
+  private static string RequiredOperation(string value) => Required(value, "invalid_operation_id");
+
+  private static string Required(string value, string code = "invalid_run_id") =>
+    !string.IsNullOrWhiteSpace(value)
+      ? value.Trim()
+      : throw IpcDomainError.Create(code, "Select a valid record and try again.");
+
+  private MicrophoneDevices MicrophoneState(MicrophoneDevicesResponseDto state)
+  {
+    _microphoneState = state;
+    MicrophoneDevices value = Map(state);
+    Publish(app =>
+      app.MicrophoneDevicesChangedAsync(new MicrophoneDevicesChangedRequest { Value = value }, app.CancellationToken)
+    );
+    return value;
+  }
+
+  private Generated.MicrophoneTiming MicrophoneTiming(MicrophoneTimingSettingsDto state)
+  {
+    var value = Map(state);
+    Publish(app =>
+      app.MicrophoneTimingChangedAsync(new MicrophoneTimingChangedRequest { Value = value }, app.CancellationToken)
+    );
+    return value;
+  }
+
+  private Generated.WebcamState WebcamState(WebcamStateDto state)
+  {
+    var value = Map(state);
+    Publish(app => app.WebcamStateChangedAsync(new WebcamStateChangedRequest { Value = value }, app.CancellationToken));
+    return value;
+  }
+
+  private async Task<LevelFileResult> ChooseLevelFile(
+    ChooseLevelFileRequest request,
+    ModCallContext<ReplayApiApp> context
   )
   {
-    Action<JsonCommand> command = context =>
-    {
-      object result = handler(context);
-      if (result is IpcDomainFailure failure)
-      {
-        context.Reject(failure.error.code, failure.error.message);
-        return;
-      }
-      if (result is MicrophoneDevicesResponseDto devices)
-        _microphoneState = devices;
-      context.Reply(eventName, result);
-      if (broadcast)
-        ipc.Publish(eventName, result);
-    };
-    if (mainThread)
-      ipc.RegisterMainThreadCommand(commandName, command);
-    else
-      ipc.RegisterCommand(commandName, command);
-  }
-
-  private async Task ChooseLevelFile(JsonCommand command)
-  {
-    if (!IpcParams.TryRequiredString(command, "runId", out string runId))
-    {
-      command.Reject("invalid_run_id", "Select a recorded run first.");
-      return;
-    }
+    context.CancellationToken.ThrowIfCancellationRequested();
+    string runId = Required(request.RunId);
     var completion = new TaskCompletionSource<ReplayLevelFilePickerResult>(
       TaskCreationOptions.RunContinuationsAsynchronously
     );
@@ -552,12 +404,7 @@ public sealed class TUFReplayIpcFeature
     ReplayLevelFilePickerCoordinator.Completed += finished;
     try
     {
-      string purpose = IpcParams.OptionalString(command, "purpose") ?? "replay";
-      if (purpose != "replay" && purpose != "render")
-      {
-        command.Reject("invalid_picker_purpose", "Choose replay or render when opening a level file.");
-        return;
-      }
+      string purpose = request.Purpose.IsSpecified ? request.Purpose.Value : "replay";
       ReplayLevelFilePickerResult initial = ReplayLevelFilePickerCoordinator.Start(
         runId,
         holdForReplay: purpose == "replay"
@@ -567,92 +414,154 @@ public sealed class TUFReplayIpcFeature
         completion.TrySetResult(initial);
       else if (early?.OperationId == operationId)
         completion.TrySetResult(early);
-      using (command.CancellationToken.Register(() => completion.TrySetCanceled()))
-      {
-        ReplayLevelFilePickerResult result = await completion.Task.ConfigureAwait(false);
-        command.Reply("replay.level-file.finished", ReplayLevelFilePickerResultDto.From(result));
-      }
+      using (context.CancellationToken.Register(() => completion.TrySetCanceled()))
+        return Map(ReplayLevelFilePickerResultDto.From(await completion.Task.ConfigureAwait(false)));
     }
     finally
     {
       ReplayLevelFilePickerCoordinator.Completed -= finished;
-      if (command.CancellationToken.IsCancellationRequested && operationId != null)
+      if (context.CancellationToken.IsCancellationRequested && operationId != null)
         ReplayLevelFilePickerCoordinator.Cancel(operationId);
     }
   }
 
-  private void OnPeerSubscribed(AdofaiIpc.Contracts.IClientConnection peer)
-  {
+  private void OnAppConnected(ReplayApiApp app) =>
     UnityMainThread.Post(() =>
     {
-      if (!_active || _namespace == null)
+      if (!_active || app.CancellationToken.IsCancellationRequested)
         return;
-      _namespace.SendToPeer(peer.PeerId, "downloads.state.changed", DownloadCenterCoordinator.Status());
-      _namespace.SendToPeer(peer.PeerId, "media.ffmpeg.state.changed", FfmpegInstallCoordinator.Status());
-      foreach (object state in RenderBundleExportService.Snapshots())
-        _namespace.SendToPeer(peer.PeerId, "render-bundle.state.changed", state);
-      _namespace.SendToPeer(peer.PeerId, "webcam.state.changed", FeatureRegistry.WebcamRecording.GetState());
-      _namespace.SendToPeer(peer.PeerId, "health.snapshot", HealthResponseDto.Create());
-      _namespace.SendToPeer(
-        peer.PeerId,
-        "replay.state.changed",
-        ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus())
+      Notify(() =>
+        app.DownloadsStateChangedAsync(
+          new DownloadsStateChangedRequest { Value = DownloadCenterCoordinator.Status() },
+          app.CancellationToken
+        )
       );
-      _namespace.SendToPeer(
-        peer.PeerId,
-        "calibration.state.changed",
-        MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.GetStatus())
+      Notify(() =>
+        app.FfmpegStateChangedAsync(
+          new FfmpegStateChangedRequest { Value = Map(FfmpegInstallCoordinator.Status()) },
+          app.CancellationToken
+        )
+      );
+      foreach (var state in RenderBundleExportService.Snapshots())
+        Notify(() =>
+          app.RenderBundleStateChangedAsync(
+            new RenderBundleStateChangedRequest { Value = state },
+            app.CancellationToken
+          )
+        );
+      Notify(() =>
+        app.WebcamStateChangedAsync(
+          new WebcamStateChangedRequest { Value = Map(FeatureRegistry.WebcamRecording.GetState()) },
+          app.CancellationToken
+        )
+      );
+      Notify(() =>
+        app.HealthSnapshotAsync(
+          new HealthSnapshotRequest { Value = Map(HealthResponseDto.Create()) },
+          app.CancellationToken
+        )
+      );
+      Notify(() =>
+        app.ReplayStateChangedAsync(
+          new ReplayStateChangedRequest
+          {
+            Value = Map(ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus())),
+          },
+          app.CancellationToken
+        )
+      );
+      Notify(() =>
+        app.CalibrationStateChangedAsync(
+          new CalibrationStateChangedRequest
+          {
+            Value = Map(MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.GetStatus())),
+          },
+          app.CancellationToken
+        )
       );
     });
-  }
 
-  private void OnPeerDisconnected(AdofaiIpc.Contracts.IClientConnection peer) =>
-    UnityMainThread.Post(() => FfmpegInstallCoordinator.CancelPendingRequest(peer.PeerId));
+  private void OnAppDisconnected(ReplayApiApp app) =>
+    UnityMainThread.Post(() => FfmpegInstallCoordinator.CancelPendingRequest(app.SessionId));
 
-  private void OnRenderBundleChanged(object state)
+  private void Publish(Func<ReplayApiApp, Task> callback)
   {
-    if (_active)
-      _namespace?.Publish("render-bundle.state.changed", state);
+    var registration = _namespace;
+    if (!_active || registration == null)
+      return;
+    foreach (var app in registration.Apps)
+      Notify(() => callback(app));
   }
+
+  private static async void Notify(Func<Task> callback)
+  {
+    try
+    {
+      await callback().ConfigureAwait(false);
+    }
+    catch (OperationCanceledException) { }
+    catch (IpcCallException error) when (error.Code == "unavailable") { }
+    catch (Exception error)
+    {
+      LogNotificationFailure(error);
+    }
+  }
+
+  private static void LogNotificationFailure(Exception error) => Main.Instance?.LogException("IPC/Notification", error);
+
+  private void OnRenderBundleChanged(RenderBundleState value) =>
+    Publish(app =>
+      app.RenderBundleStateChangedAsync(new RenderBundleStateChangedRequest { Value = value }, app.CancellationToken)
+    );
 
   private void OnDownloadsChanged() =>
     UnityMainThread.Post(() =>
     {
-      if (!_active || _namespace == null)
+      if (!_active)
         return;
-      _namespace.Publish("downloads.state.changed", DownloadCenterCoordinator.Status());
-      _namespace.Publish("media.ffmpeg.state.changed", FfmpegInstallCoordinator.Status());
+      var downloads = DownloadCenterCoordinator.Status();
+      var ffmpeg = Map(FfmpegInstallCoordinator.Status());
+      Publish(app =>
+        app.DownloadsStateChangedAsync(new DownloadsStateChangedRequest { Value = downloads }, app.CancellationToken)
+      );
+      Publish(app =>
+        app.FfmpegStateChangedAsync(new FfmpegStateChangedRequest { Value = ffmpeg }, app.CancellationToken)
+      );
     });
 
   private void OnWebcamChanged() =>
     UnityMainThread.Post(() =>
     {
       if (_active)
-        _namespace?.Publish("webcam.state.changed", FeatureRegistry.WebcamRecording.GetState());
+        WebcamState(FeatureRegistry.WebcamRecording.GetState());
     });
 
   private void OnActivityChanged(string runId)
   {
-    if (_active)
-      _namespace?.Publish("activity.changed", new { revision = Interlocked.Increment(ref _activityRevision), runId });
+    if (!_active)
+      return;
+    var value = new ActivityChanged { Revision = Interlocked.Increment(ref _activityRevision), RunId = runId };
+    Publish(app => app.ActivityChangedAsync(new ActivityChangedRequest { Value = value }, app.CancellationToken));
   }
 
   private void OnReplayChanged(ReplayPlaybackStatus status)
   {
-    if (_active)
-      _namespace?.Publish("replay.state.changed", ReplayPlaybackStatusDto.From(status));
+    var value = Map(ReplayPlaybackStatusDto.From(status));
+    Publish(app => app.ReplayStateChangedAsync(new ReplayStateChangedRequest { Value = value }, app.CancellationToken));
   }
 
   private void OnCalibrationChanged(MicrophoneCalibrationStatus status)
   {
-    if (_active)
-      _namespace?.Publish("calibration.state.changed", MicrophoneCalibrationStatusDto.From(status));
+    var value = Map(MicrophoneCalibrationStatusDto.From(status));
+    Publish(app =>
+      app.CalibrationStateChangedAsync(new CalibrationStateChangedRequest { Value = value }, app.CancellationToken)
+    );
     UnityMainThread.Post(PublishMicrophoneAccess);
   }
 
   private void PublishMicrophoneAccess()
   {
-    if (!_active || _namespace == null || _microphoneState == null)
+    if (!_active || _microphoneState == null)
       return;
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
     bool locked = MicrophoneDeviceService.IsToggleLocked();
@@ -666,15 +575,44 @@ public sealed class TUFReplayIpcFeature
       && _microphoneState.MicrophoneVolumeDb == volume
     )
       return;
-    _microphoneState = new MicrophoneDevicesResponseDto
-    {
-      Enabled = enabled,
-      ToggleLocked = locked,
-      Devices = _microphoneState.Devices,
-      SelectedDeviceId = settings?.MicrophoneDeviceId,
-      MicrophoneOffsetMs = offset,
-      MicrophoneVolumeDb = volume,
-    };
-    _namespace.Publish("microphone.devices.changed", _microphoneState);
+    MicrophoneState(
+      new MicrophoneDevicesResponseDto
+      {
+        Enabled = enabled,
+        ToggleLocked = locked,
+        Devices = _microphoneState.Devices,
+        SelectedDeviceId = settings?.MicrophoneDeviceId,
+        MicrophoneOffsetMs = offset,
+        MicrophoneVolumeDb = volume,
+      }
+    );
+  }
+
+  public void Disable()
+  {
+    if (!_active)
+      return;
+    _active = false;
+    if (FeatureRegistry.WebcamRecording != null)
+      FeatureRegistry.WebcamRecording.StateChanged -= OnWebcamChanged;
+    RenderBundleExportService.Changed -= OnRenderBundleChanged;
+    FfmpegInstallCoordinator.Changed -= OnDownloadsChanged;
+    DownloadCenterCoordinator.Changed -= OnDownloadsChanged;
+    ActivityChanges.Changed -= OnActivityChanged;
+    ReplayPlaybackCoordinator.StatusChanged -= OnReplayChanged;
+    if (FeatureRegistry.Recording != null)
+      FeatureRegistry.Recording.GameplayStateChanged -= PublishMicrophoneAccess;
+    if (FeatureRegistry.MicrophoneCalibration != null)
+      FeatureRegistry.MicrophoneCalibration.StatusChanged -= OnCalibrationChanged;
+    RenderBundleExportService.Shutdown();
+    foreach (var app in _namespace.Apps)
+      FfmpegInstallCoordinator.CancelPendingRequest(app.SessionId);
+    _namespace.AppConnected -= OnAppConnected;
+    _namespace.AppDisconnected -= OnAppDisconnected;
+    _namespace.AppEventFailed -= LogNotificationFailure;
+    _namespace.Dispose();
+    _namespace = null;
+    _microphoneState = null;
+    Main.Instance.Log("[IPC] Unregistered typed API: tuf-replay");
   }
 }

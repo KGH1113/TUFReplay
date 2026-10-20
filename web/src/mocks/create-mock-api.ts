@@ -82,7 +82,7 @@ export function createMockApi(): AppApi {
     run: {
       async prepareCameraRecordingDownload(runId) {
         fixture.assertCameraRecording(runId);
-        return URL.createObjectURL(mockCameraRecording());
+        return mockRecordingDownload(mockCameraRecording(), `tufreplay-${runId}-camera.mp4`);
       },
       async deleteCameraRecording(runId) {
         const result = await fixture.deleteCameraRecording(runId);
@@ -92,7 +92,7 @@ export function createMockApi(): AppApi {
         const result = await fixture.keepCameraRecording(runId);
         return { runId: result.RunId, changed: result.Permanent };
       },
-      async prepareMicrophoneRecordingDownload() {
+      async prepareMicrophoneRecordingDownload(runId) {
         const header = new Uint8Array(44);
         const view = new DataView(header.buffer);
         const writeText = (offset: number, value: string) => {
@@ -110,7 +110,10 @@ export function createMockApi(): AppApi {
         view.setUint16(32, 2, true);
         view.setUint16(34, 16, true);
         writeText(36, "data");
-        return URL.createObjectURL(new Blob([header], { type: "audio/wav" }));
+        return mockRecordingDownload(
+          new Blob([header], { type: "audio/wav" }),
+          `tufreplay-${runId}-microphone.wav`,
+        );
       },
       async deleteRun(runId) {
         const result = await fixture.deleteRun(runId);
@@ -213,6 +216,22 @@ export function createMockApi(): AppApi {
           calibrationStatusDtoSchema.parse(await fixture.closeMicrophoneCalibration(operationId)),
         );
       },
+    },
+  };
+}
+
+function mockRecordingDownload(blob: Blob, name: string) {
+  let used = false;
+  return {
+    async download() {
+      if (used) throw new Error("Request the recording again before downloading it.");
+      used = true;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     },
   };
 }

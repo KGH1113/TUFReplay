@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using AdofaiIpc;
 using TUFReplay.Activity.Repositories;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
@@ -11,46 +12,46 @@ namespace TUFReplay.Webcam.Ipc;
 
 public static class WebcamRecordingIpcHandlers
 {
-  public static object Export(JsonCommand request)
+  public static IpcFile Export(string runId, System.Threading.CancellationToken cancellationToken)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return new DownloadFailure("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
-      return new DownloadFailure("run_not_found", "Run was not found.", 404);
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
     WebcamRecordingStore store = FeatureRegistry.WebcamRecording?.Store;
     var recording = store?.GetMetadata(runId);
     if (recording == null)
-      return new DownloadFailure("camera_recording_not_found", "Camera recording was not found.", 404);
+      throw IpcDomainError.Create("camera_recording_not_found", "Camera recording was not found.");
     long bytes = new FileInfo(recording.FilePath).Length;
-    return new DownloadSource(
-      destination => store.WriteTo(runId, destination, bytes),
+    return IpcFile.FromWriter(
+      destination => store.WriteTo(runId, destination, bytes, cancellationToken),
       bytes,
       CreateDownloadFileName(runId),
       "video/mp4"
     );
   }
 
-  public static object Delete(JsonCommand request)
+  public static WebcamRecordingDeleteResultDto Delete(string runId)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
-      return IpcDomainError.Create("run_not_found", "Run was not found.");
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
     if (ReplayPlaybackCoordinator.IsBusy && ReplayPlaybackCoordinator.GetStatus().RunId == runId)
-      return IpcDomainError.Create("run_in_use", "Stop this replay before deleting its camera video.");
+      throw IpcDomainError.Create("run_in_use", "Stop this replay before deleting its camera video.");
     bool deleted = FeatureRegistry.WebcamRecording?.Store?.DeleteRun(runId) == true;
     ActivityChanges.Notify(runId);
     return new WebcamRecordingDeleteResultDto { RunId = runId, Deleted = deleted };
   }
 
-  public static object KeepPermanently(JsonCommand request)
+  public static WebcamRecordingKeepResultDto KeepPermanently(string runId)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
-      return IpcDomainError.Create("run_not_found", "Run was not found.");
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
     if (FeatureRegistry.WebcamRecording?.Store?.KeepPermanently(runId) != true)
-      return IpcDomainError.Create("camera_recording_not_found", "Camera recording was not found.");
+      throw IpcDomainError.Create("camera_recording_not_found", "Camera recording was not found.");
     ActivityChanges.Notify(runId);
     return new WebcamRecordingKeepResultDto { RunId = runId, Permanent = true };
   }

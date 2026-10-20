@@ -1,6 +1,8 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using TUFReplay.Shared.Ipc;
+using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Media;
 using UnityModManagerNet;
 
@@ -33,33 +35,35 @@ internal static class DownloadCenterCoordinator
   }
 
   // Called on the game thread only for the inexpensive UMM state lookup.
-  public static object Status() =>
-    new
+  public static DownloadsState Status() =>
+    new DownloadsState
     {
-      Renderer = _renderer?.Snapshot(UnityModManager.FindMod(ManagedRendererInstaller.ModId)?.Active == true)
-        ?? new RendererInstallState
-        {
-          Status = "failed",
-          Error = _error ?? "Enable TUFReplay and restart the game.",
-          ErrorCode = "downloads_unavailable",
-        },
-      Ffmpeg = FfmpegInstallCoordinator.Status(),
+      Renderer = IpcDtoMapper.Map(
+        _renderer?.Snapshot(UnityModManager.FindMod(ManagedRendererInstaller.ModId)?.Active == true)
+          ?? new RendererInstallState
+          {
+            Status = "failed",
+            Error = _error ?? "Enable TUFReplay and restart the game.",
+            ErrorCode = "downloads_unavailable",
+          }
+      ),
+      Ffmpeg = IpcDtoMapper.Map(FfmpegInstallCoordinator.Status()),
       CameraNeedsFfmpeg = RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
     };
 
-  public static object RequestRenderer()
+  public static DownloadsState RequestRenderer()
   {
     _renderer?.Request();
     return Status();
   }
 
-  public static object ConfirmRenderer()
+  public static DownloadsState ConfirmRenderer()
   {
     _renderer?.Confirm();
     return Status();
   }
 
-  public static object CancelRenderer()
+  public static DownloadsState CancelRenderer()
   {
     _renderer?.Cancel();
     return Status();
