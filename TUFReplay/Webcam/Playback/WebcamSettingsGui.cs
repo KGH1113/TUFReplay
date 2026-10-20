@@ -1,5 +1,6 @@
-using Newtonsoft.Json.Linq;
+using AdofaiIpc;
 using TUFReplay.Composition;
+using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Webcam.Models;
 using UnityEngine;
 
@@ -7,7 +8,7 @@ namespace TUFReplay.Webcam.Playback;
 
 public static class WebcamSettingsGui
 {
-  private static readonly JObject Pending = new JObject();
+  private static WebcamSettings Pending = new WebcamSettings();
   private static string _error;
   private static TUFReplay.Webcam.Ipc.WebcamStateDto _layoutState;
   private static string _layoutError;
@@ -36,7 +37,7 @@ public static class WebcamSettingsGui
     GUI.enabled = originalEnabled && !state.CaptureLocked;
     bool enabled = GUILayout.Toggle(state.Enabled, "Camera on (stays active while the game is open)");
     if (enabled != state.Enabled)
-      Commit(new JObject { ["enabled"] = enabled });
+      Commit(new WebcamSettings { Enabled = enabled });
     if (state.Status == "recording" || state.Status == "saving")
       GUILayout.Label("Status: " + state.Status);
     GUILayout.Label("Video only. Microphone audio uses the existing microphone settings.");
@@ -53,7 +54,12 @@ public static class WebcamSettingsGui
     }
     int nextDevice = GUILayout.SelectionGrid(selected, names, 1);
     if (nextDevice != selected)
-      Commit(new JObject { ["deviceId"] = nextDevice == 0 ? null : state.Devices[nextDevice - 1].Id });
+      Commit(
+        new WebcamSettings
+        {
+          DeviceId = new IpcOptional<string>(nextDevice == 0 ? null : state.Devices[nextDevice - 1].Id),
+        }
+      );
     int quality =
       state.Quality == "quality" ? 2
       : state.Quality == "balanced" ? 1
@@ -70,9 +76,9 @@ public static class WebcamSettingsGui
     );
     if (quality != nextQuality)
       Commit(
-        new JObject
+        new WebcamSettings
         {
-          ["quality"] =
+          Quality =
             nextQuality == 2 ? "quality"
             : nextQuality == 1 ? "balanced"
             : "compact",
@@ -86,18 +92,18 @@ public static class WebcamSettingsGui
       state.RetentionDays == 0 ? "Keep videos forever" : "Keep videos for " + state.RetentionDays + " days"
     );
     if (nextRetention != retentionPosition)
-      Commit(new JObject { ["retentionDays"] = nextRetention == 31 ? 0 : nextRetention });
+      Commit(new WebcamSettings { RetentionDays = nextRetention == 31 ? 0 : nextRetention });
     GUILayout.Label("Permanently kept videos stay until you delete them. Runs and replays stay in your history.");
     GUI.enabled = originalEnabled;
     bool liveVisible = GUILayout.Toggle(state.LiveVisible, "Show live camera while playing");
     if (liveVisible != state.LiveVisible)
-      Commit(new JObject { ["liveVisible"] = liveVisible });
+      Commit(new WebcamSettings { LiveVisible = liveVisible });
     bool visible = GUILayout.Toggle(state.PlaybackVisible, "Show camera video during replay");
     if (visible != state.PlaybackVisible)
-      Commit(new JObject { ["playbackVisible"] = visible });
+      Commit(new WebcamSettings { PlaybackVisible = visible });
     bool mirror = GUILayout.Toggle(state.Mirror, "Mirror camera video");
     if (mirror != state.Mirror)
-      Commit(new JObject { ["mirror"] = mirror });
+      Commit(new WebcamSettings { Mirror = mirror });
     Slider("offsetMs", "Sync correction (ms)", state.OffsetMs, -1000, 1000, true);
     GUILayout.Label(
       "Positive values show the image earlier. Pause a replay near a key press and compare it with the camera image."
@@ -108,17 +114,20 @@ public static class WebcamSettingsGui
     );
     if (GUILayout.Button("Reset camera position"))
       Commit(
-        new JObject
+        new WebcamSettings
         {
-          ["overlayX"] = 1,
-          ["overlayY"] = 1,
-          ["overlayWidth"] = 0.22,
+          OverlayX = 1,
+          OverlayY = 1,
+          OverlayWidth = 0.22,
         }
       );
-    if (Pending.HasValues && (Event.current.rawType == EventType.MouseUp || Event.current.rawType == EventType.KeyUp))
+    if (
+      (Pending.OffsetMs.IsSpecified || Pending.RecordingLimitMb.IsSpecified || Pending.OverlayWidth.IsSpecified)
+      && (Event.current.rawType == EventType.MouseUp || Event.current.rawType == EventType.KeyUp)
+    )
     {
-      Commit((JObject)Pending.DeepClone());
-      Pending.RemoveAll();
+      Commit(Pending);
+      Pending = new WebcamSettings();
     }
     if (!string.IsNullOrEmpty(_layoutError))
       GUILayout.Label(_layoutError);
@@ -126,18 +135,29 @@ public static class WebcamSettingsGui
 
   private static void Slider(string key, string label, double value, float min, float max, bool integer)
   {
-    double current = Pending[key]?.Value<double>() ?? value;
+    double current =
+      key == "offsetMs" && Pending.OffsetMs.IsSpecified ? Pending.OffsetMs.Value
+      : key == "recordingLimitMb" && Pending.RecordingLimitMb.IsSpecified ? Pending.RecordingLimitMb.Value
+      : key == "overlayWidth" && Pending.OverlayWidth.IsSpecified ? Pending.OverlayWidth.Value
+      : value;
     GUILayout.Label(label + ": " + current.ToString(integer ? "0" : "0.00"));
     double next = GUILayout.HorizontalSlider((float)current, min, max);
     if (integer)
       next = System.Math.Round(next);
     if (GUI.enabled && System.Math.Abs(next - current) > 0.00001)
-      Pending[key] = integer ? new JValue((int)next) : new JValue(next);
+    {
+      if (key == "offsetMs")
+        Pending.OffsetMs = (int)next;
+      else if (key == "recordingLimitMb")
+        Pending.RecordingLimitMb = (int)next;
+      else if (key == "overlayWidth")
+        Pending.OverlayWidth = next;
+    }
   }
 
-  private static void Commit(JObject values)
+  private static void Commit(WebcamSettings values)
   {
-    if (!WebcamSettingsPatch.TryParse(values, out var patch))
+    if (!WebcamSettingsPatch.TryCreate(values, out var patch))
       return;
     _error = FeatureRegistry.WebcamRecording.TryUpdate(patch, out string message) ? null : message;
   }

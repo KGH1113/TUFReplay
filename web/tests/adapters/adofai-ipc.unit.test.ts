@@ -1,62 +1,50 @@
 import { describe, expect, test } from "bun:test";
-import { adaptChannel, createLazyAppChannels } from "@/adapters/adofai-ipc/connection";
-import { IpcConnection } from "../../vendor/adofai-ipc/src";
+import { createLazyAppChannels, createRecorderSnapshots } from "@/adapters/adofai-ipc/connection";
 import { scriptedChannels } from "../fixtures/local-message-peer";
 
-describe("ADOFAI channel adapter", () => {
-  test("retains the initial state until application subscribers attach and clears it on disconnect", () => {
-    const connection = new IpcConnection();
-    const channel = connection.namespace("tuf-replay");
-    const peer = adaptChannel(channel);
-    channel.receive({
-      kind: "event",
-      name: "replay.state.changed",
-      id: "initial",
-      payload: { state: "idle" },
-    });
+describe("typed ADOFAI recorder adapter", () => {
+  test("retains initial snapshots for late subscribers and clears disconnected state", () => {
+    const snapshots = createRecorderSnapshots();
+    snapshots.handlers.activityChanged({ value: { revision: 3, runId: null } });
     const first: unknown[] = [];
-    peer.on("replay.state.changed", (payload) => first.push(payload))();
-    expect(first).toEqual([{ state: "idle" }]);
-    channel.disconnected();
-    const second: unknown[] = [];
-    peer.on("replay.state.changed", (payload) => second.push(payload))();
-    expect(second).toEqual([]);
-  });
-  test("captures a fast terminal bundle state even when another job publishes before subscription", () => {
-    const connection = new IpcConnection();
-    const channel = connection.namespace("tuf-replay");
-    const peer = adaptChannel(channel);
-    channel.receive({
-      kind: "event",
-      name: "render-bundle.state.changed",
-      id: "owned",
-      payload: { jobId: "owned", state: "completed" },
-    });
-    channel.receive({
-      kind: "event",
-      name: "render-bundle.state.changed",
-      id: "other",
-      payload: { jobId: "other", state: "preparing" },
-    });
-    const states: unknown[] = [];
-    peer.on("render-bundle.state.changed", (payload) => states.push(payload))();
-    expect(states).toEqual([
-      { jobId: "owned", state: "completed" },
-      { jobId: "other", state: "preparing" },
-    ]);
-    channel.disconnected();
+    snapshots.on("activityChanged", (value) => first.push(value))();
+    expect(first).toEqual([{ revision: 3, runId: null }]);
+    snapshots.clear();
     const stale: unknown[] = [];
-    peer.on("render-bundle.state.changed", (payload) => stale.push(payload))();
+    snapshots.on("activityChanged", (value) => stale.push(value))();
     expect(stale).toEqual([]);
+    snapshots.handlers.activityChanged({ value: { revision: 4, runId: "new-session" } });
+    snapshots.on("activityChanged", (value) => stale.push(value))();
+    expect(stale).toEqual([{ revision: 4, runId: "new-session" }]);
   });
-  test("a failed initial connection can be retried through the same application ports", async () => {
+  test("retains a terminal bundle snapshot independently from other jobs", () => {
+    const snapshots = createRecorderSnapshots();
+    const base = {
+      runId: "run",
+      progress: 1,
+      manifestPath: null,
+      errorCode: null,
+      errorMessage: null,
+      errorDetails: null,
+    };
+    snapshots.handlers.renderBundleStateChanged({
+      value: { ...base, jobId: "owned", state: "completed" },
+    });
+    snapshots.handlers.renderBundleStateChanged({
+      value: { ...base, jobId: "other", state: "preparing" },
+    });
+    const ids: string[] = [];
+    snapshots.on("renderBundleStateChanged", (value) => ids.push(value.jobId))();
+    expect(ids).toEqual(["owned", "other"]);
+  });
+  test("a failed initial connection can be retried through the same ports", async () => {
     let attempts = 0;
     const channels = createLazyAppChannels(async () => {
       if (++attempts === 1) throw new Error("Start the game.");
       return scriptedChannels(() => ({}));
     });
-    await expect(channels.namespace.whenReady()).rejects.toThrow("Start the game.");
-    await channels.namespace.whenReady();
+    await expect(channels.recorder.whenReady()).rejects.toThrow("Start the game.");
+    await channels.recorder.whenReady();
     expect(attempts).toBe(2);
   });
 });

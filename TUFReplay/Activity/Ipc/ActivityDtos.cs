@@ -229,13 +229,6 @@ public sealed class JudgmentCountsDto
   }
 }
 
-public sealed class ActivityChartDto
-{
-  public string LevelSessionId;
-  public string LevelText;
-  public int FloorCount;
-}
-
 public sealed class ActivityRunDeleteResultDto
 {
   public string RunId;

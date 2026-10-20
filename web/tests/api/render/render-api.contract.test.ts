@@ -78,7 +78,7 @@ describe("neutral render IPC contract", () => {
     await api.exportBundle("run-2", defaultRenderOptions);
     expect(calls).toEqual([
       {
-        method: "replay.render-bundle.prepare",
+        method: "prepareRenderBundle",
         params: {
           runId: "run-1",
           levelPath: "/levels/visual edit.adofai",
@@ -87,7 +87,7 @@ describe("neutral render IPC contract", () => {
         },
       },
       {
-        method: "replay.render-bundle.prepare",
+        method: "prepareRenderBundle",
         params: { runId: "run-2", includeWebcam: true, includeMicrophone: true },
       },
     ]);
@@ -115,7 +115,7 @@ describe("neutral render IPC contract", () => {
     expect(calls).toEqual([
       {
         namespace: "tuf-replay",
-        method: "replay.render-bundle.prepare",
+        method: "prepareRenderBundle",
         params: { runId: "run-1", includeWebcam: true, includeMicrophone: true },
       },
       {
@@ -125,12 +125,12 @@ describe("neutral render IPC contract", () => {
       },
       {
         namespace: "tuf-replay",
-        method: "replay.render-bundle.state.read",
+        method: "readRenderBundleState",
         params: { jobId: "export-1" },
       },
       {
         namespace: "tuf-replay",
-        method: "replay.render-bundle.cancel",
+        method: "cancelRenderBundle",
         params: { jobId: "export-1" },
       },
       {

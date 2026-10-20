@@ -14,17 +14,11 @@ internal static class ActivityChartDownloadSuite
       FloorCount = 4896,
     };
     using var source = ActivityChartDownloads.Create(chart);
-    Assert(source.ByteLength > 2 * 1024 * 1024, "The regression fixture does not exceed the control-message limit.");
-    Assert(source.ByteLength == Encoding.UTF8.GetByteCount(text), "The chart ticket length is not a UTF-8 byte count.");
-    chart.LevelText = "A later file revision must not replace the validated snapshot.";
-    using var output = new MemoryStream();
-    source.WriteTo(output);
-    Assert(output.CanWrite, "The chart writer disposed the destination HTTP stream.");
-    Assert(output.Length == source.ByteLength, "The chart writer did not write the declared number of bytes.");
-    Assert(
-      Encoding.UTF8.GetString(output.ToArray()) == text,
-      "The chart text changed, was escaped, or acquired a BOM."
-    );
-    Console.WriteLine("PASS large chart UTF-8 streaming, exact byte count and validated snapshot ownership");
+    Assert(source.Size > 2 * 1024 * 1024, "The regression fixture does not exceed the control-message limit.");
+    Assert(source.Size == Encoding.UTF8.GetByteCount(text), "The chart file length is not a UTF-8 byte count.");
+    Assert(source.Name == "tufreplay-chart.adofai", "The chart file name changed.");
+    Assert(source.ContentType == "application/json; charset=utf-8", "The chart content type changed.");
+    // The real-runtime IPC suite consumes this opaque file source and checks snapshot ownership.
+    Console.WriteLine("PASS large chart typed-file metadata and exact UTF-8 byte count");
   }
 }

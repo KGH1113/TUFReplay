@@ -10,24 +10,21 @@ namespace TUFReplay.Microphone.Ipc;
 
 public static class MicrophoneIpcHandlers
 {
-  public static object GetDevices(JsonCommand request)
+  public static MicrophoneDevicesResponseDto GetDevices()
   {
     try
     {
       return MicrophoneDevicesResponseDto.From(MicrophoneDeviceService.GetState());
     }
-    catch (Exception exception)
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
     {
       Main.Instance?.Log("[IPC] Microphone device query failed: " + exception.GetType().Name);
-      return MicrophoneFailure(exception, "microphone_device_query_failed", "Available microphones could not be read.");
+      throw MicrophoneFailure(exception, "microphone_device_query_failed", "Available microphones could not be read.");
     }
   }
 
-  public static object SelectDevice(JsonCommand request)
+  public static MicrophoneDevicesResponseDto SelectDevice(string deviceId)
   {
-    if (!IpcParams.TryNullableString(request, "deviceId", out string deviceId))
-      return IpcDomainError.Create("invalid_microphone_device_id", "deviceId must be a string or null.");
-
     try
     {
       if (
@@ -39,16 +36,16 @@ public static class MicrophoneIpcHandlers
           out string errorMessage
         )
       )
-        return IpcDomainError.Create(errorCode, errorMessage);
+        throw IpcDomainError.Create(errorCode, errorMessage);
 
       if (changed)
         Main.Instance?.Log("[Microphone] Input device selection updated.");
       return MicrophoneDevicesResponseDto.From(state);
     }
-    catch (Exception exception)
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
     {
       Main.Instance?.Log("[IPC] Microphone device selection failed: " + exception.GetType().Name);
-      return MicrophoneFailure(
+      throw MicrophoneFailure(
         exception,
         "microphone_device_selection_failed",
         "The microphone selection could not be saved. The previous device is still active."
@@ -56,11 +53,8 @@ public static class MicrophoneIpcHandlers
     }
   }
 
-  public static object SetEnabled(JsonCommand request)
+  public static MicrophoneDevicesResponseDto SetEnabled(bool enabled)
   {
-    if (!IpcParams.TryBool(request, "enabled", out bool enabled))
-      return IpcDomainError.Create("invalid_microphone_enabled", "enabled must be a boolean.");
-
     try
     {
       if (
@@ -71,15 +65,15 @@ public static class MicrophoneIpcHandlers
           out string errorMessage
         )
       )
-        return IpcDomainError.Create(errorCode, errorMessage);
+        throw IpcDomainError.Create(errorCode, errorMessage);
 
       Main.Instance?.Log("[Microphone] Input access " + (enabled ? "enabled." : "disabled."));
       return MicrophoneDevicesResponseDto.From(state);
     }
-    catch (Exception exception)
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
     {
       Main.Instance?.Log("[IPC] Microphone access update failed: " + exception.GetType().Name);
-      return MicrophoneFailure(
+      throw MicrophoneFailure(
         exception,
         "microphone_toggle_failed",
         "The microphone setting could not be saved. The previous setting is still active."
@@ -87,41 +81,39 @@ public static class MicrophoneIpcHandlers
     }
   }
 
-  public static object SetOffset(JsonCommand request)
+  public static MicrophoneTimingSettingsDto SetOffset(int offsetMs)
   {
-    int? offsetMs = IpcParams.OptionalInt(request, "offsetMs");
-    if (!offsetMs.HasValue)
-      return IpcDomainError.Create("invalid_microphone_offset", "offsetMs must be an integer.");
     if (
       !MicrophoneTimingSettingsService.TrySetOffset(
-        offsetMs.Value,
+        offsetMs,
         out MicrophoneTimingSettingsState state,
         out string errorCode,
         out string errorMessage
       )
     )
-      return IpcDomainError.Create(errorCode, errorMessage);
+      throw IpcDomainError.Create(errorCode, errorMessage);
     return MicrophoneTimingSettingsDto.From(state);
   }
 
-  public static object SetVolume(JsonCommand request)
+  public static MicrophoneTimingSettingsDto SetVolume(int volumeDb)
   {
-    int? volumeDb = IpcParams.OptionalInt(request, "volumeDb");
-    if (!volumeDb.HasValue)
-      return IpcDomainError.Create("invalid_microphone_volume", "volumeDb must be an integer.");
     if (
       !MicrophoneTimingSettingsService.TrySetVolume(
-        volumeDb.Value,
+        volumeDb,
         out MicrophoneTimingSettingsState state,
         out string errorCode,
         out string errorMessage
       )
     )
-      return IpcDomainError.Create(errorCode, errorMessage);
+      throw IpcDomainError.Create(errorCode, errorMessage);
     return MicrophoneTimingSettingsDto.From(state);
   }
 
-  private static object MicrophoneFailure(Exception exception, string fallbackCode, string fallbackMessage)
+  private static AdofaiIpc.IpcCallException MicrophoneFailure(
+    Exception exception,
+    string fallbackCode,
+    string fallbackMessage
+  )
   {
     if (exception is UnauthorizedAccessException)
     {

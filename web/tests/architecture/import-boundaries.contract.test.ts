@@ -96,6 +96,8 @@ describe("web import boundaries", () => {
         if (
           dependency.startsWith("@/adapters/") ||
           dependency.includes("vendor/adofai-ipc") ||
+          dependency === "adofai-ipc" ||
+          dependency === "adofai-ipc/transport" ||
           dependency === "@adofai-ipc/client" ||
           dependency === "react" ||
           dependency.startsWith("@tauri-apps/") ||
@@ -103,6 +105,22 @@ describe("web import boundaries", () => {
         )
           violations.push(`${path}: ${dependency}`);
       }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  test("active recorder APIs use the generated methods and opaque file capabilities", async () => {
+    const violations: string[] = [];
+    const glob = new Bun.Glob("{api,adapters,ports,hooks}/**/*.{ts,tsx}");
+    for await (const path of glob.scan({ cwd: sourceRoot.pathname })) {
+      // The independent Renderer remains an inactive, coming-soon integration.
+      if (path.startsWith("api/render/") || path === "api/domain-messages.ts") continue;
+      const source = await Bun.file(new URL(path, sourceRoot)).text();
+      if (
+        /sendDomainCommand\(|\.namespace\.send\(/.test(source) ||
+        source.includes("/ipc/download")
+      )
+        violations.push(path);
     }
     expect(violations).toEqual([]);
   });

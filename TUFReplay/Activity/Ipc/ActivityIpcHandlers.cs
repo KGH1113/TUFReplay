@@ -18,9 +18,9 @@ namespace TUFReplay.Activity.Ipc;
 
 public static class ActivityIpcHandlers
 {
-  public static object ListAppSessions(JsonCommand request)
+  public static List<ActivityAppSessionDto> ListAppSessions(int? offset = null, int? limit = null)
   {
-    IpcPagination pagination = IpcPagination.Parse(request);
+    IpcPagination pagination = IpcPagination.Parse(offset, limit);
     var output = new List<ActivityAppSessionDto>();
     foreach (
       AppSessionActivity activity in ActivityQueryService.ListAppSessionActivities(pagination.Offset, pagination.Limit)
@@ -34,30 +34,30 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetLegacyReplayStatus(JsonCommand request) =>
+  public static ActivityLegacyReplayStatusDto GetLegacyReplayStatus() =>
     new ActivityLegacyReplayStatusDto { HasLegacyReplays = RunRepository.HasLegacyReplay() };
 
-  public static object GetLevelSession(JsonCommand request)
+  public static ActivityLevelSessionOverviewDto GetLevelSession(string id)
   {
-    if (!IpcParams.TryRequiredString(request, "id", out string id))
-      return InvalidLevelSessionId();
+    if (string.IsNullOrWhiteSpace(id))
+      throw InvalidLevelSessionId();
 
     LevelSessionOverview session = ActivityQueryService.GetLevelSessionOverview(id);
     return session == null
-      ? IpcDomainError.Create("level_session_not_found", "Level session was not found.")
+      ? throw IpcDomainError.Create("level_session_not_found", "Level session was not found.")
       : ActivityLevelSessionOverviewDto.From(session);
   }
 
-  public static object ListRuns(JsonCommand request)
+  public static List<ActivityRunDto> ListRuns(string id, int? offset = null, int? limit = null)
   {
-    if (!IpcParams.TryRequiredString(request, "id", out string id))
-      return InvalidLevelSessionId();
+    if (string.IsNullOrWhiteSpace(id))
+      throw InvalidLevelSessionId();
 
-    IpcPagination pagination = IpcPagination.Parse(request);
+    IpcPagination pagination = IpcPagination.Parse(offset, limit);
     if (
       !ActivityQueryService.TryListRunsByLevelSession(id, pagination.Offset, pagination.Limit, out List<RunRecord> runs)
     )
-      return IpcDomainError.Create("level_session_not_found", "Level session was not found.");
+      throw IpcDomainError.Create("level_session_not_found", "Level session was not found.");
 
     var output = new List<ActivityRunDto>(runs.Count);
     foreach (RunRecord run in runs)
@@ -65,18 +65,18 @@ public static class ActivityIpcHandlers
     return output;
   }
 
-  public static object GetChart(JsonCommand request)
+  public static ActivityChartDto GetChart(string id)
   {
-    if (!IpcParams.TryRequiredString(request, "id", out string id))
-      return InvalidLevelSessionId();
+    if (string.IsNullOrWhiteSpace(id))
+      throw InvalidLevelSessionId();
 
     try
     {
       ChartData chart = ActivityQueryService.GetChart(id);
       if (chart == null)
-        return IpcDomainError.Create("level_session_not_found", "Level session was not found.");
+        throw IpcDomainError.Create("level_session_not_found", "Level session was not found.");
       if (chart.levelText == null)
-        return IpcDomainError.Create(
+        throw IpcDomainError.Create(
           chart.errorCode ?? "chart_unavailable",
           chart.errorMessage ?? "The recorded chart file is unavailable."
         );
@@ -87,57 +87,66 @@ public static class ActivityIpcHandlers
         FloorCount = chart.floorCount,
       };
     }
-    catch (Exception exception)
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
     {
       Main.Instance?.Log("[IPC] Chart read failed: " + exception.GetType().Name);
-      return ChartReadError(exception);
+      throw ChartReadError(exception);
     }
   }
 
-  public static object GetLogicalLevel(JsonCommand request)
+  public static ActivityLogicalLevelOverviewDto GetLogicalLevel(string id)
   {
-    if (!IpcParams.TryRequiredString(request, "id", out string id))
-      return InvalidLogicalLevelId();
+    if (string.IsNullOrWhiteSpace(id))
+      throw InvalidLogicalLevelId();
     LogicalLevelOverview level = ActivityQueryService.GetLogicalLevelOverview(id);
     return level == null
-      ? IpcDomainError.Create("logical_level_not_found", "Logical level was not found.")
+      ? throw IpcDomainError.Create("logical_level_not_found", "Logical level was not found.")
       : ActivityLogicalLevelOverviewDto.From(level);
   }
 
-  public static object ListLogicalLevelRuns(JsonCommand request)
+  public static List<ActivityRunDto> ListLogicalLevelRuns(
+    string id,
+    string[] appSessionIds,
+    int? offset = null,
+    int? limit = null
+  )
   {
-    if (!IpcParams.TryRequiredString(request, "id", out string id))
-      return InvalidLogicalLevelId();
-    if (!IpcParams.TryRequiredStringArray(request, "appSessionIds", out List<string> appSessionIds))
-      return IpcDomainError.Create("invalid_app_session_ids", "appSessionIds must be a non-empty string array.");
-    IpcPagination pagination = IpcPagination.Parse(request);
+    if (string.IsNullOrWhiteSpace(id))
+      throw InvalidLogicalLevelId();
+    if (
+      appSessionIds == null
+      || appSessionIds.Length == 0
+      || System.Array.Exists(appSessionIds, string.IsNullOrWhiteSpace)
+    )
+      throw IpcDomainError.Create("invalid_app_session_ids", "appSessionIds must be a non-empty string array.");
+    IpcPagination pagination = IpcPagination.Parse(offset, limit);
     if (
       !ActivityQueryService.TryListRunsByLogicalLevel(
         id,
-        appSessionIds,
+        new List<string>(appSessionIds),
         pagination.Offset,
         pagination.Limit,
         out List<RunRecord> runs
       )
     )
-      return IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
+      throw IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
     var output = new List<ActivityRunDto>(runs.Count);
     foreach (RunRecord run in runs)
       output.Add(ActivityRunDto.From(run));
     return output;
   }
 
-  public static object GetLogicalLevelChart(JsonCommand request)
+  public static ActivityChartDto GetLogicalLevelChart(string id)
   {
-    if (!IpcParams.TryRequiredString(request, "id", out string id))
-      return InvalidLogicalLevelId();
+    if (string.IsNullOrWhiteSpace(id))
+      throw InvalidLogicalLevelId();
     try
     {
       ChartData chart = ActivityQueryService.GetLogicalLevelChart(id);
       if (chart == null)
-        return IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
+        throw IpcDomainError.Create("logical_level_not_found", "Logical level was not found.");
       if (chart.levelText == null)
-        return IpcDomainError.Create(
+        throw IpcDomainError.Create(
           chart.errorCode ?? "chart_unavailable",
           chart.errorMessage ?? "The recorded chart file is unavailable."
         );
@@ -148,22 +157,22 @@ public static class ActivityIpcHandlers
         FloorCount = chart.floorCount,
       };
     }
-    catch (Exception exception)
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
     {
       Main.Instance?.Log("[IPC] Logical level chart read failed: " + exception.GetType().Name);
-      return ChartReadError(exception);
+      throw ChartReadError(exception);
     }
   }
 
-  public static object DeleteRun(JsonCommand request)
+  public static ActivityRunDeleteResultDto DeleteRun(string runId)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
-      return IpcDomainError.Create("run_not_found", "Run was not found.");
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
     ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.GetStatus();
     if (ReplayPlaybackCoordinator.IsBusy && replayStatus.RunId == runId)
-      return IpcDomainError.Create("run_in_use", "Stop this replay before deleting its run.");
+      throw IpcDomainError.Create("run_in_use", "Stop this replay before deleting its run.");
 
     FeatureRegistry.MicrophoneRecording?.BeginRunDeletion(runId);
     try
@@ -171,7 +180,7 @@ public static class ActivityIpcHandlers
       if (!RunRepository.Delete(runId))
       {
         FeatureRegistry.MicrophoneRecording?.CancelRunDeletion(runId);
-        return IpcDomainError.Create("run_not_found", "Run was not found.");
+        throw IpcDomainError.Create("run_not_found", "Run was not found.");
       }
 
       FeatureRegistry.MicrophoneRecording?.CompleteRunDeletion(runId);
@@ -179,28 +188,28 @@ public static class ActivityIpcHandlers
       ActivityChanges.Notify(runId);
       return new ActivityRunDeleteResultDto { RunId = runId, Deleted = true };
     }
-    catch (Exception exception)
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
     {
       FeatureRegistry.MicrophoneRecording?.CancelRunDeletion(runId);
       Main.Instance?.Log("[IPC] Run deletion failed: " + exception.GetType().Name);
       if (exception is SqliteException sqliteException && Database.IsTransientLock(sqliteException))
       {
-        return IpcDomainError.Create(
+        throw IpcDomainError.Create(
           "activity_busy",
           "Play history is being updated. Wait a moment and try deleting the run again."
         );
       }
-      return IpcDomainError.Create("run_delete_failed", "The run could not be deleted. Try again shortly.");
+      throw IpcDomainError.Create("run_delete_failed", "The run could not be deleted. Try again shortly.");
     }
   }
 
-  private static object InvalidLevelSessionId() =>
+  private static AdofaiIpc.IpcCallException InvalidLevelSessionId() =>
     IpcDomainError.Create("invalid_level_session_id", "id must be a non-empty string.");
 
-  private static object InvalidLogicalLevelId() =>
+  private static AdofaiIpc.IpcCallException InvalidLogicalLevelId() =>
     IpcDomainError.Create("invalid_logical_level_id", "id must be a non-empty string.");
 
-  private static object ChartReadError(Exception exception)
+  private static AdofaiIpc.IpcCallException ChartReadError(Exception exception)
   {
     if (exception is SqliteException sqliteException && Database.IsTransientLock(sqliteException))
       return IpcDomainError.Create("activity_busy", "Play history is being updated. Try again shortly.");

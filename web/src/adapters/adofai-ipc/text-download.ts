@@ -1,26 +1,10 @@
 import type { TextDownloads } from "@/ports/text-download";
 import { ApiError } from "@/shared/errors/api-error";
 
-export function createLocalTextDownloads(
-  fetchFile: typeof fetch = globalThis.fetch,
-): TextDownloads {
+export function createLocalTextDownloads(): TextDownloads {
   return {
-    async readText(ticket, options) {
-      const url = parseUrl(ticket.url);
-      if (
-        url.protocol !== "http:" ||
-        url.hostname !== "127.0.0.1" ||
-        Number(url.port) < 32145 ||
-        Number(url.port) > 32155 ||
-        url.username !== "" ||
-        url.password !== "" ||
-        url.search !== "" ||
-        url.hash !== "" ||
-        !/^\/ipc\/download\/[A-Za-z0-9_-]+$/.test(url.pathname) ||
-        !Number.isSafeInteger(ticket.byteLength) ||
-        ticket.byteLength < 0
-      )
-        throw invalidDownload();
+    async readText(file, options) {
+      if (!Number.isSafeInteger(file.size) || file.size < 0) throw invalidDownload();
 
       const controller = new AbortController();
       const abort = () => controller.abort(options?.signal?.reason);
@@ -28,20 +12,7 @@ export function createLocalTextDownloads(
       if (options?.signal?.aborted) abort();
       const timeout = setTimeout(() => controller.abort(), 30_000);
       try {
-        const response = await fetchFile(url.href, {
-          signal: controller.signal,
-          cache: "no-store",
-          credentials: "omit",
-          redirect: "error",
-        });
-        if (!response.ok)
-          throw new ApiError("The chart download could not be completed. Try loading it again.", {
-            kind: "http",
-            code: "chart_download_failed",
-          });
-        if (!response.body) throw invalidDownload();
-
-        const reader = response.body.getReader();
+        const reader = file.stream({ signal: controller.signal }).getReader();
         const decoder = new TextDecoder("utf-8", { fatal: true });
         const decode = (bytes?: Uint8Array, stream = false) => {
           try {
@@ -58,10 +29,10 @@ export function createLocalTextDownloads(
             const chunk = await reader.read();
             if (chunk.done) break;
             received += chunk.value.byteLength;
-            if (received > ticket.byteLength) throw invalidDownload();
+            if (received > file.size) throw invalidDownload();
             text.push(decode(chunk.value, true));
           }
-          if (received !== ticket.byteLength) throw invalidDownload();
+          if (received !== file.size) throw invalidDownload();
           text.push(decode());
           complete = true;
           return text.join("");
@@ -82,14 +53,6 @@ export function createLocalTextDownloads(
       }
     },
   };
-}
-
-function parseUrl(value: string) {
-  try {
-    return new URL(value);
-  } catch (cause) {
-    throw invalidDownload(cause);
-  }
 }
 
 function invalidDownload(cause?: unknown) {
