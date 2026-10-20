@@ -18,6 +18,7 @@ internal static class Program
       WebcamOverlayInteractionSuite.RunAll();
       RenderBundleSuite.RunAll();
       CameraRenderStatisticsSuite.RunAll();
+      CameraEngineStatisticsSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
