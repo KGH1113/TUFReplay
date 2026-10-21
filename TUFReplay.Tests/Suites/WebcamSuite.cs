@@ -43,7 +43,7 @@ internal static class WebcamSuite
     OverlayAllowsOffscreenPlacementWithoutMargins();
     SharedPreviewFramesAreBoundedAndNeverTorn();
     MaximumPreviewFramesUseExactAllocationFreeCopies();
-    DiagnosticSnapshotsPreserveErrorsAndPreviewState();
+    TimelineRejectsInvalidAnchors();
     PreviewRemainsReadyWhileTheNextFrameIsWritten();
     HiddenPreviewStillWarmsUpAndSkipsUnusedFrames();
     PreviewReadsNeverWaitForTheProducer();
@@ -92,7 +92,6 @@ internal static class WebcamSuite
         SetCameraField(camera, "_runBackend", backend);
         SetCameraField(camera, "_armed", true);
         SetCameraField(camera, "_recording", true);
-        SetCameraField(camera, "_runId", "camera-tail");
         cameraProperty.SetValue(null, camera);
         var feature = (RecordingFeature)
           System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(RecordingFeature));
@@ -278,7 +277,6 @@ internal static class WebcamSuite
       SetCameraField(camera, "_runBackend", backend);
       SetCameraField(camera, "_armed", true);
       SetCameraField(camera, "_recording", true);
-      SetCameraField(camera, "_runId", recording.RunId);
       int callbacks = 0;
       WebcamRecording result = recording;
       camera.EndRun(
@@ -544,53 +542,17 @@ internal static class WebcamSuite
     public void Dispose() { }
   }
 
-  private static void DiagnosticSnapshotsPreserveErrorsAndPreviewState()
+  private static void TimelineRejectsInvalidAnchors()
   {
-    var failure = new IOException("Camera failed\nTry again", new InvalidOperationException("Device disconnected"));
-    JObject record = CaptureDiagnostics.CreateRecord(
-      "capture.begin.failed",
-      new { operationId = 7, runId = "run" },
-      failure
-    );
-    string line = record.ToString(Formatting.None);
-    Check(!line.Contains('\n'), "Camera diagnostics must stay on one JSON log line.");
-    JObject parsed = JObject.Parse(line);
-    Check((string)parsed["exception"]?["type"] == typeof(IOException).FullName, "Camera exception type was lost.");
-    Check(
-      ((string)parsed["exception"]?["detail"])?.Contains("Device disconnected") == true,
-      "Camera inner exception was lost."
-    );
-    using var preview = new CameraPreviewBuffer(4, 2);
-    JObject before = JObject.FromObject(preview.DiagnosticState());
-    Check(
-      (long?)before["sequence"] == 0 && (bool?)before["disposed"] == false,
-      "Empty preview diagnostics were incorrect."
-    );
-    preview.Publish(new byte[32]);
-    Check(preview.TryCopy(new byte[32]), "Diagnostics changed preview frame consumption.");
-    JObject ready = JObject.FromObject(preview.DiagnosticState());
-    Check(
-      (long?)ready["sequence"] == 2 && (long?)ready["lastReadSequence"] == 2,
-      "Preview diagnostic counters were incorrect."
-    );
-    preview.Dispose();
-    JObject disposed = JObject.FromObject(preview.DiagnosticState());
-    Check(
-      (bool?)disposed["disposed"] == true && disposed["sequence"]?.Type == JTokenType.Null,
-      "Disposed preview diagnostics accessed released memory."
-    );
     var timeline = new WebcamCaptureTimeline();
-    timeline.NoteUnavailableAnchor();
     timeline.Observe(new CaptureTimelineAnchor(Ticks(1), 0, double.NaN));
     timeline.Observe(new CaptureTimelineAnchor(0, 0, 1));
-    JObject clockState = JObject.FromObject(timeline.DiagnosticState());
-    Check(
-      (int?)clockState["unavailableAnchors"] == 1
-        && (int?)clockState["invalidRates"] == 1
-        && (int?)clockState["invalidTimestamps"] == 1
-        && (int?)clockState["segments"] == 0,
-      "Camera diagnostics did not distinguish a missing game clock from missing camera frames."
-    );
+    Check(!timeline.First.HasValue, "Invalid anchors must not start the camera timeline.");
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(2), 1_000_000, 1));
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(3), 0, 1));
+    var recording = new WebcamRecording { CaptureStartTimestampTicks = Ticks(1) };
+    Check(timeline.TryApplyTo(recording), "A valid anchor must still synchronize camera video.");
+    Check(recording.Timeline.Length == 1, "Backward anchors must not alter the camera timeline.");
   }
 
   private static ReplayPlaybackSnapshot Snapshot(long timeUs, double rate = 1, long? won = null, bool paused = false) =>

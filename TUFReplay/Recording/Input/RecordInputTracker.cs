@@ -34,9 +34,7 @@ public static class RecordInputTracker
   private static string _mode = "stopped";
   private static string _fallbackReason;
   private static string _captureFailureReason;
-  private static long _samples;
   private static long _received;
-  private static long _transitions;
   private static long _duplicates;
   private static long _dropped;
   private static long _readFailures;
@@ -116,15 +114,6 @@ public static class RecordInputTracker
           + startFailure.Message
       );
     }
-
-    Main.Instance?.Log(
-      "[Recording/InputDebug] Native capture started. mode="
-        + _mode
-        + ", source="
-        + EventSource.Name
-        + ", snapshotKeys="
-        + EventSource.SnapshotKeyCodes.Count
-    );
   }
 
   public static void StopCapture(RecordingSession session)
@@ -142,8 +131,7 @@ public static class RecordInputTracker
     int count = DrainFilteredTransitions();
     if (count > 0 && session != null)
     {
-      int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
-      Interlocked.Add(ref _transitions, recorded);
+      session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
     }
   }
 
@@ -167,9 +155,7 @@ public static class RecordInputTracker
       // race a reset of its write cursor when the hook is retained between runs.
       EventQueue.Clear();
       Array.Clear(KeyStates, 0, KeyStates.Length);
-      _samples = 0;
       _received = 0;
-      _transitions = 0;
       _duplicates = 0;
       _dropped = 0;
       _readFailures = 0;
@@ -209,61 +195,16 @@ public static class RecordInputTracker
     if (session == null || !session.IsRecording || !session.IsCapturingInput)
       return;
 
-    Interlocked.Increment(ref _samples);
-
     CaptureSourceHealth();
 
     int count = DrainFilteredTransitions();
     if (count > 0)
     {
-      int recorded = session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
-      Interlocked.Add(ref _transitions, recorded);
+      session.AddInputBatch(new ReadOnlySpan<NativeInputTransition>(FilteredDrainBuffer, 0, count));
     }
     if (!EnsureEventSourceRunning())
       return;
     RecoverFromOverflow();
-  }
-
-  public static string DebugSnapshot()
-  {
-    string mode;
-    bool capturing;
-    bool captureWindowActive;
-    bool usingEvents;
-    lock (StateLock)
-    {
-      mode = _mode;
-      capturing = _capturing;
-      captureWindowActive = _captureWindowActive;
-      usingEvents = _usingEvents;
-    }
-
-    return "capturing="
-      + capturing
-      + ", captureWindowActive="
-      + captureWindowActive
-      + ", mode="
-      + mode
-      + ", source="
-      + EventSource.Name
-      + ", snapshotKeys="
-      + EventSource.SnapshotKeyCodes.Count
-      + ", samples="
-      + Interlocked.Read(ref _samples)
-      + ", received="
-      + Interlocked.Read(ref _received)
-      + ", transitions="
-      + Interlocked.Read(ref _transitions)
-      + ", duplicates="
-      + Interlocked.Read(ref _duplicates)
-      + ", dropped="
-      + Interlocked.Read(ref _dropped)
-      + ", maxQueueDepth="
-      + Volatile.Read(ref _maxQueueDepth)
-      + ", resyncs="
-      + Interlocked.Read(ref _resyncs)
-      + ", readFailures="
-      + Interlocked.Read(ref _readFailures);
   }
 
   public static void CopyDiagnosticsTo(RecordedRunPayload payload)

@@ -52,7 +52,6 @@ internal sealed class ReplayNativeInputPump : IDisposable
   private long _emitted;
   private long _stateSeeks;
   private long _emissionFailures;
-  private long _maxLatenessUs;
   private long _nativeMetadataEmitted;
   private long _fallbackEmitted;
   private long _scheduled;
@@ -64,7 +63,6 @@ internal sealed class ReplayNativeInputPump : IDisposable
   private long _explicitSeekSkipped;
   private long _clockResidualCorrections;
   private long _waiterFallbacks;
-  private readonly ReplayLatenessHistogram _lateness = new ReplayLatenessHistogram();
   private IReplayDeadlineWaiter _waiter;
 
   public ReplayNativeInputPump(ReplayInputScheduler scheduler, INativeInputEmitter emitter)
@@ -130,7 +128,6 @@ internal sealed class ReplayNativeInputPump : IDisposable
       _emitted,
       _stateSeeks,
       _emissionFailures,
-      _maxLatenessUs,
       _nativeMetadataEmitted,
       _fallbackEmitted,
       _scheduled,
@@ -142,9 +139,6 @@ internal sealed class ReplayNativeInputPump : IDisposable
       _explicitSeekSkipped,
       _clockResidualCorrections,
       _waiterFallbacks,
-      _lateness.Percentile(0.50d),
-      _lateness.Percentile(0.95d),
-      _lateness.Percentile(0.99d),
       _waiter.Name,
       _waiter.FallbackReason,
       _scheduler.NextIndex,
@@ -325,11 +319,9 @@ internal sealed class ReplayNativeInputPump : IDisposable
             long remainingTicks = deadlineTicks - nowTicks;
             if (remainingTicks <= 0)
             {
-              long latenessUs = TicksToMicroseconds(-remainingTicks);
               long scheduledBefore = _scheduled;
-              EmitNextGroup(latenessUs);
-              _lateness.Record(latenessUs, _scheduled - scheduledBefore);
-              if (latenessUs > 0L)
+              EmitNextGroup();
+              if (remainingTicks < 0L)
               {
                 _catchUpGroups++;
                 _catchUpEvents += _scheduled - scheduledBefore;
@@ -419,7 +411,7 @@ internal sealed class ReplayNativeInputPump : IDisposable
     return changed;
   }
 
-  private int EmitNextGroup(long latenessUs)
+  private int EmitNextGroup()
   {
     if (!IsCurrentGeneration)
       return 0;
@@ -452,8 +444,6 @@ internal sealed class ReplayNativeInputPump : IDisposable
     _scheduled += count;
     int emitted = EmitWithRetry(count);
     ApplyEmittedState(emitted);
-    if (latenessUs > _maxLatenessUs)
-      _maxLatenessUs = latenessUs;
     return emitted;
   }
 
@@ -594,11 +584,6 @@ internal sealed class ReplayNativeInputPump : IDisposable
     return _anchorReplayUs + (long)(elapsedUs * _timelineRate);
   }
 
-  private long TicksToMicroseconds(long ticks)
-  {
-    return (long)(ticks * 1_000_000d / _clock.Frequency);
-  }
-
   private static double NormalizeRate(double rate)
   {
     return rate > 0d && !double.IsNaN(rate) && !double.IsInfinity(rate) ? rate : 1d;
@@ -650,7 +635,6 @@ public readonly struct ReplayNativeInputStats
   public readonly long Emitted;
   public readonly long StateSeeks;
   public readonly long EmissionFailures;
-  public readonly long MaxLatenessUs;
   public readonly long NativeMetadataEmitted;
   public readonly long FallbackEmitted;
   public readonly long Scheduled;
@@ -662,9 +646,6 @@ public readonly struct ReplayNativeInputStats
   public readonly long ExplicitSeekSkipped;
   public readonly long ClockResidualCorrections;
   public readonly long WaiterFallbacks;
-  public readonly long P50LatenessUs;
-  public readonly long P95LatenessUs;
-  public readonly long P99LatenessUs;
   public readonly string Waiter;
   public readonly string WaiterFallbackReason;
   public readonly int NextIndex;
@@ -674,7 +655,6 @@ public readonly struct ReplayNativeInputStats
     long emitted,
     long stateSeeks,
     long emissionFailures,
-    long maxLatenessUs,
     long nativeMetadataEmitted,
     long fallbackEmitted,
     long scheduled,
@@ -686,9 +666,6 @@ public readonly struct ReplayNativeInputStats
     long explicitSeekSkipped,
     long clockResidualCorrections,
     long waiterFallbacks,
-    long p50LatenessUs,
-    long p95LatenessUs,
-    long p99LatenessUs,
     string waiter,
     string waiterFallbackReason,
     int nextIndex,
@@ -698,7 +675,6 @@ public readonly struct ReplayNativeInputStats
     Emitted = emitted;
     StateSeeks = stateSeeks;
     EmissionFailures = emissionFailures;
-    MaxLatenessUs = maxLatenessUs;
     NativeMetadataEmitted = nativeMetadataEmitted;
     FallbackEmitted = fallbackEmitted;
     Scheduled = scheduled;
@@ -710,9 +686,6 @@ public readonly struct ReplayNativeInputStats
     ExplicitSeekSkipped = explicitSeekSkipped;
     ClockResidualCorrections = clockResidualCorrections;
     WaiterFallbacks = waiterFallbacks;
-    P50LatenessUs = p50LatenessUs;
-    P95LatenessUs = p95LatenessUs;
-    P99LatenessUs = p99LatenessUs;
     Waiter = waiter;
     WaiterFallbackReason = waiterFallbackReason;
     NextIndex = nextIndex;

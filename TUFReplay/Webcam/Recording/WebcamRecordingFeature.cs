@@ -1,13 +1,11 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Replay.Timeline;
-using TUFReplay.Shared.Capture;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Timing;
 using TUFReplay.Shared.Unity;
@@ -38,8 +36,6 @@ public sealed class WebcamRecordingFeature
   private int _finalizing;
   private int _generation;
   private CancellationTokenSource _armCancellation = new CancellationTokenSource();
-  private long _operationId;
-  private string _runId;
   private IWebcamCaptureBackend _runBackend;
   private int _runGeneration;
   private string _error;
@@ -64,17 +60,7 @@ public sealed class WebcamRecordingFeature
     try
     {
       Store = new WebcamRecordingStore(Path.Combine(Main.Instance.InstallPath, "Data", "Webcam"));
-      CaptureDiagnostics.Record(
-        "feature.enable",
-        new
-        {
-          os = RuntimeInformation.OSDescription,
-          architecture = RuntimeInformation.ProcessArchitecture.ToString(),
-          modAssemblyId = typeof(WebcamRecordingFeature).Assembly.ManifestModule.ModuleVersionId,
-          payloadPath = Main.Instance.PayloadPath,
-          state = DiagnosticState(),
-        }
-      );
+
       Queue(
         "storage.initialize",
         () =>
@@ -273,20 +259,8 @@ public sealed class WebcamRecordingFeature
           if (!_active || generation != _generation)
             return;
           EnsureBackend();
-          CaptureDiagnostics.Record(
-            "capture.arm.request",
-            new
-            {
-              generation,
-              deviceId = device,
-              profile.Width,
-              profile.Height,
-              profile.FrameRate,
-              profile.BitRate,
-            }
-          );
+
           await _backend.ArmAsync(device, profile, Store.CaptureDirectory);
-          var frameWait = Stopwatch.StartNew();
           DateTime deadline = DateTime.UtcNow.AddSeconds(10);
           while (
             _backend.Preview?.HasFrame != true && DateTime.UtcNow < deadline && generation == _generation && _active
@@ -294,33 +268,11 @@ public sealed class WebcamRecordingFeature
             await Task.Delay(25);
           if (_backend.Preview?.HasFrame != true && generation == _generation && _active)
           {
-            CaptureDiagnostics.Record(
-              "capture.first-frame.timeout",
-              new
-              {
-                generation,
-                waitedMs = frameWait.Elapsed.TotalMilliseconds,
-                preview = _backend.Preview?.DiagnosticState(),
-              }
-            );
-            if (_backend is MacOsWebcamCaptureBackend mac)
-              mac.LogDiagnosticSnapshot("first-frame.timeout");
             throw new IOException("The camera is not sending video. Reconnect it or choose another camera.");
           }
           lock (_gate)
             if (_active && generation == _generation)
               _armed = true;
-          CaptureDiagnostics.Record(
-            "capture.first-frame.result",
-            new
-            {
-              generation,
-              currentGeneration = _generation,
-              waitedMs = frameWait.Elapsed.TotalMilliseconds,
-              cancelled = !_active || generation != _generation,
-              preview = _backend.Preview?.DiagnosticState(),
-            }
-          );
         }
         finally
         {
@@ -340,28 +292,13 @@ public sealed class WebcamRecordingFeature
     {
       if (!_active || !Main.Settings.WebcamEnabled || !_armed || _backend == null || _recording)
       {
-        if (Main.Settings.WebcamEnabled)
-        {
-          object skippedState = DiagnosticState();
-          Queue(
-            "capture.begin.skipped",
-            () =>
-            {
-              CaptureDiagnostics.Record("capture.begin.skipped", new { runId, state = skippedState });
-              return Task.CompletedTask;
-            },
-            runId
-          );
-        }
         return false;
       }
       _recording = true;
-      _runId = runId;
       backend = _runBackend = _backend;
       generation = _runGeneration = _generation;
     }
     long maxBytes = Main.Settings.WebcamRecordingLimitMb * 1024L * 1024;
-    int retention = Main.Settings.WebcamRetentionDays;
     Queue(
       "capture.begin",
       async () =>
@@ -371,29 +308,17 @@ public sealed class WebcamRecordingFeature
         lock (_gate)
           if (!_active || !_armed || generation != _generation || !ReferenceEquals(backend, _backend))
             return;
-        CaptureDiagnostics.Record(
-          "capture.storage.reserved",
-          new
-          {
-            runId,
-            recordingLimitBytes = maxBytes,
-            retentionDays = retention,
-            maxBytes,
-            startTimestampTicks,
-          }
-        );
+
         await backend.BeginAsync(runId, Store.TemporaryPath(runId), maxBytes, startTimestampTicks);
         lock (_gate)
           _error = null;
-      },
-      runId
+      }
     );
     return true;
   }
 
   public void EndRun(WebcamCaptureTimeline timeline, Action<WebcamRecording> completed)
   {
-    string runId;
     IWebcamCaptureBackend backend;
     int generation;
     lock (_gate)
@@ -405,8 +330,6 @@ public sealed class WebcamRecordingFeature
       }
       _recording = false;
       _finalizing++;
-      runId = _runId;
-      _runId = null;
       backend = _runBackend;
       generation = _runGeneration;
       _runBackend = null;
@@ -425,57 +348,21 @@ public sealed class WebcamRecordingFeature
             recording = await backend.EndAsync();
           if (recording != null)
           {
-            CaptureDiagnostics.Record(
-              "capture.timeline.apply",
-              new
-              {
-                runId,
-                recording.CaptureStartTimestampTicks,
-                timeline = timeline?.DiagnosticState(),
-              }
-            );
             if (timeline?.TryApplyTo(recording) != true)
             {
               // A run can end before its game clock advances. The camera is
               // still healthy; discard this video without disarming capture.
-              CaptureDiagnostics.Record(
-                "capture.recording.discarded",
-                new
-                {
-                  runId,
-                  reason = timeline?.First.HasValue != true ? "no_gameplay_clock_anchor" : "invalid_capture_timestamp",
-                  recording.CaptureStartTimestampTicks,
-                  timeline = timeline?.DiagnosticState(),
-                  state = DiagnosticState(),
-                }
-              );
+
               WebcamRecordingStore.Discard(recording);
               recording = null;
             }
-            else
-              CaptureDiagnostics.Record(
-                "capture.recording.complete",
-                new
-                {
-                  runId,
-                  recording.FilePath,
-                  recording.DeviceId,
-                  recording.Width,
-                  recording.Height,
-                  recording.FrameRate,
-                  recording.DurationUs,
-                  recording.CaptureStartTimestampTicks,
-                  recording.CaptureStartOffsetUs,
-                  recording.SizeLimited,
-                }
-              );
           }
           completed?.Invoke(recording);
         }
         catch (Exception exception)
         {
           WebcamRecordingStore.Discard(recording);
-          SetError(exception, "capture.end", runId: runId);
+          SetError(exception, "capture.end");
           completed?.Invoke(null);
         }
         finally
@@ -483,8 +370,7 @@ public sealed class WebcamRecordingFeature
           lock (_gate)
             _finalizing--;
         }
-      },
-      runId
+      }
     );
   }
 
@@ -502,17 +388,7 @@ public sealed class WebcamRecordingFeature
         {
           bool saved = Store.Save(recording, recordingLimit, retention);
           TUFReplay.Activity.Tracking.ActivityChanges.Notify(recording.RunId);
-          CaptureDiagnostics.Record(
-            "capture.storage.persisted",
-            new
-            {
-              recording.RunId,
-              saved,
-              recording.SizeLimited,
-              recordingLimitBytes = recordingLimit,
-              retentionDays = retention,
-            }
-          );
+
           if (!saved || recording.SizeLimited)
             UnityMainThread.Post(() =>
               ReplayTimelineHud.ShowNotificationToast(
@@ -529,8 +405,7 @@ public sealed class WebcamRecordingFeature
           throw;
         }
         return Task.CompletedTask;
-      },
-      recording.RunId
+      }
     );
   }
 
@@ -574,10 +449,7 @@ public sealed class WebcamRecordingFeature
             return;
           EnsureBackend();
           List<WebcamDevice> devices = await _backend.ListDevicesAsync();
-          CaptureDiagnostics.Record(
-            "capture.devices",
-            new { selectedDeviceId = Main.Settings.WebcamDeviceId, devices }
-          );
+
           lock (_gate)
             _devices = devices;
         }
@@ -603,7 +475,6 @@ public sealed class WebcamRecordingFeature
       _backend = new FfmpegWebcamCaptureBackend(TUFReplay.Shared.Media.FfmpegInstallCoordinator.Status().Path);
     else
       throw new PlatformNotSupportedException("Camera recording is available on macOS and Windows.");
-    CaptureDiagnostics.Record("capture.backend.created", new { backend = _backend.GetType().FullName });
   }
 
   private void Cleanup(bool retentionChanged = false)
@@ -613,47 +484,22 @@ public sealed class WebcamRecordingFeature
       TUFReplay.Activity.Tracking.ActivityChanges.Notify();
   }
 
-  private void Queue(string operation, Func<Task> action, string runId = null)
+  private void Queue(string operation, Func<Task> action)
   {
     NotifyStateChanged();
-    long operationId = Interlocked.Increment(ref _operationId);
-    long queuedAt = Stopwatch.GetTimestamp();
     lock (_gate)
       _work = _work
         .ContinueWith(
           async _ =>
           {
-            var elapsed = Stopwatch.StartNew();
-            CaptureDiagnostics.Record(
-              "operation.begin",
-              new
-              {
-                operation,
-                operationId,
-                runId,
-                queueWaitMs = (Stopwatch.GetTimestamp() - queuedAt) * 1000d / Stopwatch.Frequency,
-                state = DiagnosticState(),
-              }
-            );
             try
             {
               await action();
-              CaptureDiagnostics.Record(
-                "operation.complete",
-                new
-                {
-                  operation,
-                  operationId,
-                  runId,
-                  elapsedMs = elapsed.Elapsed.TotalMilliseconds,
-                  state = DiagnosticState(),
-                }
-              );
             }
             catch (OperationCanceledException) { }
             catch (Exception exception)
             {
-              SetError(exception, operation, operationId, runId);
+              SetError(exception, operation);
             }
             finally
             {
@@ -667,42 +513,8 @@ public sealed class WebcamRecordingFeature
         .Unwrap();
   }
 
-  private object DiagnosticState()
+  private void SetError(Exception exception, string operation)
   {
-    lock (_gate)
-      return new
-      {
-        active = _active,
-        armed = _armed,
-        arming = _arming,
-        recording = _recording,
-        finalizing = _finalizing,
-        generation = _generation,
-        runId = _runId,
-        error = _error,
-        backend = _backend?.GetType().Name,
-        enabled = Main.Settings?.WebcamEnabled,
-        selectedDeviceId = Main.Settings?.WebcamDeviceId,
-        quality = Main.Settings?.WebcamQuality,
-        recordingLimitMb = Main.Settings?.WebcamRecordingLimitMb,
-        retentionDays = Main.Settings?.WebcamRetentionDays,
-      };
-  }
-
-  private void SetError(Exception exception, string operation, long? operationId = null, string runId = null)
-  {
-    CaptureDiagnostics.Record(
-      "operation.failed",
-      new
-      {
-        operation,
-        operationId,
-        runId,
-        state = DiagnosticState(),
-        preview = _backend?.Preview?.DiagnosticState(),
-      },
-      exception
-    );
     lock (_gate)
     {
       _error = exception.Message;

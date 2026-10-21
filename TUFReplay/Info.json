@@ -2,7 +2,7 @@
   "Id": "TUFReplay",
   "DisplayName": "TUFReplay",
   "Author": "impl",
-  "Version": "1.0.0",
+  "Version": "1.0.1",
   "BuildFlavor": "standard",
   "AssemblyName": "TUFReplay.SdkLauncher.dll",
   "EntryMethod": "TUFReplay.Bootstrap.Bootstrap.Load"
