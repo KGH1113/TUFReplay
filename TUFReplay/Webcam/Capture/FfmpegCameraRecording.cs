@@ -261,26 +261,11 @@ internal sealed class FfmpegCameraRecording
       });
       if (_writtenFrames == 0 && _error == null)
       {
-        TUFReplay.Shared.Capture.CaptureDiagnostics.Record(
-          "recording.empty",
-          new { _recording.RunId, exitCode = _encoder.ExitCode }
-        );
         WebcamRecordingStore.Discard(_recording);
         return null;
       }
       if (_error != null || _encoder.ExitCode != 0)
       {
-        TUFReplay.Shared.Capture.CaptureDiagnostics.Record(
-          "recording.encoder.failed",
-          new
-          {
-            _recording.RunId,
-            writtenFrames = _writtenFrames,
-            exitCode = _encoder.ExitCode,
-            error = _error,
-            stderr = _encoderMessages.ToArray(),
-          }
-        );
         throw new IOException(
           _error
             ?? "This camera video could not be saved. Check available disk space and try a lower recording quality."

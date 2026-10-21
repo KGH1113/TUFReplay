@@ -115,7 +115,6 @@ internal static class CameraFirstRunCoordinator
   {
     if (_isVisible && !LiveCameraRequested)
       Continue();
-    CameraRenderDiagnostics.Tick(_isVisible);
     CameraLivePreview.Tick(_isVisible);
     if (!_isVisible || _view == null)
       return;
@@ -202,6 +201,5 @@ internal static class CameraFirstRunCoordinator
     }
     _view = null;
     CameraLivePreview.Shutdown();
-    CameraRenderDiagnostics.Shutdown();
   }
 }
