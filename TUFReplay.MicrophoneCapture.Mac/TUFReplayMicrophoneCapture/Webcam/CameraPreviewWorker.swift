@@ -47,8 +47,6 @@ final class CameraPreviewWorker {
       // Release Core Image intermediates after each frame even while new
       // camera frames keep the worker continuously active.
       autoreleasepool { render(frame.0, frame.1) }
-      gate.lock()
-      gate.unlock()
     }
   }
 }
