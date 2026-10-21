@@ -28,7 +28,7 @@ version = override or info.get("Version", "")
 if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?", version):
     raise SystemExit("The TUFReplay package version must be a canonical semantic version.")
 if flavor == "auto-submission" and not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+-auto-submission\.[0-9]+", version):
-    raise SystemExit("Auto-submission packages require TUFREPLAY_BUILD_VERSION in the form 0.2.0-auto-submission.N.")
+    raise SystemExit("Auto-submission packages require TUFREPLAY_BUILD_VERSION in the form 1.0.0-auto-submission.N.")
 if flavor == "standard" and "-auto-submission." in version:
     raise SystemExit("An auto-submission package version cannot be used for the standard build flavor.")
 
@@ -40,14 +40,15 @@ tufreplay_write_build_info() {
   local source_info="$1"
   local destination_info="$2"
   local version="$3"
+  local entrypoint_mode="${4:-runtime}"
 
   command -v python3 >/dev/null 2>&1 || fail "python3 is required to create package metadata."
 
-  python3 - "$source_info" "$destination_info" "$version" "$TUFREPLAY_BUILD_FLAVOR" <<'PY'
+  python3 - "$source_info" "$destination_info" "$version" "$TUFREPLAY_BUILD_FLAVOR" "$entrypoint_mode" <<'PY'
 import json
 import sys
 
-source_path, destination_path, version, flavor = sys.argv[1:]
+source_path, destination_path, version, flavor, entrypoint_mode = sys.argv[1:]
 try:
     with open(source_path, encoding="utf-8-sig") as source:
         info = json.load(source)
@@ -56,6 +57,8 @@ except (OSError, ValueError) as error:
 
 info["Version"] = version
 info["BuildFlavor"] = flavor
+if entrypoint_mode == "launcher":
+    info["AssemblyName"] = f"Runtime/launchers/{version}/TUFReplay.SdkLauncher.dll"
 with open(destination_path, "w", encoding="utf-8", newline="\n") as destination:
     json.dump(info, destination, indent=2, ensure_ascii=False)
     destination.write("\n")

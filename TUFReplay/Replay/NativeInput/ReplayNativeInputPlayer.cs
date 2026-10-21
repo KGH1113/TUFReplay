@@ -8,10 +8,7 @@ public sealed class ReplayNativeInputPlayer : IDisposable
 {
   private readonly INativeInputFocusGuard _focusGuard;
   private readonly ReplayNativeInputPump _pump;
-  private readonly string _emitterName;
   private long _lastReportedEmitted;
-  private bool? _lastFocusReady;
-  private string _lastFocusReason;
 
   internal ReplayNativeInputPlayer(
     ReplayInputScheduler scheduler,
@@ -21,7 +18,6 @@ public sealed class ReplayNativeInputPlayer : IDisposable
   {
     _focusGuard = focusGuard ?? throw new System.ArgumentNullException(nameof(focusGuard));
     _pump = new ReplayNativeInputPump(scheduler, emitter ?? throw new ArgumentNullException(nameof(emitter)));
-    _emitterName = emitter.GetType().Name;
   }
 
   public bool Finished => _pump.Finished;
@@ -54,26 +50,7 @@ public sealed class ReplayNativeInputPlayer : IDisposable
 
   public int Tick(ReplayPlaybackSnapshot snapshot) => Tick(snapshot.TimelineTimeUs, snapshot.TimelineRate);
 
-  public bool CanEmit(out string reason)
-  {
-    bool ready = _focusGuard.IsStable(out reason);
-    if (_lastFocusReady != ready || !string.Equals(_lastFocusReason, reason, StringComparison.Ordinal))
-    {
-      _lastFocusReady = ready;
-      _lastFocusReason = reason;
-      Main.Instance?.Log(
-        "[Replay/Input] Focus "
-          + (ready ? "ready" : "blocked")
-          + ". reason="
-          + (reason ?? "none")
-          + ", emitter="
-          + _emitterName
-          + ", "
-          + _focusGuard.Describe()
-      );
-    }
-    return ready;
-  }
+  public bool CanEmit(out string reason) => _focusGuard.IsStable(out reason);
 
   public void SkipTo(long nowUs)
   {

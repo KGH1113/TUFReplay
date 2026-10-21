@@ -55,24 +55,6 @@ public sealed class CameraPreviewBuffer : IDisposable
   public int Height { get; }
   public int ByteCount { get; }
 
-  internal object DiagnosticState()
-  {
-    lock (_gate)
-      return new
-      {
-        path = Path,
-        disposed = _view == null,
-        capacityWidth = Width,
-        capacityHeight = Height,
-        sequence = _view?.ReadInt64(0),
-        width = _view?.ReadInt32(8),
-        height = _view?.ReadInt32(12),
-        requested = _view?.ReadInt32(PreviewRequestedOffset),
-        lastReadSequence = _lastRead,
-        hasFrame = _hasFrame,
-      };
-  }
-
   public bool HasFrame
   {
     get

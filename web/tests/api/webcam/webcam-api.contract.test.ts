@@ -47,15 +47,15 @@ describe("webcam IPC contract", () => {
     expect(state.crop).toEqual({ x: 0, y: 0, width: 1, height: 1 });
     await api.updateSettings({ crop: { x: 0.25, y: 0, width: 0.5, height: 0.6 }, offsetMs: 120 });
     expect(calls).toEqual([
-      { method: "webcam.state.refresh", params: {} },
+      { method: "refreshWebcamState", params: {} },
       {
-        method: "webcam.settings.change",
-        params: { crop: { x: 0.25, y: 0, width: 0.5, height: 0.6 }, offsetMs: 120 },
+        method: "changeWebcamSettings",
+        params: { settings: { crop: { x: 0.25, y: 0, width: 0.5, height: 0.6 }, offsetMs: 120 } },
       },
     ]);
     await api.getSettings(true);
     expect(calls.at(-1)).toEqual({
-      method: "webcam.state.refresh",
+      method: "refreshWebcamState",
       params: { refreshDevices: true },
     });
   });
@@ -117,7 +117,10 @@ describe("webcam IPC contract", () => {
     );
     const state = await api.updateSettings({ recordingLimitMb: 2048, retentionDays: 0 });
     expect(calls).toEqual([
-      { method: "webcam.settings.change", params: { recordingLimitMb: 2048, retentionDays: 0 } },
+      {
+        method: "changeWebcamSettings",
+        params: { settings: { recordingLimitMb: 2048, retentionDays: 0 } },
+      },
     ]);
     expect(state.recordingLimitMb).toBe(2048);
     expect(state.retentionDays).toBe(0);

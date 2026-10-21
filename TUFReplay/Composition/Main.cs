@@ -1,10 +1,10 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Levels;
-using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Build;
@@ -33,7 +33,6 @@ public sealed class Main
   private readonly string _updateSettingsPath;
   private bool _enabled;
   private Task _pendingActivityWrites = Task.CompletedTask;
-  private static bool _showReplayInputDiagnostics;
 
   private Main(UnityModManager.ModEntry modEntry)
   {
@@ -42,6 +41,36 @@ public sealed class Main
   }
 
   public static bool Load(UnityModManager.ModEntry modEntry)
+  {
+    try
+    {
+      string payload = System.IO.Path.GetDirectoryName(typeof(Main).Assembly.Location);
+      TUFReplay.BundledIpc.SdkMigration.Prepare(payload, modEntry.Path);
+      if (!LoadCore(modEntry))
+        return false;
+      try
+      {
+        TUFReplay.BundledIpc.SdkMigration.Commit(payload, modEntry.Path);
+        AppDomain.CurrentDomain.SetData("AdofaiIpc.SdkMigration.TUFReplay", true);
+        modEntry.Logger.Log("[SdkMigration] SDK active; standalone IPC installation is no longer required.");
+      }
+      catch (Exception exception)
+      {
+        // The payload is running. Retain the old entrypoint and IPC until a later launch retries the commit.
+        modEntry.Logger.Warning("[SdkMigration] SDK active, but entrypoint migration will retry: " + exception);
+      }
+      return true;
+    }
+    catch (Exception exception)
+    {
+      modEntry.Logger.Error("[SdkMigration] " + exception);
+      return false;
+    }
+  }
+
+  // The deployed v1 launcher enters Load directly. Keep SDK type resolution behind file preparation.
+  [MethodImpl(MethodImplOptions.NoInlining)]
+  private static bool LoadCore(UnityModManager.ModEntry modEntry)
   {
     try
     {
@@ -81,62 +110,13 @@ public sealed class Main
 
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
-    WebcamSettingsGui.Draw();
-    GUILayout.Label("Updates");
     if (TUFReplayBuildFlavor.Name == "auto-submission")
+      return;
+    bool receiveBetaUpdates = GUILayout.Toggle(UpdaterSettings.ReceiveBetaUpdates, "Receive beta updates");
+    if (receiveBetaUpdates != UpdaterSettings.ReceiveBetaUpdates)
     {
-      GUILayout.Label("Build channel: Auto-submission");
-      GUILayout.Label("Build version: " + Instance.Version);
-      GUILayout.Label("Updates use the isolated auto-submission feed.");
-    }
-    else
-    {
-      bool receiveBetaUpdates = GUILayout.Toggle(UpdaterSettings.ReceiveBetaUpdates, "Receive beta updates");
-      GUILayout.Label("Beta builds may be unstable. Changes apply on the next game launch.");
-
-      if (receiveBetaUpdates != UpdaterSettings.ReceiveBetaUpdates)
-      {
-        UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
-        SaveUpdateSettings(modEntry);
-      }
-    }
-
-    _showReplayInputDiagnostics = GUILayout.Toggle(_showReplayInputDiagnostics, "Replay input diagnostics");
-    if (_showReplayInputDiagnostics)
-    {
-      if (ReplaySessionService.TryGetNativeInputStats(out ReplayNativeInputStats stats))
-      {
-        GUILayout.Label("Waiter: " + stats.Waiter);
-        if (!string.IsNullOrWhiteSpace(stats.WaiterFallbackReason))
-          GUILayout.Label("Waiter fallback: " + stats.WaiterFallbackReason);
-        GUILayout.Label(
-          "Lateness p50/p95/p99/max: "
-            + stats.P50LatenessUs
-            + "/"
-            + stats.P95LatenessUs
-            + "/"
-            + stats.P99LatenessUs
-            + "/"
-            + stats.MaxLatenessUs
-            + " us"
-        );
-        GUILayout.Label(
-          "Scheduled/emitted/failed: " + stats.Scheduled + "/" + stats.Emitted + "/" + stats.FailedEvents
-        );
-        GUILayout.Label("Catch-up groups/events: " + stats.CatchUpGroups + "/" + stats.CatchUpEvents);
-        GUILayout.Label(
-          "Partial retries / unsupported / waiter fallback: "
-            + stats.PartialRetries
-            + " / "
-            + stats.UnsupportedEvents
-            + " / "
-            + stats.WaiterFallbacks
-        );
-      }
-      else
-      {
-        GUILayout.Label("No active replay.");
-      }
+      UpdaterSettings.ReceiveBetaUpdates = receiveBetaUpdates;
+      SaveUpdateSettings(modEntry);
     }
   }
 

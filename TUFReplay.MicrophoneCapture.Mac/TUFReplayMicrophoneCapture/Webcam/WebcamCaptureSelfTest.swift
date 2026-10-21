@@ -3,7 +3,6 @@ import CoreVideo
 
 enum WebcamCaptureSelfTest {
   static func run() throws {
-    try CameraDiagnosticsSelfTest.run()
     let profile = WebcamProfile(width: 640, height: 480, frameRate: 30, bitRate: 600_000).fitting(width: 1920, height: 1080)
     try profile.validate()
     guard profile.width == 640, profile.height == 360 else {
@@ -281,21 +280,12 @@ enum WebcamCaptureSelfTest {
     // A deliberately stalled renderer must not stop capture submissions or
     // accumulate every intervening sample. Only the newest sample survives.
     for time in 2...100 { worker.submit(pixels, time: Double(time)) }
-    let blocked = worker.diagnosticState()
-    guard blocked["submittedFrames"] as? Int64 == 100,
-      blocked["replacedPendingFrames"] as? Int64 == 98,
-      blocked["renderCompletedCalls"] as? Int64 == 0,
-      blocked["inFlightAgeSeconds"] as? Double != nil else {
-      throw CaptureError.message("Camera preview diagnostics could not describe a stalled worker.")
-    }
     release.signal()
     queue.sync {}
     guard times == [1, 100] else {
       throw CaptureError.message("Slow camera previews blocked capture or built up stale frames.")
     }
-    guard worker.diagnosticState()["renderCompletedCalls"] as? Int64 == 2 else {
-      throw CaptureError.message("Camera preview diagnostics lost completed renders.")
-    }
+
     worker.stop()
     worker.submit(pixels, time: 101)
     queue.sync {}

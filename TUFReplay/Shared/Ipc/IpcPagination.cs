@@ -16,10 +16,10 @@ public readonly struct IpcPagination
   public int Offset { get; }
   public int Limit { get; }
 
-  public static IpcPagination Parse(JsonCommand request)
+  public static IpcPagination Parse(int? requestedOffset, int? requestedLimit)
   {
-    int offset = Math.Max(0, IpcParams.OptionalInt(request, "offset") ?? 0);
-    int limit = Math.Min(MaxLimit, Math.Max(1, IpcParams.OptionalInt(request, "limit") ?? DefaultLimit));
+    int offset = Math.Max(0, requestedOffset ?? 0);
+    int limit = Math.Min(MaxLimit, Math.Max(1, requestedLimit ?? DefaultLimit));
     return new IpcPagination(offset, limit);
   }
 }

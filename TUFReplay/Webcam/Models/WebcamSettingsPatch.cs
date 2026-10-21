@@ -1,167 +1,139 @@
 using System;
-using Newtonsoft.Json.Linq;
+using AdofaiIpc;
+using TUFReplay.Shared.Ipc.Generated;
 
 namespace TUFReplay.Webcam.Models;
 
 public sealed class WebcamSettingsPatch
 {
-  private readonly JObject _values;
+  private readonly WebcamSettings _values;
 
-  private WebcamSettingsPatch(JObject values)
+  private WebcamSettingsPatch(WebcamSettings values)
   {
     _values = values;
   }
 
   public bool ChangesCapture =>
-    _values["enabled"] != null
-    || _values.ContainsKey("deviceId")
-    || _values["quality"] != null
-    || _values["recordingLimitMb"] != null
-    || _values["retentionDays"] != null;
+    _values.Enabled.IsSpecified
+    || _values.DeviceId.IsSpecified
+    || _values.Quality.IsSpecified
+    || _values.RecordingLimitMb.IsSpecified
+    || _values.RetentionDays.IsSpecified;
   public bool RearmsCapture =>
-    _values["enabled"] != null || _values.ContainsKey("deviceId") || _values["quality"] != null;
-  public bool ChangesRetention => _values["retentionDays"] != null;
+    _values.Enabled.IsSpecified || _values.DeviceId.IsSpecified || _values.Quality.IsSpecified;
+  public bool ChangesRetention => _values.RetentionDays.IsSpecified;
 
-  public static bool TryParse(JObject values, out WebcamSettingsPatch patch)
+  public static bool TryCreate(WebcamSettings values, out WebcamSettingsPatch patch)
   {
     patch = null;
-    if (values == null || !values.HasValues)
+    if (values == null)
       return false;
-    foreach (JProperty property in values.Properties())
+    if (
+      !(
+        values.DeviceId.IsSpecified
+        || values.Crop.IsSpecified
+        || values.Enabled.IsSpecified
+        || values.Quality.IsSpecified
+        || values.OffsetMs.IsSpecified
+        || values.RecordingLimitMb.IsSpecified
+        || values.RetentionDays.IsSpecified
+        || values.PlaybackVisible.IsSpecified
+        || values.LiveVisible.IsSpecified
+        || values.Mirror.IsSpecified
+        || values.FlipVertical.IsSpecified
+        || values.OverlayX.IsSpecified
+        || values.OverlayY.IsSpecified
+        || values.OverlayWidth.IsSpecified
+      )
+    )
+      return false;
+    if (values.DeviceId.IsSpecified && values.DeviceId.Value?.Length > 4096)
+      return false;
+    if (
+      values.Quality.IsSpecified
+      && values.Quality.Value != "compact"
+      && values.Quality.Value != "balanced"
+      && values.Quality.Value != "quality"
+    )
+      return false;
+    if (
+      !ValidInteger(values.OffsetMs, -1000, 1000)
+      || !ValidInteger(values.RecordingLimitMb, 64, 8192)
+      || !ValidInteger(values.RetentionDays, 0, 30)
+    )
+      return false;
+    if (
+      !ValidNumber(values.OverlayX, -1, 2)
+      || !ValidNumber(values.OverlayY, -1, 2)
+      || !ValidNumber(values.OverlayWidth, 0.1, 0.5)
+    )
+      return false;
+    if (values.Crop.IsSpecified)
     {
-      JToken token = property.Value;
-      switch (property.Name)
-      {
-        case "enabled":
-        case "playbackVisible":
-        case "liveVisible":
-        case "mirror":
-        case "flipVertical":
-          if (token.Type != JTokenType.Boolean)
-            return false;
-          break;
-        case "deviceId":
-          if (token.Type != JTokenType.Null && (token.Type != JTokenType.String || token.Value<string>().Length > 4096))
-            return false;
-          break;
-        case "quality":
-          if (
-            token.Type != JTokenType.String
-            || (
-              token.Value<string>() != "compact"
-              && token.Value<string>() != "balanced"
-              && token.Value<string>() != "quality"
-            )
-          )
-            return false;
-          break;
-        case "offsetMs":
-          if (!ValidInteger(token, -1000, 1000))
-            return false;
-          break;
-        case "recordingLimitMb":
-          if (!ValidInteger(token, 64, 8192))
-            return false;
-          break;
-        case "retentionDays":
-          if (!ValidInteger(token, 0, 30))
-            return false;
-          break;
-        case "crop":
-          if (!ValidCrop(token))
-            return false;
-          break;
-        case "overlayX":
-        case "overlayY":
-        case "overlayWidth":
-          if (token.Type != JTokenType.Float && token.Type != JTokenType.Integer)
-            return false;
-          double number = token.Value<double>();
-          double min = property.Name == "overlayWidth" ? 0.1 : -1;
-          double max = property.Name == "overlayWidth" ? 0.5 : 2;
-          if (double.IsNaN(number) || double.IsInfinity(number) || number < min || number > max)
-            return false;
-          break;
-        default:
-          return false;
-      }
+      CropPatch crop = values.Crop.Value;
+      if (
+        crop == null
+        || !ValidNumber(crop.X, 0, 1)
+        || !ValidNumber(crop.Y, 0, 1)
+        || !ValidNumber(crop.Width, WebcamCropRect.MinimumSize, 1)
+        || !ValidNumber(crop.Height, WebcamCropRect.MinimumSize, 1)
+        || crop.X + crop.Width > 1 + 1e-9
+        || crop.Y + crop.Height > 1 + 1e-9
+      )
+        return false;
     }
-    patch = new WebcamSettingsPatch((JObject)values.DeepClone());
+    patch = new WebcamSettingsPatch(values);
     return true;
   }
 
   public void ApplyTo(TUFReplaySetting settings)
   {
-    if (_values["enabled"] != null)
-      settings.WebcamEnabled = _values["enabled"].Value<bool>();
-    if (_values.ContainsKey("deviceId"))
-      settings.WebcamDeviceId = NullableText(_values["deviceId"]);
-    if (_values["quality"] != null)
-      settings.WebcamQuality = _values["quality"].Value<string>();
-    if (_values["offsetMs"] != null)
-      settings.WebcamOffsetMs = _values["offsetMs"].Value<int>();
-    if (_values["recordingLimitMb"] != null)
-      settings.WebcamRecordingLimitMb = _values["recordingLimitMb"].Value<int>();
-    if (_values["retentionDays"] != null)
-      settings.WebcamRetentionDays = _values["retentionDays"].Value<int>();
-    if (_values["playbackVisible"] != null)
-      settings.WebcamPlaybackVisible = _values["playbackVisible"].Value<bool>();
-    if (_values["liveVisible"] != null)
-      settings.WebcamLiveVisible = _values["liveVisible"].Value<bool>();
-    if (_values["mirror"] != null)
-      settings.WebcamMirror = _values["mirror"].Value<bool>();
-    if (_values["flipVertical"] != null)
-      settings.WebcamFlipVertical = _values["flipVertical"].Value<bool>();
-    if (_values["overlayX"] != null)
-      settings.WebcamOverlayX = _values["overlayX"].Value<double>();
-    if (_values["overlayY"] != null)
-      settings.WebcamOverlayY = _values["overlayY"].Value<double>();
-    if (_values["overlayX"] != null || _values["overlayY"] != null)
+    if (_values.Enabled.IsSpecified)
+      settings.WebcamEnabled = _values.Enabled.Value;
+    if (_values.Quality.IsSpecified)
+      settings.WebcamQuality = _values.Quality.Value;
+    if (_values.OffsetMs.IsSpecified)
+      settings.WebcamOffsetMs = _values.OffsetMs.Value;
+    if (_values.RecordingLimitMb.IsSpecified)
+      settings.WebcamRecordingLimitMb = _values.RecordingLimitMb.Value;
+    if (_values.RetentionDays.IsSpecified)
+      settings.WebcamRetentionDays = _values.RetentionDays.Value;
+    if (_values.PlaybackVisible.IsSpecified)
+      settings.WebcamPlaybackVisible = _values.PlaybackVisible.Value;
+    if (_values.LiveVisible.IsSpecified)
+      settings.WebcamLiveVisible = _values.LiveVisible.Value;
+    if (_values.Mirror.IsSpecified)
+      settings.WebcamMirror = _values.Mirror.Value;
+    if (_values.FlipVertical.IsSpecified)
+      settings.WebcamFlipVertical = _values.FlipVertical.Value;
+    if (_values.OverlayX.IsSpecified)
+      settings.WebcamOverlayX = _values.OverlayX.Value;
+    if (_values.OverlayY.IsSpecified)
+      settings.WebcamOverlayY = _values.OverlayY.Value;
+    if (_values.OverlayWidth.IsSpecified)
+      settings.WebcamOverlayWidth = _values.OverlayWidth.Value;
+    if (_values.DeviceId.IsSpecified)
+      settings.WebcamDeviceId = string.IsNullOrWhiteSpace(_values.DeviceId.Value)
+        ? null
+        : _values.DeviceId.Value.Trim();
+    if (_values.OverlayX.IsSpecified || _values.OverlayY.IsSpecified)
     {
       settings.WebcamOverlayLeft = null;
       settings.WebcamOverlayTop = null;
     }
-    if (_values["overlayWidth"] != null)
-      settings.WebcamOverlayWidth = _values["overlayWidth"].Value<double>();
-    if (_values["crop"] is JObject crop)
-      WebcamCropRect
-        .Clamp(
-          crop["x"].Value<double>(),
-          crop["y"].Value<double>(),
-          crop["width"].Value<double>(),
-          crop["height"].Value<double>()
-        )
-        .ApplyTo(settings);
+    if (_values.Crop.IsSpecified)
+    {
+      CropPatch crop = _values.Crop.Value;
+      WebcamCropRect.Clamp(crop.X, crop.Y, crop.Width, crop.Height).ApplyTo(settings);
+    }
   }
 
-  private static string NullableText(JToken token) =>
-    token.Type == JTokenType.Null || string.IsNullOrWhiteSpace(token.Value<string>())
-      ? null
-      : token.Value<string>().Trim();
+  private static bool ValidInteger(IpcOptional<int> value, int min, int max) =>
+    !value.IsSpecified || value.Value >= min && value.Value <= max;
 
-  private static bool ValidInteger(JToken token, int min, int max) =>
-    token.Type == JTokenType.Integer && token.Value<long>() >= min && token.Value<long>() <= max;
+  private static bool ValidNumber(IpcOptional<double> value, double min, double max) =>
+    !value.IsSpecified || ValidNumber(value.Value, min, max);
 
-  private static bool ValidCrop(JToken token)
-  {
-    if (!(token is JObject crop) || crop.Count != 4)
-      return false;
-    if (
-      !ValidNumber(crop["x"], 0, 1)
-      || !ValidNumber(crop["y"], 0, 1)
-      || !ValidNumber(crop["width"], WebcamCropRect.MinimumSize, 1)
-      || !ValidNumber(crop["height"], WebcamCropRect.MinimumSize, 1)
-    )
-      return false;
-    return crop["x"].Value<double>() + crop["width"].Value<double>() <= 1 + 1e-9
-      && crop["y"].Value<double>() + crop["height"].Value<double>() <= 1 + 1e-9;
-  }
-
-  private static bool ValidNumber(JToken token, double min, double max)
-  {
-    if (token == null || (token.Type != JTokenType.Float && token.Type != JTokenType.Integer))
-      return false;
-    double number = token.Value<double>();
-    return !double.IsNaN(number) && !double.IsInfinity(number) && number >= min && number <= max;
-  }
+  private static bool ValidNumber(double value, double min, double max) =>
+    !double.IsNaN(value) && !double.IsInfinity(value) && value >= min && value <= max;
 }

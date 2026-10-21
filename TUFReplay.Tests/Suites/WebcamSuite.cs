@@ -24,6 +24,7 @@ internal static class WebcamSuite
 {
   public static void RunAll(string root)
   {
+    StoreDownloadCancellationReleasesItsLease(root);
     TimelineSkipsRecordedPausesAndHandlesRateChanges();
     LatestFrameOwnershipRemainsStableAndRejectsStaleFrames();
     AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
@@ -42,7 +43,7 @@ internal static class WebcamSuite
     OverlayAllowsOffscreenPlacementWithoutMargins();
     SharedPreviewFramesAreBoundedAndNeverTorn();
     MaximumPreviewFramesUseExactAllocationFreeCopies();
-    DiagnosticSnapshotsPreserveErrorsAndPreviewState();
+    TimelineRejectsInvalidAnchors();
     PreviewRemainsReadyWhileTheNextFrameIsWritten();
     HiddenPreviewStillWarmsUpAndSkipsUnusedFrames();
     PreviewReadsNeverWaitForTheProducer();
@@ -91,7 +92,6 @@ internal static class WebcamSuite
         SetCameraField(camera, "_runBackend", backend);
         SetCameraField(camera, "_armed", true);
         SetCameraField(camera, "_recording", true);
-        SetCameraField(camera, "_runId", "camera-tail");
         cameraProperty.SetValue(null, camera);
         var feature = (RecordingFeature)
           System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(RecordingFeature));
@@ -277,7 +277,6 @@ internal static class WebcamSuite
       SetCameraField(camera, "_runBackend", backend);
       SetCameraField(camera, "_armed", true);
       SetCameraField(camera, "_recording", true);
-      SetCameraField(camera, "_runId", recording.RunId);
       int callbacks = 0;
       WebcamRecording result = recording;
       camera.EndRun(
@@ -543,53 +542,17 @@ internal static class WebcamSuite
     public void Dispose() { }
   }
 
-  private static void DiagnosticSnapshotsPreserveErrorsAndPreviewState()
+  private static void TimelineRejectsInvalidAnchors()
   {
-    var failure = new IOException("Camera failed\nTry again", new InvalidOperationException("Device disconnected"));
-    JObject record = CaptureDiagnostics.CreateRecord(
-      "capture.begin.failed",
-      new { operationId = 7, runId = "run" },
-      failure
-    );
-    string line = record.ToString(Formatting.None);
-    Check(!line.Contains('\n'), "Camera diagnostics must stay on one JSON log line.");
-    JObject parsed = JObject.Parse(line);
-    Check((string)parsed["exception"]?["type"] == typeof(IOException).FullName, "Camera exception type was lost.");
-    Check(
-      ((string)parsed["exception"]?["detail"])?.Contains("Device disconnected") == true,
-      "Camera inner exception was lost."
-    );
-    using var preview = new CameraPreviewBuffer(4, 2);
-    JObject before = JObject.FromObject(preview.DiagnosticState());
-    Check(
-      (long?)before["sequence"] == 0 && (bool?)before["disposed"] == false,
-      "Empty preview diagnostics were incorrect."
-    );
-    preview.Publish(new byte[32]);
-    Check(preview.TryCopy(new byte[32]), "Diagnostics changed preview frame consumption.");
-    JObject ready = JObject.FromObject(preview.DiagnosticState());
-    Check(
-      (long?)ready["sequence"] == 2 && (long?)ready["lastReadSequence"] == 2,
-      "Preview diagnostic counters were incorrect."
-    );
-    preview.Dispose();
-    JObject disposed = JObject.FromObject(preview.DiagnosticState());
-    Check(
-      (bool?)disposed["disposed"] == true && disposed["sequence"]?.Type == JTokenType.Null,
-      "Disposed preview diagnostics accessed released memory."
-    );
     var timeline = new WebcamCaptureTimeline();
-    timeline.NoteUnavailableAnchor();
     timeline.Observe(new CaptureTimelineAnchor(Ticks(1), 0, double.NaN));
     timeline.Observe(new CaptureTimelineAnchor(0, 0, 1));
-    JObject clockState = JObject.FromObject(timeline.DiagnosticState());
-    Check(
-      (int?)clockState["unavailableAnchors"] == 1
-        && (int?)clockState["invalidRates"] == 1
-        && (int?)clockState["invalidTimestamps"] == 1
-        && (int?)clockState["segments"] == 0,
-      "Camera diagnostics did not distinguish a missing game clock from missing camera frames."
-    );
+    Check(!timeline.First.HasValue, "Invalid anchors must not start the camera timeline.");
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(2), 1_000_000, 1));
+    timeline.Observe(new CaptureTimelineAnchor(Ticks(3), 0, 1));
+    var recording = new WebcamRecording { CaptureStartTimestampTicks = Ticks(1) };
+    Check(timeline.TryApplyTo(recording), "A valid anchor must still synchronize camera video.");
+    Check(recording.Timeline.Length == 1, "Backward anchors must not alter the camera timeline.");
   }
 
   private static ReplayPlaybackSnapshot Snapshot(long timeUs, double rate = 1, long? won = null, bool paused = false) =>
@@ -651,15 +614,22 @@ internal static class WebcamSuite
         "{\"overlayWidth\":0}",
         "{\"offsetMs\":1001}",
         "{\"offsetMs\":1.5}",
+        "{\"offsetMs\":null}",
         "{\"recordingLimitMb\":1}",
         "{\"storageLimitMb\":512}",
         "{\"retentionDays\":-1}",
         "{\"otherSetting\":true}",
       }
     )
-      Check(!WebcamSettingsPatch.TryParse(JObject.Parse(invalid), out _), "Invalid settings were accepted: " + invalid);
+      Check(
+        !WebcamSettingsPatchParser.TryParse(JObject.Parse(invalid), out _),
+        "Invalid settings were accepted: " + invalid
+      );
     Check(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"offsetMs\":120,\"overlayX\":0,\"mirror\":true}"), out var patch),
+      WebcamSettingsPatchParser.TryParse(
+        JObject.Parse("{\"offsetMs\":120,\"overlayX\":0,\"mirror\":true}"),
+        out var patch
+      ),
       "Valid settings were rejected."
     );
     patch.ApplyTo(settings);
@@ -670,6 +640,15 @@ internal static class WebcamSuite
         && !settings.WebcamEnabled,
       "Partial webcam settings changed unrelated settings."
     );
+    settings.WebcamDeviceId = "camera-to-preserve";
+    patch.ApplyTo(settings);
+    Check(settings.WebcamDeviceId == "camera-to-preserve", "An omitted typed deviceId reset the selected camera.");
+    Check(
+      WebcamSettingsPatchParser.TryParse(JObject.Parse("{\"deviceId\":null}"), out var defaultCamera),
+      "An explicit typed null deviceId was rejected."
+    );
+    defaultCamera.ApplyTo(settings);
+    Check(settings.WebcamDeviceId == null, "An explicit typed null did not restore the default camera.");
     settings.WebcamOverlayX = double.NaN;
     settings.WebcamOverlayWidth = double.PositiveInfinity;
     settings.Normalize();
@@ -677,7 +656,10 @@ internal static class WebcamSuite
     Near(0.22, settings.WebcamOverlayWidth);
     Check(settings.WebcamRecordingLimitMb == 128, "The default per-recording limit changed.");
     Check(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"recordingLimitMb\":2048,\"retentionDays\":0}"), out var forever),
+      WebcamSettingsPatchParser.TryParse(
+        JObject.Parse("{\"recordingLimitMb\":2048,\"retentionDays\":0}"),
+        out var forever
+      ),
       "Forever retention or a larger per-recording limit was rejected."
     );
     forever.ApplyTo(settings);
@@ -766,7 +748,7 @@ internal static class WebcamSuite
     Near(1920, right.X + right.Width);
     Near(1080, right.Y + right.Height);
     Check(
-      WebcamSettingsPatch.TryParse(
+      WebcamSettingsPatchParser.TryParse(
         JObject.Parse("{\"quality\":\"quality\",\"liveVisible\":true,\"overlayX\":-0.1,\"overlayY\":1.1}"),
         out var patch
       ),
@@ -1361,6 +1343,47 @@ internal static class WebcamSuite
     finally
     {
       pool.Return(reused);
+    }
+  }
+
+  private static void StoreDownloadCancellationReleasesItsLease(string root)
+  {
+    var store = new WebcamRecordingStore(Path.Combine(root, "webcam-download-cancellation"));
+    var recording = WriteVideo(store, "cancelled-download", 256 * 1024);
+    Check(store.Save(recording, 512 * 1024, 7), "The cancellation recording was not saved.");
+    using var cancellation = new CancellationTokenSource();
+    using var destination = new CancelAfterWriteStream(cancellation);
+    bool cancelled = false;
+    try
+    {
+      store.WriteTo(recording.RunId, destination, 256 * 1024, cancellation.Token);
+    }
+    catch (OperationCanceledException)
+    {
+      cancelled = true;
+    }
+    Check(
+      cancelled && destination.Length == 65536,
+      "A disconnected camera export continued reading the full recording."
+    );
+    store.PendingReleases.GetAwaiter().GetResult();
+    Check(store.DeleteRun(recording.RunId), "Cancelled export lost its recording.");
+    Check(!File.Exists(recording.FilePath), "Cancelled export retained its file lease.");
+  }
+
+  private sealed class CancelAfterWriteStream : MemoryStream
+  {
+    private readonly CancellationTokenSource _cancellation;
+
+    public CancelAfterWriteStream(CancellationTokenSource cancellation)
+    {
+      _cancellation = cancellation;
+    }
+
+    public override void Write(byte[] buffer, int offset, int count)
+    {
+      base.Write(buffer, offset, count);
+      _cancellation.Cancel();
     }
   }
 

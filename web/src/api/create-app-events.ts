@@ -1,7 +1,14 @@
-import { z } from "zod";
 import type { AppEvents } from "@/api/app-events";
 import { observeDomainEvent } from "@/api/domain-messages";
 import { downloadsStateSchema } from "@/api/downloads/downloads-api";
+import { decodeRecorder } from "@/api/recorder-call";
+import {
+  toCalibrationStateDto,
+  toDownloadsStateDto,
+  toMicrophoneDevicesDto,
+  toReplayStateDto,
+  toWebcamStateDto,
+} from "@/api/recorder-dtos";
 import { mapCalibrationStatus } from "@/models/calibration/calibration-model";
 import { mapMicrophoneDevicesState } from "@/models/microphone/microphone-model";
 import { mapReplayStatus } from "@/models/replay/replay-model";
@@ -24,28 +31,23 @@ export function createAppEvents(channels: LocalAppChannels): AppEvents {
     on(name, listener) {
       switch (name) {
         case "recorder.status.changed":
-          return (
-            channels.namespace.onStatus?.(listener as (value: NamespaceStatus) => void) ??
-            (() => {})
-          );
+          return channels.recorder.onStatus(listener as (value: NamespaceStatus) => void);
         case "renderer.status.changed":
           return (
             channels.rendererNamespace?.onStatus?.(listener as (value: NamespaceStatus) => void) ??
             (() => {})
           );
         case "downloads.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "downloads.state.changed",
-            downloadsStateSchema,
-            listener as (value: import("@/api/downloads/downloads-api").DownloadsState) => void,
+          return channels.recorder.on("downloadsStateChanged", (value) =>
+            (listener as (value: import("@/api/downloads/downloads-api").DownloadsState) => void)(
+              decodeRecorder(downloadsStateSchema, toDownloadsStateDto(value)),
+            ),
           );
         case "render-bundle.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "render-bundle.state.changed",
-            renderExportStatusSchema,
-            listener as (value: import("@/models/render/render-model").RenderExportStatus) => void,
+          return channels.recorder.on("renderBundleStateChanged", (value) =>
+            (
+              listener as (value: import("@/models/render/render-model").RenderExportStatus) => void
+            )(decodeRecorder(renderExportStatusSchema, value)),
           );
         case "renderer.job.changed":
           return channels.rendererNamespace
@@ -86,58 +88,40 @@ export function createAppEvents(channels: LocalAppChannels): AppEvents {
               )
             : () => {};
         case "webcam.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "webcam.state.changed",
-            webcamStateDtoSchema,
-            (value) =>
-              (listener as (value: ReturnType<typeof mapWebcamState>) => void)(
-                mapWebcamState(value),
-              ),
+          return channels.recorder.on("webcamStateChanged", (value) =>
+            (listener as (value: ReturnType<typeof mapWebcamState>) => void)(
+              mapWebcamState(decodeRecorder(webcamStateDtoSchema, toWebcamStateDto(value))),
+            ),
           );
         case "activity.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "activity.changed",
-            z.object({ revision: z.number().int(), runId: z.string().nullable() }),
+          return channels.recorder.on(
+            "activityChanged",
             listener as (value: { revision: number; runId: string | null }) => void,
           );
         case "replay.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "replay.state.changed",
-            replayStatusDtoSchema,
-            (value) =>
-              (listener as (value: ReturnType<typeof mapReplayStatus>) => void)(
-                mapReplayStatus(value),
-              ),
+          return channels.recorder.on("replayStateChanged", (value) =>
+            (listener as (value: ReturnType<typeof mapReplayStatus>) => void)(
+              mapReplayStatus(decodeRecorder(replayStatusDtoSchema, toReplayStateDto(value))),
+            ),
           );
         case "calibration.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "calibration.state.changed",
-            calibrationStatusDtoSchema,
-            (value) =>
-              (listener as (value: ReturnType<typeof mapCalibrationStatus>) => void)(
-                mapCalibrationStatus(value),
+          return channels.recorder.on("calibrationStateChanged", (value) =>
+            (listener as (value: ReturnType<typeof mapCalibrationStatus>) => void)(
+              mapCalibrationStatus(
+                decodeRecorder(calibrationStatusDtoSchema, toCalibrationStateDto(value)),
               ),
+            ),
           );
         case "microphone.changed":
-          return observeDomainEvent(
-            channels.namespace,
-            "microphone.devices.changed",
-            microphoneDevicesStateDtoSchema,
-            (value) =>
-              (listener as (value: ReturnType<typeof mapMicrophoneDevicesState>) => void)(
-                mapMicrophoneDevicesState(value),
+          return channels.recorder.on("microphoneDevicesChanged", (value) =>
+            (listener as (value: ReturnType<typeof mapMicrophoneDevicesState>) => void)(
+              mapMicrophoneDevicesState(
+                decodeRecorder(microphoneDevicesStateDtoSchema, toMicrophoneDevicesDto(value)),
               ),
+            ),
           );
-        case "connection.changed": {
-          const session = channels.session;
-          if (!session) return () => {};
-          const receive = listener as (value: SessionState) => void;
-          return session.onState(receive);
-        }
+        case "connection.changed":
+          return channels.session?.onState(listener as (value: SessionState) => void) ?? (() => {});
       }
     },
   };

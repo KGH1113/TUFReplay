@@ -1,9 +1,7 @@
 using System;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Timeline;
-using TUFReplay.Shared.Capture;
 using TUFReplay.Shared.Settings;
-using TUFReplay.Shared.Threading;
 using TUFReplay.Webcam.Repositories;
 using TUFReplay.Webcam.Timing;
 using UnityEngine;
@@ -13,7 +11,6 @@ namespace TUFReplay.Webcam.Playback;
 
 public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
 {
-  private static readonly SerialBackgroundQueue Logs = new SerialBackgroundQueue();
   private readonly WebcamRecordingLease _lease;
   private readonly GameObject _object;
   private readonly VideoPlayer _video;
@@ -33,7 +30,6 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
   private int _lastOffset;
   private double _previousRawTarget;
   private bool _hasDecodedFrame;
-  private bool _displayReported;
 
   public WebcamReplayPlayer(WebcamRecordingLease lease)
   {
@@ -56,7 +52,6 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       _video.skipOnDrop = true;
       _video.errorReceived += OnVideoError;
       _video.seekCompleted += OnSeekCompleted;
-      _video.prepareCompleted += OnPrepared;
       _video.frameReady += OnFrameReady;
       if (TUFReplaySettingStore.Current.WebcamPlaybackVisible)
         BeginPreparation();
@@ -104,7 +99,6 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       _forceSeek = true;
       _lastPlaybackRate = float.NaN;
       _hasDecodedFrame = false;
-      _displayReported = false;
       return;
     }
 
@@ -152,31 +146,10 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
         _lastRequested = _target;
         _seekStartedAt = Time.realtimeSinceStartupAsDouble;
         _video.time = _target;
-        Record(
-          "playback.seek.begin",
-          new
-          {
-            runId = _lease.Recording.RunId,
-            targetSeconds = _target,
-            beforeVideoStart = before,
-          }
-        );
       }
     }
     _overlay.ShowFrame = !outside && settings.WebcamPlaybackVisible && !_seeking;
-    if (_overlay.ShowFrame && !_displayReported && _video.texture != null)
-    {
-      _displayReported = true;
-      Record(
-        "playback.first-display",
-        new
-        {
-          runId = _lease.Recording.RunId,
-          targetSeconds = _target,
-          videoSeconds = _video.time,
-        }
-      );
-    }
+
     if (_seeking || snapshot.Paused || outside)
     {
       if (_video.isPlaying)
@@ -192,18 +165,8 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     _prepareStartedAt = Time.realtimeSinceStartupAsDouble;
     _hasDecodedFrame = false;
     _video.sendFrameReadyEvents = true;
-    Record("playback.prepare.begin", new { runId = _lease.Recording.RunId });
-    _video.Prepare();
-  }
 
-  private void OnPrepared(VideoPlayer player)
-  {
-    if (_disposed || _failed || !player.isPrepared)
-      return;
-    Record(
-      "playback.prepare.complete",
-      new { runId = _lease.Recording.RunId, elapsedMs = (Time.realtimeSinceStartupAsDouble - _prepareStartedAt) * 1000 }
-    );
+    _video.Prepare();
   }
 
   private void OnFrameReady(VideoPlayer player, long frame)
@@ -212,21 +175,10 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
       return;
     _hasDecodedFrame = true;
     player.sendFrameReadyEvents = false;
-    Record(
-      "playback.first-frame-ready",
-      new
-      {
-        runId = _lease.Recording.RunId,
-        frame,
-        videoSeconds = player.time,
-      }
-    );
+
     if (_seeking && Math.Abs(player.time - _lastRequested) <= 2d / _lease.Recording.FrameRate)
       OnSeekCompleted(player);
   }
-
-  private static void Record(string name, object state) =>
-    _ = Logs.Enqueue(() => CaptureDiagnostics.Record(name, state));
 
   public void ResetTo(ReplayPlaybackSnapshot snapshot)
   {
@@ -250,15 +202,7 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     if (!_seeking || _disposed || _failed)
       return;
     _seeking = false;
-    Record(
-      "playback.seek.complete",
-      new
-      {
-        runId = _lease.Recording.RunId,
-        elapsedMs = (Time.realtimeSinceStartupAsDouble - _seekStartedAt) * 1000,
-        targetSeconds = _lastRequested,
-      }
-    );
+
     if (_wasPaused && Math.Abs(_target - _lastRequested) > 2d / _lease.Recording.FrameRate)
       _forceSeek = true;
   }
@@ -284,7 +228,6 @@ public sealed class WebcamReplayPlayer : IReplayWebcamPlayer
     _disposed = true;
     _video.errorReceived -= OnVideoError;
     _video.seekCompleted -= OnSeekCompleted;
-    _video.prepareCompleted -= OnPrepared;
     _video.frameReady -= OnFrameReady;
     _video.Stop();
     UnityEngine.Object.Destroy(_object);

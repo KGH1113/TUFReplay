@@ -21,8 +21,8 @@ describe("level selection for render", () => {
     expect((await api.pickLevelFile("run-1", "render")).levelPath).toBe("/levels/matching.adofai");
     await api.pickLevelFile("run-1");
     expect(calls).toEqual([
-      { method: "replay.level-file.choose", params: { runId: "run-1", purpose: "render" } },
-      { method: "replay.level-file.choose", params: { runId: "run-1" } },
+      { method: "chooseLevelFile", params: { runId: "run-1", purpose: "render" } },
+      { method: "chooseLevelFile", params: { runId: "run-1" } },
     ]);
   });
 

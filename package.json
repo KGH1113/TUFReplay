@@ -5,6 +5,9 @@
   "workspaces": [
     "web"
   ],
+  "devDependencies": {
+    "@adofai-ipc/typespec": "file:vendor/adofai-ipc-typespec/adofai-ipc-typespec-2.1.0.tgz"
+  },
   "scripts": {
     "web:dev": "bun run --cwd web dev",
     "web:test": "bun run --cwd web test",

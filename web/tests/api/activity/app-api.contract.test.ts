@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ReceivedFile } from "adofai-ipc";
 
 import { createActivityApi as createActivityApiWithDownloads } from "@/api/activity/create-activity-api";
 import { createHealthApi, SUPPORTED_PROTOCOL_VERSION } from "@/api/health/create-health-api";
@@ -30,66 +31,59 @@ function validAppSession() {
 }
 
 describe("layered AppApi contract", () => {
-  test("loads large chart text through an injected download port and keeps control data small", async () => {
+  test("loads large chart text from the typed file while keeping control data small", async () => {
     const calls: Call[] = [];
     const signal = new AbortController().signal;
-    const levelText = `{"comment":"${'한🙂\n"'.repeat(400_000)}"}`;
-    const ticket = {
-      url: "http://127.0.0.1:32145/ipc/download/chart-ticket",
-      byteLength: new TextEncoder().encode(levelText).byteLength,
-      metadata: { LevelSessionId: "level-1", FloorCount: 4896 },
-    };
+    const levelText = `{"comment":"${"한🙂".repeat(400_000)}"}`;
+    const bytes = new TextEncoder().encode(levelText);
+    const file = new ReceivedFile(
+      "level.adofai",
+      "application/json",
+      bytes.length,
+      () =>
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(bytes);
+            controller.close();
+          },
+        }),
+    );
+    const chart = { file, levelSessionId: "level-1", floorCount: 4896 };
     const api = createActivityApiWithDownloads(
       clientsWith((method, params) => {
         calls.push({ method, params });
-        if (method === "activity.sessions.read") return [validAppSession()];
-        return ticket;
+        return chart;
       }),
       {
-        async readText(download, options) {
-          expect(download).toMatchObject({ url: ticket.url, byteLength: ticket.byteLength });
+        async readText(received, options) {
+          expect(received).toBe(file);
           expect(options?.signal).toBe(signal);
-          return levelText;
+          return file.text(options);
         },
       },
     );
-
-    expect(ticket.byteLength).toBeGreaterThan(2 * 1024 * 1024);
-    expect(JSON.stringify(ticket).length).toBeLessThan(256);
+    expect(bytes.length).toBeGreaterThan(2 * 1024 * 1024);
     expect(await api.getLogicalLevelChart("level-1", { signal })).toEqual({
       levelSessionId: "level-1",
       levelText,
       floorCount: 4896,
     });
-    expect(calls).toEqual([{ method: "activity.chart.read", params: { id: "level-1" } }]);
-    expect((await api.listAppSessions(0, 20))[0].id).toBe("app-1");
+    expect(file.used).toBe(true);
+    expect(calls).toEqual([{ method: "readLogicalLevelChart", params: { id: "level-1" } }]);
   });
 
-  test("rejects malformed chart tickets before downloading and preserves domain failures", async () => {
+  test("preserves domain failures before a file can be consumed", async () => {
     let downloads = 0;
-    const downloadPort = {
-      readText: async () => {
-        downloads++;
-        return "{}";
-      },
-    };
-    const malformed = createActivityApiWithDownloads(
-      clientsWith(() => ({
-        url: "http://127.0.0.1:32145/ipc/download/chart-ticket",
-        byteLength: -1,
-        metadata: { LevelSessionId: "level-1", FloorCount: 4896 },
-      })),
-      downloadPort,
-    );
-    await expect(malformed.getLogicalLevelChart("level-1")).rejects.toMatchObject({
-      kind: "validation",
-      code: "invalid_response",
-    });
     const missing = createActivityApiWithDownloads(
       clientsWith(() => ({
         error: { code: "level_file_missing", message: "Choose the chart again." },
       })),
-      downloadPort,
+      {
+        async readText() {
+          downloads++;
+          return "{}";
+        },
+      },
     );
     await expect(missing.getLogicalLevelChart("level-1")).rejects.toMatchObject({
       kind: "domain",
@@ -161,9 +155,7 @@ describe("layered AppApi contract", () => {
         levelSessions: [],
       },
     ]);
-    expect(calls).toEqual([
-      { method: "activity.sessions.read", params: { offset: 40, limit: 20 } },
-    ]);
+    expect(calls).toEqual([{ method: "listAppSessions", params: { offset: 40, limit: 20 } }]);
   });
 
   test("loads and validates the legacy replay status", async () => {
@@ -176,7 +168,7 @@ describe("layered AppApi contract", () => {
     );
 
     expect(await api.getLegacyReplayStatus()).toEqual({ hasLegacyReplays: true });
-    expect(calls).toEqual([{ method: "activity.legacy-status.read", params: {} }]);
+    expect(calls).toEqual([{ method: "readLegacyReplayStatus", params: {} }]);
 
     const malformed = createActivityApi(clientsWith(() => ({ HasLegacyReplays: "yes" })));
     expect(malformed.getLegacyReplayStatus()).rejects.toMatchObject({ kind: "validation" });
@@ -217,7 +209,7 @@ describe("layered AppApi contract", () => {
     const api = createRunApi(
       clientsWith((method, params) => {
         calls.push({ method, params });
-        if (method === "microphone.recording.retain" || method === "camera.recording.retain") {
+        if (method === "retainMicrophoneRecording" || method === "retainCameraRecording") {
           return { RunId: "run-7", Permanent: true };
         }
         return { RunId: "run-7", Deleted: true };
@@ -236,46 +228,34 @@ describe("layered AppApi contract", () => {
     expect(await api.deleteCameraRecording("run-7")).toEqual({ runId: "run-7", changed: true });
     expect(await api.keepCameraRecording("run-7")).toEqual({ runId: "run-7", changed: true });
     expect(calls).toEqual([
-      { method: "activity.run.remove", params: { runId: "run-7" } },
-      { method: "microphone.recording.remove", params: { runId: "run-7" } },
-      { method: "microphone.recording.retain", params: { runId: "run-7" } },
-      { method: "camera.recording.remove", params: { runId: "run-7" } },
-      { method: "camera.recording.retain", params: { runId: "run-7" } },
+      { method: "removeRun", params: { runId: "run-7" } },
+      { method: "removeMicrophoneRecording", params: { runId: "run-7" } },
+      { method: "retainMicrophoneRecording", params: { runId: "run-7" } },
+      { method: "removeCameraRecording", params: { runId: "run-7" } },
+      { method: "retainCameraRecording", params: { runId: "run-7" } },
     ]);
   });
 
-  test("prepares local native microphone and camera downloads", async () => {
+  test("hands typed recordings to the native download API without reading bytes", async () => {
     const calls: Call[] = [];
+    let downloads = 0;
+    const received = {
+      download: async () => {
+        downloads++;
+      },
+    };
     const api = createRunApi(
       clientsWith((method, params) => {
         calls.push({ method, params });
-        return { url: "http://127.0.0.1:32145/ipc/download/test-ticket", byteLength: 44 };
+        return received;
       }),
     );
-
-    expect(await api.prepareMicrophoneRecordingDownload("run-7")).toBe(
-      "http://127.0.0.1:32145/ipc/download/test-ticket",
-    );
-    expect(await api.prepareCameraRecordingDownload("run-7")).toBe(
-      "http://127.0.0.1:32145/ipc/download/test-ticket",
-    );
+    await (await api.prepareMicrophoneRecordingDownload("run-7")).download();
+    await (await api.prepareCameraRecordingDownload("run-7")).download();
+    expect(downloads).toBe(2);
     expect(calls).toEqual([
-      { method: "microphone.recording.download", params: { runId: "run-7" } },
-      { method: "camera.recording.download", params: { runId: "run-7" } },
+      { method: "exportMicrophoneRecording", params: { runId: "run-7" } },
+      { method: "exportCameraRecording", params: { runId: "run-7" } },
     ]);
-  });
-
-  test("rejects camera download tickets outside the local IPC gateway", async () => {
-    for (const url of [
-      "https://example.com/video.mp4",
-      "http://127.0.0.1:5198/ipc/download/test-ticket",
-      "http://127.0.0.1:32145/ipc/download/test-ticket?secret=1",
-      "http://user@127.0.0.1:32145/ipc/download/test-ticket",
-    ]) {
-      const api = createRunApi(clientsWith(() => ({ url })));
-      await expect(api.prepareCameraRecordingDownload("run-7")).rejects.toThrow(
-        "Invalid local camera download URL.",
-      );
-    }
   });
 });

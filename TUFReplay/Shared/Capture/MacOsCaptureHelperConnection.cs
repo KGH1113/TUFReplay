@@ -4,7 +4,6 @@ using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using System.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 
@@ -18,27 +17,13 @@ internal sealed class MacOsCaptureHelperConnection : IDisposable
   private StreamReader _reader;
   private StreamWriter _writer;
   private volatile bool _disposed;
-  private readonly string _connectionId = Guid.NewGuid().ToString("N");
-  private long _requestId;
-  private int? _helperPid;
-  private string _diagnosticsLogPath;
 
   public JObject Send(JObject command)
   {
     if (_disposed)
       throw new ObjectDisposedException(nameof(MacOsCaptureHelperConnection));
-    long requestId = Interlocked.Increment(ref _requestId);
-    var elapsed = Stopwatch.StartNew();
     JObject response = null;
-    CaptureDiagnostics.Record(
-      "helper.command.begin",
-      new
-      {
-        connectionId = _connectionId,
-        requestId,
-        command,
-      }
-    );
+
     try
     {
       EnsureConnection();
@@ -47,35 +32,11 @@ internal sealed class MacOsCaptureHelperConnection : IDisposable
       response = line == null ? null : JObject.Parse(line);
       if ((bool?)response?["ok"] != true)
         throw new IOException((string)response?["error"] ?? "The camera helper disconnected. Restart the game.");
-      CaptureDiagnostics.Record(
-        "helper.command.complete",
-        new
-        {
-          connectionId = _connectionId,
-          requestId,
-          elapsedMs = elapsed.Elapsed.TotalMilliseconds,
-          helperPid = _helperPid,
-          response,
-        }
-      );
+
       return response;
     }
-    catch (Exception exception)
+    catch
     {
-      CaptureDiagnostics.Record(
-        "helper.command.failed",
-        new
-        {
-          connectionId = _connectionId,
-          requestId,
-          command,
-          elapsedMs = elapsed.Elapsed.TotalMilliseconds,
-          helperPid = _helperPid,
-          diagnosticsLogPath = _diagnosticsLogPath,
-          response,
-        },
-        exception
-      );
       Reset();
       throw;
     }
@@ -86,20 +47,7 @@ internal sealed class MacOsCaptureHelperConnection : IDisposable
     if (_client != null)
       return;
     string app = Path.Combine(Main.Instance.PayloadPath, "Helpers", "mac", "TUFReplayMicrophoneCapture.app");
-    string binary = Path.Combine(app, "Contents", "MacOS", "TUFReplayMicrophoneCapture");
-    CaptureDiagnostics.Record(
-      "helper.launch.begin",
-      new
-      {
-        connectionId = _connectionId,
-        app,
-        appExists = Directory.Exists(app),
-        binaryExists = File.Exists(binary),
-        binaryModifiedUtc = File.Exists(binary) ? File.GetLastWriteTimeUtc(binary).ToString("O") : null,
-        connectTimeoutMs = 10000,
-        responseTimeoutMs = 150000,
-      }
-    );
+
     if (!Directory.Exists(app))
       throw new DirectoryNotFoundException("The camera helper is missing. Reinstall TUFReplay.");
     string token = Guid.NewGuid().ToString("N");
@@ -137,19 +85,9 @@ internal sealed class MacOsCaptureHelperConnection : IDisposable
       string stderr;
       lock (launchError)
         stderr = launchError.ToString();
-      CaptureDiagnostics.Record(
-        "helper.launch.result",
-        new
-        {
-          connectionId = _connectionId,
-          launcherPid = launch.Id,
-          exited,
-          exitCode = exited ? (int?)launch.ExitCode : null,
-          stderr,
-        }
-      );
+
       if (!exited || launch.ExitCode != 0)
-        throw new IOException("The camera helper could not start. Restart the game.");
+        throw new IOException("The camera helper could not start. Restart the game.", new IOException(stderr));
       IAsyncResult accept = listener.BeginAcceptTcpClient(null, null);
       using (accept.AsyncWaitHandle)
       {
@@ -166,21 +104,7 @@ internal sealed class MacOsCaptureHelperConnection : IDisposable
       _writer = new StreamWriter(stream, new UTF8Encoding(false), 4096, true) { AutoFlush = true };
       string line = _reader.ReadLine();
       var handshake = line == null ? null : JObject.Parse(line);
-      _helperPid = (int?)handshake?["processId"];
-      _diagnosticsLogPath = (string)handshake?["diagnosticsLogPath"];
-      // Authentication tokens are never written to either diagnostic log.
-      CaptureDiagnostics.Record(
-        "helper.handshake",
-        new
-        {
-          connectionId = _connectionId,
-          received = handshake != null,
-          tokenMatched = (string)handshake?["token"] == token,
-          protocolVersion = (int?)handshake?["protocolVersion"],
-          helperPid = _helperPid,
-          diagnosticsLogPath = _diagnosticsLogPath,
-        }
-      );
+
       if ((string)handshake?["token"] != token || (int?)handshake?["protocolVersion"] != 3)
         throw new IOException("The camera helper is incompatible. Reinstall TUFReplay.");
     }
@@ -199,15 +123,6 @@ internal sealed class MacOsCaptureHelperConnection : IDisposable
 
   private void Reset()
   {
-    CaptureDiagnostics.Record(
-      "helper.connection.reset",
-      new
-      {
-        connectionId = _connectionId,
-        helperPid = _helperPid,
-        disposed = _disposed,
-      }
-    );
     _reader?.Dispose();
     _writer?.Dispose();
     _client?.Dispose();

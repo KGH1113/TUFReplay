@@ -25,18 +25,6 @@ public static partial class ReplaySessionService
   private static bool _timelinePauseOwnsEditorState;
   private static bool _timelineEditorPausedBeforePause;
 
-  public static bool TryGetNativeInputStats(out ReplayNativeInputStats stats)
-  {
-    ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
-    if (player == null)
-    {
-      stats = default;
-      return false;
-    }
-    stats = player.Stats;
-    return true;
-  }
-
   public static bool HasActiveContext => _activeContext != null;
   public static bool UsesHitContextPlayback => _activeContext?.HitContextPlayer?.Count > 0;
   public static string ActiveRunId => _activeContext?.RunId;
@@ -130,7 +118,6 @@ public static partial class ReplaySessionService
 
     if (context != null)
     {
-      LogNativeSummary(context, "stopped");
       LogLifecycleTransition(context.Phase, ReplayPlaybackPhase.Stopped, "context_cleared");
       context.Phase = ReplayPlaybackPhase.Stopped;
       context.NativeInputPlayer?.Dispose();
@@ -649,55 +636,6 @@ public static partial class ReplaySessionService
   {
     Main.Instance?.Log(
       "[Replay/Lifecycle] " + previous + " -> " + phase + ". reason=" + reason + ", runId=" + _activeContext.RunId
-    );
-  }
-
-  private static void LogNativeSummary(ActiveReplayContext context, string reason)
-  {
-    ReplayNativeInputStats? stats = context?.NativeInputPlayer?.Stats;
-    if (!stats.HasValue)
-      return;
-
-    ReplayNativeInputStats value = stats.Value;
-    Main.Instance?.Log(
-      "[Replay/Input] Pump summary. reason="
-        + reason
-        + ", emitted="
-        + value.Emitted
-        + ", stateSeeks="
-        + value.StateSeeks
-        + ", emissionFailures="
-        + value.EmissionFailures
-        + ", maxLatenessUs="
-        + value.MaxLatenessUs
-        + ", p50LatenessUs="
-        + value.P50LatenessUs
-        + ", p95LatenessUs="
-        + value.P95LatenessUs
-        + ", p99LatenessUs="
-        + value.P99LatenessUs
-        + ", catchUpEvents="
-        + value.CatchUpEvents
-        + ", partialRetries="
-        + value.PartialRetries
-        + ", failedEvents="
-        + value.FailedEvents
-        + ", unsupportedEvents="
-        + value.UnsupportedEvents
-        + ", waiter="
-        + value.Waiter
-        + ", waiterFallbacks="
-        + value.WaiterFallbacks
-        + ", waiterFallbackReason="
-        + (value.WaiterFallbackReason ?? "none")
-        + ", nativeMetadataEmitted="
-        + value.NativeMetadataEmitted
-        + ", fallbackEmitted="
-        + value.FallbackEmitted
-        + ", index="
-        + value.NextIndex
-        + "/"
-        + value.Count
     );
   }
 

@@ -59,10 +59,11 @@ const outcomes: Record<string, string> = {
   "calibration.close": "calibration.state.changed",
 };
 
+/** Typed recorder fixture. Existing saved PascalCase DTO samples are normalized here only. */
 export function scriptedChannels(
-  handle: (command: string, payload: unknown) => unknown,
+  handle: (method: string, payload: unknown) => unknown,
   overrideOutcomes: Record<string, string> = {},
-): LocalAppChannels {
+): LocalAppChannels & { namespace: LocalMessagePeer } {
   let id = 0;
   const listeners = new Map<string, Set<(payload: unknown, message: DomainMessage) => void>>();
   const publish = (name: string, correlationId: string, payload: unknown) => {
@@ -98,5 +99,48 @@ export function scriptedChannels(
       return correlationId;
     },
   };
-  return { namespace: peer, pickerNamespace: peer };
+  const mod = new Proxy({} as import("@tuf-replay/ipc").ReplayApiMod, {
+    get(_target, method) {
+      if (method === "then") return undefined;
+      return async (request: unknown = {}) => {
+        const value = await handle(String(method), request);
+        if (
+          value &&
+          typeof value === "object" &&
+          "error" in value &&
+          value.error &&
+          typeof value.error === "object"
+        )
+          throw Object.assign(
+            new Error(String((value.error as { message?: string }).message)),
+            value.error,
+          );
+        return fixtureDto(value);
+      };
+    },
+  });
+  return {
+    namespace: peer,
+    recorder: {
+      mod,
+      whenReady: async () => {},
+      on: () => () => {},
+      onStatus(listener) {
+        listener("ready");
+        return () => {};
+      },
+    },
+  };
+}
+
+function fixtureDto(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(fixtureDto);
+  if (!value || typeof value !== "object" || Object.getPrototypeOf(value) !== Object.prototype)
+    return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, field]) => [
+      /^[A-Z]/.test(key) ? key[0].toLowerCase() + key.slice(1) : key,
+      fixtureDto(field),
+    ]),
+  );
 }

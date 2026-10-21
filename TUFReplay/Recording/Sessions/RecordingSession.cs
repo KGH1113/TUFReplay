@@ -199,13 +199,11 @@ public class RecordingSession
       IsCapturingInput = false;
     }
 
-    Main.Instance.Log("[Recording/InputDebug] Before stop: " + RecordInputTracker.DebugSnapshot());
     RecordInputTracker.StopCapture(this);
     lock (_lock)
       FlushPendingNativeInputsLocked();
     lock (_lock)
       RecordInputTracker.CopyDiagnosticsTo(Data);
-    Main.Instance.Log("[Recording/InputDebug] After stop: " + RecordInputTracker.DebugSnapshot());
   }
 
   public void AddInputAtCurrentTime(int key, RecordInputFlags flags)

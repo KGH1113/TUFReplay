@@ -29,10 +29,26 @@ export interface LocalMessageSession {
 }
 
 export interface LocalAppChannels {
-  namespace: LocalMessagePeer;
-  pickerNamespace: LocalMessagePeer;
+  recorder: RecorderClient;
   rendererNamespace?: LocalMessagePeer;
   session?: LocalMessageSession;
 }
 
+export type RecorderEventName = keyof ReplayApiAppHandlers;
+export type RecorderEvent<K extends RecorderEventName> = Parameters<
+  ReplayApiAppHandlers[K]
+>[0]["value"];
+
+/** Generated methods and callbacks form the recorder's application boundary. */
+export interface RecorderClient {
+  mod: ReplayApiMod;
+  whenReady(options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<void>;
+  on<K extends RecorderEventName>(name: K, listener: (value: RecorderEvent<K>) => void): Dispose;
+  onStatus(
+    listener: (status: NamespaceStatus, error?: { code: string; message: string }) => void,
+  ): Dispose;
+}
+
 export type IpcVersionMismatchDirection = "client_outdated" | "server_outdated" | "legacy_server";
+
+import type { ReplayApiAppHandlers, ReplayApiMod } from "@tuf-replay/ipc";

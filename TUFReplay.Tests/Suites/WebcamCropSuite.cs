@@ -59,9 +59,9 @@ internal static class WebcamCropSuite
         "{\"crop\":{\"x\":0,\"y\":0,\"width\":1,\"height\":1,\"unknown\":0}}",
       }
     )
-      Assert(!WebcamSettingsPatch.TryParse(JObject.Parse(invalid), out _), "Invalid crop patch was accepted.");
+      Assert(!WebcamSettingsPatchParser.TryParse(JObject.Parse(invalid), out _), "Invalid crop patch was accepted.");
     Assert(
-      WebcamSettingsPatch.TryParse(
+      WebcamSettingsPatchParser.TryParse(
         JObject.Parse("{\"crop\":{\"x\":0.2,\"y\":0.1,\"width\":0.5,\"height\":0.6}}"),
         out WebcamSettingsPatch patch
       ),
@@ -95,7 +95,7 @@ internal static class WebcamCropSuite
     Near(vertical.Y, both.Y);
     Near(vertical.Height, both.Height);
     Assert(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"mirror\":true,\"flipVertical\":true}"), out var flips),
+      WebcamSettingsPatchParser.TryParse(JObject.Parse("{\"mirror\":true,\"flipVertical\":true}"), out var flips),
       "Flip patch rejected."
     );
     Assert(!flips.ChangesCapture && !flips.RearmsCapture, "Flipping interrupted capture.");
@@ -110,7 +110,7 @@ internal static class WebcamCropSuite
   {
     var settings = new TUFReplaySetting { WebcamOverlayLeft = -0.2, WebcamOverlayTop = 0.3 };
     Assert(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"overlayWidth\":0.3}"), out WebcamSettingsPatch width),
+      WebcamSettingsPatchParser.TryParse(JObject.Parse("{\"overlayWidth\":0.3}"), out WebcamSettingsPatch width),
       "Width patch failed."
     );
     width.ApplyTo(settings);
@@ -119,7 +119,7 @@ internal static class WebcamCropSuite
       "Width change lost direct position."
     );
     Assert(
-      WebcamSettingsPatch.TryParse(JObject.Parse("{\"overlayX\":1}"), out WebcamSettingsPatch position),
+      WebcamSettingsPatchParser.TryParse(JObject.Parse("{\"overlayX\":1}"), out WebcamSettingsPatch position),
       "Position patch failed."
     );
     position.ApplyTo(settings);
