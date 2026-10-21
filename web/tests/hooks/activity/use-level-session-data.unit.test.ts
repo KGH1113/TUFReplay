@@ -4,14 +4,13 @@ import type { ActivityRun } from "@/models/activity/activity-model";
 import { activityQueryKeys, removeRunById } from "@/state/activity/activity-queries";
 
 describe("level session query state", () => {
-  test("scopes run caches by logical level and selected app sessions", () => {
-    expect(activityQueryKeys.logicalLevelRuns("level-1", ["app-1", "app-2"])).toEqual([
+  test("scopes run caches by logical level and day", () => {
+    expect(activityQueryKeys.logicalLevelRuns("level-1", "2026-10-01")).toEqual([
       "activity",
       "logical-level",
       "level-1",
       "runs",
-      "app-1",
-      "app-2",
+      "2026-10-01",
     ]);
   });
 

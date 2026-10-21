@@ -3,7 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using AdofaiIpc;
-using AdofaiIpc.Core;
+using TUFReplay.Activity.Tracking;
 using TUFReplay.Microphone.Ipc;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Shared.Ipc;
@@ -12,52 +12,51 @@ namespace TUFReplay.Microphone.Ipc;
 
 public static class MicrophoneRecordingIpcHandlers
 {
-  public static object Export(IpcRequest request)
+  public static IpcFile Export(string runId, System.Threading.CancellationToken cancellationToken)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return new IpcDownloadError("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
-      return new IpcDownloadError("run_not_found", "Run was not found.", 404);
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
 
     long? byteLength = MicrophoneRecordingRepository.GetByteLength(runId);
     if (!byteLength.HasValue)
-      return new IpcDownloadError("microphone_recording_not_found", "Microphone recording was not found.", 404);
+      throw IpcDomainError.Create("microphone_recording_not_found", "Microphone recording was not found.");
 
-    return new IpcDownloadResponse(
-      "audio/wav",
-      byteLength.Value,
-      CreateDownloadFileName(runId),
+    return IpcFile.FromWriter(
       destination =>
       {
-        if (MicrophoneRecordingRepository.WriteTo(runId, destination, CancellationToken.None, byteLength.Value) == null)
+        if (MicrophoneRecordingRepository.WriteTo(runId, destination, cancellationToken, byteLength.Value) == null)
           throw new FileNotFoundException("Microphone recording was removed before download.");
-      }
+      },
+      byteLength.Value,
+      CreateDownloadFileName(runId),
+      "audio/wav"
     );
   }
 
-  public static object Delete(IpcRequest request)
+  public static MicrophoneRecordingDeleteResultDto Delete(string runId)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
-      return IpcDomainError.Create("run_not_found", "Run was not found.");
-    return new MicrophoneRecordingDeleteResultDto
-    {
-      RunId = runId,
-      Deleted = MicrophoneRecordingRepository.Delete(runId),
-    };
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
+    bool deleted = MicrophoneRecordingRepository.Delete(runId);
+    ActivityChanges.Notify(runId);
+    return new MicrophoneRecordingDeleteResultDto { RunId = runId, Deleted = deleted };
   }
 
-  public static object KeepPermanently(IpcRequest request)
+  public static MicrophoneRecordingKeepResultDto KeepPermanently(string runId)
   {
-    if (!IpcParams.TryRequiredString(request, "runId", out string runId))
-      return IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
-      return IpcDomainError.Create("run_not_found", "Run was not found.");
+      throw IpcDomainError.Create("run_not_found", "Run was not found.");
     if (!MicrophoneRecordingRepository.Exists(runId))
-      return IpcDomainError.Create("microphone_recording_not_found", "Microphone recording was not found.");
+      throw IpcDomainError.Create("microphone_recording_not_found", "Microphone recording was not found.");
 
     MicrophoneRecordingRepository.KeepPermanently(runId);
+    ActivityChanges.Notify(runId);
     return new MicrophoneRecordingKeepResultDto { RunId = runId, Permanent = true };
   }
 

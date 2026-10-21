@@ -8,8 +8,13 @@ build/
 
 # Library
 packages/
+!TUFReplay.Unity/Packages/
+!TUFReplay.Unity/Packages/manifest.json
+!TUFReplay.Unity/Packages/packages-lock.json
 node_modules/
+node_modules
 web/dist/
+web/public/adofai-ipc.json
 
 # Local Environment
 .env
@@ -29,3 +34,8 @@ TUFReplay.Unity/UserSettings/
 TUFReplay.MicrophoneCapture.Mac/**/xcuserdata/
 TUFReplay.MicrophoneCapture.Mac/**/*.xcuserstate
 TUFReplay.MicrophoneCapture.Mac/DerivedData/
+
+# Verified bundled IPC binaries are source dependencies.
+!vendor/adofai-ipc-runtime/*.dll
+!vendor/adofai-ipc-runtime/ipc/*.dll
+!vendor/adofai-ipc-legacy/*.dll

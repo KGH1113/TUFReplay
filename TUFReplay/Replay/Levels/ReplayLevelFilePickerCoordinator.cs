@@ -16,19 +16,23 @@ namespace TUFReplay.Replay.Levels;
 
 public static class ReplayLevelFilePickerCoordinator
 {
+  public static event Action<ReplayLevelFilePickerResult> Completed;
+
   private sealed class PickOperation
   {
     public readonly long Generation;
     public readonly string Id;
     public readonly StoredReplayRun Run;
+    public readonly bool HoldForReplay;
     public readonly CancellationTokenSource Cancellation = new CancellationTokenSource();
     public ReplayLevelFilePickerResult Result;
 
-    public PickOperation(long generation, StoredReplayRun run)
+    public PickOperation(long generation, StoredReplayRun run, bool holdForReplay)
     {
       Generation = generation;
       Id = Guid.NewGuid().ToString("N");
       Run = run;
+      HoldForReplay = holdForReplay;
     }
   }
 
@@ -45,7 +49,7 @@ public static class ReplayLevelFilePickerCoordinator
     }
   }
 
-  public static ReplayLevelFilePickerResult Start(string runId)
+  public static ReplayLevelFilePickerResult Start(string runId, bool holdForReplay = true)
   {
     if (ReplayPlaybackCoordinator.IsBusy)
       return Error(runId, "replay_busy", "A replay is already in progress.");
@@ -63,7 +67,7 @@ public static class ReplayLevelFilePickerCoordinator
         return Error(runId, "file_picker_busy", "Another level file picker is already open.");
 
       _active?.Cancellation.Dispose();
-      operation = new PickOperation(++_generation, run);
+      operation = new PickOperation(++_generation, run, holdForReplay);
       _active = operation;
     }
 
@@ -79,6 +83,17 @@ public static class ReplayLevelFilePickerCoordinator
         return Error(null, "file_picker_not_found", "The level file picker operation was not found.");
       return _active.Result ?? Pending(_active);
     }
+  }
+
+  public static void Cancel(string operationId)
+  {
+    lock (Gate)
+    {
+      if (_active == null || _active.Id != operationId)
+        return;
+      Shutdown();
+    }
+    UnityMainThread.Post(ReplayLevelOpenService.ReleaseHeldBlack);
   }
 
   public static void Shutdown()
@@ -243,9 +258,17 @@ public static class ReplayLevelFilePickerCoordinator
     try
     {
       Persistence.UpdateLastUsedFolder(result.LevelPath);
-      ReplayLevelOpenService.HoldVerifiedLevel(result.LevelPath, uiController);
-      if (!Complete(operation, result))
-        ReplayLevelOpenService.ReleaseHeldBlack();
+      if (operation.HoldForReplay)
+      {
+        ReplayLevelOpenService.HoldVerifiedLevel(result.LevelPath, uiController);
+        if (!Complete(operation, result))
+          ReplayLevelOpenService.ReleaseHeldBlack();
+      }
+      else
+      {
+        ReplayLevelOpenService.ReturnFromVerification(uiController);
+        Complete(operation, result);
+      }
     }
     catch (Exception exception)
     {
@@ -353,8 +376,9 @@ public static class ReplayLevelFilePickerCoordinator
         return false;
       result.OperationId = operation.Id;
       operation.Result = result;
-      return true;
     }
+    Completed?.Invoke(result);
+    return true;
   }
 
   private static ReplayLevelFilePickerResult Pending(PickOperation operation) =>

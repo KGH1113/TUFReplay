@@ -23,6 +23,7 @@ namespace TUFReplay.Replay.Preparation;
 
 public static partial class ReplayPlaybackCoordinator
 {
+  public static event Action<ReplayPlaybackStatus> StatusChanged;
   private const double LevelOpenTimeoutSeconds = 30d;
   private const double EditorTransitionTimeoutSeconds = 10d;
   private const double FocusHandoffDelaySeconds = 0.6d;
@@ -132,7 +133,7 @@ public static partial class ReplayPlaybackCoordinator
         CancelCurrentReplayForReplacement(operationId);
         ShowPreparationNotice(operationId);
       });
-      QueueMicrophonePreparation(pending);
+      QueueRecordedMediaPreparation(pending);
       return GetStatus();
     }
   }
@@ -214,7 +215,7 @@ public static partial class ReplayPlaybackCoordinator
       CancelPendingPreparation();
       PendingReplay operation = _operation;
       ReplaySessionService.ClearActiveContext();
-      operation?.CleanupPreparedMicrophone();
+      operation?.CleanupPreparedMedia();
       if (scnEditor.instance != null && scnEditor.instance.playMode)
       {
         ReplayEditorTransitionResult transition = ReplayEditorTransition.Request(scnEditor.instance);
@@ -382,7 +383,7 @@ public static partial class ReplayPlaybackCoordinator
     {
       ReplaySessionService.ClearActiveContext();
       SetTerminal(operation, ReplayPlaybackStates.Cancelled, "Replay cancelled with Escape.");
-      operation.CleanupPreparedMicrophone();
+      operation.CleanupPreparedMedia();
       _operation = null;
     }
   }
@@ -394,7 +395,7 @@ public static partial class ReplayPlaybackCoordinator
       return;
 
     ReplaySessionService.ClearActiveContext();
-    operation.CleanupPreparedMicrophone();
+    operation.CleanupPreparedMedia();
     _returnRequested = false;
     ClearEditorTransitionState();
     SetError(operation.OperationId, operation.Run.Id, errorCode, message);
@@ -407,7 +408,7 @@ public static partial class ReplayPlaybackCoordinator
     HidePreparationNotice();
     CancelPendingPreparation();
     ReplaySessionService.ClearActiveContext();
-    _operation?.CleanupPreparedMicrophone();
+    _operation?.CleanupPreparedMedia();
     _operation = null;
     ClearEditorTransitionState();
     _returnRequested = false;
@@ -506,6 +507,7 @@ public static partial class ReplayPlaybackCoordinator
   {
     lock (Gate)
       _status = status;
+    StatusChanged?.Invoke(Clone(status));
   }
 
   private static void ShowPreparationNotice(string operationId)

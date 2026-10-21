@@ -27,20 +27,6 @@ internal sealed class MacOsMachTimeConverter
     );
   }
 
-  public MacOsMachTimeConverter(MacOsIoHidNativeLibrary library)
-  {
-    if (library == null)
-      throw new ArgumentNullException(nameof(library));
-    library.GetTimebase(out uint numerator, out uint denominator);
-    if (numerator == 0 || denominator == 0)
-      throw new InvalidOperationException("Invalid mach timebase.");
-    long before = Stopwatch.GetTimestamp();
-    _machOrigin = library.MachNow();
-    long after = Stopwatch.GetTimestamp();
-    _stopwatchOrigin = before + (after - before) / 2;
-    _nanosecondsPerMachTick = (double)numerator / denominator;
-  }
-
   internal MacOsMachTimeConverter(ulong machOrigin, long stopwatchOrigin, uint numerator, uint denominator)
   {
     _machOrigin = machOrigin;
@@ -60,6 +46,16 @@ internal sealed class MacOsMachTimeConverter
   {
     double value = machTimestamp * _nanosecondsPerMachTick;
     return value >= long.MaxValue ? long.MaxValue : (long)Math.Round(value);
+  }
+
+  internal ulong ToMachTimestamp(long stopwatchTicks)
+  {
+    if (stopwatchTicks <= 0)
+      throw new ArgumentOutOfRangeException(nameof(stopwatchTicks));
+    double delta = (stopwatchTicks - _stopwatchOrigin) * 1_000_000_000d / Stopwatch.Frequency / _nanosecondsPerMachTick;
+    return delta >= 0
+      ? checked(_machOrigin + (ulong)Math.Round(delta))
+      : checked(_machOrigin - (ulong)Math.Round(-delta));
   }
 
   [StructLayout(LayoutKind.Sequential)]

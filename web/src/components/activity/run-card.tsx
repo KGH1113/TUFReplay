@@ -34,10 +34,14 @@ export const RunCard = memo(function RunCard({
   replayErrorRunId,
   onSelect,
   onPlayReplay,
+  onRender,
   onDeleteRun,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
+  onKeepCameraRecording,
+  onDownloadCameraRecording,
+  onDeleteCameraRecording,
 }: {
   run: ActivityRun;
   active: boolean;
@@ -49,10 +53,14 @@ export const RunCard = memo(function RunCard({
   replayErrorRunId: string | null;
   onSelect: (run: ActivityRun) => void;
   onPlayReplay: (run: ActivityRun) => void;
+  onRender?: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
+  onKeepCameraRecording: (run: ActivityRun) => Promise<void>;
+  onDownloadCameraRecording: (run: ActivityRun) => Promise<void>;
+  onDeleteCameraRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
   const statusMatches = replayStatus.runId === run.id;
@@ -89,14 +97,24 @@ export const RunCard = memo(function RunCard({
           <RunDifficultyIcon difficulty={run.judgmentDifficulty} />
           <RunNoFailIcon enabled={run.noFailMode} />
           {run.hasMicrophoneRecording ? <MicrophoneRecordingIndicator /> : null}
+          {run.hasCameraRecording ? <CameraRecordingIndicator /> : null}
         </div>
         <RunActionsMenu
           run={run}
           disabled={readOnly}
           runDeleteDisabled={runDeleteDisabled}
+          onRender={onRender}
+          renderDisabled={
+            Boolean(run.replayUnavailableReason) ||
+            replayPendingRunId !== null ||
+            isReplayInProgress(replayStatus)
+          }
           onKeepMicrophoneRecording={onKeepMicrophoneRecording}
           onDownloadMicrophoneRecording={onDownloadMicrophoneRecording}
           onDeleteMicrophoneRecording={onDeleteMicrophoneRecording}
+          onKeepCameraRecording={onKeepCameraRecording}
+          onDownloadCameraRecording={onDownloadCameraRecording}
+          onDeleteCameraRecording={onDeleteCameraRecording}
           onDeleteRun={onDeleteRun}
         />
       </div>
@@ -139,6 +157,32 @@ function MicrophoneRecordingIndicator() {
               strokeWidth="2.25"
               strokeLinecap="round"
             />
+          </svg>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function CameraRecordingIndicator() {
+  const { t } = useTranslation("activity");
+  const label = t("recordings.camera.name");
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          role="img"
+          aria-label={label}
+          className="grid size-6 shrink-0 place-items-center text-white"
+        >
+          <svg aria-hidden="true" viewBox="0 0 24 24" className="size-4" fill="currentColor">
+            <path
+              fillRule="evenodd"
+              d="M4.5 5A2.5 2.5 0 0 0 2 7.5v9A2.5 2.5 0 0 0 4.5 19h10a2.5 2.5 0 0 0 2.5-2.5v-9A2.5 2.5 0 0 0 14.5 5h-10ZM9.5 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"
+              clipRule="evenodd"
+            />
+            <path d="m18.5 8.5 3-2a.65.65 0 0 1 1 .54v9.92a.65.65 0 0 1-1 .54l-3-2v-7Z" />
           </svg>
         </span>
       </TooltipTrigger>

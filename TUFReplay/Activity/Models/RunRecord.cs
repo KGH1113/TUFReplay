@@ -39,6 +39,9 @@ public class RunRecord
   public long? MicrophoneFrameCount;
   public bool MicrophoneRecordingPermanent;
   public string MicrophoneRecordingExpiresAtUtc;
+  public long CameraRecordingBytes;
+  public bool CameraRecordingPermanent;
+  public string CameraRecordingExpiresAtUtc;
   public bool ReplayPlayable;
   public string ReplayUnavailableReason;
   public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;

@@ -76,6 +76,14 @@ public sealed partial class MicrophoneRecordingFeature
       QueueSave(ReadMetadata(path));
   }
 
+  public void NotifyRunPersistenceFailed(string runId)
+  {
+    // Called by the background activity writer. Also covers a microphone
+    // finalization that arrives after the activity write has failed.
+    BeginRunDeletion(runId);
+    CompleteRunDeletion(runId);
+  }
+
   private void QueueSave(CapturedMicrophoneRecording recording)
   {
     if (recording == null || !File.Exists(recording.TempPath))

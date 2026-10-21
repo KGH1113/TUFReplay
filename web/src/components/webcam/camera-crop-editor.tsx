@@ -1,0 +1,460 @@
+import { Camera01Icon, FlipHorizontalIcon, FlipVerticalIcon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { type KeyboardEvent, type PointerEvent, useEffect, useId, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
+import { useWebcamPreview } from "@/hooks/webcam/use-webcam-preview";
+import {
+  type CameraCropHandle,
+  cameraCropEqual,
+  changeCameraCrop,
+  displayCameraCrop,
+  FULL_CAMERA_CROP,
+} from "@/models/webcam/camera-crop";
+import type { CameraCrop, WebcamSettingsPatch, WebcamState } from "@/models/webcam/webcam-model";
+import { Button } from "@/shared/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/shared/ui/tooltip";
+import { CameraSettingHelp } from "./camera-setting-help";
+
+type CropGesture = {
+  pointerId: number;
+  target: HTMLButtonElement;
+  handle: CameraCropHandle;
+  x: number;
+  y: number;
+  bounds: DOMRect;
+  crop: CameraCrop;
+  mirrored: boolean;
+  flippedVertical: boolean;
+};
+
+const cropAnchorClass =
+  "rounded-full border border-black/30 bg-white shadow-sm transition-[background-color,border-color] duration-150 ease-out group-hover/crop-handle:border-primary group-hover/crop-handle:bg-primary group-focus-visible/crop-handle:border-primary group-focus-visible/crop-handle:bg-primary group-data-[dragging=true]/crop-handle:border-primary group-data-[dragging=true]/crop-handle:bg-primary motion-reduce:transition-none";
+
+export function CameraCropEditor({
+  state,
+  active,
+  saving,
+  onUpdate,
+}: {
+  state: WebcamState;
+  active: boolean;
+  saving: boolean;
+  onUpdate: (patch: WebcamSettingsPatch) => void;
+}) {
+  const { t } = useTranslation("webcam");
+  const hintId = useId();
+  const surface = useRef<HTMLDivElement>(null);
+  const gesture = useRef<CropGesture | null>(null);
+  const preview = useWebcamPreview(
+    active && state.enabled && state.supported,
+    state.deviceId,
+    state.deviceId
+      ? (state.devices.find((device) => device.id === state.deviceId)?.name ?? null)
+      : null,
+  );
+  const [draft, setDraft] = useState(state.crop);
+  const draftRef = useRef(draft);
+  const [dragging, setDragging] = useState<CameraCropHandle | null>(null);
+  const available = preview.available;
+  const disabled = saving || !available;
+  const display = displayCameraCrop(draft, state.mirror, state.flipVertical);
+
+  const updateDraft = (crop: CameraCrop) => {
+    draftRef.current = crop;
+    setDraft(crop);
+  };
+  const releaseGesture = () => {
+    const current = gesture.current;
+    gesture.current = null;
+    if (current?.target.hasPointerCapture(current.pointerId)) {
+      current.target.releasePointerCapture(current.pointerId);
+    }
+    setDragging(null);
+  };
+  const cancelGesture = () => {
+    releaseGesture();
+    updateDraft(state.crop);
+  };
+
+  useEffect(() => {
+    if (!gesture.current && !saving) {
+      draftRef.current = state.crop;
+      setDraft(state.crop);
+    }
+  }, [state.crop, saving]);
+
+  useEffect(() => {
+    const current = gesture.current;
+    if (
+      !current ||
+      (available &&
+        current.mirrored === state.mirror &&
+        current.flippedVertical === state.flipVertical)
+    )
+      return;
+    gesture.current = null;
+    if (current.target.hasPointerCapture(current.pointerId)) {
+      current.target.releasePointerCapture(current.pointerId);
+    }
+    setDragging(null);
+    draftRef.current = state.crop;
+    setDraft(state.crop);
+  }, [available, state.mirror, state.flipVertical, state.crop]);
+
+  useEffect(() => {
+    const element = surface.current;
+    if (!element) return;
+    const observer = new ResizeObserver(() => {
+      const current = gesture.current;
+      if (!current) return;
+      const bounds = element.getBoundingClientRect();
+      if (
+        Math.abs(bounds.width - current.bounds.width) > 1 ||
+        Math.abs(bounds.height - current.bounds.height) > 1
+      ) {
+        gesture.current = null;
+        if (current.target.hasPointerCapture(current.pointerId)) {
+          current.target.releasePointerCapture(current.pointerId);
+        }
+        setDragging(null);
+        draftRef.current = displayCameraCrop(
+          current.crop,
+          current.mirrored,
+          current.flippedVertical,
+        );
+        setDraft(draftRef.current);
+      }
+    });
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      const current = gesture.current;
+      gesture.current = null;
+      if (current?.target.hasPointerCapture(current.pointerId)) {
+        current.target.releasePointerCapture(current.pointerId);
+      }
+    };
+  }, []);
+
+  const begin = (event: PointerEvent<HTMLButtonElement>, handle: CameraCropHandle) => {
+    if (disabled || event.button !== 0 || gesture.current || !surface.current) return;
+    event.preventDefault();
+    const bounds = surface.current.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) return;
+    event.currentTarget.focus();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    gesture.current = {
+      pointerId: event.pointerId,
+      target: event.currentTarget,
+      handle,
+      x: event.clientX,
+      y: event.clientY,
+      bounds,
+      crop: displayCameraCrop(draftRef.current, state.mirror, state.flipVertical),
+      mirrored: state.mirror,
+      flippedVertical: state.flipVertical,
+    };
+    setDragging(handle);
+  };
+  const move = (event: PointerEvent<HTMLButtonElement>) => {
+    const current = gesture.current;
+    if (!current || current.pointerId !== event.pointerId) return;
+    const next = changeCameraCrop(
+      current.crop,
+      current.handle,
+      (event.clientX - current.x) / current.bounds.width,
+      (event.clientY - current.y) / current.bounds.height,
+    );
+    updateDraft(displayCameraCrop(next, current.mirrored, current.flippedVertical));
+  };
+  const finish = (event: PointerEvent<HTMLButtonElement>) => {
+    if (gesture.current?.pointerId !== event.pointerId) return;
+    move(event);
+    releaseGesture();
+    if (!cameraCropEqual(draftRef.current, state.crop)) onUpdate({ crop: draftRef.current });
+  };
+  const keyboard = (event: KeyboardEvent<HTMLButtonElement>, handle: CameraCropHandle) => {
+    if (event.key === "Escape" && gesture.current) {
+      event.preventDefault();
+      event.stopPropagation();
+      cancelGesture();
+      return;
+    }
+    if (disabled || gesture.current) return;
+    const step = event.shiftKey ? 0.02 : 0.005;
+    const directions: Record<string, [number, number]> = {
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+    };
+    const delta = directions[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    const next = displayCameraCrop(
+      changeCameraCrop(
+        displayCameraCrop(draftRef.current, state.mirror, state.flipVertical),
+        handle,
+        ...delta,
+      ),
+      state.mirror,
+      state.flipVertical,
+    );
+    if (cameraCropEqual(next, state.crop)) return;
+    updateDraft(next);
+    onUpdate({ crop: next });
+  };
+  const pointerHandlers = {
+    onPointerMove: move,
+    onPointerUp: finish,
+    onPointerCancel: cancelGesture,
+    onLostPointerCapture: () => {
+      if (gesture.current) cancelGesture();
+    },
+  };
+
+  return (
+    <section className="space-y-3" aria-label={t("cropTitle")}>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-1">
+          <h3 className="text-sm font-semibold">{t("cropTitle")}</h3>
+          <CameraSettingHelp label={t("cropTitle")}>
+            <p>{t("cropHint")}</p>
+            <p>{t("cropRecordingHint")}</p>
+            <p>{t("cropPreview.privacy")}</p>
+          </CameraSettingHelp>
+        </div>
+        <div className="flex items-center gap-1">
+          {preview.revealed ? (
+            <Button
+              size="xs"
+              variant="ghost"
+              className="h-7 rounded-md px-2"
+              onClick={preview.hide}
+            >
+              {t("cropPreview.hide")}
+            </Button>
+          ) : null}
+          <Button
+            size="xs"
+            variant="ghost"
+            className="h-7 rounded-md px-2"
+            disabled={saving || cameraCropEqual(draft, FULL_CAMERA_CROP)}
+            onClick={() => {
+              cancelGesture();
+              updateDraft(FULL_CAMERA_CROP);
+              onUpdate({ crop: FULL_CAMERA_CROP });
+            }}
+          >
+            {t("resetCrop")}
+          </Button>
+        </div>
+      </div>
+      <div className="p-6">
+        <div
+          ref={surface}
+          data-camera-pixel-plane=""
+          className="relative isolate mx-auto w-full select-none bg-black [&:has([data-camera-crop-move]:focus-visible)_[data-camera-crop-anchor]]:border-primary [&:has([data-camera-crop-move]:focus-visible)_[data-camera-crop-anchor]]:bg-primary"
+          style={{
+            marginBlock: 0,
+            padding: 0,
+            border: 0,
+            borderRadius: 0,
+            maxWidth: `${(preview.width && preview.height ? preview.width / preview.height : 16 / 9) * 24}rem`,
+            aspectRatio:
+              preview.width && preview.height ? `${preview.width} / ${preview.height}` : "16 / 9",
+          }}
+        >
+          <div
+            className="pointer-events-none absolute inset-0 overflow-hidden"
+            style={{ borderRadius: 0 }}
+          >
+            {preview.imageUrl ? (
+              <img
+                src={preview.imageUrl}
+                width={preview.width ?? 640}
+                height={preview.height ?? 360}
+                alt={t("cropPreview.image")}
+                aria-label={t("cropPreview.image")}
+                className="absolute inset-0 size-full object-contain"
+                style={{
+                  borderRadius: 0,
+                  transform: `scale(${state.mirror ? -1 : 1}, ${state.flipVertical ? -1 : 1})`,
+                }}
+                onLoad={preview.imageLoaded}
+                onError={preview.fail}
+              />
+            ) : null}
+            {available ? (
+              <div
+                aria-hidden="true"
+                className="absolute outline-2 -outline-offset-2 outline-white/90"
+                style={{
+                  left: `${display.x * 100}%`,
+                  top: `${display.y * 100}%`,
+                  width: `${display.width * 100}%`,
+                  height: `${display.height * 100}%`,
+                  boxShadow: "0 0 0 9999px rgb(0 0 0 / 65%)",
+                }}
+              />
+            ) : null}
+          </div>
+          {available ? (
+            <>
+              <button
+                type="button"
+                data-camera-crop-move=""
+                aria-label={t("moveCrop")}
+                aria-describedby={hintId}
+                disabled={disabled}
+                className="absolute touch-none bg-transparent outline-none disabled:cursor-default"
+                style={{
+                  margin: 0,
+                  padding: 0,
+                  border: 0,
+                  left: `${display.x * 100}%`,
+                  top: `${display.y * 100}%`,
+                  width: `${display.width * 100}%`,
+                  height: `${display.height * 100}%`,
+                  cursor: dragging === "move" ? "grabbing" : "grab",
+                }}
+                onPointerDown={(event) => begin(event, "move")}
+                onKeyDown={(event) => keyboard(event, "move")}
+                {...pointerHandlers}
+              />
+              {(["n", "s", "w", "e"] as const).map((handle) => {
+                const horizontal = handle === "n" || handle === "s";
+                return (
+                  <button
+                    key={handle}
+                    type="button"
+                    data-camera-crop-handle={handle}
+                    data-dragging={dragging === handle}
+                    aria-label={t(`cropHandles.${handle}`)}
+                    aria-describedby={hintId}
+                    disabled={disabled}
+                    className="group/crop-handle absolute z-5 grid touch-none place-items-center bg-transparent outline-none disabled:cursor-default"
+                    style={{
+                      margin: 0,
+                      padding: 0,
+                      border: 0,
+                      boxSizing: "border-box",
+                      transform: horizontal ? "translateY(-50%)" : "translateX(-50%)",
+                      left: `${(display.x + (handle === "e" ? display.width : 0)) * 100}%`,
+                      top: `${(display.y + (handle === "s" ? display.height : 0)) * 100}%`,
+                      width: horizontal ? `${display.width * 100}%` : "2.75rem",
+                      height: horizontal ? "2.75rem" : `${display.height * 100}%`,
+                      cursor: horizontal ? "ns-resize" : "ew-resize",
+                    }}
+                    onPointerDown={(event) => begin(event, handle)}
+                    onKeyDown={(event) => keyboard(event, handle)}
+                    {...pointerHandlers}
+                  >
+                    <span
+                      aria-hidden="true"
+                      data-camera-crop-anchor=""
+                      className={`${horizontal ? "h-1 w-8" : "h-8 w-1"} ${cropAnchorClass}`}
+                    />
+                  </button>
+                );
+              })}
+              {(["nw", "ne", "sw", "se"] as const).map((handle) => (
+                <button
+                  key={handle}
+                  type="button"
+                  data-camera-crop-handle={handle}
+                  data-dragging={dragging === handle}
+                  aria-label={t(`cropHandles.${handle}`)}
+                  aria-describedby={hintId}
+                  disabled={disabled}
+                  className="group/crop-handle absolute z-10 grid size-12 touch-none place-items-center bg-transparent outline-none disabled:cursor-default"
+                  style={{
+                    margin: 0,
+                    padding: 0,
+                    border: 0,
+                    boxSizing: "border-box",
+                    transform: "translate(-50%, -50%)",
+                    left: `${(display.x + (handle.endsWith("e") ? display.width : 0)) * 100}%`,
+                    top: `${(display.y + (handle.startsWith("s") ? display.height : 0)) * 100}%`,
+                    cursor: handle === "nw" || handle === "se" ? "nwse-resize" : "nesw-resize",
+                  }}
+                  onPointerDown={(event) => begin(event, handle)}
+                  onKeyDown={(event) => keyboard(event, handle)}
+                  {...pointerHandlers}
+                >
+                  <span
+                    aria-hidden="true"
+                    data-camera-crop-anchor=""
+                    className={`size-3 ${cropAnchorClass}`}
+                  />
+                </button>
+              ))}
+            </>
+          ) : (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-5 text-center text-sm text-white/90">
+              <HugeiconsIcon aria-hidden="true" icon={Camera01Icon} size={26} strokeWidth={1.6} />
+              {state.enabled && state.supported && active ? (
+                !preview.revealed ? (
+                  <Button variant="outline" onClick={preview.reveal}>
+                    {t("cropPreview.reveal")}
+                  </Button>
+                ) : preview.error ? (
+                  <>
+                    <p role="alert" className="max-w-80 text-xs leading-relaxed">
+                      {preview.error}
+                    </p>
+                    <Button size="sm" variant="outline" onClick={preview.retry}>
+                      {t("cropPreview.retry")}
+                    </Button>
+                  </>
+                ) : (
+                  <p role="status" className="max-w-80 text-xs leading-relaxed text-white/70">
+                    {t("cropPreview.waiting")}
+                  </p>
+                )
+              ) : (
+                <p className="max-w-80 text-xs leading-relaxed text-white/70">
+                  {active ? t("cropPreview.off") : t("cropPreview.disconnected")}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        <TooltipProvider>
+          <fieldset className="mt-2 flex justify-center gap-2" aria-label={t("flipTitle")}>
+            {(
+              [
+                { field: "mirror", icon: FlipHorizontalIcon },
+                { field: "flipVertical", icon: FlipVerticalIcon },
+              ] as const
+            ).map(({ field, icon }) => (
+              <Tooltip key={field}>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    aria-label={t(field)}
+                    aria-pressed={state[field]}
+                    className="aria-pressed:border-primary/50 aria-pressed:bg-primary/15 aria-pressed:text-primary"
+                    disabled={saving}
+                    onClick={() => onUpdate({ [field]: !state[field] })}
+                  >
+                    <HugeiconsIcon aria-hidden="true" icon={icon} size={18} strokeWidth={1.8} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{t(field)}</TooltipContent>
+              </Tooltip>
+            ))}
+          </fieldset>
+        </TooltipProvider>
+      </div>
+      {available && preview.label ? (
+        <p className="text-xs text-muted-foreground">{preview.label}</p>
+      ) : null}
+
+      <p id={hintId} className="sr-only">
+        {t("cropHint")}
+      </p>
+    </section>
+  );
+}

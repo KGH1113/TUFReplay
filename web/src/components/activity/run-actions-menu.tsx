@@ -1,130 +1,85 @@
 import {
-  ArrowLeft01Icon,
   Delete02Icon,
-  Download01Icon,
-  FloppyDiskIcon,
-  Loading03Icon,
-  Mic01Icon,
+  FolderLibraryIcon,
   MoreVerticalIcon,
   Upload04Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import type { TFunction } from "i18next";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { RunRecordingsDialog } from "@/components/activity/run-recordings-dialog";
 import type { ActivityRun } from "@/models/activity/activity-model";
-import { formatFileSize } from "@/models/activity/file-size";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
+import type { RunRecordingAction } from "@/models/activity/run-recordings";
 import { Button } from "@/shared/ui/button";
-import { Dialog, DialogContent, DialogTitle } from "@/shared/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/shared/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/shared/ui/dropdown-menu";
-
-type PendingAction = "download" | "keep" | "delete-recording" | "delete-run" | null;
 
 export function RunActionsMenu({
   run,
   disabled,
   runDeleteDisabled,
+  onRender,
+  renderDisabled = false,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
+  onKeepCameraRecording,
+  onDownloadCameraRecording,
+  onDeleteCameraRecording,
   onDeleteRun,
 }: {
   run: ActivityRun;
   disabled: boolean;
   runDeleteDisabled: boolean;
-  onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
-  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
-  onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
-  onDeleteRun: (run: ActivityRun) => Promise<void>;
+  onRender?: (run: ActivityRun, trigger?: HTMLElement) => void;
+  renderDisabled?: boolean;
+  onKeepMicrophoneRecording: RunRecordingAction;
+  onDownloadMicrophoneRecording: RunRecordingAction;
+  onDeleteMicrophoneRecording: RunRecordingAction;
+  onKeepCameraRecording: RunRecordingAction;
+  onDownloadCameraRecording: RunRecordingAction;
+  onDeleteCameraRecording: RunRecordingAction;
+  onDeleteRun: RunRecordingAction;
 }) {
   const { t } = useTranslation("replay");
   const { t: activityT } = useTranslation("activity");
-  const { t: microphoneT, i18n } = useTranslation("microphone");
-  const locale = i18n.resolvedLanguage ?? "en";
+  const { t: renderT } = useTranslation("render");
+  const { t: commonT } = useTranslation("common");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [recordingDialogOpen, setRecordingDialogOpen] = useState(false);
+  const [recordingsOpen, setRecordingsOpen] = useState(false);
   const [runDialogOpen, setRunDialogOpen] = useState(false);
-  const [pendingAction, setPendingAction] = useState<PendingAction>(null);
-  const [menuError, setMenuError] = useState("");
-  const [dialogError, setDialogError] = useState("");
-  const busy = pendingAction !== null;
-
-  const downloadRecording = async () => {
-    if (disabled || busy) return;
-    setPendingAction("download");
-    setMenuError("");
-    try {
-      await onDownloadMicrophoneRecording(run);
-      setMenuOpen(false);
-    } catch (cause) {
-      setMenuError(localizedErrorMessage(cause, microphoneT("recording.downloadFailed")));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  const keepRecording = async () => {
-    if (disabled || busy) return;
-    setPendingAction("keep");
-    setMenuError("");
-    try {
-      await onKeepMicrophoneRecording(run);
-    } catch (cause) {
-      setMenuError(localizedErrorMessage(cause, microphoneT("recording.keepFailed")));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  const deleteRecording = async () => {
-    if (disabled || busy) return;
-    setPendingAction("delete-recording");
-    setDialogError("");
-    try {
-      await onDeleteMicrophoneRecording(run);
-      setRecordingDialogOpen(false);
-    } catch (cause) {
-      setDialogError(localizedErrorMessage(cause, microphoneT("recording.deleteFailed")));
-    } finally {
-      setPendingAction(null);
-    }
-  };
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState("");
+  const trigger = useRef<HTMLButtonElement>(null);
+  const openingDialog = useRef(false);
 
   const deleteRun = async () => {
-    if (disabled || runDeleteDisabled || busy) return;
-    setPendingAction("delete-run");
-    setDialogError("");
+    if (disabled || runDeleteDisabled || deleting) return;
+    setDeleting(true);
+    setError("");
     try {
       await onDeleteRun(run);
       setRunDialogOpen(false);
     } catch (cause) {
-      setDialogError(localizedErrorMessage(cause, t("run.deleteFailed")));
+      setError(localizedErrorMessage(cause, t("run.deleteFailed")));
     } finally {
-      setPendingAction(null);
+      setDeleting(false);
     }
   };
 
   return (
     <>
-      <DropdownMenu
-        open={menuOpen}
-        onOpenChange={(open) => {
-          setMenuOpen(open);
-          if (open) setMenuError("");
-        }}
-      >
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
         <DropdownMenuTrigger asChild>
           <Button
+            ref={trigger}
             type="button"
             variant="ghost"
             size="icon-sm"
@@ -133,197 +88,143 @@ export function RunActionsMenu({
             <HugeiconsIcon aria-hidden="true" icon={MoreVerticalIcon} className="size-4" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-fit min-w-0 whitespace-nowrap">
-          {run.hasMicrophoneRecording ? (
-            <DropdownMenuSub>
-              <DropdownMenuSubTrigger>
-                <HugeiconsIcon aria-hidden="true" icon={ArrowLeft01Icon} className="size-4" />
-                <HugeiconsIcon aria-hidden="true" icon={Mic01Icon} className="size-4" />
-                <span>{microphoneT("recording.label")}</span>
-              </DropdownMenuSubTrigger>
-              <DropdownMenuSubContent className="w-fit min-w-0 whitespace-nowrap">
-                <div className="px-2 py-1.5">
-                  <p className="text-xs font-medium">
-                    {formatFileSize(run.microphoneRecordingBytes, locale)}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    {run.microphoneRecordingPermanent
-                      ? microphoneT("recording.permanent")
-                      : formatRemaining(run.microphoneRecordingExpiresAtUtc, microphoneT)}
-                  </p>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  disabled={disabled || busy}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    void downloadRecording();
-                  }}
-                >
-                  <HugeiconsIcon
-                    aria-hidden="true"
-                    icon={pendingAction === "download" ? Loading03Icon : Download01Icon}
-                    className={pendingAction === "download" ? "size-4 animate-spin" : "size-4"}
-                  />
-                  {microphoneT("recording.download")}
-                </DropdownMenuItem>
-                {!run.microphoneRecordingPermanent ? (
-                  <DropdownMenuItem
-                    disabled={disabled || busy}
-                    onSelect={(event) => {
-                      event.preventDefault();
-                      void keepRecording();
-                    }}
-                  >
-                    <HugeiconsIcon
-                      aria-hidden="true"
-                      icon={pendingAction === "keep" ? Loading03Icon : FloppyDiskIcon}
-                      className={pendingAction === "keep" ? "size-4 animate-spin" : "size-4"}
-                    />
-                    {microphoneT("recording.keep")}
-                  </DropdownMenuItem>
-                ) : null}
-                <DropdownMenuItem
-                  className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
-                  disabled={disabled || busy}
-                  onSelect={() => {
-                    setDialogError("");
-                    setRecordingDialogOpen(true);
-                  }}
-                >
-                  <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
-                  {microphoneT("recording.delete")}
-                </DropdownMenuItem>
-                {menuError ? (
-                  <p aria-live="polite" className="px-2 py-1 text-xs text-destructive">
-                    {menuError}
-                  </p>
-                ) : null}
-              </DropdownMenuSubContent>
-            </DropdownMenuSub>
-          ) : (
-            <DropdownMenuItem disabled>
-              <span aria-hidden="true" className="size-4" />
-              <HugeiconsIcon aria-hidden="true" icon={Mic01Icon} className="size-4" />
-              {microphoneT("recording.label")}
-            </DropdownMenuItem>
-          )}
+        <DropdownMenuContent
+          align="end"
+          className="w-fit min-w-0 whitespace-nowrap"
+          onCloseAutoFocus={(event) => {
+            if (openingDialog.current) {
+              event.preventDefault();
+              openingDialog.current = false;
+            }
+          }}
+        >
+          {onRender ? (
+            <>
+              <DropdownMenuItem
+                disabled={disabled || deleting || renderDisabled}
+                onSelect={() => {
+                  openingDialog.current = true;
+                  setMenuOpen(false);
+                  onRender(run, trigger.current ?? undefined);
+                }}
+              >
+                <RenderSlateIcon />
+                {renderT("button")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+            </>
+          ) : null}
+          <DropdownMenuItem
+            disabled={!run.hasMicrophoneRecording && !run.hasCameraRecording}
+            onSelect={() => {
+              openingDialog.current = true;
+              setMenuOpen(false);
+              setRecordingsOpen(true);
+            }}
+          >
+            <HugeiconsIcon aria-hidden="true" icon={FolderLibraryIcon} className="size-4" />
+            {activityT("recordings.label")}
+          </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled>
-            <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Upload04Icon} className="size-4" />
             {t("run.submit")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
             className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
-            disabled={disabled || runDeleteDisabled || busy}
+            disabled={disabled || runDeleteDisabled || deleting}
             onSelect={() => {
-              setDialogError("");
+              openingDialog.current = true;
+              setMenuOpen(false);
+              setError("");
               setRunDialogOpen(true);
             }}
           >
-            <span aria-hidden="true" className="size-4" />
             <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
             {t("run.delete")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-
-      <ConfirmDeleteDialog
-        open={recordingDialogOpen}
-        title={microphoneT("recording.deleteTitle")}
-        description={microphoneT("recording.deleteDescription", {
-          size: formatFileSize(run.microphoneRecordingBytes, locale),
-          runIndex: run.runIndex,
-        })}
-        actionLabel={microphoneT("recording.delete")}
-        pending={pendingAction === "delete-recording"}
-        error={dialogError}
-        onOpenChange={setRecordingDialogOpen}
-        onConfirm={() => void deleteRecording()}
+      <RunRecordingsDialog
+        run={run}
+        open={recordingsOpen}
+        disabled={disabled}
+        deletionDisabled={runDeleteDisabled}
+        onOpenChange={setRecordingsOpen}
+        restoreFocus={() => trigger.current?.focus()}
+        actions={{
+          microphone: {
+            download: onDownloadMicrophoneRecording,
+            keep: onKeepMicrophoneRecording,
+            delete: onDeleteMicrophoneRecording,
+          },
+          camera: {
+            download: onDownloadCameraRecording,
+            keep: onKeepCameraRecording,
+            delete: onDeleteCameraRecording,
+          },
+        }}
       />
-      <ConfirmDeleteDialog
-        open={runDialogOpen}
-        title={t("run.deleteTitle")}
-        description={t("run.deleteDescription", { runIndex: run.runIndex })}
-        actionLabel={t("run.delete")}
-        pending={pendingAction === "delete-run"}
-        error={dialogError}
-        onOpenChange={setRunDialogOpen}
-        onConfirm={() => void deleteRun()}
-      />
+      <Dialog open={runDialogOpen} onOpenChange={(open) => !deleting && setRunDialogOpen(open)}>
+        <DialogContent
+          className="min-h-0 w-[min(25rem,calc(100vw-2rem))]"
+          onEscapeKeyDown={(event) => deleting && event.preventDefault()}
+          onPointerDownOutside={(event) => deleting && event.preventDefault()}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            trigger.current?.focus();
+          }}
+        >
+          <DialogTitle>{t("run.deleteTitle")}</DialogTitle>
+          <DialogDescription className="mt-2 leading-relaxed">
+            {t("run.deleteDescription", { runIndex: run.runIndex })}
+          </DialogDescription>
+          {error ? (
+            <p role="alert" className="mt-3 text-sm text-destructive">
+              {error}
+            </p>
+          ) : null}
+          <div className="mt-6 flex justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={deleting}
+              onClick={() => setRunDialogOpen(false)}
+            >
+              {commonT("actions.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              disabled={deleting}
+              onClick={() => void deleteRun()}
+            >
+              {deleting ? t("run.deleting") : t("run.delete")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
 
-function ConfirmDeleteDialog({
-  open,
-  title,
-  description,
-  actionLabel,
-  pending,
-  error,
-  onOpenChange,
-  onConfirm,
-}: {
-  open: boolean;
-  title: string;
-  description: string;
-  actionLabel: string;
-  pending: boolean;
-  error: string;
-  onOpenChange: (open: boolean) => void;
-  onConfirm: () => void;
-}) {
-  const { t: commonT } = useTranslation("common");
-  const { t } = useTranslation("replay");
+function RenderSlateIcon() {
   return (
-    <Dialog open={open} onOpenChange={(nextOpen) => !pending && onOpenChange(nextOpen)}>
-      <DialogContent
-        className="min-h-0 w-[min(25rem,calc(100vw-2rem))]"
-        onEscapeKeyDown={(event) => pending && event.preventDefault()}
-        onPointerDownOutside={(event) => pending && event.preventDefault()}
-      >
-        <DialogTitle>{title}</DialogTitle>
-        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{description}</p>
-        {error ? (
-          <p aria-live="polite" className="mt-3 text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
-        <div className="mt-6 flex justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={pending}
-            onClick={() => onOpenChange(false)}
-          >
-            {commonT("actions.cancel")}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            size="sm"
-            disabled={pending}
-            onClick={onConfirm}
-          >
-            {pending ? t("run.deleting") : actionLabel}
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="size-4"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="m3 10-.7-3.8 17.6-3.3.7 3.9L3 10Z" />
+      <path d="m6.7 5.4 2.7 3.4m3.5-4.6 2.7 3.5M3 10h18v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" />
+    </svg>
   );
-}
-
-function formatRemaining(value: string | null, t: TFunction<"microphone">) {
-  if (!value) return t("recording.deletesSoon");
-  const expiresAt = Date.parse(value);
-  if (Number.isNaN(expiresAt)) return t("recording.deletesSoon");
-  const remaining = expiresAt - Date.now();
-  if (remaining <= 0) return t("recording.deletesSoon");
-  const hours = Math.ceil(remaining / 3_600_000);
-  if (hours < 24) return t("recording.deletesInHours", { count: hours });
-  return t("recording.deletesInDays", { count: Math.ceil(hours / 24) });
 }

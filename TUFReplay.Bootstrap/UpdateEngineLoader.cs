@@ -18,17 +18,15 @@ internal static class UpdateEngineLoader
       throw new FileNotFoundException("The versioned update engine is missing.", current.UpdateEnginePath);
     Assembly assembly = Assembly.LoadFrom(current.UpdateEnginePath);
     Type type = assembly.GetType(EntryType, true);
-    MethodInfo method = type.GetMethod(
-      EntryMethod,
-      BindingFlags.Public | BindingFlags.Static,
-      null,
-      new[] { typeof(UnityModManager.ModEntry), typeof(string) },
-      null) ?? throw new MissingMethodException(EntryType, EntryMethod);
-    string request = JsonConvert.SerializeObject(new
-    {
-      InstallPath = modEntry.Path,
-      CurrentVersion = current.Version,
-    });
+    MethodInfo method =
+      type.GetMethod(
+        EntryMethod,
+        BindingFlags.Public | BindingFlags.Static,
+        null,
+        new[] { typeof(UnityModManager.ModEntry), typeof(string) },
+        null
+      ) ?? throw new MissingMethodException(EntryType, EntryMethod);
+    string request = JsonConvert.SerializeObject(new { InstallPath = modEntry.Path, CurrentVersion = current.Version });
     object raw;
     try
     {
@@ -47,7 +45,6 @@ internal sealed class UpdateResolution
   public bool HasCandidate { get; private set; }
   public string Version { get; private set; }
   public string RuntimePath { get; private set; }
-  public string DependencyBootstrapPath { get; private set; }
 
   public static UpdateResolution None() => new();
 
@@ -64,8 +61,6 @@ internal sealed class UpdateResolution
       HasCandidate = true,
       Version = root.Value<string>("Version") ?? root.Value<string>("version"),
       RuntimePath = root.Value<string>("RuntimePath") ?? root.Value<string>("runtimePath"),
-      DependencyBootstrapPath = root.Value<string>("DependencyBootstrapPath") ??
-        root.Value<string>("dependencyBootstrapPath"),
     };
   }
 }

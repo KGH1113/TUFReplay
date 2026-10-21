@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
@@ -26,7 +27,166 @@ internal static class UpdaterTests
     Run("auto-submission package URL rejection", TestAutoSubmissionPackageUrlRejection);
     Run("auto-submission feed redirect rejection", TestAutoSubmissionFeedRedirectRejected);
     Run("auto-submission reused version rejection", TestAutoSubmissionVersionReuseMismatch);
+    Run("SDK migration commit and incomplete bundle recovery", TestSdkMigration);
+    if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("TUFREPLAY_MIGRATION_PACKAGE")))
+      Run("published beta.4 updater accepts the single SDK package", TestPublishedUpdaterCompatibility);
     Console.WriteLine($"Passed {_passed} updater tests.");
+  }
+
+  private static void TestSdkMigration()
+  {
+    using TemporaryDirectory temporary = new();
+    const string version = "1.0.0";
+    CreateRuntime(temporary.Path, version);
+    string payload = RuntimePath(temporary.Path, version);
+    string rootInfo = "{\"AssemblyName\":\"AdofaiIpc.DependencyShim.dll\"}";
+    File.WriteAllText(Path.Combine(temporary.Path, "Info.json"), rootInfo);
+    RuntimeStore store = new(temporary.Path);
+    store.Save(new RuntimeState { Current = "0.2.0-beta.4", Trial = version });
+    File.WriteAllText(Path.Combine(temporary.Path, "Settings.json"), "user settings");
+    Directory.CreateDirectory(Path.Combine(temporary.Path, "Data"));
+    File.WriteAllText(Path.Combine(temporary.Path, "Data", "preserve.txt"), "user data");
+    Type migration = typeof(RuntimeStore).Assembly.GetType("TUFReplay.BundledIpc.SdkMigration", true);
+    MethodInfo prepare = migration.GetMethod("Prepare", BindingFlags.Static | BindingFlags.NonPublic);
+    MethodInfo commit = migration.GetMethod("Commit", BindingFlags.Static | BindingFlags.NonPublic);
+    File.Delete(Path.Combine(payload, "AdofaiIpc.Loader.dll"));
+    AssertThrows<TargetInvocationException>(() => prepare.Invoke(null, new object[] { payload, temporary.Path }));
+    Assert(
+      File.ReadAllText(Path.Combine(temporary.Path, "Info.json")) == rootInfo,
+      "Incomplete SDK changed the legacy entrypoint."
+    );
+    Assert(
+      JObject.Parse(File.ReadAllText(Path.Combine(temporary.Path, "Runtime", "state.json"))).Value<string>("Current")
+        == "0.2.0-beta.4",
+      "Incomplete SDK changed runtime state."
+    );
+    File.Copy(
+      Path.Combine(Environment.GetEnvironmentVariable("ADOFAI_IPC_BUNDLE"), "AdofaiIpc.Loader.dll"),
+      Path.Combine(payload, "AdofaiIpc.Loader.dll")
+    );
+    prepare.Invoke(null, new object[] { payload, temporary.Path });
+    Assert(
+      File.ReadAllText(Path.Combine(temporary.Path, "Info.json")) == rootInfo,
+      "Preparation committed the entrypoint before SDK initialization."
+    );
+    commit.Invoke(null, new object[] { payload, temporary.Path });
+    JObject info = JObject.Parse(File.ReadAllText(Path.Combine(temporary.Path, "Info.json")));
+    JObject state = JObject.Parse(File.ReadAllText(Path.Combine(temporary.Path, "Runtime", "state.json")));
+    Assert(
+      info.Value<string>("AssemblyName") == "Runtime/launchers/1.0.0/TUFReplay.SdkLauncher.dll",
+      "SDK launcher was not committed."
+    );
+    Assert(
+      state.Value<string>("Current") == version && state["Trial"].Type == JTokenType.Null,
+      "SDK runtime state was not committed."
+    );
+    Assert(
+      File.Exists(Path.Combine(temporary.Path, "Runtime", "launchers", version, "TUFReplay.SdkLauncher.dll")),
+      "Next-start launcher is absent."
+    );
+    Assert(File.ReadAllText(Path.Combine(temporary.Path, "Settings.json")) == "user settings", "Settings changed.");
+    Assert(File.ReadAllText(Path.Combine(temporary.Path, "Data", "preserve.txt")) == "user data", "User data changed.");
+    // Repeat with a restrictive read handle: equal SDK files require no replacement.
+    using FileStream held = new(
+      Path.Combine(temporary.Path, "AdofaiIpc.Loader.dll"),
+      FileMode.Open,
+      FileAccess.Read,
+      FileShare.Read
+    );
+    commit.Invoke(null, new object[] { payload, temporary.Path });
+    const string nextVersion = "1.0.1";
+    string originalLauncher = Path.Combine(
+      temporary.Path,
+      "Runtime",
+      "launchers",
+      version,
+      "TUFReplay.SdkLauncher.dll"
+    );
+    byte[] originalLauncherBytes = File.ReadAllBytes(originalLauncher);
+    using FileStream loadedLauncher = new(originalLauncher, FileMode.Open, FileAccess.Read, FileShare.Read);
+    CreateRuntime(temporary.Path, nextVersion);
+    commit.Invoke(null, new object[] { RuntimePath(temporary.Path, nextVersion), temporary.Path });
+    Assert(
+      File.ReadAllBytes(originalLauncher).SequenceEqual(originalLauncherBytes),
+      "Updating replaced the already loaded launcher."
+    );
+    Assert(
+      JObject.Parse(File.ReadAllText(Path.Combine(temporary.Path, "Info.json"))).Value<string>("AssemblyName")
+        == "Runtime/launchers/1.0.1/TUFReplay.SdkLauncher.dll",
+      "The next release did not select its versioned launcher."
+    );
+  }
+
+  private static void TestPublishedUpdaterCompatibility()
+  {
+    string baseline =
+      Environment.GetEnvironmentVariable("TUFREPLAY_LEGACY_ROOT")
+      ?? throw new InvalidOperationException("TUFREPLAY_LEGACY_ROOT must point at the published beta.4 mod.");
+    string package = Environment.GetEnvironmentVariable("TUFREPLAY_MIGRATION_PACKAGE");
+    string manifestPath = Environment.GetEnvironmentVariable("TUFREPLAY_MIGRATION_MANIFEST");
+    string oldRuntime = Path.Combine(baseline, "Runtime", "versions", "0.2.0-beta.4");
+    Assembly oldEngine = Assembly.Load(File.ReadAllBytes(Path.Combine(oldRuntime, "TUFReplay.UpdateEngine.dll")));
+    Type managerType = oldEngine.GetType("TUFReplay.UpdateEngine.UpdateManager", true);
+    using TemporaryDirectory temporary = new();
+    byte[] bytes = File.ReadAllBytes(package);
+    string manifest = File.ReadAllText(manifestPath);
+    using TestServer server = new(manifest, bytes);
+    object manager = Activator.CreateInstance(
+      managerType,
+      BindingFlags.Instance | BindingFlags.NonPublic,
+      null,
+      new object[] { temporary.Path, server.BaseUrl, server.BaseUrl + "releases", true },
+      null
+    );
+    object result = managerType.GetMethod("Resolve").Invoke(manager, new object[] { "0.2.0-beta.4" });
+    string installed = (string)result.GetType().GetProperty("RuntimePath").GetValue(result);
+    string bootstrap = (string)result.GetType().GetProperty("DependencyBootstrapPath").GetValue(result);
+    Assert(Directory.Exists(installed), "The deployed old updater did not install the SDK runtime.");
+    Assert(File.Exists(bootstrap), "The deployed old updater did not return a genuine dependency bootstrap.");
+    Directory.CreateDirectory(Path.Combine(temporary.Path, "DependencyBootstrap"));
+    File.Copy(
+      Path.Combine(baseline, "DependencyBootstrap", "state.json"),
+      Path.Combine(temporary.Path, "DependencyBootstrap", "state.json")
+    );
+    ResolveEventHandler resolveUmm = (_, name) =>
+      new AssemblyName(name.Name).Name == "UnityModManager"
+        ? Assembly.LoadFrom(Environment.GetEnvironmentVariable("UNITY_MOD_MANAGER_DLL"))
+        : null;
+    AppDomain.CurrentDomain.AssemblyResolve += resolveUmm;
+    try
+    {
+      Assembly oldShim = Assembly.Load(File.ReadAllBytes(Path.Combine(baseline, "AdofaiIpc.DependencyShim.dll")));
+      MethodInfo stage = oldShim
+        .GetType("AdofaiIpc.DependencyShim.DependencyShim", true)
+        .GetMethod("StageCandidate", new[] { typeof(string), typeof(string) });
+      string stagedVersion = (string)stage.Invoke(null, new object[] { temporary.Path, bootstrap });
+      Assert(stagedVersion == "0.4.1", "The deployed old shim could not stage the genuine compatibility bootstrap.");
+    }
+    finally
+    {
+      AppDomain.CurrentDomain.AssemblyResolve -= resolveUmm;
+    }
+    Assert(
+      File.Exists(Path.Combine(installed, "TUFReplay.SdkLauncher.dll")),
+      "The deployed old updater lost the next-start launcher."
+    );
+    Assert(
+      File.Exists(Path.Combine(installed, "ipc", "manifest.json")),
+      "The deployed old updater lost the SDK bundle."
+    );
+    Type migration = typeof(RuntimeStore).Assembly.GetType("TUFReplay.BundledIpc.SdkMigration", true);
+    migration
+      .GetMethod("Prepare", BindingFlags.Static | BindingFlags.NonPublic)
+      .Invoke(null, new object[] { installed, temporary.Path });
+    File.WriteAllText(
+      Path.Combine(temporary.Path, "Runtime", "state.json"),
+      "{\"SchemaVersion\":1,\"Current\":\"0.2.0-beta.4\"}"
+    );
+    migration
+      .GetMethod("Commit", BindingFlags.Static | BindingFlags.NonPublic)
+      .Invoke(null, new object[] { installed, temporary.Path });
+    RuntimeState state = new RuntimeStore(temporary.Path).LoadAndRepair();
+    Assert(state.Current == "1.0.0", "The new launcher cannot resume the committed old-updater installation.");
   }
 
   private static void TestManifestValidation()
@@ -381,15 +541,31 @@ internal static class UpdaterTests
       string root = $"TUFReplay/Runtime/versions/{version}/";
       AddEntry(archive, root + "TUFReplay.dll", "payload");
       AddEntry(archive, root + "TUFReplay.UpdateEngine.dll", "engine");
-      AddEntry(archive, root + "AdofaiIpc.Bootstrap.dll", "dependency-bootstrap");
-      AddEntry(archive, root + "AdofaiIpc.DependencyShim.dll", "dependency-shim");
-      AddEntry(archive, root + "AdofaiIpc.Migration.dll", "migration");
-      AddEntry(
-        archive,
-        root + "AdofaiIpcBootstrap.json",
-        "{\"MinimumAdofaiIpcVersion\":\"0.3.0\",\"AssemblyName\":\"TUFReplay.Bootstrap.dll\",\"EntryMethod\":\"TUFReplay.Bootstrap.Bootstrap.Load\"}"
-      );
-      AddEntry(archive, root + "Info.json", $"{{\"Version\":\"{version}\",\"BuildFlavor\":\"{buildFlavor}\"}}");
+      foreach (
+        string file in new[]
+        {
+          "AdofaiIpc.Contracts.dll",
+          "AdofaiIpc.Loader.dll",
+          "ipc/AdofaiIpc.Runtime.dll",
+          "ipc/manifest.json",
+        }
+      )
+      {
+        ZipArchiveEntry bundled = archive.CreateEntry(root + file);
+        using Stream output = bundled.Open();
+        using Stream input = File.OpenRead(
+          Path.Combine(
+            Environment.GetEnvironmentVariable("ADOFAI_IPC_BUNDLE")
+              ?? throw new InvalidOperationException("Missing IPC bundle test input."),
+            file
+          )
+        );
+        input.CopyTo(output);
+      }
+      using (Stream output = archive.CreateEntry(root + "TUFReplay.SdkLauncher.dll").Open())
+      using (Stream input = File.OpenRead(typeof(RuntimeStore).Assembly.Location))
+        input.CopyTo(output);
+      AddEntry(archive, root + "Info.json", RuntimeInfo(version, buildFlavor));
       if (includeResources)
       {
         AddEntry(archive, root + "Helpers/mac/helper.app/Contents/MacOS/helper", "helper", executable: true);
@@ -441,11 +617,34 @@ internal static class UpdaterTests
     Directory.CreateDirectory(path);
     File.WriteAllText(Path.Combine(path, "TUFReplay.dll"), "payload");
     File.WriteAllText(Path.Combine(path, "TUFReplay.UpdateEngine.dll"), "engine");
-    File.WriteAllText(
-      Path.Combine(path, "Info.json"),
-      $"{{\"Version\":\"{version}\",\"BuildFlavor\":\"{buildFlavor}\"}}"
-    );
+    File.WriteAllText(Path.Combine(path, "Info.json"), RuntimeInfo(version, buildFlavor));
+    File.Copy(typeof(RuntimeStore).Assembly.Location, Path.Combine(path, "TUFReplay.SdkLauncher.dll"), true);
+    string bundle = Environment.GetEnvironmentVariable("ADOFAI_IPC_BUNDLE");
+    foreach (
+      string file in new[]
+      {
+        "AdofaiIpc.Contracts.dll",
+        "AdofaiIpc.Loader.dll",
+        "ipc/AdofaiIpc.Runtime.dll",
+        "ipc/manifest.json",
+      }
+    )
+    {
+      string destination = Path.Combine(path, file);
+      Directory.CreateDirectory(Path.GetDirectoryName(destination));
+      File.Copy(Path.Combine(bundle, file), destination, true);
+    }
   }
+
+  private static string RuntimeInfo(string version, string flavor) =>
+    new JObject
+    {
+      ["Id"] = "TUFReplay",
+      ["Version"] = version,
+      ["BuildFlavor"] = flavor,
+      ["AssemblyName"] = "TUFReplay.SdkLauncher.dll",
+      ["EntryMethod"] = "TUFReplay.Bootstrap.Bootstrap.Load",
+    }.ToString();
 
   private static void WriteLauncherInfo(string installPath, string version, string buildFlavor)
   {

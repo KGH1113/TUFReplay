@@ -1,0 +1,119 @@
+import { describe, expect, test } from "bun:test";
+import { changeCameraCrop, displayCameraCrop, FULL_CAMERA_CROP } from "@/models/webcam/camera-crop";
+
+describe("camera crop geometry", () => {
+  test("moves a crop without changing its size and keeps it in the source image", () => {
+    const crop = { x: 0.1, y: 0.2, width: 0.6, height: 0.5 };
+    expect(changeCameraCrop(crop, "move", 1, -1)).toEqual({
+      x: 0.4,
+      y: 0,
+      width: 0.6,
+      height: 0.5,
+    });
+    expect(changeCameraCrop(FULL_CAMERA_CROP, "move", 0.4, 0.4)).toEqual(FULL_CAMERA_CROP);
+  });
+
+  test.each([
+    "nw",
+    "ne",
+    "sw",
+    "se",
+  ] as const)("anchors the opposite corner while resizing %s", (handle) => {
+    const crop = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
+    const result = changeCameraCrop(crop, handle, 0.1, -0.1);
+    expect(result.width).toBeCloseTo(handle.endsWith("w") ? 0.5 : 0.7);
+    expect(result.height).toBeCloseTo(handle.startsWith("n") ? 0.7 : 0.5);
+    expect(handle.endsWith("w") ? result.x + result.width : result.x).toBeCloseTo(
+      handle.endsWith("w") ? 0.8 : 0.2,
+    );
+    expect(handle.startsWith("n") ? result.y + result.height : result.y).toBeCloseTo(
+      handle.startsWith("n") ? 0.8 : 0.2,
+    );
+  });
+
+  test("cannot invert a crop or resize outside the image", () => {
+    const result = changeCameraCrop(FULL_CAMERA_CROP, "nw", 4, 4);
+    expect(result.width).toBeCloseTo(0.05);
+    expect(result.height).toBeCloseTo(0.05);
+    expect(changeCameraCrop(FULL_CAMERA_CROP, "se", 4, 4)).toEqual(FULL_CAMERA_CROP);
+  });
+
+  test.each([
+    "n",
+    "s",
+    "w",
+    "e",
+  ] as const)("resizes %s along one axis and anchors the opposite edge", (handle) => {
+    const crop = { x: 0.2, y: 0.2, width: 0.6, height: 0.6 };
+    const result = changeCameraCrop(crop, handle, 0.1, -0.1);
+    if (handle === "n" || handle === "s") {
+      expect(result.x).toBe(crop.x);
+      expect(result.width).toBeCloseTo(crop.width);
+      expect(result.height).toBeCloseTo(handle === "n" ? 0.7 : 0.5);
+      expect(handle === "n" ? result.y + result.height : result.y).toBeCloseTo(
+        handle === "n" ? 0.8 : 0.2,
+      );
+    } else {
+      expect(result.y).toBe(crop.y);
+      expect(result.height).toBeCloseTo(crop.height);
+      expect(result.width).toBeCloseTo(handle === "w" ? 0.5 : 0.7);
+      expect(handle === "w" ? result.x + result.width : result.x).toBeCloseTo(
+        handle === "w" ? 0.8 : 0.2,
+      );
+    }
+  });
+
+  test.each([
+    "n",
+    "s",
+    "w",
+    "e",
+  ] as const)("clamps %s to the source image and minimum crop size", (handle) => {
+    const inward = handle === "n" || handle === "w" ? 4 : -4;
+    const crop = changeCameraCrop(FULL_CAMERA_CROP, handle, inward, inward);
+    const horizontal = handle === "w" || handle === "e";
+    expect(horizontal ? crop.width : crop.height).toBeCloseTo(0.05);
+    expect(horizontal ? crop.height : crop.width).toBeCloseTo(1);
+    expect(changeCameraCrop(FULL_CAMERA_CROP, handle, -inward, -inward)).toEqual(FULL_CAMERA_CROP);
+  });
+
+  test("edge editing on a flipped preview retains the opposite source edge", () => {
+    const source = { x: 0.1, y: 0.2, width: 0.6, height: 0.5 };
+    const preview = displayCameraCrop(source, true, true);
+    const horizontal = displayCameraCrop(changeCameraCrop(preview, "w", 0.1, 0.4), true, true);
+    expect(horizontal.x).toBeCloseTo(source.x);
+    expect(horizontal.width).toBeCloseTo(0.5);
+    expect(horizontal.y).toBeCloseTo(source.y);
+    expect(horizontal.height).toBeCloseTo(source.height);
+    const vertical = displayCameraCrop(changeCameraCrop(preview, "n", 0.4, 0.1), true, true);
+    expect(vertical.y).toBeCloseTo(source.y);
+    expect(vertical.height).toBeCloseTo(0.4);
+    expect(vertical.x).toBeCloseTo(source.x);
+    expect(vertical.width).toBeCloseTo(source.width);
+  });
+
+  test("mirrored editing saves stable source coordinates", () => {
+    const source = { x: 0.1, y: 0.2, width: 0.6, height: 0.5 };
+    const display = displayCameraCrop(source, true);
+    expect(display.x).toBeCloseTo(0.3);
+    const moved = displayCameraCrop(changeCameraCrop(display, "move", 0.1, 0), true);
+    expect(moved.x).toBeCloseTo(0);
+    expect(moved.width).toBe(source.width);
+    const resized = displayCameraCrop(changeCameraCrop(display, "ne", -0.1, 0), true);
+    expect(resized.x).toBeCloseTo(0.2);
+    expect(resized.width).toBeCloseTo(0.5);
+    expect(displayCameraCrop(display, true).x).toBeCloseTo(source.x);
+  });
+});
+
+test("vertical and combined flip preserve source coordinates through crop edits", () => {
+  const crop = { x: 0.2, y: 0.1, width: 0.5, height: 0.6 };
+  for (const horizontal of [false, true])
+    for (const vertical of [false, true]) {
+      const displayed = displayCameraCrop(crop, horizontal, vertical);
+      const restored = displayCameraCrop(displayed, horizontal, vertical);
+      expect(restored.x).toBeCloseTo(crop.x);
+      expect(restored.y).toBeCloseTo(crop.y);
+      expect(displayed.y).toBeCloseTo(vertical ? 0.3 : 0.1);
+    }
+});

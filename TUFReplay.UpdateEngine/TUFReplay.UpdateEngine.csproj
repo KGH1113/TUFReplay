@@ -22,4 +22,8 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../TUFReplay.Bootstrap/BundledIpcFiles.cs" Link="BundledIpcFiles.cs" />
+    <Compile Include="../TUFReplay.Bootstrap/SdkMigration.cs" Link="SdkMigration.cs" />
+  </ItemGroup>
 </Project>

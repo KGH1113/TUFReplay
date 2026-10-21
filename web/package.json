@@ -8,14 +8,16 @@
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "bun test",
-    "format": "biome format --write .",
+    "format": "biome check --write .",
     "format:check": "biome format .",
     "biome:check": "biome check .",
-    "build": "vite build",
-    "preview": "vite preview"
+    "build": "bun scripts/verify-ipc-sdk.ts --write-metadata && vite build",
+    "preview": "vite preview",
+    "ipc:check": "bun scripts/verify-ipc-sdk.ts"
   },
   "dependencies": {
-    "@adofai-ipc/client": "0.4.1",
+    "adofai-ipc": "2.1.0",
+    "@tuf-replay/ipc": "file:vendor/tuf-replay-ipc",
     "@fontsource-variable/figtree": "^5.2.10",
     "@hugeicons/core-free-icons": "4.1.4",
     "@hugeicons/react": "^1.1.6",

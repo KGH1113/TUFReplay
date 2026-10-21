@@ -4,6 +4,8 @@ public class ReplayMetadata
 {
   public int metadataVersion;
   public int? tufLevelId;
+  public string startedAtUtc;
+  public string endedAtUtc;
   public double? gameplayStartSongPosition;
   public long? wonTimeUs;
   public long? terminalTimeUs;
@@ -13,10 +15,14 @@ public class ReplayMetadata
   public float? pitchSpeedMultiplier;
   public float? effectivePitch;
   public string judgmentSystem;
+  public string hitMarginLimit;
   public string pitchSource;
   public string inputTimeBase;
   public string inputFormat;
   public string inputCapture;
   public string inputKeySpace;
   public string inputNativePlatform;
+  public long inputInvalidAnchors;
+  public long inputDiscontinuities;
+  public string inputLastDiscontinuity;
 }

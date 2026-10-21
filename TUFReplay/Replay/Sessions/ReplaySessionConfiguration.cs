@@ -149,6 +149,22 @@ public static partial class ReplaySessionService
     _activeContext.ReplayJudgmentDifficultyApplied = true;
   }
 
+  public static void ApplyReplayHitMarginLimitNow()
+  {
+    if (_activeContext == null)
+      return;
+    string recorded = _activeContext.Meta?.hitMarginLimit;
+    if (string.IsNullOrEmpty(recorded) || !Enum.TryParse(recorded, false, out HitMarginLimit limit))
+      return;
+    if (!Enum.IsDefined(typeof(HitMarginLimit), limit))
+      return;
+
+    if (!_activeContext.ReplayHitMarginLimitApplied)
+      _activeContext.OriginalHitMarginLimit = (int)GCS.hitMarginLimit;
+    GCS.hitMarginLimit = limit;
+    _activeContext.ReplayHitMarginLimitApplied = true;
+  }
+
   private static void RestoreReplayPitch()
   {
     if (_activeContext?.ReplayPitchApplied != true || !_activeContext.OriginalLevelPitchPercent.HasValue)
@@ -181,5 +197,14 @@ public static partial class ReplaySessionService
 
     GCS.difficulty = (Difficulty)_activeContext.OriginalJudgmentDifficulty.Value;
     _activeContext.ReplayJudgmentDifficultyApplied = false;
+  }
+
+  private static void RestoreReplayHitMarginLimit()
+  {
+    if (_activeContext?.ReplayHitMarginLimitApplied != true || !_activeContext.OriginalHitMarginLimit.HasValue)
+      return;
+
+    GCS.hitMarginLimit = (HitMarginLimit)_activeContext.OriginalHitMarginLimit.Value;
+    _activeContext.ReplayHitMarginLimitApplied = false;
   }
 }

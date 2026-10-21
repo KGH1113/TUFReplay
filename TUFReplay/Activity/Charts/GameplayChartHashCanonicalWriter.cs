@@ -135,10 +135,7 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
 
   private void WriteFloat(float value)
   {
-    byte[] bytes = BitConverter.GetBytes(value);
-    if (BitConverter.IsLittleEndian)
-      Array.Reverse(bytes);
-    _payload.Write(bytes, 0, bytes.Length);
+    WriteInt(BitConverter.SingleToInt32Bits(value));
   }
 
   private static float NormalizeAngle(float value)

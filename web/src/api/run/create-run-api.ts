@@ -1,62 +1,31 @@
-import type { RunApi } from "@/api/run/run-api";
-import {
-  recordingDeleteResultDtoSchema,
-  recordingDownloadTicketDtoSchema,
-  recordingKeepResultDtoSchema,
-  runDeleteResultDtoSchema,
-} from "@/schemas/activity/activity-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
-
-export function createRunApi(clients: AdofaiIpcClients): RunApi {
+import { callRecorder } from "@/api/recorder-call";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
+import type { RunApi } from "./run-api";
+export function createRunApi(clients: LocalAppChannels): RunApi {
   return {
-    async prepareMicrophoneRecordingDownload(runId) {
-      const ticket = await callAdofaiIpc(
-        clients.namespace,
-        "microphone.recording.export",
-        { runId },
-        recordingDownloadTicketDtoSchema,
-      );
-      const url = new URL(ticket.Url);
-      if (
-        url.protocol !== "http:" ||
-        url.hostname !== "127.0.0.1" ||
-        Number(url.port) < 32145 ||
-        Number(url.port) > 32155 ||
-        url.username !== "" ||
-        url.password !== "" ||
-        url.search !== "" ||
-        url.hash !== "" ||
-        !/^\/ipc\/download\/[A-Za-z0-9_-]+$/.test(url.pathname)
-      )
-        throw new Error("Invalid local microphone download URL.");
-      return ticket.Url;
-    },
+    prepareMicrophoneRecordingDownload: (runId) =>
+      callRecorder(clients, (mod) => mod.exportMicrophoneRecording({ runId })),
+    prepareCameraRecordingDownload: (runId) =>
+      callRecorder(clients, (mod) => mod.exportCameraRecording({ runId })),
     async deleteRun(runId) {
-      const result = await callAdofaiIpc(
-        clients.namespace,
-        "activity.run.delete",
-        { runId },
-        runDeleteResultDtoSchema,
-      );
-      return { runId: result.RunId, changed: result.Deleted };
+      const result = await callRecorder(clients, (mod) => mod.removeRun({ runId }));
+      return { runId: result.runId, changed: result.deleted };
     },
     async deleteMicrophoneRecording(runId) {
-      const result = await callAdofaiIpc(
-        clients.namespace,
-        "microphone.recording.delete",
-        { runId },
-        recordingDeleteResultDtoSchema,
-      );
-      return { runId: result.RunId, changed: result.Deleted };
+      const result = await callRecorder(clients, (mod) => mod.removeMicrophoneRecording({ runId }));
+      return { runId: result.runId, changed: result.deleted };
     },
     async keepMicrophoneRecording(runId) {
-      const result = await callAdofaiIpc(
-        clients.namespace,
-        "microphone.recording.keep",
-        { runId },
-        recordingKeepResultDtoSchema,
-      );
-      return { runId: result.RunId, changed: result.Permanent };
+      const result = await callRecorder(clients, (mod) => mod.retainMicrophoneRecording({ runId }));
+      return { runId: result.runId, changed: result.permanent };
+    },
+    async deleteCameraRecording(runId) {
+      const result = await callRecorder(clients, (mod) => mod.removeCameraRecording({ runId }));
+      return { runId: result.runId, changed: result.deleted };
+    },
+    async keepCameraRecording(runId) {
+      const result = await callRecorder(clients, (mod) => mod.retainCameraRecording({ runId }));
+      return { runId: result.runId, changed: result.permanent };
     },
   };
 }

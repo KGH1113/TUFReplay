@@ -1,40 +1,43 @@
 import { z } from "zod";
 import type { ActivityApi } from "@/api/activity/activity-api";
+import { callRecorder, decodeRecorder } from "@/api/recorder-call";
+import {
+  toAppSessionDto,
+  toLegacyReplayStatusDto,
+  toLogicalLevelDto,
+  toRunDto,
+} from "@/api/recorder-dtos";
 import {
   mapActivityChart,
   mapActivityRun,
   mapAppSession,
   mapLogicalLevel,
 } from "@/models/activity/activity-model";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
+import type { TextDownloads } from "@/ports/text-download";
 import {
-  activityChartDtoSchema,
   activityRunDtoSchema,
   appSessionDtoSchema,
   legacyReplayStatusDtoSchema,
   logicalLevelDtoSchema,
 } from "@/schemas/activity/activity-schema";
-import { type AdofaiIpcClients, callAdofaiIpc } from "@/shared/clients/adofai-ipc-client";
 
 const PAGE_SIZE = 200;
-
-export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
+export function createActivityApi(
+  clients: LocalAppChannels,
+  downloads: TextDownloads,
+): ActivityApi {
   const listAppSessions = async (offset: number, limit: number) => {
-    const items = await callAdofaiIpc(
-      clients.namespace,
-      "activity.app-sessions.list",
-      { offset, limit },
-      z.array(appSessionDtoSchema),
+    const items = await callRecorder(clients, (mod) => mod.listAppSessions({ offset, limit }));
+    return decodeRecorder(z.array(appSessionDtoSchema), items.map(toAppSessionDto)).map(
+      mapAppSession,
     );
-    return items.map(mapAppSession);
   };
-
   return {
     async getLegacyReplayStatus() {
-      const status = await callAdofaiIpc(
-        clients.namespace,
-        "activity.legacy-replay-status.get",
-        {},
+      const status = decodeRecorder(
         legacyReplayStatusDtoSchema,
+        toLegacyReplayStatusDto(await callRecorder(clients, (mod) => mod.readLegacyReplayStatus())),
       );
       return { hasLegacyReplays: status.HasLegacyReplays };
     },
@@ -42,37 +45,36 @@ export function createActivityApi(clients: AdofaiIpcClients): ActivityApi {
     listAllAppSessions: (onPage) => loadAllPages(listAppSessions, onPage),
     async getLogicalLevel(id) {
       return mapLogicalLevel(
-        await callAdofaiIpc(
-          clients.namespace,
-          "activity.logical-level.get",
-          { id },
+        decodeRecorder(
           logicalLevelDtoSchema,
+          toLogicalLevelDto(await callRecorder(clients, (mod) => mod.readLogicalLevel({ id }))),
         ),
       );
     },
     listLogicalLevelRuns: (id, appSessionIds, onPage) =>
       loadAllPages(async (offset, limit) => {
-        const items = await callAdofaiIpc(
-          clients.namespace,
-          "activity.logical-level.runs.list",
-          { id, appSessionIds, offset, limit },
-          z.array(activityRunDtoSchema),
+        const items = await callRecorder(clients, (mod) =>
+          mod.listLogicalLevelRuns({ id, appSessionIds, offset, limit }),
         );
-        return items.map(mapActivityRun);
+        return decodeRecorder(z.array(activityRunDtoSchema), items.map(toRunDto)).map(
+          mapActivityRun,
+        );
       }, onPage),
-    async getLogicalLevelChart(id) {
-      return mapActivityChart(
-        await callAdofaiIpc(
-          clients.namespace,
-          "activity.logical-level.chart.get",
-          { id },
-          activityChartDtoSchema,
-        ),
+    async getLogicalLevelChart(id, options) {
+      const chart = await callRecorder(
+        clients,
+        (mod) => mod.readLogicalLevelChart({ id }),
+        options,
       );
+      const levelText = await downloads.readText(chart.file, options);
+      return mapActivityChart({
+        LevelSessionId: chart.levelSessionId,
+        FloorCount: chart.floorCount,
+        LevelText: levelText,
+      });
     },
   };
 }
-
 async function loadAllPages<T>(
   load: (offset: number, limit: number) => Promise<T[]>,
   onPage?: (items: T[]) => void,

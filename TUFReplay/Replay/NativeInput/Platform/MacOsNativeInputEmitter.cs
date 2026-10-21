@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using TUFReplay.Shared.NativeInput;
 
 namespace TUFReplay.Replay.NativeInput;
 
@@ -31,6 +32,22 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
     [MarshalAs(UnmanagedType.I1)] bool keyDown
   );
 
+  [StructLayout(LayoutKind.Sequential)]
+  private struct CGPoint
+  {
+    public double X;
+    public double Y;
+  }
+
+  [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
+  private static extern IntPtr CGEventCreate(IntPtr source);
+
+  [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
+  private static extern CGPoint CGEventGetLocation(IntPtr eventRef);
+
+  [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
+  private static extern IntPtr CGEventCreateMouseEvent(IntPtr source, uint type, CGPoint position, uint button);
+
   [DllImport("/System/Library/Frameworks/ApplicationServices.framework/ApplicationServices")]
   private static extern void CGEventSetFlags(IntPtr eventRef, CGEventFlags flags);
 
@@ -42,7 +59,7 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
 
   public bool IsSupported(int key)
   {
-    return key >= 0 && key <= 0x7F && !IsBlockedKey(key);
+    return key >= 0 && key < MacOsNativeInputKey.Capacity && !IsBlockedKey(key);
   }
 
   public NativeInputEmitResult EmitBatch(NativeInputEmission[] emissions, int offset, int count)
@@ -59,13 +76,15 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
         return new NativeInputEmitResult(i, -1);
 
       int nativeKey = emission.NativeCode >= 0 ? emission.NativeCode : emission.Key;
-      if (nativeKey < 0 || nativeKey > 0x7F)
+      if (nativeKey < 0 || nativeKey >= MacOsNativeInputKey.Capacity)
         return new NativeInputEmitResult(i, -1);
       CGEventFlags nextFlags =
         emission.NativeCode >= 0
           ? (CGEventFlags)emission.NativeFlags
           : GetNextModifierFlags(emission.Key, emission.Down);
-      IntPtr ev = CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)nativeKey, emission.Down);
+      IntPtr ev = MacOsNativeInputKey.IsMouseButton(nativeKey)
+        ? CreateMouseButtonEvent(nativeKey - MacOsNativeInputKey.MouseButtonBase, emission.Down)
+        : CGEventCreateKeyboardEvent(IntPtr.Zero, (ushort)nativeKey, emission.Down);
       if (ev == IntPtr.Zero)
         return new NativeInputEmitResult(i, -1);
 
@@ -87,6 +106,25 @@ public sealed class MacOsNativeInputEmitter : INativeInputEmitter
   private static bool IsBlockedKey(int key)
   {
     return key == EscapeKeyCode;
+  }
+
+  private static IntPtr CreateMouseButtonEvent(int button, bool down)
+  {
+    IntPtr current = CGEventCreate(IntPtr.Zero);
+    if (current == IntPtr.Zero)
+      return IntPtr.Zero;
+    try
+    {
+      uint type =
+        button == 0 ? (down ? 1u : 2u)
+        : button == 1 ? (down ? 3u : 4u)
+        : (down ? 25u : 26u);
+      return CGEventCreateMouseEvent(IntPtr.Zero, type, CGEventGetLocation(current), (uint)button);
+    }
+    finally
+    {
+      CFRelease(current);
+    }
   }
 
   private CGEventFlags GetNextModifierFlags(int key, bool down)

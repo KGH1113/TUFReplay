@@ -7,6 +7,8 @@ namespace TUFReplay.Unity.ReplayTimeline
   [AddComponentMenu("UI/TUFReplay/Linear Timeline Graphic")]
   public sealed class UILinearTimelineGraphic : MaskableGraphic
   {
+    private float _meshFillWidth = float.NaN;
+
     [SerializeField, Range(0f, 1f)]
     private float progress = 84f / 228f;
 
@@ -34,7 +36,9 @@ namespace TUFReplay.Unity.ReplayTimeline
         if (Mathf.Approximately(progress, clamped))
           return;
         progress = clamped;
-        SetVerticesDirty();
+        float fillWidth = GetPixelAdjustedRect().width * progress;
+        if (float.IsNaN(_meshFillWidth) || Mathf.Abs(fillWidth - _meshFillWidth) >= 0.5f)
+          SetVerticesDirty();
       }
     }
 
@@ -51,6 +55,7 @@ namespace TUFReplay.Unity.ReplayTimeline
     {
       vertexHelper.Clear();
       Rect rect = GetPixelAdjustedRect();
+      _meshFillWidth = rect.width * progress;
       if (rect.width <= 0f || rect.height <= 0f)
         return;
 
