@@ -42,7 +42,7 @@ final class CameraPreviewBuffer {
     self.width = width
     self.height = height
     length = 64 + width * height * 4
-    CameraDiagnostics.shared.record("preview.mapping.open", ["path": path, "expectedBytes": length])
+
     let descriptor = open(path, O_RDWR | O_NOFOLLOW)
     guard descriptor >= 0 else { throw CaptureError.posix("The camera preview could not be opened.") }
     defer { close(descriptor) }
@@ -54,16 +54,14 @@ final class CameraPreviewBuffer {
       throw CaptureError.posix("The camera preview metadata could not be read.")
     }
     guard info.st_size == length, (info.st_mode & S_IFMT) == S_IFREG else {
-      CameraDiagnostics.shared.record("preview.mapping.invalid", [
-        "path": path, "expectedBytes": length, "actualBytes": info.st_size, "mode": info.st_mode,
-      ])
+
       throw CaptureError.message("Invalid camera preview buffer.")
     }
     let mapped = mmap(nil, length, PROT_READ | PROT_WRITE, MAP_SHARED, descriptor, 0)
     guard let mapped, mapped != MAP_FAILED else { throw CaptureError.posix("Camera preview memory is unavailable.") }
     pointer = mapped
     renderedFrame = .allocate(byteCount: width * height * 4, alignment: 64)
-    CameraDiagnostics.shared.record("preview.mapping.ready", ["path": path, "bytes": length])
+
   }
 
   func publish(_ pixelBuffer: CVPixelBuffer, time: Double) {
@@ -97,21 +95,6 @@ final class CameraPreviewBuffer {
     OSMemoryBarrier()
     sequence += 2
     pointer.storeBytes(of: sequence, as: Int64.self)
-  }
-
-  func diagnosticState() -> [String: Any] {
-    OSMemoryBarrier()
-    let before = pointer.load(as: Int64.self)
-    let frameWidth = pointer.advanced(by: 8).load(as: Int32.self)
-    let frameHeight = pointer.advanced(by: 12).load(as: Int32.self)
-    let requested = pointer.advanced(by: 16).load(as: Int32.self)
-    OSMemoryBarrier()
-    let after = pointer.load(as: Int64.self)
-    return [
-      "sequence": after, "publishedFrames": after / 2,
-      "width": frameWidth, "height": frameHeight, "requested": requested != 0,
-      "stable": before == after && after % 2 == 0,
-    ]
   }
 
   deinit {
