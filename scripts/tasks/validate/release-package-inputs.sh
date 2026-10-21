@@ -12,6 +12,8 @@ source "$TASK_DIR/../../lib/manifests.sh"
 source "$TASK_DIR/../../lib/dependencies.sh"
 # shellcheck source=../../lib/build-metadata.sh
 source "$TASK_DIR/../../lib/build-metadata.sh"
+# shellcheck source=../../lib/ipc-bundle.sh
+source "$TASK_DIR/../../lib/ipc-bundle.sh"
 
 require_command zip
 require_command shasum
@@ -20,12 +22,7 @@ tufreplay_resolve_build_version "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" >/
 require_file "$DOTNET_EXE"
 require_dir "$ADOFAI_MANAGED"
 require_file "$UNITY_MOD_MANAGER_DLL"
-require_file "$ADOFAI_IPC_DLL"
-require_file "$ADOFAI_IPC_BOOTSTRAP_DLL"
-require_file "$ADOFAI_IPC_DEPENDENCY_SHIM_DLL"
-require_file "$ADOFAI_IPC_MIGRATION_DLL"
-require_file "$ADOFAI_IPC_INFO_JSON"
-require_file "$ADOFAI_IPC_BOOTSTRAP_LOCK"
+verify_ipc_bundle
 
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/level.adofai"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.ogg"

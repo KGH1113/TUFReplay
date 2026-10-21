@@ -1,7 +1,7 @@
-import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
+import type { IpcVersionMismatchDirection } from "@/ports/local-message-peer";
 
 interface ConnectionStatePanelCopy {
   title: string;

@@ -1,9 +1,8 @@
+using AdofaiIpc;
+
 namespace TUFReplay.Shared.Ipc;
 
 public static class IpcDomainError
 {
-  public static object Create(string code, string message)
-  {
-    return new { error = new { code, message } };
-  }
+  public static IpcCallException Create(string code, string message) => new IpcCallException(code, message);
 }

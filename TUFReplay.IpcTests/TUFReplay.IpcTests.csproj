@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RollForward>Major</RollForward>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <AdofaiIpcBundle>$(MSBuildThisFileDirectory)../vendor/adofai-ipc-runtime</AdofaiIpcBundle>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="AdofaiIpc.Contracts"><HintPath>$(AdofaiIpcBundle)/AdofaiIpc.Contracts.dll</HintPath></Reference>
+    <Reference Include="AdofaiIpc.Loader"><HintPath>$(AdofaiIpcBundle)/AdofaiIpc.Loader.dll</HintPath></Reference>
+    <Reference Include="AdofaiIpc.Runtime"><HintPath>$(AdofaiIpcBundle)/ipc/AdofaiIpc.Runtime.dll</HintPath></Reference>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <Compile Include="../TUFReplay/Shared/Ipc/Generated/*.cs" Link="Generated/%(Filename)%(Extension)" />
+    <Compile Include="../TUFReplay/Activity/Ipc/ActivityChartDto.cs" Link="ActivityChartDto.cs" />
+    <Compile Include="../TUFReplay/Activity/Ipc/ActivityChartDownloads.cs" Link="ActivityChartDownloads.cs" />
+  </ItemGroup>
+</Project>

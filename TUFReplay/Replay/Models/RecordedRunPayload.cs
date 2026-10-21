@@ -1,5 +1,8 @@
+using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using Newtonsoft.Json;
@@ -28,6 +31,7 @@ public class RecordedRunPayload
   public long InputDegradedEvents;
   public string InputDegradedReason;
   public string InputFallbackReason;
+  public string InputFailureReason;
   public long InputReceived;
   public long InputRecorded;
   public long InputRepeatDropped;
@@ -47,6 +51,7 @@ public class RecordedRunPayload
   public float? EffectivePitch;
   public float? XAccuracy;
   public RunJudgmentDifficulty? JudgmentDifficulty;
+  public string HitMarginLimit;
   public RunJudgmentSystem JudgmentSystem;
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
@@ -54,6 +59,10 @@ public class RecordedRunPayload
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
+
+  // The session seals its input/hit lists before transferring this snapshot to
+  // the writer. Scalar metadata is copied without duplicating a long recording.
+  internal RecordedRunPayload CompletedSnapshot() => (RecordedRunPayload)MemberwiseClone();
 
   public string ToActivityMetaJson()
   {
@@ -72,6 +81,7 @@ public class RecordedRunPayload
       pitchSpeedMultiplier = PitchSpeedMultiplier,
       effectivePitch = EffectivePitch,
       judgmentSystem = JudgmentSystem.ToString(),
+      hitMarginLimit = HitMarginLimit,
       pitchSource = PitchSource,
       inputFormat = NativeInputFormatV2,
       inputTimeBase = InputTimeBase,
@@ -86,6 +96,7 @@ public class RecordedRunPayload
       inputDegradedEvents = InputDegradedEvents,
       inputDegradedReason = InputDegradedReason,
       inputFallbackReason = InputFallbackReason,
+      inputFailureReason = InputFailureReason,
       inputReceived = InputReceived,
       inputRecorded = InputRecorded,
       inputRepeatDropped = InputRepeatDropped,
@@ -139,7 +150,7 @@ public class RecordedRunPayload
         .Append('\n');
     }
 
-    return Encoding.UTF8.GetBytes(builder.ToString());
+    return ToUtf8(builder);
   }
 
   public byte[] ToHitContextCsvBytes()
@@ -183,12 +194,36 @@ public class RecordedRunPayload
       builder.Append('\n');
     }
 
-    return Encoding.UTF8.GetBytes(builder.ToString());
+    return ToUtf8(builder);
+  }
+
+  private static byte[] ToUtf8(StringBuilder builder)
+  {
+    using var bytes = new MemoryStream();
+    char[] chunk = ArrayPool<char>.Shared.Rent(4096);
+    try
+    {
+      using var writer = new StreamWriter(bytes, new UTF8Encoding(false), 4096, true);
+      for (int offset = 0; offset < builder.Length; )
+      {
+        int count = Math.Min(chunk.Length, builder.Length - offset);
+        builder.CopyTo(offset, chunk, 0, count);
+        writer.Write(chunk, 0, count);
+        offset += count;
+      }
+    }
+    finally
+    {
+      ArrayPool<char>.Shared.Return(chunk);
+    }
+    return bytes.ToArray();
   }
 
   public bool TryCreateArtifact(string runId, out ReplayArtifact artifact)
   {
     artifact = null;
+    if (GetInputFailureReason() != null)
+      return false;
     long previousInputTimeUs = 0L;
     for (int i = 0; i < Inputs.Count; i++)
     {
@@ -215,5 +250,16 @@ public class RecordedRunPayload
       MetadataJson = ToActivityMetaJson(),
     };
     return true;
+  }
+
+  public string GetInputFailureReason()
+  {
+    if (!string.IsNullOrEmpty(InputFailureReason))
+      return InputFailureReason;
+    if (InputOverflowDropped > 0)
+      return ReplayUnavailableReasons.InputQueueOverflow;
+    if (InputReadFailures > 0)
+      return ReplayUnavailableReasons.InputReadFailed;
+    return string.IsNullOrEmpty(InputFallbackReason) ? null : ReplayUnavailableReasons.InputStartFailed;
   }
 }

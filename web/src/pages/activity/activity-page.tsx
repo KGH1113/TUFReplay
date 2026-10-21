@@ -2,9 +2,11 @@ import { AutoSubmissionBuildNotice } from "@/components/activity/auto-submission
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
 import { DashboardHeader } from "@/components/activity/dashboard-header";
 import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
+import { RenderComingSoonDialog } from "@/components/render/render-coming-soon-dialog";
 import { ReplayLevelChoiceDialog } from "@/components/replay/replay-level-choice-dialog";
 import { useActivityPageViewModel } from "@/hooks/activity/use-activity-page-view-model";
 import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice";
+import { useRenderComingSoon } from "@/hooks/render/use-render-coming-soon";
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { DayRail } from "@/sections/activity/day-rail";
 import { LevelStrip } from "@/sections/activity/level-strip";
@@ -12,6 +14,7 @@ import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
+  const renderNotice = useRenderComingSoon();
   const { activity, replay, actions } = viewModel;
   const legacyReplayNotice = useLegacyReplayNotice(activity.status);
 
@@ -92,6 +95,7 @@ export function ActivityPage() {
                 loading={viewModel.levelData.loading}
                 error={viewModel.levelData.error}
                 chartError={viewModel.levelData.chartError}
+                onRetry={viewModel.levelData.retry}
                 readOnly={activity.status !== "online"}
                 timeZone={viewModel.timeZone}
                 replayStatus={replay.status}
@@ -101,10 +105,14 @@ export function ActivityPage() {
                 onSelectMarker={actions.selectMarker}
                 onSelectRun={actions.selectRun}
                 onPlayReplay={actions.openReplayChoice}
+                onRender={renderNotice.show}
                 onDeleteRun={actions.deleteRun}
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
                 onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
+                onDeleteCameraRecording={actions.deleteCameraRecording}
+                onKeepCameraRecording={actions.keepCameraRecording}
+                onDownloadCameraRecording={actions.downloadCameraRecording}
               />
             )}
           </section>
@@ -126,6 +134,7 @@ export function ActivityPage() {
         open={legacyReplayNotice.open}
         onConfirm={legacyReplayNotice.confirm}
       />
+      <RenderComingSoonDialog notice={renderNotice} />
     </>
   );
 }

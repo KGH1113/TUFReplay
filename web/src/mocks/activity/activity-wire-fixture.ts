@@ -4,6 +4,7 @@ export interface ActivityLevelSessionOverview {
   LevelGroupId: string;
   AppSessionId: string;
   TufLevelId: number | null;
+  RelativeLevelPath: string | null;
   Song: string | null;
   Author: string | null;
   Artist: string | null;
@@ -21,6 +22,7 @@ export interface ActivityLevelSessionOverview {
 export interface ActivityLogicalLevelOverview {
   Id: string;
   TufLevelId: number | null;
+  RelativeLevelPath: string | null;
   Song: string | null;
   Author: string | null;
   Artist: string | null;
@@ -79,10 +81,22 @@ export interface ActivityRun {
   MicrophoneChannels: number | null;
   MicrophoneRecordingPermanent: boolean;
   MicrophoneRecordingExpiresAtUtc: string | null;
+  HasCameraRecording: boolean;
+  CameraRecordingBytes: number;
+  CameraRecordingPermanent: boolean;
+  CameraRecordingExpiresAtUtc: string | null;
   ReplayPlayable: boolean;
   ReplayUnavailableReason:
     | "legacy_engine"
     | "capture_incomplete"
+    | "input_queue_overflow"
+    | "input_tap_timeout"
+    | "input_tap_disabled"
+    | "input_event_delayed"
+    | "input_source_stopped"
+    | "input_permission_denied"
+    | "input_start_failed"
+    | "input_read_failed"
     | "unsupported_engine"
     | "unsupported_format"
     | "payload_missing"

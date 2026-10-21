@@ -29,6 +29,7 @@ const visit = (
   levelGroupId: levelGroupId,
   appSessionId: appSessionId,
   tufLevelId: 7,
+  relativeLevelPath: "song.adofai",
   song: "Same level",
   author: "Creator",
   artist: "artist",
@@ -85,6 +86,10 @@ const run = (id: string, start: number, last: number, result = "failed"): Activi
   microphoneChannels: null,
   microphoneRecordingPermanent: false,
   microphoneRecordingExpiresAtUtc: null,
+  hasCameraRecording: false,
+  cameraRecordingBytes: 0,
+  cameraRecordingPermanent: false,
+  cameraRecordingExpiresAtUtc: null,
   replayPlayable: true,
   replayUnavailableReason: null,
 });
@@ -143,6 +148,40 @@ describe("activity data", () => {
       runCount: 5,
       hiddenRunCount: 0,
     });
+    expect(day.runCount).toBe(5);
+  });
+
+  test("orders level cards by their latest opening time, not their closing time", () => {
+    const first = session("app-first", "2026-01-01T09:00:00Z");
+    const second = session("app-second", "2026-01-01T10:00:00Z");
+    first.levelSessions = [
+      visit("b-first", "logical-b", first.id, "2026-01-01T09:10:00Z", 1, "group-b"),
+      visit("a-first", "logical-a", first.id, "2026-01-01T09:20:00Z", 1, "group-a"),
+    ];
+    const bLast = visit("b-last", "logical-b", second.id, "2026-01-01T10:00:00Z", 1, "group-b");
+    bLast.closedAtUtc = "2026-01-01T11:00:00Z";
+    second.levelSessions = [
+      bLast,
+      visit("a-last", "logical-a", second.id, "2026-01-01T10:30:00Z", 1, "group-a"),
+    ];
+
+    const [day] = groupSessionsByDay([first, second], "UTC");
+    expect(day.levelSessions.map((level) => level.levelGroupId)).toEqual(["group-a", "group-b"]);
+  });
+
+  test("keeps different chart files under the same TUF ID on separate cards", () => {
+    const app = session("app", "2026-01-01T01:00:00Z");
+    const first = visit("first", "first-level", app.id, app.startedAtUtc, 2, "first-file");
+    const second = visit("second", "second-level", app.id, app.startedAtUtc, 3, "second-file");
+    second.relativeLevelPath = "EX/Merry Christmas EX.adofai";
+    app.levelSessions = [first, second];
+
+    const [day] = groupSessionsByDay([app], "UTC");
+    expect(day.levelSessions).toHaveLength(2);
+    expect(day.levelSessions.map((level) => level.relativeLevelPath)).toEqual([
+      "song.adofai",
+      "EX/Merry Christmas EX.adofai",
+    ]);
     expect(day.runCount).toBe(5);
   });
 

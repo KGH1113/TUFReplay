@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 
 import { useApiPromise } from "@/api/app-api-provider";
 import i18n from "@/i18n/i18n";
@@ -30,6 +30,22 @@ export function useMicrophoneDevices(connectionStatus: ConnectionStatus) {
     enabled: connectionStatus === "online",
     staleTime: DEVICE_REFRESH_MAX_AGE_MS,
   });
+  useEffect(() => {
+    let disposed = false;
+    let unsubscribe = () => {};
+    void apiPromise
+      .then((api) => {
+        if (!disposed)
+          unsubscribe = api.events.on("microphone.changed", (state) =>
+            queryClient.setQueryData(microphoneQueryKeys.devices, state),
+          );
+      })
+      .catch(() => {});
+    return () => {
+      disposed = true;
+      unsubscribe();
+    };
+  }, [apiPromise, queryClient]);
   const enabledMutation = useMutation({
     mutationFn: async (enabled: boolean) => (await apiPromise).microphone.setEnabled(enabled),
     onSuccess: (next) => queryClient.setQueryData(microphoneQueryKeys.devices, next),

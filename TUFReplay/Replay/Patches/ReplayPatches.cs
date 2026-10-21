@@ -180,7 +180,10 @@ public static class ReplayInputPatches
   {
     try
     {
-      return !IsActive || !ReplayTimelineHud.IsConsumingDragInput;
+      return !IsActive
+        || (
+          !ReplayTimelineHud.IsConsumingDragInput && !TUFReplay.Webcam.Playback.WebcamReplayOverlay.IsConsumingDragInput
+        );
     }
     catch (Exception exception)
     {

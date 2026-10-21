@@ -15,7 +15,7 @@ internal sealed class UnsupportedNativeInputEventSource : INativeInputEventSourc
   public void Start(Action<NativeInputTransition> onTransition)
   {
     throw new PlatformNotSupportedException(
-      "High-resolution input recording currently requires Windows WH_KEYBOARD_LL. macOS IOHID support is not implemented."
+      "Native input recording requires Windows keyboard hooks or macOS CGEvent capture."
     );
   }
 

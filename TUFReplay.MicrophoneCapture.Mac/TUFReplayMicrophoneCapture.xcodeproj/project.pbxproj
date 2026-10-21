@@ -332,6 +332,7 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TUFReplay records microphone audio alongside a run when automatic recording is enabled.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "TUFReplay keeps your camera active while camera capture is enabled and saves video only during runs.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -364,6 +365,7 @@
 				INFOPLIST_KEY_LSUIElement = YES;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "TUFReplay records microphone audio alongside a run when automatic recording is enabled.";
+				INFOPLIST_KEY_NSCameraUsageDescription = "TUFReplay keeps your camera active while camera capture is enabled and saves video only during runs.";
 				INFOPLIST_KEY_NSPrincipalClass = NSApplication;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",

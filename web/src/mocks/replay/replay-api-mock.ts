@@ -9,12 +9,25 @@ const IDLE_STATUS: ReplayStatus = {
   message: null,
 };
 
-export function createReplayApiMock(): ReplayApi {
+export function createReplayApiMock(
+  onStatus: (status: ReplayStatus) => void = () => {},
+): ReplayApi {
   let status = IDLE_STATUS;
   let startedAt = 0;
   return {
     async play(runId) {
       startedAt = Date.now();
+      for (const [delay, state] of [
+        [700, "opening_level"],
+        [1500, "waiting_for_focus"],
+        [2300, "starting"],
+        [3000, "playing"],
+      ] as const) {
+        setTimeout(() => {
+          status = { ...status, state };
+          onStatus(status);
+        }, delay);
+      }
       status = {
         ...IDLE_STATUS,
         operationId: `mock-replay-${runId}`,

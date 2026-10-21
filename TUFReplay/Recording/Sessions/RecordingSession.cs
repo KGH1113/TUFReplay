@@ -17,8 +17,8 @@ public class RecordingSession
   private long _gameplayStateCaptureTicks;
   private bool _gameplayTimelineWasAdvancing;
   private double? _wonUnscaledTime;
-  private long _lastTimelineTimeUs;
-  private bool _hasTimelineTime;
+  private bool _completed;
+  private readonly RecordingTimeline _timeline = new RecordingTimeline();
 
   public bool IsRecording { get; private set; }
   public bool IsCapturingInput { get; private set; }
@@ -53,6 +53,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
+      _completed = false;
       TufLevelId = tufLevelId;
       IsRecording = autoRecord;
       IsCapturingInput = false;
@@ -73,8 +74,7 @@ public class RecordingSession
       _gameplayStateCaptureTicks = 0L;
       _gameplayTimelineWasAdvancing = false;
       _wonUnscaledTime = null;
-      _lastTimelineTimeUs = 0L;
-      _hasTimelineTime = false;
+      _timeline.Reset();
     }
 
     RecordInputTracker.Reset();
@@ -104,7 +104,7 @@ public class RecordingSession
       IsCapturingInput = false;
       RefreshPitchLocked();
       FlushPendingNativeInputsLocked();
-      MarkTerminalLocked();
+      MarkTerminalLocked(finalizing: true);
     }
 
     RecordInputTracker.CopyDiagnosticsTo(Data);
@@ -139,6 +139,8 @@ public class RecordingSession
       RefreshPitchLocked();
       if (!Data.JudgmentDifficulty.HasValue)
         Data.JudgmentDifficulty = GetCurrentJudgmentDifficulty();
+      if (Data.HitMarginLimit == null)
+        Data.HitMarginLimit = GetCurrentHitMarginLimit();
       Data.GameInputOffsetMs = GetCurrentGameInputOffsetMs() ?? Data.GameInputOffsetMs;
       if (!_gameplayStateReached)
       {
@@ -167,13 +169,9 @@ public class RecordingSession
         ready: true,
         forceSegmentBreak: false
       );
-      long wonTimeUs = ToRecordTimeUs(wonSongPosition);
-      if (_hasTimelineTime)
-        wonTimeUs = Math.Max(_lastTimelineTimeUs, wonTimeUs);
+      long wonTimeUs = _timeline.RecordBoundary(ToRecordTimeUs(wonSongPosition));
       Data.WonTimeUs = wonTimeUs;
       _wonUnscaledTime = RecordingClock.CurrentUnscaledTime();
-      _lastTimelineTimeUs = wonTimeUs;
-      _hasTimelineTime = true;
       _previousInputAnchor = new InputTimelineAnchor(wonCaptureTicks, wonTimeUs, 1d);
       Data.InputDiscontinuities++;
       Data.InputLastDiscontinuity = "won";
@@ -214,7 +212,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording)
+      if (!IsRecording || _completed)
         return;
 
       if (!Data.GameplayStartSongPosition.HasValue)
@@ -242,7 +240,7 @@ public class RecordingSession
 
     lock (_lock)
     {
-      if (!IsRecording)
+      if (!IsRecording || _completed)
         return 0;
 
       for (int i = 0; i < inputs.Length; i++)
@@ -264,7 +262,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || !IsCapturingInput)
+      if (!IsRecording || !IsCapturingInput || _completed)
         return;
 
       long durationTicks = Math.Max(0L, postfixCaptureTicks - prefixCaptureTicks);
@@ -305,9 +303,9 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording)
+      if (!IsRecording || _completed)
         return;
-      hitContext.TimeUs = Math.Max(0L, CurrentTimelineTimeUsLocked());
+      hitContext.TimeUs = _timeline.RecordHit(CurrentTimelineTimeUsLocked());
       RefreshNoFailModeLocked();
       Data.HitContexts.Add(hitContext);
     }
@@ -317,7 +315,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.HitContexts.Count == 0)
+      if (!IsRecording || _completed || Data.HitContexts.Count == 0)
         return;
       Data.HitContexts.RemoveAt(Data.HitContexts.Count - 1);
     }
@@ -327,7 +325,7 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.HitContexts.Count == 0)
+      if (!IsRecording || _completed || Data.HitContexts.Count == 0)
         return;
 
       int index = Data.HitContexts.Count - 1;
@@ -339,21 +337,31 @@ public class RecordingSession
 
   public RunRecord CompleteRunRecord(RunRecord run, int? lastTile, string result)
   {
+    RecordedRunPayload completed = CompleteRunPayload(run, lastTile, result);
+    return completed == null ? null : RecordingPayloadBuilder.Apply(run, completed);
+  }
+
+  public RecordedRunPayload CompleteRunPayload(RunRecord run, int? lastTile, string result)
+  {
     lock (_lock)
     {
       if (run == null)
         return null;
 
+      FlushPendingNativeInputsLocked();
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
       Data.XAccuracy = GetXAccuracy();
       CaptureJudgmentStats(Data);
-      MarkTerminalLocked();
+      MarkTerminalLocked(finalizing: true);
 
       run.EndedAtUtc = Data.EndedAtUtc ?? DateTime.UtcNow.ToString("O");
       run.LastTile = lastTile;
       run.Result = result ?? "unknown";
-      return RecordingPayloadBuilder.Apply(run, Data);
+      run.InputCount = Data.Inputs.Count;
+      run.HitContextCount = Data.HitContexts.Count;
+      _completed = true;
+      return Data.CompletedSnapshot();
     }
   }
 
@@ -560,6 +568,19 @@ public class RecordingSession
     }
   }
 
+  private static string GetCurrentHitMarginLimit()
+  {
+    try
+    {
+      HitMarginLimit limit = GCS.hitMarginLimit;
+      return Enum.IsDefined(typeof(HitMarginLimit), limit) ? limit.ToString() : null;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
   private void ObserveInputAnchorLocked(
     long captureTicks,
     double songPosition,
@@ -678,18 +699,21 @@ public class RecordingSession
       timeUs = ToRecordTimeUs(RecordingClock.CurrentSongPosition());
     }
 
-    return _hasTimelineTime ? Math.Max(_lastTimelineTimeUs, timeUs) : timeUs;
+    return _timeline.Clamp(timeUs);
   }
 
-  private void MarkTerminalLocked()
+  private void MarkTerminalLocked(bool finalizing = false)
   {
-    if (Data.TerminalTimeUs.HasValue)
+    if (Data.TerminalTimeUs.HasValue && !finalizing)
       return;
 
-    Data.TerminalTimeUs = CurrentTimelineTimeUsLocked();
-    _lastTimelineTimeUs = Data.TerminalTimeUs.Value;
-    _hasTimelineTime = true;
-    Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+    // Stopping capture drains native events and the final hit can finish after
+    // Fail committed its boundary. Include those actual events, without adding
+    // time spent on the death screen or waiting to return to the editor.
+    long terminalTimeUs = _timeline.RecordTerminal(Data.TerminalTimeUs, CurrentTimelineTimeUsLocked());
+    if (Data.TerminalTimeUs != terminalTimeUs)
+      Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+    Data.TerminalTimeUs = terminalTimeUs;
   }
 
   private void MapPendingNativeInputsLocked(InputTimelineAnchor current, bool discontinuity)
@@ -743,6 +767,8 @@ public class RecordingSession
 
   private void FlushPendingNativeInputsLocked()
   {
+    if (_completed)
+      return;
     if (_pendingNativeInputs.Count == 0)
       return;
     if (!_previousInputAnchor.HasValue)
@@ -790,10 +816,7 @@ public class RecordingSession
 
   private void AddInputLocked(long timeUs, int key, RecordInputFlags flags, int nativeCode = -1, ulong nativeFlags = 0)
   {
-    if (_hasTimelineTime)
-      timeUs = Math.Max(_lastTimelineTimeUs, timeUs);
-    _lastTimelineTimeUs = timeUs;
-    _hasTimelineTime = true;
+    timeUs = _timeline.RecordInput(timeUs);
     Data.Inputs.Add(new RecordedInput(timeUs, key, flags, nativeCode, nativeFlags));
   }
 

@@ -58,6 +58,7 @@ export function mapLevelSession(dto: LevelSessionDto) {
     levelGroupId: dto.LevelGroupId,
     appSessionId: dto.AppSessionId,
     tufLevelId: dto.TufLevelId,
+    relativeLevelPath: dto.RelativeLevelPath ?? null,
     song: dto.Song,
     author: dto.Author,
     artist: dto.Artist,
@@ -77,6 +78,7 @@ export function mapLogicalLevel(dto: LogicalLevelDto) {
   return {
     id: dto.Id,
     tufLevelId: dto.TufLevelId,
+    relativeLevelPath: dto.RelativeLevelPath ?? null,
     song: dto.Song,
     author: dto.Author,
     artist: dto.Artist,
@@ -135,6 +137,10 @@ export function mapActivityRun(dto: ActivityRunDto) {
     microphoneChannels: dto.MicrophoneChannels,
     microphoneRecordingPermanent: dto.MicrophoneRecordingPermanent,
     microphoneRecordingExpiresAtUtc: dto.MicrophoneRecordingExpiresAtUtc,
+    hasCameraRecording: dto.HasCameraRecording,
+    cameraRecordingBytes: dto.CameraRecordingBytes,
+    cameraRecordingPermanent: dto.CameraRecordingPermanent,
+    cameraRecordingExpiresAtUtc: dto.CameraRecordingExpiresAtUtc,
     replayPlayable: dto.ReplayPlayable,
     replayUnavailableReason: dto.ReplayUnavailableReason,
   };

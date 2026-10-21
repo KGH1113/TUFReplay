@@ -1,6 +1,11 @@
 import type { AppApi } from "@/api/app-api";
+import { createAppEventSource } from "@/application/event-source";
 import { createActivityWireFixture } from "@/mocks/activity/activity-api-fixture";
+import { createDownloadsApiMock } from "@/mocks/downloads/create-downloads-api-mock";
+import { createRenderApiMock } from "@/mocks/render/create-render-api-mock";
 import { createReplayApiMock } from "@/mocks/replay/replay-api-mock";
+import { createWebcamApiMock } from "@/mocks/webcam/create-webcam-api-mock";
+import { mockCameraRecording } from "@/mocks/webcam/mock-camera-recording";
 import {
   mapActivityChart,
   mapActivityRun,
@@ -32,7 +37,10 @@ import {
 
 export function createMockApi(): AppApi {
   const fixture = createActivityWireFixture();
+  const source = createAppEventSource();
+  let activityRevision = 0;
   return {
+    events: source.events,
     health: {
       async get() {
         return mapHealth(healthDtoSchema.parse(await fixture.health()));
@@ -72,7 +80,19 @@ export function createMockApi(): AppApi {
       },
     },
     run: {
-      async prepareMicrophoneRecordingDownload() {
+      async prepareCameraRecordingDownload(runId) {
+        fixture.assertCameraRecording(runId);
+        return mockRecordingDownload(mockCameraRecording(), `tufreplay-${runId}-camera.mp4`);
+      },
+      async deleteCameraRecording(runId) {
+        const result = await fixture.deleteCameraRecording(runId);
+        return { runId: result.RunId, changed: result.Deleted };
+      },
+      async keepCameraRecording(runId) {
+        const result = await fixture.keepCameraRecording(runId);
+        return { runId: result.RunId, changed: result.Permanent };
+      },
+      async prepareMicrophoneRecordingDownload(runId) {
         const header = new Uint8Array(44);
         const view = new DataView(header.buffer);
         const writeText = (offset: number, value: string) => {
@@ -90,7 +110,10 @@ export function createMockApi(): AppApi {
         view.setUint16(32, 2, true);
         view.setUint16(34, 16, true);
         writeText(36, "data");
-        return URL.createObjectURL(new Blob([header], { type: "audio/wav" }));
+        return mockRecordingDownload(
+          new Blob([header], { type: "audio/wav" }),
+          `tufreplay-${runId}-microphone.wav`,
+        );
       },
       async deleteRun(runId) {
         const result = await fixture.deleteRun(runId);
@@ -105,7 +128,14 @@ export function createMockApi(): AppApi {
         return { runId: result.RunId, changed: result.Permanent };
       },
     },
-    replay: createReplayApiMock(),
+    replay: createReplayApiMock((status) => source.emit("replay.changed", status)),
+    webcam: createWebcamApiMock((state) => {
+      source.emit("webcam.changed", state);
+      if (fixture.setCameraRetentionDays(state.retentionDays))
+        source.emit("activity.changed", { revision: ++activityRevision, runId: null });
+    }),
+    downloads: createDownloadsApiMock((state) => source.emit("downloads.changed", state)),
+    render: createRenderApiMock(source.emit),
     microphone: {
       async getDevices() {
         return mapMicrophoneDevicesState(
@@ -186,6 +216,22 @@ export function createMockApi(): AppApi {
           calibrationStatusDtoSchema.parse(await fixture.closeMicrophoneCalibration(operationId)),
         );
       },
+    },
+  };
+}
+
+function mockRecordingDownload(blob: Blob, name: string) {
+  let used = false;
+  return {
+    async download() {
+      if (used) throw new Error("Request the recording again before downloading it.");
+      used = true;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     },
   };
 }

@@ -15,5 +15,5 @@ export interface ActivityApi {
     appSessionIds: string[],
     onPage?: (items: ActivityRun[]) => void,
   ): Promise<ActivityRun[]>;
-  getLogicalLevelChart(id: string): Promise<ActivityChart>;
+  getLogicalLevelChart(id: string, options?: { signal?: AbortSignal }): Promise<ActivityChart>;
 }

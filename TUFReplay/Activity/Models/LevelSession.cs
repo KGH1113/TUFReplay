@@ -47,6 +47,7 @@ public sealed class LogicalLevelOverview
 {
   public string Id;
   public int? TufLevelId;
+  public string LevelPath;
   public string Song;
   public string Author;
   public string Artist;

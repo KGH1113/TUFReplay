@@ -11,10 +11,23 @@ Usage: ./scripts/run.sh <command>
 
 Commands:
   build       Build, test, and install the mod
+  mod-check   Build and test the mod without installing it
+  mod-format  Format changed C# files (use 'mod-format check' to verify)
+  camera-copy-bench  Compare camera frame copy paths in standalone Mono
   package     Build the release package and metadata
+  web-test    Run web unit and contract tests (optional test filters)
+  web-format  Format the companion web source
+  web-lock    Refresh the local web dependency lockfile
+  ipc-generate Generate the typed C# and TS IPC contract
+  ipc-check   Verify generated IPC code and the pinned npm SDK
+  ipc-test    Test the generated contract against the bundled IPC runtime
+  migration-check Test the release ZIP with the actually published beta.4 updater
   web-check   Run web tests, typecheck, Biome, and production build
-  mac-helper  Build and verify the macOS microphone helper
+  web-dev     Run the companion web development server (extra arguments go to Vite)
+  mac-helper  Build and verify the macOS microphone/webcam helper
   unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
+  source-format Format C# source with the repository tool
+  source-check  Check C# source formatting
   check       Validate all shell scripts
   help        Show this help
 USAGE
@@ -25,17 +38,61 @@ case "$command_name" in
   build)
     exec "$SCRIPTS_DIR/workflows/build-install.sh"
     ;;
+  mod-check)
+    exec "$SCRIPTS_DIR/workflows/build-install.sh" --no-install
+    ;;
+  mod-format)
+    shift
+    exec bash "$SCRIPTS_DIR/tasks/dev/mod-format.sh" "$@"
+    ;;
+  camera-copy-bench)
+    shift
+    exec bash "$SCRIPTS_DIR/tasks/dev/camera-copy-bench.sh" "$@"
+    ;;
   package)
     exec "$SCRIPTS_DIR/workflows/package-release.sh"
     ;;
+  web-test)
+    exec bun run --cwd "$SCRIPTS_DIR/../web" test "${@:2}"
+    ;;
+  web-format)
+    exec bun run --cwd "$SCRIPTS_DIR/../web" format
+    ;;
+  web-lock)
+    exec bun install --cwd "$SCRIPTS_DIR/../web" --lockfile-only
+    ;;
+  ipc-check)
+    bash "$SCRIPTS_DIR/tasks/verify/ipc-generated.sh" --check
+    exec bun run --cwd "$SCRIPTS_DIR/../web" ipc:check
+    ;;
+  ipc-generate)
+    shift
+    exec bash "$SCRIPTS_DIR/tasks/verify/ipc-generated.sh" "$@"
+    ;;
+  ipc-test)
+    exec bash "$SCRIPTS_DIR/tasks/verify/ipc-runtime.sh"
+    ;;
+  migration-check)
+    exec bash "$SCRIPTS_DIR/tasks/verify/sdk-migration.sh"
+    ;;
   web-check)
     run_task "Verify companion web workspace" "$SCRIPTS_DIR/tasks/verify/web.sh"
+    ;;
+  web-dev)
+    shift
+    exec bash "$SCRIPTS_DIR/tasks/dev/web.sh" "$@"
     ;;
   mac-helper)
     run_task "Build macOS microphone helper" "$SCRIPTS_DIR/tasks/build/macos-microphone-helper.sh"
     ;;
   unity-ui)
     run_task "Build Unity replay timeline bundles" "$SCRIPTS_DIR/tasks/build/unity-ui.sh"
+    ;;
+  source-format|source-check)
+    source "$SCRIPTS_DIR/lib/context.sh"
+    format_action="format"
+    if [[ "$command_name" == "source-check" ]]; then format_action="check"; fi
+    exec "$DOTNET_EXE" csharpier "$format_action" "$TUFREPLAY_PROJECT_ROOT/TUFReplay" "$TUFREPLAY_PROJECT_ROOT/TUFReplay.Tests"
     ;;
   check)
     exec "$SCRIPTS_DIR/workflows/check-scripts.sh"

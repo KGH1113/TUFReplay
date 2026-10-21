@@ -319,6 +319,7 @@ public static partial class ReplaySessionService
 
     context.NativeInputPlayer?.SkipTo(targetTimeUs);
     context.MicrophonePlayer?.Stop();
+    context.WebcamPlayer?.Stop();
     ResetReplayHeldInputState();
     PrepareReplayRunRestart("timeline_native_checkpoint_restart", preserveClockOrigin: true);
 
@@ -398,6 +399,7 @@ public static partial class ReplaySessionService
     ResetReplayHeldInputState();
     _activeContext.NativeInputPlayer?.ResetTo(snapshot);
     _activeContext.MicrophonePlayer?.ResetTo(snapshot);
+    _activeContext.WebcamPlayer?.ResetTo(snapshot);
     _activeContext.HitContextPlayer?.ResetToAndRebuildJudgments(ADOBase.controller, skipPassedAngles: true);
     _playbackPauseSuspended = false;
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
@@ -429,6 +431,7 @@ public static partial class ReplaySessionService
     _activeContext.NativeInputPlayer?.SkipTo(snapshot.TimelineTimeUs);
     _activeContext.MicrophonePlayer?.ResetTo(snapshot);
     _activeContext.MicrophonePlayer?.Tick(snapshot);
+    _activeContext.WebcamPlayer?.ResetTo(snapshot);
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
     _playbackPauseSuspended = true;
   }
@@ -444,6 +447,7 @@ public static partial class ReplaySessionService
     _activeContext.NativeInputPlayer?.ResetTo(snapshot);
     _activeContext.MicrophonePlayer?.ResetTo(snapshot);
     _activeContext.MicrophonePlayer?.Tick(snapshot);
+    _activeContext.WebcamPlayer?.ResetTo(snapshot);
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(replayTimeUs);
   }
 

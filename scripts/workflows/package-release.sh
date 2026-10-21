@@ -28,7 +28,7 @@ run_task "Build mod (Release)" "$TASKS_DIR/build/mod.sh" Release
 run_task "Validate Unity/Mono compatibility" \
   "$TASKS_DIR/validate/unity-mono-compatibility.sh" \
   "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" \
-  "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.Bootstrap.dll" \
+  "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.SdkLauncher.dll" \
   "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll"
 run_task "Stage package" "$TASKS_DIR/package/stage.sh"
 run_task "Validate staged Unity/Mono compatibility" \

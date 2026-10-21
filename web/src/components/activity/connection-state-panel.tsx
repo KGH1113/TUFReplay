@@ -1,6 +1,6 @@
-import type { IpcVersionMismatchDirection } from "@adofai-ipc/client";
 import { useConnectionStatePanelViewModel } from "@/hooks/activity/use-connection-state-panel";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
+import type { IpcVersionMismatchDirection } from "@/ports/local-message-peer";
 import { Button } from "@/shared/ui/button";
 
 export function ConnectionStatePanel({

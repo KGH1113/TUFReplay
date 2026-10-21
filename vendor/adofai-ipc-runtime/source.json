@@ -1,0 +1,8 @@
+{
+  "source": "https://github.com/KGH1113/adofai-ipc",
+  "sourceRevision": "e9086112a6f85069a632a742ffaddb724a3aafc8",
+  "version": "2.1.0",
+  "contractMajor": 1,
+  "contractAssemblyVersion": "1.0.0.0",
+  "wireMajor": 3
+}

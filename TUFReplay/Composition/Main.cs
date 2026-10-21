@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
+using System.Threading.Tasks;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
 using TUFReplay.Recording.Input;
@@ -11,6 +13,7 @@ using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Settings;
 using TUFReplay.Shared.Unity;
+using TUFReplay.Webcam.Playback;
 using UnityEngine;
 using UnityModManagerNet;
 
@@ -30,6 +33,7 @@ public sealed class Main
 
   private readonly string _updateSettingsPath;
   private bool _enabled;
+  private Task _pendingActivityWrites = Task.CompletedTask;
   private static bool _showReplayInputDiagnostics;
 
   private Main(UnityModManager.ModEntry modEntry)
@@ -42,8 +46,37 @@ public sealed class Main
   {
     try
     {
-      if (AdofaiIpcMigrationBridge.PrepareAndNotify(modEntry))
-        return true;
+      string payload = System.IO.Path.GetDirectoryName(typeof(Main).Assembly.Location);
+      TUFReplay.BundledIpc.SdkMigration.Prepare(payload, modEntry.Path);
+      if (!LoadCore(modEntry))
+        return false;
+      try
+      {
+        TUFReplay.BundledIpc.SdkMigration.Commit(payload, modEntry.Path);
+        AppDomain.CurrentDomain.SetData("AdofaiIpc.SdkMigration.TUFReplay", true);
+        modEntry.Logger.Log("[SdkMigration] SDK active; standalone IPC installation is no longer required.");
+      }
+      catch (Exception exception)
+      {
+        // The payload is running. Retain the old entrypoint and IPC until a later launch retries the commit.
+        modEntry.Logger.Warning("[SdkMigration] SDK active, but entrypoint migration will retry: " + exception);
+      }
+      return true;
+    }
+    catch (Exception exception)
+    {
+      modEntry.Logger.Error("[SdkMigration] " + exception);
+      return false;
+    }
+  }
+
+  // The deployed v1 launcher enters Load directly. Keep SDK type resolution behind file preparation.
+  [MethodImpl(MethodImplOptions.NoInlining)]
+  private static bool LoadCore(UnityModManager.ModEntry modEntry)
+  {
+    try
+    {
+      IpcRuntime.Connect(modEntry.Path);
 
       Instance = new Main(modEntry);
       TUFReplaySettingStore.Initialize(System.IO.Path.Combine(Instance.InstallPath, "Settings.json"));
@@ -57,6 +90,7 @@ public sealed class Main
       modEntry.OnSaveGUI = OnSaveGUI;
 
       Instance.Enable();
+      Application.quitting += OnApplicationQuitting;
       return true;
     }
     catch (Exception exception)
@@ -78,6 +112,7 @@ public sealed class Main
 
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
+    WebcamSettingsGui.Draw();
     GUILayout.Label("Updates");
     if (TUFReplayBuildFlavor.Name == "auto-submission")
     {
@@ -144,6 +179,8 @@ public sealed class Main
     ReplayLevelOpenService.Tick();
     ReplayPlaybackCoordinator.Tick();
     ReplaySessionService.TickStartup();
+    ReplaySessionService.TickWebcamPlayback();
+    CameraFirstRunCoordinator.Tick();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }
 
@@ -186,6 +223,7 @@ public sealed class Main
     try
     {
       Instance?.Disable();
+      Instance?.FlushPendingActivityWrites();
       return true;
     }
     catch (Exception exception)
@@ -195,8 +233,28 @@ public sealed class Main
     }
     finally
     {
+      Application.quitting -= OnApplicationQuitting;
       UnityMainThread.Shutdown();
     }
+  }
+
+  private static void OnApplicationQuitting()
+  {
+    try
+    {
+      Instance?.Disable();
+      Instance?.FlushPendingActivityWrites();
+    }
+    catch (Exception exception)
+    {
+      Instance?.LogException("Recording/Shutdown", exception);
+    }
+  }
+
+  private void FlushPendingActivityWrites()
+  {
+    if (!_pendingActivityWrites.Wait(TimeSpan.FromSeconds(5)))
+      Log("[Recording] Activity persistence did not finish within the shutdown timeout.");
   }
 
   private void Enable()
@@ -227,12 +285,15 @@ public sealed class Main
 
     _enabled = false;
     Application.focusChanged -= ReplaySessionService.OnApplicationFocusChanged;
+    var recording = FeatureRegistry.Recording;
     try
     {
       ModBootstrap.Shutdown();
     }
     finally
     {
+      if (recording != null)
+        _pendingActivityWrites = Task.WhenAll(_pendingActivityWrites, recording.PendingActivityWrites);
       NativeInputUmmWindowInterlock.Reset();
       TUFReplaySettingStore.Save();
     }

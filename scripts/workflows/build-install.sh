@@ -10,6 +10,7 @@ source "$SCRIPTS_DIR/lib/context.sh"
 source "$SCRIPTS_DIR/lib/logging.sh"
 
 run_task "Validate local build inputs" "$TASKS_DIR/validate/local-build-inputs.sh"
+run_task "Verify bundled IPC v2" "$TASKS_DIR/verify/adofai-ipc.sh"
 
 if is_macos; then
   run_task "Build macOS microphone helper" "$TASKS_DIR/build/macos-microphone-helper.sh"
@@ -26,7 +27,7 @@ run_task "Build mod (Debug)" "$TASKS_DIR/build/mod.sh" Debug
 run_task "Validate Unity/Mono compatibility" \
   "$TASKS_DIR/validate/unity-mono-compatibility.sh" \
   "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" \
-  "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.Bootstrap.dll" \
+  "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.SdkLauncher.dll" \
   "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll"
 
 if is_macos; then
@@ -35,4 +36,8 @@ else
   log_skip "Run C# tests (macOS native SQLite test setup only)"
 fi
 
-run_task "Install mod" "$TASKS_DIR/install/mod.sh"
+if [[ "${1:-}" == "--no-install" ]]; then
+  log_skip "Install mod (verification only)"
+else
+  run_task "Install mod" "$TASKS_DIR/install/mod.sh"
+fi

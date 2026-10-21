@@ -30,7 +30,7 @@ FROM level_sessions l JOIN levels g ON g.id=l.level_id LEFT JOIN runs r ON r.lev
     using SqliteConnection c = DatabaseStore.OpenConnection();
     using SqliteCommand q = c.CreateCommand();
     q.CommandText =
-      @"SELECT g.id,g.tuf_level_id,g.song,g.author,g.artist,g.first_seen_at_utc,g.last_seen_at_utc,
+      @"SELECT g.id,g.tuf_level_id,g.adofai_path,g.song,g.author,g.artist,g.first_seen_at_utc,g.last_seen_at_utc,
 g.level_tile_count,count(DISTINCT l.id),count(r.id),
 coalesce(sum(CASE WHEN lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0 THEN 1 ELSE 0 END),0),
 coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile)
@@ -46,18 +46,19 @@ WHERE g.id=@id GROUP BY g.id";
     {
       Id = r.GetString(0),
       TufLevelId = DbValue.NullableInt(r, 1),
-      Song = DbValue.NullableString(r, 2),
-      Author = DbValue.NullableString(r, 3),
-      Artist = DbValue.NullableString(r, 4),
-      FirstSeenAtUtc = r.GetString(5),
-      LastSeenAtUtc = r.GetString(6),
-      LevelTileCount = r.GetInt32(7),
-      VisitCount = r.GetInt32(8),
-      RunCount = r.GetInt32(9),
-      ClearRunCount = r.GetInt32(10),
-      NoFailRunCount = r.GetInt32(11),
-      FirstStartTile = DbValue.NullableInt(r, 12),
-      LastStartTile = DbValue.NullableInt(r, 13),
+      LevelPath = r.GetString(2),
+      Song = DbValue.NullableString(r, 3),
+      Author = DbValue.NullableString(r, 4),
+      Artist = DbValue.NullableString(r, 5),
+      FirstSeenAtUtc = r.GetString(6),
+      LastSeenAtUtc = r.GetString(7),
+      LevelTileCount = r.GetInt32(8),
+      VisitCount = r.GetInt32(9),
+      RunCount = r.GetInt32(10),
+      ClearRunCount = r.GetInt32(11),
+      NoFailRunCount = r.GetInt32(12),
+      FirstStartTile = DbValue.NullableInt(r, 13),
+      LastStartTile = DbValue.NullableInt(r, 14),
       ChartAvailable = HasAvailableChart(id),
     };
   }

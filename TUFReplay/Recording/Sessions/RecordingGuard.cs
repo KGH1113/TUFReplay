@@ -8,6 +8,13 @@ public static class RecordingGuard
   {
     try
     {
+      // Offline renderers advance Unity on a fixed frame clock. Their simulated
+      // hits are playback and must never become new activity records.
+      if (UnityEngine.Time.captureFramerate > 0)
+      {
+        reason = "offline_render";
+        return false;
+      }
       if (RDC.auto)
       {
         reason = "autoplay";

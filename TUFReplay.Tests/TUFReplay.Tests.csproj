@@ -1,5 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
+    <AdofaiIpcBundle Condition="'$(AdofaiIpcBundle)' == ''"
+      >$(MSBuildThisFileDirectory)../vendor/adofai-ipc-runtime</AdofaiIpcBundle>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
     <RollForward>Major</RollForward>
@@ -7,10 +9,18 @@
     <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
   <ItemGroup>
+    <Reference Include="AdofaiIpc.Contracts">
+      <HintPath>$(AdofaiIpcBundle)/AdofaiIpc.Contracts.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
+    <Reference Include="AdofaiIpc.Loader">
+      <HintPath>$(AdofaiIpcBundle)/AdofaiIpc.Loader.dll</HintPath>
+      <Private>true</Private>
+    </Reference>
     <Reference Include="TUFReplay">
       <HintPath>$(TUFReplayDll)</HintPath>
     </Reference>
-    <Reference Include="TUFReplay.Bootstrap">
+    <Reference Include="TUFReplay.SdkLauncher">
       <HintPath>$(TUFReplayBootstrapDll)</HintPath>
     </Reference>
     <Reference Include="TUFReplay.UpdateEngine">

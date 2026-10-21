@@ -48,6 +48,9 @@ internal static class ReplayNativeInputSuite
     TestNativeInputCsvRoundTrip();
     TestInputTimelineMath();
     TestFrozenGameplayStartAnchor();
+    TestRecordingHitClockRegression();
+    TestRecordingBufferedInputTiming();
+    TestRecordingTimelineBoundariesAndReset();
     TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
@@ -59,7 +62,7 @@ internal static class ReplayNativeInputSuite
     TestNativeInputUmmWindowInterlock();
     TestWindowsNativeModifierNormalization();
     TestWindowsPhysicalStateUsesCurrentDownBit();
-    TestMacOsHidMappingAndTimestampConversion();
+    TestMacOsTimestampConversion();
     TestMicrophoneHostTimestampConversion();
     TestMacOsNativeShimAbi();
     TestUnsupportedCaptureHasNoPollingFallback();
@@ -77,6 +80,7 @@ internal static class ReplayNativeInputSuite
     TestReplayPumpClockJumpPreservesBacklog();
     TestReplayPumpCatchUpYieldBoundary();
     TestReplayPumpPartialEmissionRetry();
+    ReplayNativeInputConcurrencySuite.RunAll();
     TestPreparedReplayDoesNotEmit();
     TestMiddleStartReplayInitializesFromPlayerControl();
   }
@@ -449,6 +453,73 @@ internal static class ReplayNativeInputSuite
     Assert(Math.Abs(frozenStart - 12d) < 0.000001d, "A frozen PlayerControl interval leaked into the replay timeline.");
   }
 
+  private static void TestRecordingHitClockRegression()
+  {
+    var timeline = new RecordingTimeline();
+    var payload = new RecordedRunPayload();
+    long[] observed = { 112_144_159L, 112_143_770L, 112_143_900L, 112_150_000L };
+    long[] expected = { 112_144_159L, 112_144_159L, 112_144_159L, 112_150_000L };
+    // Reproduce the observed 389 us regression without any intervening input.
+    for (int i = 0; i < observed.Length; i++)
+    {
+      payload.HitContexts.Add(
+        new RecordedHitContext
+        {
+          CurrentFloorID = 940 + i,
+          ResolvedHitMargin = 4,
+          TimeUs = timeline.RecordHit(observed[i]),
+        }
+      );
+    }
+    List<ReplayHitContext> parsed = ReplayHitContextParser.Parse(payload.ToHitContextCsvBytes());
+    Assert(parsed.Count == expected.Length, "Clock correction dropped or reordered hit contexts.");
+    for (int i = 0; i < expected.Length; i++)
+    {
+      Assert(parsed[i].TimeUs == expected[i], "Hit clock regression was not clamped until the clock caught up.");
+      Assert(parsed[i].CurrentFloorID == 940 + i && parsed[i].ResolvedHitMargin == 4, "Hit metadata changed.");
+    }
+  }
+
+  private static void TestRecordingBufferedInputTiming()
+  {
+    var timeline = new RecordingTimeline();
+    Assert(timeline.RecordInput(-10_000L) == -10_000L, "Negative pre-roll input was lost.");
+    Assert(timeline.RecordHit(20_000L) == 20_000L, "The first hit changed time.");
+    Assert(timeline.RecordInput(15_000L) == 15_000L, "A hit pushed an earlier buffered native input forward.");
+    Assert(timeline.RecordInput(14_000L) == 15_000L, "Buffered input ordering regressed.");
+    Assert(timeline.Clamp(16_000L) == 20_000L, "Delayed native input lowered the shared timeline floor.");
+    Assert(timeline.RecordHit(19_000L) == 20_000L, "A hit regressed after delayed native input.");
+    Assert(timeline.RecordInput(25_000L) == 25_000L, "Forward native input timing changed.");
+    Assert(timeline.RecordHit(24_000L) == 25_000L, "A hit preceded an already recorded later input.");
+  }
+
+  private static void TestRecordingTimelineBoundariesAndReset()
+  {
+    var timeline = new RecordingTimeline();
+    Assert(timeline.Clamp(-10_000L) == -10_000L, "An empty timeline lost its negative time.");
+    Assert(timeline.RecordHit(-1L) == 0L, "A hit kept a negative timestamp.");
+    timeline.RecordHit(30_000L);
+    Assert(timeline.RecordBoundary(29_000L) == 30_000L, "Clear/terminal time preceded the latest hit.");
+    Assert(timeline.RecordInput(28_000L) == 30_000L, "An input crossed a committed clear/terminal boundary.");
+    Assert(timeline.RecordInput(40_000L) == 40_000L, "Post-clear input stopped advancing.");
+    Assert(timeline.RecordBoundary(39_000L) == 40_000L, "Terminal time preceded the latest input.");
+    Assert(
+      timeline.RecordTerminal(30_000L, 9_000_000L) == 40_000L,
+      "Final input draining left the committed terminal behind recorded events."
+    );
+    Assert(
+      timeline.RecordTerminal(40_000L, 9_000_000L) == 40_000L,
+      "Finalization added idle death-screen time to an already committed terminal."
+    );
+    timeline.Reset();
+    Assert(timeline.RecordInput(-5_000L) == -5_000L, "A retry retained the prior input floor.");
+    Assert(timeline.RecordHit(1_000L) == 1_000L, "A retry retained the prior hit floor.");
+    Assert(
+      timeline.RecordTerminal(null, -1_000L) == 1_000L,
+      "A fresh terminal preceded its accepted hits after a clock reset."
+    );
+  }
+
   private static void TestReplayLatenessHistogram()
   {
     var histogram = new ReplayLatenessHistogram();
@@ -752,7 +823,7 @@ internal static class ReplayNativeInputSuite
     var emitter = new CapturingEmitter();
     var pumpScheduler = new ReplayInputScheduler(inputs);
     using var pump = new ReplayNativeInputPump(pumpScheduler, emitter);
-    Assert(pump.ResetTo(0, 1d, true) == 4, "Replay emitted more than the inferred initial held-key delta.");
+    pump.ResetTo(0, 1d, true);
     Assert(emitter.WaitForBatchCount(1), "Inferred initial held keys were not emitted at replay start.");
     Assert(emitter.Snapshot()[0].Length == 4, "Replay normalized unrelated CSV keys at startup.");
   }
@@ -943,33 +1014,8 @@ internal static class ReplayNativeInputSuite
     Assert(rejected && !source.IsRunning, "Unsupported capture did not fail explicitly.");
   }
 
-  private static void TestMacOsHidMappingAndTimestampConversion()
+  private static void TestMacOsTimestampConversion()
   {
-    Assert(
-      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(4, out int a) && a == 0x00,
-      "HID A did not map to the macOS A virtual key."
-    );
-    Assert(
-      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(30, out int one) && one == 0x12,
-      "HID 1 did not map to the macOS 1 virtual key."
-    );
-    Assert(
-      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(225, out int leftShift) && leftShift == 0x38,
-      "HID left Shift mapping changed."
-    );
-    Assert(
-      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(229, out int rightShift) && rightShift == 0x3C,
-      "HID right Shift mapping changed."
-    );
-    Assert(
-      NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(231, out int rightCommand) && rightCommand == 0x36,
-      "HID right Command mapping changed."
-    );
-    Assert(
-      !NativeInputKeyCodeMapper.TryGetMacVirtualKeyFromHidUsage(0xE9, out _),
-      "Consumer-page volume usage was accepted as a keyboard key."
-    );
-
     long origin = 123_456;
     var converter = new MacOsMachTimeConverter(1_000_000, origin, 1, 1);
     long mapped = converter.ToStopwatchTicks(1_001_000_000);
@@ -995,6 +1041,11 @@ internal static class ReplayNativeInputSuite
         scale.Denominator
       );
       ulong firstSample = hostOrigin + second;
+      Assert(before.ToMachTimestamp(frequency * 21) == firstSample, "Camera boundary lost host timestamp precision.");
+      Assert(
+        after.ToMachTimestamp(frequency * 21) == firstSample,
+        "Camera boundary shifted with delayed IPC delivery."
+      );
       Assert(
         Math.Abs(before.ToStopwatchTicks(firstSample) - frequency * 21) <= 1,
         "First sample clock mapping changed."
@@ -1013,20 +1064,10 @@ internal static class ReplayNativeInputSuite
 
   private static void TestMacOsNativeShimAbi()
   {
-    Assert(
-      MacOsIoHidErrorFormatter.Format(MacOsInputError.ManagerOpen, unchecked((int)0xE00002E2u))
-        == "ManagerOpen: kIOReturnNotPermitted (decimal=-536870174, hex=0xE00002E2)",
-      "macOS IOHID error formatter did not preserve the native IOReturn."
-    );
-    Assert(
-      MacOsIoHidErrorFormatter.Format(MacOsInputError.ManagerOpen, 1234)
-        == "ManagerOpen: unknown IOReturn (decimal=1234, hex=0x000004D2)",
-      "macOS IOHID error formatter did not preserve an unknown native error."
-    );
     if (!System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(System.Runtime.InteropServices.OSPlatform.OSX))
       return;
     Assert(
-      MacOsIoHidNativeLibrary.TryLoad(out MacOsIoHidNativeLibrary library, out string failure),
+      MacOsCGEventNativeLibrary.TryLoad(out MacOsCGEventNativeLibrary library, out string failure),
       "macOS native input shim did not load: " + failure
     );
     MacOsInputAccess access = library.CheckAccess();
@@ -1035,20 +1076,24 @@ internal static class ReplayNativeInputSuite
       "macOS native input shim returned an invalid access state."
     );
     INativeInputEventSource source = NativeInputEventSourceFactory.CreatePrimary();
-    Assert(source.Name == "macos-iohid-manager-v1", "macOS factory did not select IOHID capture.");
+    Assert(source.Name == "macos-cgevent-session-v1", "macOS factory did not select CGEvent capture.");
     Assert(!source.UsesExtendedKeyState, "macOS capture enabled Windows extended-key state.");
-    if (access == MacOsInputAccess.Granted)
-    {
-      for (int i = 0; i < 3; i++)
-      {
-        source.Start(_ => { });
-        Assert(source.IsRunning, "macOS IOHID source did not start with granted permission.");
-        source.RefreshPhysicalState();
-        Assert(source.ConsumeDroppedEvents() == 0, "macOS IOHID source dropped events during idle startup.");
-        source.Stop();
-        Assert(!source.IsRunning, "macOS IOHID source remained active after stop.");
-      }
-    }
+    Assert(
+      source.SnapshotKeyCodes.Contains(128) && source.SnapshotKeyCodes.Contains(159),
+      "macOS source omitted mouse button snapshots."
+    );
+    // Code verification must not install global event taps or request access.
+    IntPtr context = library.Create();
+    Assert(context != IntPtr.Zero, "CGEvent context allocation failed.");
+    Assert(!library.IsRunning(context), "Context installed a tap before Start.");
+    Assert(library.TakeFaults(context) == MacOsCaptureFaults.None, "Fresh context contains faults.");
+    library.Destroy(context);
+    var converter = new MacOsEventTimeConverter(9_007_199_254_740_993UL, 100);
+    Assert(
+      converter.ToStopwatchTicks(9_007_200_254_740_993UL) == 100 + System.Diagnostics.Stopwatch.Frequency,
+      "CGEvent nanosecond clock mapping changed on a long-running host."
+    );
+    Assert(new MacOsNativeInputEmitter().IsSupported(128), "macOS replay omitted mouse buttons.");
   }
 
   private static void TestReplayPumpTimingAndBatching()
@@ -1150,8 +1195,7 @@ internal static class ReplayNativeInputSuite
     var scheduler = new ReplayInputScheduler(inputs);
     using var pump = new ReplayNativeInputPump(scheduler, emitter);
 
-    int restored = pump.ResetTo(-3_000_000, 1d, true);
-    Assert(restored == 31, "Pre-roll state restore did not emit exactly the currently held keys.");
+    pump.ResetTo(-3_000_000, 1d, true);
     Assert(emitter.WaitForBatchCount(1), "Pre-roll held chord was not emitted.");
     NativeInputEmission[] held = emitter.Snapshot()[0];
     Assert(held.Length == 31, "Completed or released pre-roll presses leaked into the held chord.");
@@ -1238,6 +1282,7 @@ internal static class ReplayNativeInputSuite
     using var pump = new ReplayNativeInputPump(scheduler, emitter);
     pump.ResetTo(-10_000, 1d, true);
     Assert(emitter.WaitForCallCount(2), "Partial native emission was not retried.");
+    Assert(SpinWait.SpinUntil(() => pump.Snapshot.Emitted == 3, 1000), "Emission statistics were not published.");
     ReplayNativeInputStats stats = pump.Snapshot;
     Assert(stats.Emitted == 3 && stats.FailedEvents == 0, "Tail retry did not preserve every event.");
     Assert(stats.PartialRetries == 1, "Partial native emission retry was not counted.");

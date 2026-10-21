@@ -1,254 +1,160 @@
 #include "input_core.hpp"
-
 #include <CoreFoundation/CoreFoundation.h>
 #include <CoreGraphics/CoreGraphics.h>
-#include <IOKit/hid/IOHIDManager.h>
-#include <IOKit/hidsystem/IOHIDLib.h>
 #include <dispatch/dispatch.h>
 #include <mach/mach_time.h>
 #include <pthread.h>
-
-#include <atomic>
-#include <cstdint>
-#include <vector>
+#include <new>
 
 using tufreplay::input::InputCore;
-using tufreplay::input::is_supported_usage;
 
 namespace {
-
-constexpr uint32_t kKeyboardUsagePage = 0x07;
-constexpr uint32_t kKeyboardDeviceUsage = 0x06;
-constexpr uint64_t kCapsLockFlag = 1ull << 16;
-
 struct InputContext {
   InputCore core;
-  IOHIDManagerRef manager = nullptr;
-  std::atomic<CFRunLoopRef> run_loop{nullptr};
+  CFMachPortRef tap = nullptr; // Owned exclusively by the native RunLoop thread.
   pthread_t thread{};
   bool thread_created = false;
-  std::atomic<bool> running{false};
-  std::atomic<bool> stopping{false};
-  std::atomic<int32_t> last_error{TUFREPLAY_INPUT_ERROR_NONE};
-  std::atomic<int32_t> last_system_error{0};
+  std::atomic<bool> running{false}, stopping{false}, wake_pending{false};
+  std::atomic<int32_t> last_error{TUFREPLAY_INPUT_ERROR_NONE}, last_system_error{0};
   dispatch_semaphore_t started = dispatch_semaphore_create(0);
   dispatch_semaphore_t events_available = dispatch_semaphore_create(0);
+  mach_timebase_info_data_t timebase{};
 };
 
-CFMutableDictionaryRef create_number_matching(CFStringRef page_key, uint32_t page, CFStringRef usage_key, uint32_t usage) {
-  CFMutableDictionaryRef dictionary = CFDictionaryCreateMutable(
-    kCFAllocatorDefault,
-    0,
-    &kCFTypeDictionaryKeyCallBacks,
-    &kCFTypeDictionaryValueCallBacks
-  );
-  if (dictionary == nullptr)
-    return nullptr;
-  CFNumberRef page_number = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &page);
-  CFNumberRef usage_number = CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &usage);
-  if (page_number != nullptr)
-    CFDictionarySetValue(dictionary, page_key, page_number);
-  if (usage_number != nullptr)
-    CFDictionarySetValue(dictionary, usage_key, usage_number);
-  if (page_number != nullptr)
-    CFRelease(page_number);
-  if (usage_number != nullptr)
-    CFRelease(usage_number);
-  return dictionary;
+uint64_t clock_now_ns(const mach_timebase_info_data_t &timebase) {
+  return static_cast<uint64_t>((static_cast<__uint128_t>(mach_absolute_time()) * timebase.numer) / timebase.denom);
 }
-
+bool query_state(uint32_t key) {
+  if (key < TUFREPLAY_INPUT_MOUSE_BASE) {
+    if (key == 0x39) return false; // Caps Lock is represented as a momentary transition.
+    return CGEventSourceKeyState(kCGEventSourceStateCombinedSessionState, static_cast<CGKeyCode>(key));
+  }
+  return CGEventSourceButtonState(kCGEventSourceStateCombinedSessionState,
+    static_cast<CGMouseButton>(key - TUFREPLAY_INPUT_MOUSE_BASE));
+}
+void synchronize(InputContext *context) {
+  for (uint32_t key = 0; key < TUFREPLAY_INPUT_KEY_CAPACITY; ++key)
+    context->core.synchronize(key, query_state(key));
+}
 void signal_if_queued(InputContext *context, bool queued) {
-  if (queued)
+  // Coalesce wakeups: a notification per event accumulates stale semaphore
+  // credits when the bridge drains a whole batch in one operation.
+  if (queued && !context->wake_pending.exchange(true, std::memory_order_acq_rel))
     dispatch_semaphore_signal(context->events_available);
 }
-
-void on_device_added(void *opaque, IOReturn result, void *, IOHIDDeviceRef device) {
-  InputContext *context = static_cast<InputContext *>(opaque);
-  if (context == nullptr || device == nullptr || result != kIOReturnSuccess || context->stopping.load(std::memory_order_acquire))
-    return;
-  const uintptr_t token = reinterpret_cast<uintptr_t>(device);
-  if (!context->core.add_device(token))
-    return;
-
-  CFArrayRef elements = IOHIDDeviceCopyMatchingElements(device, nullptr, kIOHIDOptionsTypeNone);
-  if (elements == nullptr)
-    return;
-  const CFIndex count = CFArrayGetCount(elements);
-  for (CFIndex i = 0; i < count; ++i) {
-    IOHIDElementRef element = static_cast<IOHIDElementRef>(const_cast<void *>(CFArrayGetValueAtIndex(elements, i)));
-    if (element == nullptr || IOHIDElementGetUsagePage(element) != kKeyboardUsagePage)
-      continue;
-    const uint32_t usage = IOHIDElementGetUsage(element);
-    if (!is_supported_usage(usage))
-      continue;
-    IOHIDValueRef value = nullptr;
-    if (IOHIDDeviceGetValueWithOptions(device, element, &value, kIOHIDDeviceGetValueWithoutUpdate) != kIOReturnSuccess || value == nullptr)
-      continue;
-    if (IOHIDValueGetIntegerValue(value) != 0)
-      signal_if_queued(context, context->core.apply(token, usage, true, IOHIDValueGetTimeStamp(value)));
+constexpr CGEventMask event_mask() {
+  return CGEventMaskBit(kCGEventKeyDown) | CGEventMaskBit(kCGEventKeyUp)
+    | CGEventMaskBit(kCGEventFlagsChanged)
+    | CGEventMaskBit(kCGEventLeftMouseDown) | CGEventMaskBit(kCGEventLeftMouseUp)
+    | CGEventMaskBit(kCGEventRightMouseDown) | CGEventMaskBit(kCGEventRightMouseUp)
+    | CGEventMaskBit(kCGEventOtherMouseDown) | CGEventMaskBit(kCGEventOtherMouseUp);
+}
+CGEventRef on_event(CGEventTapProxy, CGEventType type, CGEventRef event, void *opaque) {
+  auto *context = static_cast<InputContext *>(opaque);
+  if (context->stopping.load(std::memory_order_relaxed)) return event;
+  if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
+    context->core.mark_fault(type == kCGEventTapDisabledByTimeout
+      ? TUFREPLAY_INPUT_FAULT_TAP_TIMEOUT : TUFREPLAY_INPUT_FAULT_TAP_DISABLED);
+    return event; // Recover outside the callback on this same native thread.
   }
-  CFRelease(elements);
+  if (event == nullptr) return event;
+  const uint64_t timestamp = CGEventGetTimestamp(event); // Nanoseconds, not Mach ticks.
+  const uint64_t flags = static_cast<uint64_t>(CGEventGetFlags(event));
+  context->core.observe_delay(timestamp, clock_now_ns(context->timebase));
+  bool queued = false;
+  if (type == kCGEventKeyDown || type == kCGEventKeyUp || type == kCGEventFlagsChanged) {
+    const int64_t key = CGEventGetIntegerValueField(event, kCGKeyboardEventKeycode);
+    if (key < 0 || key >= TUFREPLAY_INPUT_MOUSE_BASE) return event;
+    queued = type == kCGEventFlagsChanged
+      ? context->core.apply_modifier(static_cast<uint32_t>(key), flags, timestamp)
+      : context->core.apply(static_cast<uint32_t>(key), type == kCGEventKeyDown, timestamp, flags);
+  } else if (type < 64 && (event_mask() & CGEventMaskBit(type)) != 0) {
+    const int64_t button = CGEventGetIntegerValueField(event, kCGMouseEventButtonNumber);
+    if (button < 0 || button >= 32) return event;
+    const bool down = type == kCGEventLeftMouseDown || type == kCGEventRightMouseDown || type == kCGEventOtherMouseDown;
+    queued = context->core.apply(TUFREPLAY_INPUT_MOUSE_BASE + static_cast<uint32_t>(button), down, timestamp, flags);
+  }
+  signal_if_queued(context, queued);
+  // Never call managed code, take a lock, post an event, or wait for Unity.
+  return event;
 }
-
-void on_device_removed(void *opaque, IOReturn, void *, IOHIDDeviceRef device) {
-  InputContext *context = static_cast<InputContext *>(opaque);
-  if (context == nullptr || device == nullptr)
-    return;
-  signal_if_queued(context, context->core.remove_device(reinterpret_cast<uintptr_t>(device), mach_absolute_time()));
-}
-
-void on_input_value(void *opaque, IOReturn result, void *, IOHIDValueRef value) {
-  InputContext *context = static_cast<InputContext *>(opaque);
-  if (context == nullptr || value == nullptr || result != kIOReturnSuccess || context->stopping.load(std::memory_order_relaxed))
-    return;
-  IOHIDElementRef element = IOHIDValueGetElement(value);
-  if (element == nullptr || IOHIDElementGetUsagePage(element) != kKeyboardUsagePage)
-    return;
-  IOHIDDeviceRef device = IOHIDElementGetDevice(element);
-  if (device == nullptr)
-    return;
-  signal_if_queued(
-    context,
-    context->core.apply(
-      reinterpret_cast<uintptr_t>(device),
-      IOHIDElementGetUsage(element),
-      IOHIDValueGetIntegerValue(value) != 0,
-      IOHIDValueGetTimeStamp(value)
-    )
-  );
-}
-
 void *input_thread_main(void *opaque) {
-  InputContext *context = static_cast<InputContext *>(opaque);
-  context->manager = IOHIDManagerCreate(kCFAllocatorDefault, kIOHIDOptionsTypeNone);
-  if (context->manager == nullptr) {
-    context->last_error.store(TUFREPLAY_INPUT_ERROR_MANAGER_CREATE, std::memory_order_release);
+  auto *context = static_cast<InputContext *>(opaque);
+  pthread_setname_np("TUFReplay CGEvent capture");
+  context->tap = CGEventTapCreate(kCGSessionEventTap, kCGTailAppendEventTap,
+    kCGEventTapOptionListenOnly, event_mask(), on_event, context);
+  if (context->tap == nullptr) {
+    context->last_error.store(TUFREPLAY_INPUT_ERROR_TAP_CREATE, std::memory_order_release);
     dispatch_semaphore_signal(context->started);
     return nullptr;
   }
-
-  CFMutableDictionaryRef device_matching = create_number_matching(
-    CFSTR(kIOHIDDeviceUsagePageKey),
-    1,
-    CFSTR(kIOHIDDeviceUsageKey),
-    kKeyboardDeviceUsage
-  );
-  CFMutableDictionaryRef value_matching = create_number_matching(
-    CFSTR(kIOHIDElementUsagePageKey),
-    kKeyboardUsagePage,
-    CFSTR(kIOHIDElementUsageKey),
-    0
-  );
-  if (value_matching != nullptr)
-    CFDictionaryRemoveValue(value_matching, CFSTR(kIOHIDElementUsageKey));
-
-  IOHIDManagerSetDeviceMatching(context->manager, device_matching);
-  IOHIDManagerSetInputValueMatching(context->manager, value_matching);
-  IOHIDManagerRegisterDeviceMatchingCallback(context->manager, on_device_added, context);
-  IOHIDManagerRegisterDeviceRemovalCallback(context->manager, on_device_removed, context);
-  IOHIDManagerRegisterInputValueCallback(context->manager, on_input_value, context);
-
-  if (device_matching != nullptr)
-    CFRelease(device_matching);
-  if (value_matching != nullptr)
-    CFRelease(value_matching);
-
+  CFRunLoopSourceRef source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, context->tap, 0);
+  if (source == nullptr) {
+    CFRelease(context->tap);
+    context->tap = nullptr;
+    context->last_error.store(TUFREPLAY_INPUT_ERROR_RUN_LOOP_SOURCE, std::memory_order_release);
+    dispatch_semaphore_signal(context->started);
+    return nullptr;
+  }
   CFRunLoopRef loop = CFRunLoopGetCurrent();
-  CFRetain(loop);
-  context->run_loop.store(loop, std::memory_order_release);
-  IOHIDManagerScheduleWithRunLoop(context->manager, loop, kCFRunLoopDefaultMode);
-  const IOReturn opened = IOHIDManagerOpen(context->manager, kIOHIDOptionsTypeNone);
-  if (opened != kIOReturnSuccess) {
-    context->last_system_error.store(static_cast<int32_t>(opened), std::memory_order_release);
-    context->last_error.store(TUFREPLAY_INPUT_ERROR_MANAGER_OPEN, std::memory_order_release);
-    IOHIDManagerUnscheduleFromRunLoop(context->manager, loop, kCFRunLoopDefaultMode);
-    context->run_loop.store(nullptr, std::memory_order_release);
-    CFRelease(loop);
-    CFRelease(context->manager);
-    context->manager = nullptr;
-    dispatch_semaphore_signal(context->started);
-    return nullptr;
-  }
-
-  const CGEventFlags current_flags = CGEventSourceFlagsState(kCGEventSourceStateHIDSystemState);
-  context->core.set_caps_lock((static_cast<uint64_t>(current_flags) & kCapsLockFlag) != 0);
-  CFSetRef devices = IOHIDManagerCopyDevices(context->manager);
-  if (devices != nullptr) {
-    const CFIndex device_count = CFSetGetCount(devices);
-    std::vector<const void *> values(static_cast<size_t>(device_count));
-    CFSetGetValues(devices, values.data());
-    for (const void *value : values)
-      on_device_added(context, kIOReturnSuccess, nullptr, static_cast<IOHIDDeviceRef>(const_cast<void *>(value)));
-    CFRelease(devices);
-  }
+  CFRunLoopAddSource(loop, source, kCFRunLoopDefaultMode);
+  synchronize(context);
+  CGEventTapEnable(context->tap, true);
   context->running.store(true, std::memory_order_release);
   dispatch_semaphore_signal(context->started);
-  CFRunLoopRun();
-
+  while (!context->stopping.load(std::memory_order_acquire)) {
+    // Bounded slices let Stop finish without sharing a CFRunLoopRef whose
+    // lifetime could race shutdown, or depending on Unity's message loop.
+    CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.05, false);
+    if (!CGEventTapIsEnabled(context->tap)) {
+      context->core.mark_fault(TUFREPLAY_INPUT_FAULT_TAP_DISABLED);
+      synchronize(context);
+      CGEventTapEnable(context->tap, true);
+    }
+  }
+  CGEventTapEnable(context->tap, false);
+  CFMachPortInvalidate(context->tap);
+  CFRunLoopRemoveSource(loop, source, kCFRunLoopDefaultMode);
+  CFRelease(source);
+  CFRelease(context->tap);
+  context->tap = nullptr;
   context->running.store(false, std::memory_order_release);
-  IOHIDManagerRegisterInputValueCallback(context->manager, nullptr, nullptr);
-  IOHIDManagerRegisterDeviceMatchingCallback(context->manager, nullptr, nullptr);
-  IOHIDManagerRegisterDeviceRemovalCallback(context->manager, nullptr, nullptr);
-  IOHIDManagerUnscheduleFromRunLoop(context->manager, loop, kCFRunLoopDefaultMode);
-  IOHIDManagerClose(context->manager, kIOHIDOptionsTypeNone);
-  CFRelease(context->manager);
-  context->manager = nullptr;
-  context->run_loop.store(nullptr, std::memory_order_release);
-  CFRelease(loop);
   dispatch_semaphore_signal(context->events_available);
   return nullptr;
 }
-
 InputContext *as_context(void *opaque) { return static_cast<InputContext *>(opaque); }
-
-}  // namespace
+} // namespace
 
 extern "C" {
-
 uint32_t tufreplay_input_abi_version(void) { return TUFREPLAY_INPUT_ABI_VERSION; }
-
 int32_t tufreplay_input_check_access(void) {
-  if (__builtin_available(macOS 10.15, *))
-    return static_cast<int32_t>(IOHIDCheckAccess(kIOHIDRequestTypeListenEvent));
-  return TUFREPLAY_INPUT_ACCESS_GRANTED;
+  return CGPreflightListenEventAccess() ? TUFREPLAY_INPUT_ACCESS_GRANTED : TUFREPLAY_INPUT_ACCESS_UNKNOWN;
 }
-
 int32_t tufreplay_input_request_access(void) {
-  if (__builtin_available(macOS 10.15, *)) {
-    if (IOHIDRequestAccess(kIOHIDRequestTypeListenEvent))
-      return TUFREPLAY_INPUT_ACCESS_GRANTED;
-    return static_cast<int32_t>(IOHIDCheckAccess(kIOHIDRequestTypeListenEvent));
-  }
-  return TUFREPLAY_INPUT_ACCESS_GRANTED;
+  return CGRequestListenEventAccess() ? TUFREPLAY_INPUT_ACCESS_GRANTED : TUFREPLAY_INPUT_ACCESS_DENIED;
 }
-
-void tufreplay_input_timebase(uint32_t *numerator, uint32_t *denominator) {
-  mach_timebase_info_data_t info{};
-  mach_timebase_info(&info);
-  if (numerator != nullptr)
-    *numerator = info.numer;
-  if (denominator != nullptr)
-    *denominator = info.denom;
+uint64_t tufreplay_input_clock_now_ns(void) {
+  mach_timebase_info_data_t timebase{};
+  mach_timebase_info(&timebase);
+  return clock_now_ns(timebase);
 }
-
-uint64_t tufreplay_input_mach_now(void) { return mach_absolute_time(); }
-
-void *tufreplay_input_create(void) { return new InputContext(); }
-
-int32_t tufreplay_input_start(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
-  if (context == nullptr)
-    return TUFREPLAY_INPUT_ERROR_THREAD_START;
-  if (context->running.load(std::memory_order_acquire))
-    return TUFREPLAY_INPUT_ERROR_NONE;
+void *tufreplay_input_create(void) {
+  auto *context = new (std::nothrow) InputContext();
+  if (context != nullptr) mach_timebase_info(&context->timebase);
+  return context;
+}
+int32_t tufreplay_input_start(void *opaque) {
+  auto *context = as_context(opaque);
+  if (context == nullptr) return TUFREPLAY_INPUT_ERROR_THREAD_START;
+  if (context->running.load(std::memory_order_acquire)) return TUFREPLAY_INPUT_ERROR_NONE;
+  if (context->thread_created) return TUFREPLAY_INPUT_ERROR_THREAD_START;
   if (tufreplay_input_check_access() != TUFREPLAY_INPUT_ACCESS_GRANTED) {
     context->last_error.store(TUFREPLAY_INPUT_ERROR_PERMISSION, std::memory_order_release);
     return TUFREPLAY_INPUT_ERROR_PERMISSION;
   }
-  context->stopping.store(false, std::memory_order_release);
-  context->last_error.store(TUFREPLAY_INPUT_ERROR_NONE, std::memory_order_release);
-  context->last_system_error.store(0, std::memory_order_release);
-  if (pthread_create(&context->thread, nullptr, input_thread_main, context) != 0) {
+  const int result = pthread_create(&context->thread, nullptr, input_thread_main, context);
+  if (result != 0) {
+    context->last_system_error.store(result, std::memory_order_release);
     context->last_error.store(TUFREPLAY_INPUT_ERROR_THREAD_START, std::memory_order_release);
     return TUFREPLAY_INPUT_ERROR_THREAD_START;
   }
@@ -258,75 +164,65 @@ int32_t tufreplay_input_start(void *opaque_context) {
     tufreplay_input_stop(context);
     return TUFREPLAY_INPUT_ERROR_START_TIMEOUT;
   }
-  return context->running.load(std::memory_order_acquire)
-    ? TUFREPLAY_INPUT_ERROR_NONE
+  return context->running.load(std::memory_order_acquire) ? TUFREPLAY_INPUT_ERROR_NONE
     : context->last_error.load(std::memory_order_acquire);
 }
-
-void tufreplay_input_stop(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
-  if (context == nullptr)
-    return;
+void tufreplay_input_stop(void *opaque) {
+  auto *context = as_context(opaque);
+  if (context == nullptr) return;
   context->stopping.store(true, std::memory_order_release);
-  CFRunLoopRef loop = context->run_loop.load(std::memory_order_acquire);
-  if (loop != nullptr)
-    CFRunLoopStop(loop);
   dispatch_semaphore_signal(context->events_available);
-  if (context->thread_created && !pthread_equal(pthread_self(), context->thread))
+  if (context->thread_created && !pthread_equal(pthread_self(), context->thread)) {
     pthread_join(context->thread, nullptr);
-  context->thread_created = false;
+    context->thread_created = false;
+  }
   context->running.store(false, std::memory_order_release);
 }
-
-void tufreplay_input_destroy(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
-  if (context == nullptr)
-    return;
+void tufreplay_input_destroy(void *opaque) {
+  auto *context = as_context(opaque);
+  if (context == nullptr) return;
   tufreplay_input_stop(context);
   delete context;
 }
-
-bool tufreplay_input_is_running(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
+bool tufreplay_input_is_running(void *opaque) {
+  auto *context = as_context(opaque);
   return context != nullptr && context->running.load(std::memory_order_acquire);
 }
-
-int32_t tufreplay_input_last_error(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
+int32_t tufreplay_input_last_error(void *opaque) {
+  auto *context = as_context(opaque);
   return context == nullptr ? TUFREPLAY_INPUT_ERROR_THREAD_START : context->last_error.load(std::memory_order_acquire);
 }
-
-int32_t tufreplay_input_last_system_error(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
+int32_t tufreplay_input_last_system_error(void *opaque) {
+  auto *context = as_context(opaque);
   return context == nullptr ? 0 : context->last_system_error.load(std::memory_order_acquire);
 }
-
-int32_t tufreplay_input_wait_dequeue(void *opaque_context, tufreplay_input_event *events, int32_t capacity, int32_t timeout_ms) {
-  InputContext *context = as_context(opaque_context);
-  if (context == nullptr || events == nullptr || capacity <= 0)
-    return 0;
+int32_t tufreplay_input_wait_dequeue(void *opaque, tufreplay_input_event *events, int32_t capacity, int32_t timeout_ms) {
+  auto *context = as_context(opaque);
+  if (context == nullptr || events == nullptr || capacity <= 0) return 0;
+  context->wake_pending.store(false, std::memory_order_release);
+  dispatch_semaphore_wait(context->events_available, DISPATCH_TIME_NOW);
   int32_t count = context->core.drain(events, capacity);
-  if (count != 0)
-    return count;
-  const int64_t wait_ns = timeout_ms <= 0 ? 0 : static_cast<int64_t>(timeout_ms) * NSEC_PER_MSEC;
-  dispatch_semaphore_wait(context->events_available, dispatch_time(DISPATCH_TIME_NOW, wait_ns));
+  if (count != 0 || timeout_ms <= 0 || context->stopping.load(std::memory_order_acquire)) return count;
+  dispatch_semaphore_wait(context->events_available,
+    dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(timeout_ms) * NSEC_PER_MSEC));
+  context->wake_pending.store(false, std::memory_order_release);
   return context->core.drain(events, capacity);
 }
-
-int32_t tufreplay_input_copy_state(void *opaque_context, uint8_t *usage_down, int32_t capacity) {
-  InputContext *context = as_context(opaque_context);
-  return context == nullptr ? 0 : context->core.copy_state(usage_down, capacity);
+int32_t tufreplay_input_copy_state(void *opaque, uint8_t *key_down, int32_t capacity) {
+  if (as_context(opaque) == nullptr || key_down == nullptr || capacity < static_cast<int32_t>(TUFREPLAY_INPUT_KEY_CAPACITY)) return 0;
+  for (uint32_t key = 0; key < TUFREPLAY_INPUT_KEY_CAPACITY; ++key) key_down[key] = query_state(key) ? 1 : 0;
+  return TUFREPLAY_INPUT_KEY_CAPACITY;
 }
-
-uint64_t tufreplay_input_take_dropped(void *opaque_context) {
-  InputContext *context = as_context(opaque_context);
+uint64_t tufreplay_input_take_dropped(void *opaque) {
+  auto *context = as_context(opaque);
   return context == nullptr ? 0 : context->core.take_dropped();
 }
-
-void tufreplay_input_get_stats(void *opaque_context, tufreplay_input_stats *stats) {
-  InputContext *context = as_context(opaque_context);
-  if (context != nullptr)
-    context->core.get_stats(stats);
+uint32_t tufreplay_input_take_faults(void *opaque) {
+  auto *context = as_context(opaque);
+  return context == nullptr ? 0 : context->core.take_faults();
 }
-
-}  // extern "C"
+void tufreplay_input_get_stats(void *opaque, tufreplay_input_stats *stats) {
+  auto *context = as_context(opaque);
+  if (context != nullptr) context->core.get_stats(stats);
+}
+} // extern "C"

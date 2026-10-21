@@ -10,7 +10,8 @@ public static class EntryPoint
   {
     try
     {
-      UpdateRequest request = JsonConvert.DeserializeObject<UpdateRequest>(requestJson)
+      UpdateRequest request =
+        JsonConvert.DeserializeObject<UpdateRequest>(requestJson)
         ?? throw new InvalidOperationException("The update request is empty.");
       UpdateResult result = new UpdateManager(request.InstallPath).Resolve(request.CurrentVersion);
       return JsonConvert.SerializeObject(result);
@@ -18,11 +19,9 @@ public static class EntryPoint
     catch (Exception exception)
     {
       modEntry.Logger.Warning("[AutoUpdate] " + exception);
-      return JsonConvert.SerializeObject(new UpdateResult
-      {
-        Outcome = UpdateOutcomes.Error,
-        Message = exception.Message,
-      });
+      return JsonConvert.SerializeObject(
+        new UpdateResult { Outcome = UpdateOutcomes.Error, Message = exception.Message }
+      );
     }
   }
 }
@@ -45,6 +44,5 @@ internal sealed class UpdateResult
   public string Outcome { get; set; }
   public string Version { get; set; }
   public string RuntimePath { get; set; }
-  public string DependencyBootstrapPath { get; set; }
   public string Message { get; set; }
 }

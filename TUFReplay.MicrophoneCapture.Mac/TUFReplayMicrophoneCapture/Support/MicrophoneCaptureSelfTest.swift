@@ -55,6 +55,7 @@ enum MicrophoneCaptureSelfTest {
 
     try SocketTransportSelfTest.run()
     try verifyCaptureClock()
+    try WebcamCaptureSelfTest.run()
 
     let path = FileManager.default.temporaryDirectory
       .appendingPathComponent("tufreplay-microphone-self-test.wav")

@@ -15,6 +15,5 @@
 
     <UnityModManagerDll Condition="'$(UnityModManagerDll)' == ''"
       >$(AdofaiManaged)/UnityModManager/UnityModManager.dll</UnityModManagerDll>
-    <AdofaiIpcDll Condition="'$(AdofaiIpcDll)' == ''">$(AdofaiMods)/AdofaiIpc/AdofaiIpc.dll</AdofaiIpcDll>
   </PropertyGroup>
 </Project>

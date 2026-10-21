@@ -11,6 +11,7 @@ using TUFReplay.Microphone.Processing;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
+using TUFReplay.Webcam.Repositories;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Preparation;
@@ -24,6 +25,7 @@ public static partial class ReplayPlaybackCoordinator
     public string PlaybackLevelPath;
     public readonly ReplayMetadata Meta;
     public readonly List<RecordedInput> Inputs;
+    public readonly ReplayInputScheduler InputScheduler;
     public readonly List<ReplayHitContext> HitContexts;
     public readonly long TerminalTimeUs;
     public readonly CancellationTokenSource PreparationCancellation = new CancellationTokenSource();
@@ -48,6 +50,8 @@ public static partial class ReplayPlaybackCoordinator
     public int? MicrophoneOffsetMs;
     public int? MicrophoneVolumeDb;
     public bool AllowBackground;
+    public WebcamRecordingLease WebcamLease;
+    public string WebcamWarning;
 
     public PendingReplay(
       string operationId,
@@ -64,6 +68,7 @@ public static partial class ReplayPlaybackCoordinator
       PlaybackLevelPath = playbackLevelPath;
       Meta = meta;
       Inputs = inputs;
+      InputScheduler = new ReplayInputScheduler(inputs);
       HitContexts = hitContexts;
       TerminalTimeUs = terminalTimeUs;
     }
@@ -80,6 +85,13 @@ public static partial class ReplayPlaybackCoordinator
       MicrophoneRecording = null;
       MicrophoneWave = null;
       ReplayMicrophonePlaybackFiles.Delete(path);
+    }
+
+    public void CleanupPreparedMedia()
+    {
+      CleanupPreparedMicrophone();
+      WebcamLease?.Dispose();
+      WebcamLease = null;
     }
   }
 

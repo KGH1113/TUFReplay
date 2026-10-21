@@ -25,6 +25,10 @@ required_symbols=(
   _tufreplay_input_wait_dequeue
   _tufreplay_input_copy_state
   _tufreplay_input_take_dropped
+  _tufreplay_input_take_faults
+  _tufreplay_input_clock_now_ns
+  _tufreplay_input_is_running
+  _tufreplay_input_get_stats
 )
 symbols="$(nm -gU "$artifact_path")"
 for symbol in "${required_symbols[@]}"; do

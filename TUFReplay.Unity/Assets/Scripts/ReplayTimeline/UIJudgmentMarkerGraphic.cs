@@ -59,10 +59,61 @@ namespace TUFReplay.Unity.ReplayTimeline
     }
   }
 
+  public static class ReplayJudgmentMarkerBuckets
+  {
+    public const int MaximumColumns = 4096;
+
+    public static void Fill(IReadOnlyList<ReplayJudgmentMarker> source, int visibleMask, int[] columns)
+    {
+      if (columns == null || columns.Length == 0 || columns.Length > MaximumColumns)
+        throw new ArgumentOutOfRangeException(nameof(columns));
+      for (int i = 0; i < columns.Length; i++)
+        columns[i] = -1;
+      if (source == null)
+        return;
+      for (int i = 0; i < source.Count; i++)
+      {
+        ReplayJudgmentMarker marker = source[i];
+        int kind = (int)marker.judgment;
+        if (kind < 0 || kind > (int)ReplayJudgmentKind.Miss || (visibleMask & (1 << kind)) == 0)
+          continue;
+        float time = marker.normalizedTime;
+        if (float.IsNaN(time) || float.IsInfinity(time))
+          continue;
+        int column = Math.Max(0, Math.Min(columns.Length - 1, (int)(time * columns.Length)));
+        if (columns[column] < 0 || Priority(kind) >= Priority(columns[column]))
+          columns[column] = kind;
+      }
+    }
+
+    private static int Priority(int kind)
+    {
+      switch ((ReplayJudgmentKind)kind)
+      {
+        case ReplayJudgmentKind.Miss:
+        case ReplayJudgmentKind.Overload:
+          return 4;
+        case ReplayJudgmentKind.TooEarly:
+        case ReplayJudgmentKind.TooLate:
+          return 3;
+        case ReplayJudgmentKind.Early:
+        case ReplayJudgmentKind.Late:
+          return 2;
+        case ReplayJudgmentKind.EarlyPerfect:
+        case ReplayJudgmentKind.LatePerfect:
+          return 1;
+        default:
+          return 0;
+      }
+    }
+  }
+
   [RequireComponent(typeof(CanvasRenderer))]
   [AddComponentMenu("UI/TUFReplay/Judgment Marker Graphic")]
   public sealed class UIJudgmentMarkerGraphic : MaskableGraphic
   {
+    private int[] _columns = Array.Empty<int>();
+
     [SerializeField, Min(1f)]
     private float markerWidth = 2f;
 
@@ -124,15 +175,28 @@ namespace TUFReplay.Unity.ReplayTimeline
       float halfWidth = markerWidth * 0.5f;
       float bottom = rect.center.y + markerBottom;
       float top = bottom + markerHeight;
-      for (int index = 0; index < markers.Length; index++)
+      int columnCount = Math.Max(
+        1,
+        Math.Min(ReplayJudgmentMarkerBuckets.MaximumColumns, (int)Math.Ceiling(rect.width))
+      );
+      if (_columns.Length != columnCount)
+        _columns = new int[columnCount];
+      ReplayJudgmentMarkerBuckets.Fill(markers, visibleMask, _columns);
+      for (int index = 0; index < _columns.Length; index++)
       {
-        ReplayJudgmentMarker marker = markers[index];
-        int bit = 1 << (int)marker.judgment;
-        if ((visibleMask & bit) == 0)
+        int kind = _columns[index];
+        if (kind < 0)
           continue;
 
-        float x = Mathf.Lerp(rect.xMin, rect.xMax, Mathf.Clamp01(marker.normalizedTime));
-        AddQuad(vertexHelper, x - halfWidth, x + halfWidth, bottom, top, ReplayJudgmentPalette.GetColor(marker.judgment));
+        float x = rect.xMin + (index + 0.5f) * rect.width / _columns.Length;
+        AddQuad(
+          vertexHelper,
+          x - halfWidth,
+          x + halfWidth,
+          bottom,
+          top,
+          ReplayJudgmentPalette.GetColor((ReplayJudgmentKind)kind)
+        );
       }
     }
 

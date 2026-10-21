@@ -38,6 +38,10 @@ export interface LegacyCalibrationResult {
 }
 
 export interface CalibrationGateway {
+  subscribeMicrophoneCalibrationStatus(
+    listener: (status: LegacyCalibrationStatus) => void,
+    onError?: (cause: unknown) => void,
+  ): () => void;
   setMicrophoneOffset(offsetMs: number): Promise<LegacyMicrophoneTimingSettings>;
   setMicrophoneVolume(volumeDb: number): Promise<LegacyMicrophoneTimingSettings>;
   startMicrophoneCalibration(): Promise<LegacyCalibrationStatus>;
@@ -63,6 +67,24 @@ export function useCalibrationGatewayAdapter() {
   const apiPromise = useApiPromise();
   const ref = useRef<CalibrationGateway | null>(null);
   ref.current = {
+    subscribeMicrophoneCalibrationStatus(listener, onError) {
+      let disposed = false;
+      let unsubscribe = () => {};
+      void apiPromise
+        .then((api) => {
+          if (!disposed)
+            unsubscribe = api.events.on("calibration.changed", (status) =>
+              listener(toLegacyStatus(status)),
+            );
+        })
+        .catch((error) => {
+          if (!disposed) onError?.(error);
+        });
+      return () => {
+        disposed = true;
+        unsubscribe();
+      };
+    },
     setMicrophoneOffset: async (offsetMs) => {
       const next = await (await apiPromise).microphone.setOffset(offsetMs);
       return {

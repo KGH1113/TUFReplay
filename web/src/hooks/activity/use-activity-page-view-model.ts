@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useActivityData } from "@/hooks/activity/use-activity-data";
 import { useLevelMetadata } from "@/hooks/activity/use-level-metadata";
@@ -43,6 +43,7 @@ export function useActivityPageViewModel() {
     selectedAppSessionIds,
     selectedLevel?.chartAvailable ?? false,
     selectedLevel?.runCount ?? 0,
+    selectedDay?.date ?? null,
   );
   const markers = useMemo(() => aggregateRunMarkers(levelData.runs), [levelData.runs]);
   const selectedMarker = markers.find((marker) => marker.id === selectedMarkerId) ?? null;
@@ -52,6 +53,18 @@ export function useActivityPageViewModel() {
       ) ?? null)
     : null;
   const metadataFor = useLevelMetadata(levelSessions);
+  const selectionScope = `${selectedDay?.date ?? ""}:${selectedLevel?.id ?? ""}`;
+  const previousSelectionScope = useRef(selectionScope);
+
+  useEffect(() => {
+    if (previousSelectionScope.current === selectionScope) return;
+    previousSelectionScope.current = selectionScope;
+    setSelectedMarkerId(null);
+    setSelectedRunId(null);
+    setFirstMarkerLevelSessionId(selectedLevel?.id ?? null);
+    clearLevelFilePicker();
+    setReplayChoiceRun(null);
+  }, [clearLevelFilePicker, selectedLevel?.id, selectionScope]);
 
   useEffect(() => {
     if (!days.length) {
@@ -78,15 +91,16 @@ export function useActivityPageViewModel() {
   }, [levelSessions, selectedLevelGroupId]);
 
   useEffect(() => {
+    if (!levelData.runsSettled) return;
     if (selectedMarkerId && !markers.some((marker) => marker.id === selectedMarkerId)) {
       setSelectedMarkerId(null);
       setSelectedRunId(null);
     }
-  }, [markers, selectedMarkerId]);
+  }, [levelData.runsSettled, markers, selectedMarkerId]);
 
   useEffect(() => {
     if (!firstMarkerLevelSessionId || selectedLevel?.id !== firstMarkerLevelSessionId) return;
-    if (levelData.loading) return;
+    if (!levelData.runsSettled) return;
     if (levelData.overview?.id === firstMarkerLevelSessionId) {
       setSelectedMarkerId(markers[0]?.id ?? null);
       setSelectedRunId(null);
@@ -97,24 +111,27 @@ export function useActivityPageViewModel() {
   }, [
     firstMarkerLevelSessionId,
     levelData.error,
-    levelData.loading,
+    levelData.runsSettled,
     levelData.overview?.id,
     markers,
     selectedLevel?.id,
   ]);
 
   useEffect(() => {
+    if (!levelData.runsSettled) return;
     if (selectedRunId && !selectedRun) setSelectedRunId(null);
-  }, [selectedRun, selectedRunId]);
+  }, [levelData.runsSettled, selectedRun, selectedRunId]);
 
   useEffect(() => {
+    if (!levelData.runsSettled) return;
     if (replayChoiceRun && !levelData.runs.some((run) => run.id === replayChoiceRun.id)) {
       clearLevelFilePicker();
       setReplayChoiceRun(null);
     }
-  }, [clearLevelFilePicker, levelData.runs, replayChoiceRun]);
+  }, [clearLevelFilePicker, levelData.runs, levelData.runsSettled, replayChoiceRun]);
 
   const selectMarker = (marker: RunMarker | null) => {
+    setFirstMarkerLevelSessionId(null);
     setSelectedMarkerId(marker?.id ?? null);
     setSelectedRunId(null);
   };
@@ -140,7 +157,7 @@ export function useActivityPageViewModel() {
   };
   const deleteMicrophoneRecording = async (run: ActivityRun) => {
     await runActions.deleteMicrophoneRecording(run.id);
-    levelData.updateRun(run.id, {
+    await levelData.updateRun(run.id, {
       hasMicrophoneRecording: false,
       microphoneRecordingBytes: 0,
       microphoneDurationSeconds: null,
@@ -152,25 +169,38 @@ export function useActivityPageViewModel() {
   };
   const keepMicrophoneRecording = async (run: ActivityRun) => {
     await runActions.keepMicrophoneRecording(run.id);
-    levelData.updateRun(run.id, {
+    await levelData.updateRun(run.id, {
       microphoneRecordingPermanent: true,
       microphoneRecordingExpiresAtUtc: null,
     });
   };
   const downloadMicrophoneRecording = async (run: ActivityRun) => {
-    const url = await runActions.prepareMicrophoneRecordingDownload(run.id);
-    const frame = document.createElement("iframe");
-    frame.hidden = true;
-    frame.tabIndex = -1;
-    frame.referrerPolicy = "no-referrer";
-    frame.src = url;
-    document.body.append(frame);
-    // Keep the navigation alive while the browser handles a slow native download.
-    window.setTimeout(() => frame.remove(), 30 * 60 * 1000);
+    const file = await runActions.prepareMicrophoneRecordingDownload(run.id);
+    await file.download();
+  };
+  const deleteCameraRecording = async (run: ActivityRun) => {
+    await runActions.deleteCameraRecording(run.id);
+    await levelData.updateRun(run.id, {
+      hasCameraRecording: false,
+      cameraRecordingBytes: 0,
+      cameraRecordingPermanent: false,
+      cameraRecordingExpiresAtUtc: null,
+    });
+  };
+  const keepCameraRecording = async (run: ActivityRun) => {
+    await runActions.keepCameraRecording(run.id);
+    await levelData.updateRun(run.id, {
+      cameraRecordingPermanent: true,
+      cameraRecordingExpiresAtUtc: null,
+    });
+  };
+  const downloadCameraRecording = async (run: ActivityRun) => {
+    const file = await runActions.prepareCameraRecordingDownload(run.id);
+    await file.download();
   };
   const deleteRun = async (run: ActivityRun) => {
     await runActions.deleteRun(run.id);
-    levelData.removeRun(run.id);
+    await levelData.removeRun(run.id);
     setSelectedRunId((current) => (current === run.id ? null : current));
     if (replayChoiceRun?.id === run.id) {
       clearLevelFilePicker();
@@ -210,6 +240,9 @@ export function useActivityPageViewModel() {
       deleteMicrophoneRecording,
       keepMicrophoneRecording,
       downloadMicrophoneRecording,
+      deleteCameraRecording,
+      keepCameraRecording,
+      downloadCameraRecording,
     },
   };
 }
