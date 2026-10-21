@@ -130,6 +130,7 @@ internal static class UpdaterTests
     using TemporaryDirectory temporary = new();
     byte[] bytes = File.ReadAllBytes(package);
     string manifest = File.ReadAllText(manifestPath);
+    string expectedVersion = ReleaseManifest.Parse(manifest).Version;
     using TestServer server = new(manifest, bytes);
     object manager = Activator.CreateInstance(
       managerType,
@@ -186,7 +187,7 @@ internal static class UpdaterTests
       .GetMethod("Commit", BindingFlags.Static | BindingFlags.NonPublic)
       .Invoke(null, new object[] { installed, temporary.Path });
     RuntimeState state = new RuntimeStore(temporary.Path).LoadAndRepair();
-    Assert(state.Current == "1.0.0", "The new launcher cannot resume the committed old-updater installation.");
+    Assert(state.Current == expectedVersion, "The new launcher cannot resume the committed old-updater installation.");
   }
 
   private static void TestManifestValidation()

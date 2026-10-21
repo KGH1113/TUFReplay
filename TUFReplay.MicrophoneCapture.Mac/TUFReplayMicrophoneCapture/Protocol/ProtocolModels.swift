@@ -29,14 +29,12 @@ enum CommandName: String {
   case cameraBegin
   case cameraEnd
   case cameraDisarm
-  case cameraDiagnostics
 }
 
 struct ConnectionHandshake: Encodable {
   let token: String
   let processId: Int32
   let protocolVersion = 3
-  let diagnosticsLogPath = CameraDiagnostics.shared.path
 }
 
 enum MicrophoneAuthorizationStatus: String, CaseIterable, Encodable {

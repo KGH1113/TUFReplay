@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using TUFReplay.Shared.Capture;
 using TUFReplay.Webcam.Models;
 using TUFReplay.Webcam.Repositories;
 
@@ -84,40 +83,27 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     _standby = Task.Run(async () =>
     {
       var elapsed = System.Diagnostics.Stopwatch.StartNew();
-      try
+      while (!session.IsDisposed && !session.Preview.HasFrame)
       {
-        while (!session.IsDisposed && !session.Preview.HasFrame)
-        {
-          if (session.IsDisposed)
-            throw new OperationCanceledException();
-          if (session.Error != null || elapsed.Elapsed.TotalSeconds > 10)
-            throw new IOException(
-              session.Error ?? "The camera is not sending video. Reconnect it before the next run."
-            );
-          await Task.Delay(10);
-        }
         if (session.IsDisposed)
           throw new OperationCanceledException();
-        var prepared = new FfmpegCameraRecording(
-          _executable,
-          null,
-          Path.Combine(directory, Guid.NewGuid().ToString("N") + ".mp4.partial"),
-          device,
-          session.RecordingProfile,
-          session.SourceSize,
-          WebcamRecordingStore.MaximumCaptureBytes
-        );
-        CaptureDiagnostics.Record(
-          "recording.prepare.complete",
-          new { backend = "ffmpeg", elapsedMs = elapsed.Elapsed.TotalMilliseconds }
-        );
-        return prepared;
+        if (session.Error != null || elapsed.Elapsed.TotalSeconds > 10)
+          throw new IOException(session.Error ?? "The camera is not sending video. Reconnect it before the next run.");
+        await Task.Delay(10);
       }
-      catch (Exception exception) when (exception is not OperationCanceledException)
-      {
-        CaptureDiagnostics.Record("recording.prepare.failed", new { backend = "ffmpeg" }, exception);
-        throw;
-      }
+      if (session.IsDisposed)
+        throw new OperationCanceledException();
+      var prepared = new FfmpegCameraRecording(
+        _executable,
+        null,
+        Path.Combine(directory, Guid.NewGuid().ToString("N") + ".mp4.partial"),
+        device,
+        session.RecordingProfile,
+        session.SourceSize,
+        WebcamRecordingStore.MaximumCaptureBytes
+      );
+
+      return prepared;
     });
   }
 
@@ -197,9 +183,6 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     {
       await (await standby).CancelAsync();
     }
-    catch (Exception exception)
-    {
-      CaptureDiagnostics.Record("recording.prepare.discarded", new { backend = "ffmpeg" }, exception);
-    }
+    catch (Exception) { }
   }
 }

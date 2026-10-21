@@ -109,19 +109,6 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
     return Task.CompletedTask;
   }
 
-  internal void LogDiagnosticSnapshot(string reason)
-  {
-    try
-    {
-      JObject response = _helper.Send(new JObject { ["command"] = "cameraDiagnostics" });
-      CaptureDiagnostics.Record("capture.native.snapshot", new { reason, response });
-    }
-    catch (Exception exception)
-    {
-      CaptureDiagnostics.Record("capture.native.snapshot.failed", new { reason }, exception);
-    }
-  }
-
   public void Dispose()
   {
     _helper.Dispose();

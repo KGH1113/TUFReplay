@@ -12,41 +12,17 @@ public sealed class WebcamCaptureTimeline
 {
   private readonly List<CaptureTimelineAnchor> _segments = new List<CaptureTimelineAnchor>();
   private CaptureTimelineAnchor? _previous;
-  private int _observations;
-  private int _unavailableAnchors;
-  private int _invalidRates;
-  private int _invalidTimestamps;
-  private int _backwardTimelineTimes;
 
   public CaptureTimelineAnchor? First => _segments.Count == 0 ? (CaptureTimelineAnchor?)null : _segments[0];
 
-  internal void NoteUnavailableAnchor() => _unavailableAnchors++;
-
-  internal object DiagnosticState() =>
-    new
-    {
-      observations = _observations,
-      unavailableAnchors = _unavailableAnchors,
-      invalidRates = _invalidRates,
-      invalidTimestamps = _invalidTimestamps,
-      backwardTimelineTimes = _backwardTimelineTimes,
-      segments = _segments.Count,
-      first = First,
-      last = _previous,
-      stopwatchFrequency = Stopwatch.Frequency,
-    };
-
   public void Observe(CaptureTimelineAnchor anchor)
   {
-    _observations++;
     if (!ValidRate(anchor.GameplayRate))
     {
-      _invalidRates++;
       return;
     }
     if (anchor.TimestampTicks <= 0)
     {
-      _invalidTimestamps++;
       return;
     }
     bool changed = !_previous.HasValue;
@@ -59,7 +35,6 @@ public sealed class WebcamCaptureTimeline
         Math.Abs(realUs - timelineUs) > 50_000 || Math.Abs(anchor.GameplayRate - previous.GameplayRate) > 0.0001;
       if (anchor.TimelineTimeUs < previous.TimelineTimeUs)
       {
-        _backwardTimelineTimes++;
         return;
       }
     }

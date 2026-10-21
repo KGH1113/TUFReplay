@@ -116,15 +116,6 @@ public static class RecordInputTracker
           + startFailure.Message
       );
     }
-
-    Main.Instance?.Log(
-      "[Recording/InputDebug] Native capture started. mode="
-        + _mode
-        + ", source="
-        + EventSource.Name
-        + ", snapshotKeys="
-        + EventSource.SnapshotKeyCodes.Count
-    );
   }
 
   public static void StopCapture(RecordingSession session)
@@ -222,48 +213,6 @@ public static class RecordInputTracker
     if (!EnsureEventSourceRunning())
       return;
     RecoverFromOverflow();
-  }
-
-  public static string DebugSnapshot()
-  {
-    string mode;
-    bool capturing;
-    bool captureWindowActive;
-    bool usingEvents;
-    lock (StateLock)
-    {
-      mode = _mode;
-      capturing = _capturing;
-      captureWindowActive = _captureWindowActive;
-      usingEvents = _usingEvents;
-    }
-
-    return "capturing="
-      + capturing
-      + ", captureWindowActive="
-      + captureWindowActive
-      + ", mode="
-      + mode
-      + ", source="
-      + EventSource.Name
-      + ", snapshotKeys="
-      + EventSource.SnapshotKeyCodes.Count
-      + ", samples="
-      + Interlocked.Read(ref _samples)
-      + ", received="
-      + Interlocked.Read(ref _received)
-      + ", transitions="
-      + Interlocked.Read(ref _transitions)
-      + ", duplicates="
-      + Interlocked.Read(ref _duplicates)
-      + ", dropped="
-      + Interlocked.Read(ref _dropped)
-      + ", maxQueueDepth="
-      + Volatile.Read(ref _maxQueueDepth)
-      + ", resyncs="
-      + Interlocked.Read(ref _resyncs)
-      + ", readFailures="
-      + Interlocked.Read(ref _readFailures);
   }
 
   public static void CopyDiagnosticsTo(RecordedRunPayload payload)

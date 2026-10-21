@@ -51,7 +51,6 @@ internal static class ReplayNativeInputSuite
     TestRecordingHitClockRegression();
     TestRecordingBufferedInputTiming();
     TestRecordingTimelineBoundariesAndReset();
-    TestReplayLatenessHistogram();
     TestNativeInputRingBufferStress();
     TestReplayTimelineTimeMath();
     TestReplayClockOriginPolicy();
@@ -518,19 +517,6 @@ internal static class ReplayNativeInputSuite
       timeline.RecordTerminal(null, -1_000L) == 1_000L,
       "A fresh terminal preceded its accepted hits after a clock reset."
     );
-  }
-
-  private static void TestReplayLatenessHistogram()
-  {
-    var histogram = new ReplayLatenessHistogram();
-    for (int i = 1; i <= 100; i++)
-      histogram.Record(i * 50L - 1L);
-    Assert(histogram.Count == 100, "Replay lateness histogram lost samples.");
-    Assert(histogram.Percentile(0.50d) == 2_500L, "Replay lateness p50 bucket changed.");
-    Assert(histogram.Percentile(0.95d) == 4_750L, "Replay lateness p95 bucket changed.");
-    Assert(histogram.Percentile(0.99d) == 4_950L, "Replay lateness p99 bucket changed.");
-    histogram.Record(75_000L);
-    Assert(histogram.MaxUs == 75_000L, "Replay lateness overflow bucket lost max latency.");
   }
 
   private static void TestNativeInputRingBufferStress()

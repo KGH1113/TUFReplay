@@ -33,8 +33,6 @@ public partial class RecordingFeature
       return;
     if (Session.TryGetInputTimelineAnchor(out long ticks, out long timeUs, out double rate))
       _webcamTimeline.Observe(new CaptureTimelineAnchor(ticks, timeUs, rate));
-    else
-      _webcamTimeline.NoteUnavailableAnchor();
   }
 
   private void ObserveWebcamWon()
