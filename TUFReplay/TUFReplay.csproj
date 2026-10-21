@@ -15,6 +15,8 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="../TUFReplay.Bootstrap/BundledIpcFiles.cs" Link="Shared/Ipc/BundledIpcFiles.cs" />
+    <Compile Include="../TUFReplay.Bootstrap/SdkMigration.cs" Link="Shared/Ipc/SdkMigration.cs" />
     <Compile
       Include="../TUFReplay.Unity/Assets/Scripts/ReplayTimeline/ReplayTimelineView.cs"
       Link="Unity/ReplayTimeline/ReplayTimelineView.cs"

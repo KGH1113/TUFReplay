@@ -20,7 +20,7 @@
     <Reference Include="TUFReplay">
       <HintPath>$(TUFReplayDll)</HintPath>
     </Reference>
-    <Reference Include="TUFReplay.Bootstrap">
+    <Reference Include="TUFReplay.SdkLauncher">
       <HintPath>$(TUFReplayBootstrapDll)</HintPath>
     </Reference>
     <Reference Include="TUFReplay.UpdateEngine">

@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
@@ -42,6 +43,36 @@ public sealed class Main
   }
 
   public static bool Load(UnityModManager.ModEntry modEntry)
+  {
+    try
+    {
+      string payload = System.IO.Path.GetDirectoryName(typeof(Main).Assembly.Location);
+      TUFReplay.BundledIpc.SdkMigration.Prepare(payload, modEntry.Path);
+      if (!LoadCore(modEntry))
+        return false;
+      try
+      {
+        TUFReplay.BundledIpc.SdkMigration.Commit(payload, modEntry.Path);
+        AppDomain.CurrentDomain.SetData("AdofaiIpc.SdkMigration.TUFReplay", true);
+        modEntry.Logger.Log("[SdkMigration] SDK active; standalone IPC installation is no longer required.");
+      }
+      catch (Exception exception)
+      {
+        // The payload is running. Retain the old entrypoint and IPC until a later launch retries the commit.
+        modEntry.Logger.Warning("[SdkMigration] SDK active, but entrypoint migration will retry: " + exception);
+      }
+      return true;
+    }
+    catch (Exception exception)
+    {
+      modEntry.Logger.Error("[SdkMigration] " + exception);
+      return false;
+    }
+  }
+
+  // The deployed v1 launcher enters Load directly. Keep SDK type resolution behind file preparation.
+  [MethodImpl(MethodImplOptions.NoInlining)]
+  private static bool LoadCore(UnityModManager.ModEntry modEntry)
   {
     try
     {
