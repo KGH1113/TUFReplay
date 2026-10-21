@@ -38,3 +38,4 @@ TUFReplay.MicrophoneCapture.Mac/DerivedData/
 # Verified bundled IPC binaries are source dependencies.
 !vendor/adofai-ipc-runtime/*.dll
 !vendor/adofai-ipc-runtime/ipc/*.dll
+!vendor/adofai-ipc-legacy/*.dll

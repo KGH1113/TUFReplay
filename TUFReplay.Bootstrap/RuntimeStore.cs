@@ -33,7 +33,7 @@ internal sealed class RuntimeStore
     if (!File.Exists(_statePath) && File.Exists(backup))
       File.Move(backup, _statePath);
     if (!File.Exists(_statePath))
-      throw new InvalidDataException("TUFReplay Runtime/state.json is missing. Install beta.3 manually.");
+      throw new InvalidDataException("TUFReplay Runtime/state.json is missing. Reinstall the current package.");
     RuntimeState state =
       JsonConvert.DeserializeObject<RuntimeState>(File.ReadAllText(_statePath))
       ?? throw new InvalidDataException("TUFReplay runtime state is empty.");
@@ -82,6 +82,7 @@ internal sealed class RuntimeStore
     string info = Path.Combine(actual, "Info.json");
     if (!File.Exists(assembly) || !File.Exists(engine) || !File.Exists(info))
       throw new InvalidDataException("The runtime is incomplete.");
+    TUFReplay.BundledIpc.SdkMigration.Validate(actual);
     Match match = VersionPattern.Match(File.ReadAllText(info));
     if (!match.Success || !VersionsEqual(match.Groups[1].Value, version))
       throw new InvalidDataException("The runtime Info.json version is invalid.");

@@ -21,6 +21,7 @@ Commands:
   ipc-generate Generate the typed C# and TS IPC contract
   ipc-check   Verify generated IPC code and the pinned npm SDK
   ipc-test    Test the generated contract against the bundled IPC runtime
+  migration-check Test the release ZIP with the actually published beta.4 updater
   web-check   Run web tests, typecheck, Biome, and production build
   web-dev     Run the companion web development server (extra arguments go to Vite)
   mac-helper  Build and verify the macOS microphone/webcam helper
@@ -70,6 +71,9 @@ case "$command_name" in
     ;;
   ipc-test)
     exec bash "$SCRIPTS_DIR/tasks/verify/ipc-runtime.sh"
+    ;;
+  migration-check)
+    exec bash "$SCRIPTS_DIR/tasks/verify/sdk-migration.sh"
     ;;
   web-check)
     run_task "Verify companion web workspace" "$SCRIPTS_DIR/tasks/verify/web.sh"

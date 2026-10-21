@@ -187,7 +187,11 @@ The build script:
 
 TUFReplay bundles Contracts and Loader at the mod root and the runtime/manifest under `ipc/`. Builds verify the committed `vendor/adofai-ipc-runtime/SHA256SUMS`; the game does not download or enable an IPC dependency automatically. The loader selects one compatible process runtime, and disabling TUFReplay disposes its typed mod registration, app sessions, and pending operations. The TUFReplay updater validates and copies its candidate bundle before loading its own payload; an already selected IPC host stays active until game restart.
 
-Moving from the v1 dependency shim requires a full manual reinstall of this mod and a game restart once. The versioned TUFReplay launcher and its own update policy remain in place.
+The single `TUFReplay.zip` supports clean manual installs and automatic upgrades from the actually published v0.2.0-beta.4 package. Its versioned runtime retains the genuine v1 control files for old updater validation and stages the SDK plus a distinct `Runtime/launchers/<version>/TUFReplay.SdkLauncher.dll` before entering SDK code. Once initialization succeeds, it commits the root runtime state and entrypoint; future launches never enter the old IPC installer. Launcher updates select a new versioned path instead of replacing the currently loaded DLL. Failed downloads and incomplete bundles preserve the previous runtime and entrypoint. Keep this compatibility payload for the next several releases so users can skip the first SDK release. Settings, `UpdateSettings.json`, and `Data/` stay at the mod root.
+
+Version 1.0.0 is the first stable GitHub Latest release. This also reaches existing users with beta updates disabled: earlier published packages were prereleases, while their default updater uses the stable Latest download URLs. The separate IPC 0.4.2 transition release silently retires the standalone IPC mod only when installed consumers have committed the SDK entrypoints. Actual game initialization, load order, and Windows file locking still require the supplied game E2E scenarios.
+
+While the SDK dev-to-main pull request is awaiting review, open the [SDK companion on dev](https://tufreplay-dev.impl1113.dev/) with 1.0.0. Its `/adofai-ipc.json` reports SDK 2.1.0 and protocol 3; the mod already permits that origin. The main companion remains on the old contract until that pull request is merged. No mod setting change is needed to use the dev URL.
 
 Standard builds include a `Receive beta updates` toggle in the Unity Mod Manager GUI. Auto-submission builds show their separate update channel and version. It is disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
@@ -345,6 +349,7 @@ After installing dependencies with `bun install --frozen-lockfile`, use:
 ./scripts/run.sh ipc-check
 ./scripts/run.sh ipc-test
 ./scripts/run.sh mod-check
+./scripts/run.sh migration-check
 ./scripts/run.sh web-check
 ```
 
@@ -355,6 +360,9 @@ runtime to the installed TS SDK for bidirectional calls, app-targeted delivery,
 file reads, reconnect snapshots, and cancellation without starting ADOFAI.
 `mod-check` builds and tests without installing anything in the game; `build`
 retains its explicit build-and-install behavior.
+After `package`, `migration-check` verifies the pinned, actually published beta.4 ZIP,
+executes its old updater against the new local package, and verifies SDK promotion
+and next-launch state without changing the installed game Mods folder.
 
 | Feature | Generated mod methods | App callback |
 | --- | --- | --- |

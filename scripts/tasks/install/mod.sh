@@ -47,7 +47,7 @@ copy_runtime_core "$runtime"
 tufreplay_write_build_info \
   "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" \
   "$TUFREPLAY_INSTALL_PATH/Info.json" \
-  "$version"
+  "$version" launcher
 tufreplay_write_build_info \
   "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" \
   "$runtime/Info.json" \

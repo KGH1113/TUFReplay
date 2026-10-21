@@ -353,7 +353,7 @@ internal sealed class UpdateManager
     string infoPath = Path.Combine(directory, "Info.json");
     if (!File.Exists(assemblyPath) || !File.Exists(enginePath) || !File.Exists(infoPath))
       throw new InvalidDataException("The update package does not contain a complete runtime.");
-    TUFReplay.BundledIpc.BundledIpcFiles.Validate(directory);
+    TUFReplay.BundledIpc.SdkMigration.Validate(directory);
     string infoText = File.ReadAllText(infoPath);
     Match match = VersionPattern.Match(infoText);
     if (

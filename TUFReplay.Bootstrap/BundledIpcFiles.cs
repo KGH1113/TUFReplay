@@ -56,21 +56,55 @@ internal static class BundledIpcFiles
     foreach (string name in Files)
     {
       string target = Path.Combine(destination, name);
-      Directory.CreateDirectory(Path.GetDirectoryName(target));
-      string temporary = target + ".ipc-" + Guid.NewGuid().ToString("N");
-      try
-      {
-        File.Copy(Path.Combine(source, name), temporary);
-        if (File.Exists(target))
-          File.Replace(temporary, target, null);
-        else
-          File.Move(temporary, target);
-      }
-      finally
-      {
-        if (File.Exists(temporary))
-          File.Delete(temporary);
-      }
+      CopyFile(Path.Combine(source, name), target);
     }
+  }
+
+  internal static void CopyFile(string source, string target)
+  {
+    // Unchanged loaded DLLs must not be replaced, particularly on Windows.
+    if (File.Exists(target) && EqualFiles(source, target))
+      return;
+    Directory.CreateDirectory(Path.GetDirectoryName(target));
+    string temporary = target + ".ipc-" + Guid.NewGuid().ToString("N");
+    try
+    {
+      File.Copy(source, temporary);
+      if (File.Exists(target))
+        File.Replace(temporary, target, null);
+      else
+        File.Move(temporary, target);
+    }
+    finally
+    {
+      if (File.Exists(temporary))
+        File.Delete(temporary);
+    }
+  }
+
+  private static bool EqualFiles(string left, string right)
+  {
+    if (new FileInfo(left).Length != new FileInfo(right).Length)
+      return false;
+    using FileStream source = File.OpenRead(left);
+    using FileStream target = File.OpenRead(right);
+    byte[] a = new byte[8192];
+    byte[] b = new byte[8192];
+    int count;
+    while ((count = source.Read(a, 0, a.Length)) != 0)
+    {
+      int read = 0;
+      while (read < count)
+      {
+        int part = target.Read(b, read, count - read);
+        if (part == 0)
+          return false;
+        read += part;
+      }
+      for (int i = 0; i < count; i++)
+        if (a[i] != b[i])
+          return false;
+    }
+    return true;
   }
 }
