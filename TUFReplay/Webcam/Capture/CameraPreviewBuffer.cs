@@ -140,8 +140,16 @@ public sealed class CameraPreviewBuffer : IDisposable
   {
     get
     {
-      lock (_gate)
+      if (!Monitor.TryEnter(_gate))
+        return false;
+      try
+      {
         return _view != null && (_view.ReadInt64(0) == 0 || _view.ReadInt32(PreviewRequestedOffset) != 0);
+      }
+      finally
+      {
+        Monitor.Exit(_gate);
+      }
     }
   }
 
@@ -239,9 +247,24 @@ public sealed class CameraPreviewBuffer : IDisposable
       Thread.MemoryBarrier();
       _view.Write(8, width);
       _view.Write(12, height);
-      _view.WriteArray(HeaderSize, rgba, 0, rgba.Length);
+      WritePixels(rgba);
       Thread.MemoryBarrier();
       _view.Write(0, sequence + 2);
+    }
+  }
+
+  private unsafe void WritePixels(byte[] source)
+  {
+    var handle = _view.SafeMemoryMappedViewHandle;
+    byte* pointer = null;
+    handle.AcquirePointer(ref pointer);
+    try
+    {
+      Marshal.Copy(source, 0, new IntPtr(pointer + _view.PointerOffset + HeaderSize), source.Length);
+    }
+    finally
+    {
+      handle.ReleasePointer();
     }
   }
 
