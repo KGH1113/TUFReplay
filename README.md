@@ -191,8 +191,6 @@ The single `TUFReplay.zip` supports clean manual installs and automatic upgrades
 
 Version 1.0.0 is the first stable GitHub Latest release. This also reaches existing users with beta updates disabled: earlier published packages were prereleases, while their default updater uses the stable Latest download URLs. The separate IPC 0.4.2 transition release silently retires the standalone IPC mod only when installed consumers have committed the SDK entrypoints. Actual game initialization, load order, and Windows file locking still require the supplied game E2E scenarios.
 
-While the SDK dev-to-main pull request is awaiting review, open the [SDK companion on dev](https://tufreplay-dev.impl1113.dev/) with 1.0.0. Its `/adofai-ipc.json` reports SDK 2.1.0 and protocol 3; the mod already permits that origin. The main companion remains on the old contract until that pull request is merged. No mod setting change is needed to use the dev URL.
-
 Starting with 1.0.1, the Unity Mod Manager GUI contains only the `Receive beta updates` toggle for standard builds. Camera settings remain in the web companion. Auto-submission builds use their isolated update feed and do not expose this toggle. Beta updates are disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
 
 Important environment variables:
