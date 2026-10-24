@@ -12,6 +12,12 @@ internal static class Program
       MicrophonePermissionWarningSuite.RunAll();
       MicrophoneCalibrationSuite.RunAll(root);
       WebcamSuite.RunAll(root);
+      FfmpegCameraModeSuite.RunAll();
+      CameraEncoderSuite.RunAll();
+      FfmpegCameraFrameStreamSuite.RunAll(root);
+      FfmpegCameraRecordingSuite.RunAll(root);
+      Mp4CameraDurationSuite.RunAll(root);
+      CameraFramePipelineSuite.RunAll();
       ManagedFfmpegSuite.RunAll(root);
       ManagedRendererSuite.RunAll(root);
       WebcamCropSuite.RunAll();

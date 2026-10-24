@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
@@ -35,12 +36,17 @@ internal sealed class FfmpegCameraSession : IDisposable
   private readonly CameraFrameSize _captureBounds;
   private readonly BlockingCollection<FrameInfo> _timestamps = new BlockingCollection<FrameInfo>(128);
   private readonly WebcamWallClock _clock = WebcamWallClock.Capture();
-  private byte[] _previewPixels;
-  private CameraPreviewPixels _previewConverter;
+  private readonly TaskCompletionSource<bool> _ready = new TaskCompletionSource<bool>(
+    TaskCreationOptions.RunContinuationsAsynchronously
+  );
+  private readonly ConcurrentQueue<string> _messages = new ConcurrentQueue<string>();
+  private CameraPreviewWorker _previewWorker;
   private volatile WebcamCaptureProfile _recordingProfile;
   private readonly object _sinkGate = new object();
+  private Task _shutdown = Task.CompletedTask;
+  private readonly Task _reader;
   private FfmpegCameraRecording _sink;
-  private readonly LatestCameraFrame _latestFrame = new LatestCameraFrame();
+  private CameraFrame _latestFrame;
   private int _numerator;
   private int _denominator;
   private volatile bool _disposed;
@@ -49,67 +55,111 @@ internal sealed class FfmpegCameraSession : IDisposable
   public CameraFrameSize SourceSize { get; private set; }
   public string Error { get; private set; }
   public bool IsDisposed => _disposed;
+  public bool IsReady => _ready.Task.Status == TaskStatus.RanToCompletion;
+  public string Diagnostic => string.Join(" | ", _messages);
 
-  public FfmpegCameraSession(string executable, string deviceId, WebcamCaptureProfile profile)
+  public FfmpegCameraSession(
+    string executable,
+    string deviceId,
+    WebcamCaptureProfile profile,
+    FfmpegCameraMode mode = null
+  )
   {
-    _profile = profile;
+    _profile = mode == null ? profile : profile.LimitFrameRate((int)Math.Round(mode.FrameRate));
     Preview = new CameraPreviewBuffer(CameraPreviewBuffer.MaxWidth, CameraPreviewBuffer.MaxHeight);
-    _captureBounds = new CameraFrameSize(
-      Math.Max(profile.Width, Preview.Width),
-      Math.Max(profile.Height, Preview.Height)
-    );
-    _process = FfmpegCameraProcess.Create(
-      executable,
+    _captureBounds = new CameraFrameSize(profile.Width, profile.Height);
+    var arguments = new List<string>
+    {
+      "-hide_banner",
+      "-nostats",
+      "-nostdin",
+      "-filter_threads",
+      "2",
+      "-copyts",
+      "-use_wallclock_as_timestamps",
+      "1",
+      "-f",
+      "dshow",
+      "-rtbufsize",
+      "32M",
+      "-threads",
+      "2",
+    };
+    if (mode != null)
+      arguments.AddRange(mode.InputArguments());
+    string limiter =
+      mode == null || mode.FrameRate > profile.FrameRate + 0.01
+        ? "select='isnan(prev_selected_t)+gte(t-prev_selected_t,"
+          + (0.9 / profile.FrameRate).ToString("R", CultureInfo.InvariantCulture)
+          + ")',"
+        : "";
+    arguments.AddRange(
       new[]
       {
-        "-hide_banner",
-        "-nostats",
-        "-nostdin",
-        "-filter_threads",
-        "2",
-        "-copyts",
-        "-use_wallclock_as_timestamps",
-        "1",
-        "-f",
-        "dshow",
-        "-rtbufsize",
-        "16M",
-        "-framerate",
-        profile.FrameRate.ToString(CultureInfo.InvariantCulture),
         "-i",
         "video=" + deviceId,
         "-an",
         "-vf",
-        "scale=w='min("
+        limiter
+          + "scale=w='min("
           + _captureBounds.Width
           + ",iw)':h='min("
           + _captureBounds.Height
-          + ",ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=lanczos,setsar=1,fps="
-          + profile.FrameRate
-          + ",format=yuv420p,showinfo=checksum=0",
+          + ",ih)':force_original_aspect_ratio=decrease:force_divisible_by=2:flags=bilinear,setsar=1,format=yuv420p,showinfo=checksum=0",
         "-threads",
         "2",
         "-c:v",
         "rawvideo",
+        "-fps_mode",
+        "passthrough",
         "-f",
         "rawvideo",
         "pipe:1",
       }
     );
+    _process = FfmpegCameraProcess.Create(executable, arguments);
+    _process.EnableRaisingEvents = true;
+    _process.Exited += (_, _) =>
+    {
+      if (!_disposed)
+      {
+        Error = "The camera stopped sending video. Reconnect it or choose another camera.";
+        _ready.TrySetException(new IOException(Error));
+      }
+    };
     _process.ErrorDataReceived += (_, args) => ParseTimestamp(args.Data);
     try
     {
       if (!_process.Start())
         throw new IOException("FFmpeg could not open the camera. Check its installation.");
+      FfmpegCameraProcess.PreferGameplay(_process);
       _process.BeginErrorReadLine();
-      Task.Run(ReadFrames);
+      _reader = Task.Factory.StartNew(
+        ReadFrames,
+        CancellationToken.None,
+        TaskCreationOptions.LongRunning,
+        TaskScheduler.Default
+      );
     }
     catch
     {
+      try
+      {
+        if (!_process.HasExited)
+          _process.Kill();
+      }
+      catch (InvalidOperationException) { }
       _process.Dispose();
       Preview.Dispose();
       throw;
     }
+  }
+
+  public async Task WaitUntilReadyAsync()
+  {
+    if (await Task.WhenAny(_ready.Task, Task.Delay(10000)).ConfigureAwait(false) != _ready.Task)
+      throw new IOException("The camera is not sending video. Reconnect it or choose another camera.");
+    await _ready.Task.ConfigureAwait(false);
   }
 
   public void SetRecording(FfmpegCameraRecording recording)
@@ -121,9 +171,10 @@ internal sealed class FfmpegCameraSession : IDisposable
       // fills the other buffer. Keep its real capture timestamp when attaching.
       if (
         recording != null
-        && _latestFrame.TryGet(Stopwatch.GetTimestamp(), Stopwatch.Frequency, out byte[] pixels, out long ticks)
+        && _latestFrame != null
+        && _latestFrame.IsFresh(Stopwatch.GetTimestamp(), Stopwatch.Frequency)
       )
-        recording.Submit(pixels, ticks);
+        recording.Submit(_latestFrame);
     }
   }
 
@@ -131,11 +182,25 @@ internal sealed class FfmpegCameraSession : IDisposable
   {
     if (line == null || _disposed)
       return;
-    Match timeBase = TimeBase.Match(line);
-    if (timeBase.Success)
+    if (line.Contains("config in time_base:"))
     {
-      int.TryParse(timeBase.Groups[1].Value, out _numerator);
-      int.TryParse(timeBase.Groups[2].Value, out _denominator);
+      Match timeBase = TimeBase.Match(line);
+      if (timeBase.Success)
+      {
+        int.TryParse(timeBase.Groups[1].Value, out _numerator);
+        int.TryParse(timeBase.Groups[2].Value, out _denominator);
+      }
+      return;
+    }
+    if (!line.Contains(" n:"))
+    {
+      if (!line.Contains("showinfo"))
+      {
+        _messages.Enqueue(line.Length > 500 ? line.Substring(0, 500) : line);
+        while (_messages.Count > 16)
+          _messages.TryDequeue(out _);
+      }
+      return;
     }
     Match timestamp = Timestamp.Match(line);
     Match dimensions = Dimensions.Match(line);
@@ -161,16 +226,14 @@ internal sealed class FfmpegCameraSession : IDisposable
         Error = exception.Message;
       }
     }
-    else if (!line.Contains("showinfo") && line.Contains("Error"))
-      Error = "The camera could not be read. Reconnect it or choose another camera.";
   }
 
   private void ReadFrames()
   {
+    CameraFrame frame = null;
     try
     {
-      byte[] frame = null;
-      CameraFrameSize previewSize = default;
+      CameraFramePool pool = null;
       Stream stream = _process.StandardOutput.BaseStream;
       while (!_disposed)
       {
@@ -189,39 +252,45 @@ internal sealed class FfmpegCameraSession : IDisposable
         {
           SourceSize = info.Size;
           _recordingProfile = _profile.FitToSource(info.Size.Width, info.Size.Height);
-          frame = new byte[info.Size.Width * info.Size.Height * 3 / 2];
-          previewSize = CameraFrameSize.Fit(info.Size.Width, info.Size.Height, Preview.Width, Preview.Height);
-          _previewPixels = new byte[previewSize.ByteCount];
-          _previewConverter = new CameraPreviewPixels(
-            info.Size.Width,
-            info.Size.Height,
-            previewSize.Width,
-            previewSize.Height
-          );
+          pool = new CameraFramePool(info.Size.Width * info.Size.Height * 3 / 2);
+          frame = pool.TryRent();
+          lock (_sinkGate)
+          {
+            if (_disposed)
+              return;
+            _previewWorker = new CameraPreviewWorker(Preview, info.Size);
+          }
         }
         else if (info.Size.Width != SourceSize.Width || info.Size.Height != SourceSize.Height)
           throw new IOException("The camera changed resolution. Reconnect it before the next run.");
         int read = 0;
-        while (read < frame.Length)
+        while (read < frame.Pixels.Length)
         {
-          int count = stream.Read(frame, read, frame.Length - read);
+          int count = stream.Read(frame.Pixels, read, frame.Pixels.Length - read);
           if (count == 0)
             throw new IOException("The camera stopped sending video. Reconnect it or choose another camera.");
           read += count;
         }
         if (Error != null)
           throw new IOException(Error);
-        if (Preview.ShouldPublish)
-        {
-          _previewConverter.Convert(frame, _previewPixels);
-          Preview.Publish(_previewPixels, previewSize.Width, previewSize.Height);
-        }
+        frame.TimestampTicks = info.Ticks;
+        CameraFrame next = pool.TryRent();
+        // Keep draining the device even if all consumers are temporarily busy.
+        if (next == null)
+          continue;
         lock (_sinkGate)
         {
           if (_disposed)
+          {
+            next.Release();
             return;
-          _sink?.Submit(frame, info.Ticks);
-          frame = _latestFrame.Exchange(frame, info.Ticks);
+          }
+          _sink?.Submit(frame);
+          _previewWorker.Submit(frame);
+          _latestFrame?.Release();
+          _latestFrame = frame;
+          frame = next;
+          _ready.TrySetResult(true);
         }
       }
     }
@@ -230,28 +299,71 @@ internal sealed class FfmpegCameraSession : IDisposable
       if (!_disposed)
       {
         Error = exception.Message;
+        _ready.TrySetException(exception);
         lock (_sinkGate)
           _sink?.Fail(Error);
       }
+    }
+    finally
+    {
+      frame?.Release();
     }
   }
 
   public void Dispose()
   {
-    _disposed = true;
     lock (_sinkGate)
     {
+      if (_disposed)
+        return;
+      _disposed = true;
+      _ready.TrySetCanceled();
       _sink?.Fail("Camera capture was stopped.");
       _sink = null;
-      _latestFrame.Clear();
+      _latestFrame?.Release();
+      _latestFrame = null;
+      _previewWorker?.Dispose();
+      _timestamps.CompleteAdding();
+      _shutdown = Task.Run(async () =>
+      {
+        try
+        {
+          if (!_process.HasExited)
+            _process.Kill();
+          if (!_process.WaitForExit(2000))
+            throw new IOException("The camera did not disconnect. Reconnect it before trying again.");
+        }
+        finally
+        {
+          _process.Dispose();
+          if (await Task.WhenAny(_reader, Task.Delay(2000)).ConfigureAwait(false) == _reader)
+            _timestamps.Dispose();
+          else
+            _ = _reader.ContinueWith(
+              completed =>
+              {
+                _ = completed.Exception;
+                _timestamps.Dispose();
+              },
+              TaskScheduler.Default
+            );
+        }
+      });
+      _ = _shutdown.ContinueWith(
+        completed =>
+        {
+          _ = completed.Exception;
+        },
+        TaskScheduler.Default
+      );
     }
-    try
-    {
-      if (!_process.HasExited)
-        _process.Kill();
-    }
-    catch (InvalidOperationException) { }
-    _process.Dispose();
     Preview.Dispose();
+  }
+
+  public Task StopAsync()
+  {
+    Dispose();
+    lock (_sinkGate)
+      return _shutdown;
   }
 }

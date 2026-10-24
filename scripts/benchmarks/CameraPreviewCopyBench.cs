@@ -35,10 +35,14 @@ internal static class CameraPreviewCopyBench
     using (var file = new FileStream(path, FileMode.Create, FileAccess.ReadWrite))
       file.SetLength(HeaderSize + byteCount);
     var source = new byte[byteCount];
+    var alternateSource = new byte[byteCount];
     var oldPixels = new byte[byteCount];
     var bulkPixels = new byte[byteCount];
     for (int index = 0; index < source.Length; index++)
+    {
       source[index] = unchecked((byte)(index * 31 + (index >> 12)));
+      alternateSource[index] = (byte)(source[index] ^ 0xA5);
+    }
 
     using (var mapping = MemoryMappedFile.CreateFromFile(path, FileMode.Open, null, HeaderSize + byteCount))
     using (var view = mapping.CreateViewAccessor())
@@ -46,8 +50,16 @@ internal static class CameraPreviewCopyBench
       view.WriteArray(HeaderSize, source, 0, source.Length);
       for (int frame = 0; frame < WarmupFrames; frame++)
       {
-        ReadArray(view, oldPixels);
-        BulkCopy(view, bulkPixels);
+        if ((frame & 1) == 0)
+        {
+          ReadArray(view, oldPixels);
+          BulkCopy(view, bulkPixels);
+        }
+        else
+        {
+          BulkCopy(view, bulkPixels);
+          ReadArray(view, oldPixels);
+        }
       }
       var oldSamples = new double[frames];
       var bulkSamples = new double[frames];
@@ -68,6 +80,45 @@ internal static class CameraPreviewCopyBench
       for (int index = 0; index < source.Length; index++)
         if (source[index] != oldPixels[index] || source[index] != bulkPixels[index])
           throw new InvalidOperationException("A copy path changed frame bytes at " + index + ".");
+
+      for (int frame = 0; frame < WarmupFrames; frame++)
+      {
+        if ((frame & 1) == 0)
+        {
+          WriteArray(view, source);
+          VerifyWrittenPixels(view, source, oldPixels);
+          BulkWrite(view, alternateSource);
+          VerifyWrittenPixels(view, alternateSource, oldPixels);
+        }
+        else
+        {
+          BulkWrite(view, alternateSource);
+          VerifyWrittenPixels(view, alternateSource, oldPixels);
+          WriteArray(view, source);
+          VerifyWrittenPixels(view, source, oldPixels);
+        }
+      }
+      var oldWriteSamples = new double[frames];
+      var bulkWriteSamples = new double[frames];
+      for (int frame = 0; frame < frames; frame++)
+      {
+        // The paths write distinct patterns, so neither can pass all checks by
+        // leaving stale bytes. Readback and comparisons are outside the timer.
+        if ((frame & 1) == 0)
+        {
+          oldWriteSamples[frame] = MeasureWriteArray(view, source);
+          VerifyWrittenPixels(view, source, oldPixels);
+          bulkWriteSamples[frame] = MeasureBulkWrite(view, alternateSource);
+          VerifyWrittenPixels(view, alternateSource, oldPixels);
+        }
+        else
+        {
+          bulkWriteSamples[frame] = MeasureBulkWrite(view, alternateSource);
+          VerifyWrittenPixels(view, alternateSource, oldPixels);
+          oldWriteSamples[frame] = MeasureWriteArray(view, source);
+          VerifyWrittenPixels(view, source, oldPixels);
+        }
+      }
       Console.WriteLine(
         "{0}x{1} RGBA, {2} bytes; warmup={3}, samples={4}, exactBytes=true",
         width,
@@ -76,8 +127,10 @@ internal static class CameraPreviewCopyBench
         WarmupFrames,
         frames
       );
-      Print("ReadArray<byte>", oldSamples);
-      Print("AcquirePointer + Marshal.Copy", bulkSamples);
+      Print("read ReadArray<byte>", oldSamples);
+      Print("read AcquirePointer + Marshal.Copy", bulkSamples);
+      Print("write WriteArray<byte>", oldWriteSamples);
+      Print("write AcquirePointer + Marshal.Copy", bulkWriteSamples);
     }
   }
 
@@ -92,6 +145,20 @@ internal static class CameraPreviewCopyBench
   {
     long started = Stopwatch.GetTimestamp();
     BulkCopy(view, pixels);
+    return (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
+  }
+
+  private static double MeasureWriteArray(MemoryMappedViewAccessor view, byte[] pixels)
+  {
+    long started = Stopwatch.GetTimestamp();
+    WriteArray(view, pixels);
+    return (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
+  }
+
+  private static double MeasureBulkWrite(MemoryMappedViewAccessor view, byte[] pixels)
+  {
+    long started = Stopwatch.GetTimestamp();
+    BulkWrite(view, pixels);
     return (Stopwatch.GetTimestamp() - started) * 1000d / Stopwatch.Frequency;
   }
 
@@ -114,6 +181,34 @@ internal static class CameraPreviewCopyBench
     {
       handle.ReleasePointer();
     }
+  }
+
+  private static void WriteArray(MemoryMappedViewAccessor view, byte[] pixels)
+  {
+    view.WriteArray(HeaderSize, pixels, 0, pixels.Length);
+  }
+
+  private static unsafe void BulkWrite(MemoryMappedViewAccessor view, byte[] pixels)
+  {
+    var handle = view.SafeMemoryMappedViewHandle;
+    byte* pointer = null;
+    handle.AcquirePointer(ref pointer);
+    try
+    {
+      Marshal.Copy(pixels, 0, new IntPtr(pointer + view.PointerOffset + HeaderSize), pixels.Length);
+    }
+    finally
+    {
+      handle.ReleasePointer();
+    }
+  }
+
+  private static void VerifyWrittenPixels(MemoryMappedViewAccessor view, byte[] expected, byte[] actual)
+  {
+    ReadArray(view, actual);
+    for (int index = 0; index < expected.Length; index++)
+      if (expected[index] != actual[index])
+        throw new InvalidOperationException("A write path changed frame bytes at " + index + ".");
   }
 
   private static void Print(string name, double[] samples)
