@@ -15,6 +15,9 @@ public sealed class WebcamCaptureProfile
   public int FrameRate { get; }
   public int BitRate { get; }
 
+  public WebcamCaptureProfile LimitFrameRate(int frameRate) =>
+    new WebcamCaptureProfile(Width, Height, System.Math.Max(1, System.Math.Min(FrameRate, frameRate)), BitRate);
+
   public WebcamCaptureProfile FitToSource(int width, int height)
   {
     CameraFrameSize size = CameraFrameSize.Fit(width, height, Width, Height);

@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Diagnostics;
 using System.Reflection;
 using Newtonsoft.Json;
@@ -132,7 +131,7 @@ internal static class WebcamSuite
 
   private static void PreparedFfmpegWriterKeepsIdleTimeOutOfVideo(string root)
   {
-    string executable = Environment.GetEnvironmentVariable("TUFREPLAY_CAMERA_TEST_FFMPEG");
+    string executable = FindTestFfmpeg();
     if (string.IsNullOrWhiteSpace(executable))
       return;
     WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality("compact").FitToSource(640, 360);
@@ -157,10 +156,10 @@ internal static class WebcamSuite
       recording.Attach("synthetic-run", destination, WebcamRecordingStore.MaximumCaptureBytes, Ticks(10));
       byte[] pixels = new byte[640 * 360 * 3 / 2];
       Array.Fill(pixels, (byte)128, 640 * 360, pixels.Length - 640 * 360);
-      recording.Submit(pixels, Ticks(9.99)); // A cached camera frame from before input capture must be rejected.
+      SubmitFrame(recording, pixels, Ticks(9.99)); // A cached camera frame from before input capture must be rejected.
       for (int frame = 0; frame < 12; frame++)
       {
-        recording.Submit(pixels, Ticks(10 + frame / 30d));
+        SubmitFrame(recording, pixels, Ticks(10 + frame / 30d));
         Thread.Sleep(35);
       }
       finalizing = true;
@@ -216,7 +215,7 @@ internal static class WebcamSuite
       WebcamRecordingStore.MaximumCaptureBytes,
       Ticks(10)
     );
-    unused.Submit(new byte[source.Width * source.Height * 3 / 2], Ticks(9));
+    SubmitFrame(unused, new byte[source.Width * source.Height * 3 / 2], Ticks(9));
     Check(
       unused.FinishAsync().GetAwaiter().GetResult() == null,
       "A retry before the first camera frame produced a video or camera error."
@@ -225,25 +224,45 @@ internal static class WebcamSuite
     Console.WriteLine("TUFReplay prepared FFmpeg camera encoder integration test passed (no camera access).");
   }
 
+  private static string FindTestFfmpeg() =>
+    Environment.GetEnvironmentVariable("TUFREPLAY_CAMERA_TEST_FFMPEG")
+    ?? Environment.GetEnvironmentVariable("TUFREPLAY_TEST_FFMPEG")
+    ?? (Environment.GetEnvironmentVariable("PATH") ?? "")
+      .Split(Path.PathSeparator)
+      .Select(directory => Path.Combine(directory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
+      .FirstOrDefault(File.Exists);
+
   private static void LatestFrameOwnershipRemainsStableAndRejectsStaleFrames()
   {
-    var latest = new LatestCameraFrame();
-    var first = new byte[] { 1, 2, 3, 4 };
-    byte[] reader = latest.Exchange(first, 1000);
-    Check(reader != first, "The camera reader received the frame still held for attachment.");
-    reader[0] = 9;
-    Check(latest.TryGet(1060, 1000, out byte[] pixels, out long ticks), "A current camera frame was discarded.");
-    Check(pixels[0] == 1 && ticks == 1000, "Reading the next frame changed the attached frame or its timestamp.");
-    Check(!latest.TryGet(999, 1000, out _, out _), "A future camera timestamp was accepted.");
-    Check(!latest.TryGet(1251, 1000, out _, out _), "A stale camera frame was appended to a new run.");
-    reader = latest.Exchange(reader, 1100);
-    Check(reader == first, "Camera frames stopped reusing the bounded pair of buffers.");
+    var pool = new CameraFramePool(4, 2);
+    CameraFrame latest = pool.TryRent();
+    latest.Pixels[0] = 1;
+    latest.TimestampTicks = 1000;
+    Check(latest.IsFresh(1060, 1000), "A current camera frame was discarded.");
+    Check(!latest.IsFresh(999, 1000), "A future camera timestamp was accepted.");
+    Check(!latest.IsFresh(1251, 1000), "A stale camera frame was appended to a new run.");
+    CameraFrame reader = pool.TryRent();
+    reader.Pixels[0] = 9;
+    Check(latest.Pixels[0] == 1 && latest.TimestampTicks == 1000, "Reading the next frame changed a retained frame.");
+    reader.Release();
     long before = GC.GetAllocatedBytesForCurrentThread();
     for (int frame = 0; frame < 100; frame++)
-      reader = latest.Exchange(reader, 1100 + frame);
+    {
+      reader = pool.TryRent();
+      latest.Release();
+      latest = reader;
+    }
     Check(GC.GetAllocatedBytesForCurrentThread() == before, "Idle camera frame rotation allocated memory.");
-    latest.Clear();
-    Check(!latest.TryGet(1200, 1000, out _, out _), "Disabling capture retained a frame for a future run.");
+    latest.Release();
+  }
+
+  private static void SubmitFrame(FfmpegCameraRecording recording, byte[] pixels, long ticks)
+  {
+    CameraFrame frame = new CameraFramePool(pixels.Length, 1).TryRent();
+    Buffer.BlockCopy(pixels, 0, frame.Pixels, 0, pixels.Length);
+    frame.TimestampTicks = ticks;
+    recording.Submit(frame);
+    frame.Release();
   }
 
   private static void AttachingAnEarlierCameraFrameKeepsReplaySynchronized()
@@ -1281,12 +1300,7 @@ internal static class WebcamSuite
 
   private static void FfmpegUsesLogicalPooledFrameSize(string root)
   {
-    string executable = Environment.GetEnvironmentVariable("TUFREPLAY_TEST_FFMPEG");
-    if (string.IsNullOrEmpty(executable))
-      executable = (Environment.GetEnvironmentVariable("PATH") ?? "")
-        .Split(Path.PathSeparator)
-        .Select(directory => Path.Combine(directory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-        .FirstOrDefault(File.Exists);
+    string executable = FindTestFfmpeg();
     if (string.IsNullOrEmpty(executable) || !File.Exists(executable))
     {
       Console.WriteLine("SKIP synthetic FFmpeg frame test: FFmpeg is not installed.");
@@ -1307,7 +1321,7 @@ internal static class WebcamSuite
     var pixels = new byte[size.Width * size.Height * 3 / 2];
     Array.Fill(pixels, (byte)128);
     for (int frame = 0; frame < 3; frame++)
-      capture.Submit(pixels, Ticks(1 + frame / 30d));
+      SubmitFrame(capture, pixels, Ticks(1 + frame / 30d));
     WebcamRecording recording = capture.FinishAsync().GetAwaiter().GetResult();
     using Process decoder = FfmpegCameraProcess.Create(
       executable,
@@ -1324,25 +1338,21 @@ internal static class WebcamSuite
 
   private static void LargeCameraBuffersAreReused()
   {
-    var pool =
-      (ArrayPool<byte>)
-        typeof(FfmpegCameraRecording)
-          .GetField("FrameBuffers", BindingFlags.NonPublic | BindingFlags.Static)
-          .GetValue(null);
     int bytes = 1920 * 1080 * 3 / 2;
-    byte[] original = pool.Rent(bytes);
-    pool.Return(original);
-    byte[] reused = pool.Rent(bytes);
+    var pool = new CameraFramePool(bytes);
+    CameraFrame original = pool.TryRent();
+    original.Release();
+    CameraFrame reused = pool.TryRent();
     try
     {
       Check(
-        ReferenceEquals(original, reused),
+        ReferenceEquals(original, reused) && reused.Pixels.Length == bytes,
         "1080p camera buffers exceeded the Unity/Mono pool and allocated again."
       );
     }
     finally
     {
-      pool.Return(reused);
+      reused.Release();
     }
   }
 

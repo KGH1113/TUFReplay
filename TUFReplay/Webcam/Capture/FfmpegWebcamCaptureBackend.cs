@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Models;
 using TUFReplay.Webcam.Repositories;
 
@@ -13,7 +14,7 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
   private readonly string _executable;
   private FfmpegCameraSession _session;
   private FfmpegCameraRecording _recording;
-  private WebcamCaptureProfile _profile;
+  private FfmpegCameraEncoder _encoderOverride;
   private string _deviceId;
   private string _recordingDirectory;
   private Task<FfmpegCameraRecording> _standby;
@@ -65,12 +66,40 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     if (device == null)
       throw new IOException("The selected camera is unavailable. Reconnect it or select another camera.");
     _deviceId = device.Id;
-    _profile = profile;
+    _encoderOverride = null;
     _recordingDirectory = recordingDirectory ?? Path.GetTempPath();
     Directory.CreateDirectory(_recordingDirectory);
-    _session = new FfmpegCameraSession(_executable, _deviceId, profile);
-    PrepareNextRecording();
-    await _standby;
+    IReadOnlyList<FfmpegCameraMode> modes = await FfmpegCameraModes.DiscoverAsync(_executable, _deviceId, profile);
+    // Some drivers advertise unusable combinations. Bound startup retries and
+    // finally let DirectShow negotiate its default without forcing 60 fps.
+    foreach (FfmpegCameraMode mode in modes.Take(4).Concat(new FfmpegCameraMode[] { null }))
+    {
+      var session = new FfmpegCameraSession(_executable, _deviceId, profile, mode);
+      try
+      {
+        await session.WaitUntilReadyAsync();
+        _session = session;
+        Log("Camera capture mode: " + (mode?.ToString() ?? "device default"));
+        break;
+      }
+      catch
+      {
+        Log("Camera mode failed: " + (mode?.ToString() ?? "device default") + " | " + session.Diagnostic);
+        await session.StopAsync();
+        if (mode == null)
+          throw;
+      }
+    }
+    try
+    {
+      PrepareNextRecording();
+      await _standby;
+    }
+    catch
+    {
+      await DisarmAsync();
+      throw;
+    }
   }
 
   private void PrepareNextRecording()
@@ -80,19 +109,15 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     FfmpegCameraSession session = _session;
     string device = _deviceId;
     string directory = _recordingDirectory;
+    FfmpegCameraEncoder encoderOverride = _encoderOverride;
     _standby = Task.Run(async () =>
     {
-      var elapsed = System.Diagnostics.Stopwatch.StartNew();
-      while (!session.IsDisposed && !session.Preview.HasFrame)
-      {
-        if (session.IsDisposed)
-          throw new OperationCanceledException();
-        if (session.Error != null || elapsed.Elapsed.TotalSeconds > 10)
-          throw new IOException(session.Error ?? "The camera is not sending video. Reconnect it before the next run.");
-        await Task.Delay(10);
-      }
-      if (session.IsDisposed)
+      await session.WaitUntilReadyAsync();
+      FfmpegCameraEncoder encoder =
+        encoderOverride ?? await FfmpegCameraEncoder.SelectAsync(_executable, session.RecordingProfile, Log);
+      if (session.IsDisposed || session.Error != null)
         throw new OperationCanceledException();
+      Log("Camera encoder selected: " + encoder.Name);
       var prepared = new FfmpegCameraRecording(
         _executable,
         null,
@@ -100,7 +125,9 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
         device,
         session.RecordingProfile,
         session.SourceSize,
-        WebcamRecordingStore.MaximumCaptureBytes
+        WebcamRecordingStore.MaximumCaptureBytes,
+        encoder,
+        Log
       );
 
       return prepared;
@@ -109,7 +136,7 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
 
   public async Task BeginAsync(string runId, string path, long maxBytes, long startTimestampTicks = 0)
   {
-    if (_recording != null || _session?.Preview.HasFrame != true)
+    if (_recording != null || _session?.IsReady != true)
       throw new IOException("The camera is not sending video. Reconnect it before the next run.");
     if (_session.Error != null)
       throw new IOException(_session.Error);
@@ -142,7 +169,25 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     _session?.SetRecording(null);
     if (prepareNext)
       PrepareNextRecording();
-    return recording == null ? null : await recording.FinishAsync();
+    try
+    {
+      return recording == null ? null : await recording.FinishAsync();
+    }
+    catch
+    {
+      // A driver/session can become unavailable after the startup probe. Keep
+      // healthy capture open and avoid repeatedly choosing that GPU this session.
+      if (recording?.HardwareEncoderFailed == true)
+      {
+        _encoderOverride = FfmpegCameraEncoder.Software;
+        Task<FfmpegCameraRecording> standby = _standby;
+        _standby = null;
+        await DiscardStandby(standby);
+        if (prepareNext)
+          PrepareNextRecording();
+      }
+      throw;
+    }
   }
 
   public async Task DisarmAsync()
@@ -153,14 +198,23 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     }
     finally
     {
-      _session?.Dispose();
+      FfmpegCameraSession session = _session;
       _session = null;
-      _profile = null;
       Task<FfmpegCameraRecording> standby = _standby;
       _standby = null;
-      await DiscardStandby(standby);
+      try
+      {
+        if (session != null)
+          await session.StopAsync();
+      }
+      finally
+      {
+        await DiscardStandby(standby);
+      }
     }
   }
+
+  private static void Log(string message) => UnityMainThread.Post(() => Main.Instance?.Log("[Webcam] " + message));
 
   public void Dispose()
   {
