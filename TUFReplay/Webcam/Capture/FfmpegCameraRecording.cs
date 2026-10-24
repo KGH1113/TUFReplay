@@ -1,9 +1,10 @@
 using System;
-using System.Buffers;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using TUFReplay.Webcam.Models;
 using TUFReplay.Webcam.Repositories;
@@ -12,38 +13,43 @@ namespace TUFReplay.Webcam.Capture;
 
 internal sealed class FfmpegCameraRecording
 {
-  // Unity/Mono's shared pool stops at 1 MiB. A 1080p YUV420 frame is
-  // about 3 MiB, so give camera rentals an explicit, bounded 4 MiB bucket.
-  private static readonly ArrayPool<byte> FrameBuffers = ArrayPool<byte>.Create(4 * 1024 * 1024, 5);
-
-  private readonly struct Frame
-  {
-    public Frame(byte[] pixels, long ticks)
-    {
-      Pixels = pixels;
-      Ticks = ticks;
-    }
-
-    public byte[] Pixels { get; }
-    public long Ticks { get; }
-  }
-
-  private readonly Process _encoder;
-  private readonly BlockingCollection<Frame> _frames = new BlockingCollection<Frame>(4);
-  private readonly ConcurrentQueue<byte[]> _pool = new ConcurrentQueue<byte[]>();
+  private readonly object _encoderGate = new object();
+  private Process _encoder;
+  private volatile bool _encoderStarted;
+  private bool _stopRequested;
+  private readonly FfmpegCameraEncoder _encoderPolicy;
+  private readonly List<string> _arguments;
+  private readonly CameraFrameQueue _frames = new CameraFrameQueue(3);
   private readonly Task _writer;
   private readonly WebcamRecording _recording;
-  private long _maxFrames;
   private readonly WebcamCaptureProfile _profile;
+  private readonly CameraFrameSize _sourceSize;
+  private readonly string _executable;
+  private readonly Action<string> _log;
+  private long _maxBytes;
   private string _destination;
   private long _startTimestampTicks;
-  private readonly int _frameByteCount;
-  private readonly byte[][] _buffers = new byte[5][];
+  private long _lastSubmittedTicks = long.MinValue;
   private volatile string _error;
+  private string _pipeFailure;
   private volatile bool _limited;
+  private volatile bool _captureFailed;
+  private volatile bool _encoderFailed;
+  private volatile bool _cancelRequested;
   private long _writtenFrames;
+  private long _durationUs;
+  private long _encodedFrames;
+  private int _cleanupScheduled;
   private readonly ConcurrentQueue<string> _encoderMessages = new ConcurrentQueue<string>();
-  private long _encodedDurationUs;
+  private readonly TaskCompletionSource<bool> _outputClosed = new TaskCompletionSource<bool>(
+    TaskCreationOptions.RunContinuationsAsynchronously
+  );
+  private readonly TaskCompletionSource<bool> _errorClosed = new TaskCompletionSource<bool>(
+    TaskCreationOptions.RunContinuationsAsynchronously
+  );
+
+  public bool HardwareEncoderFailed =>
+    _encoderPolicy.IsHardware && _encoderFailed && !_captureFailed && !_cancelRequested;
 
   public FfmpegCameraRecording(
     string executable,
@@ -52,10 +58,17 @@ internal sealed class FfmpegCameraRecording
     string deviceId,
     WebcamCaptureProfile profile,
     CameraFrameSize sourceSize,
-    long maxBytes
+    long maxBytes,
+    FfmpegCameraEncoder encoder = null,
+    Action<string> log = null
   )
   {
+    _executable = executable;
     _profile = profile;
+    _sourceSize = sourceSize;
+    _log = log;
+    _maxBytes = maxBytes;
+    _encoderPolicy = encoder ?? FfmpegCameraEncoder.Software;
     _recording = new WebcamRecording
     {
       RunId = runId,
@@ -65,98 +78,44 @@ internal sealed class FfmpegCameraRecording
       Height = profile.Height,
       FrameRate = profile.FrameRate,
     };
-    _maxFrames = Math.Max(1, (long)((maxBytes - 1024 * 1024) * 8d / (profile.BitRate * 1.5d) * profile.FrameRate));
-    _frameByteCount = checked(sourceSize.Width * sourceSize.Height * 3 / 2);
-    _encoder = FfmpegCameraProcess.Create(
-      executable,
-      new[]
-      {
-        "-hide_banner",
-        "-nostats",
-        "-nostdin",
-        "-y",
-        "-filter_threads",
-        "2",
-        "-f",
-        "rawvideo",
-        "-pixel_format",
-        "yuv420p",
-        "-video_size",
-        sourceSize.Width + "x" + sourceSize.Height,
-        "-framerate",
-        profile.FrameRate.ToString(CultureInfo.InvariantCulture),
-        "-i",
-        "pipe:0",
-        "-an",
-        "-vf",
-        "scale=" + profile.Width + ":" + profile.Height + ":flags=lanczos,setsar=1",
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-threads",
-        "2",
-        "-pix_fmt",
-        "yuv420p",
-        "-b:v",
-        profile.BitRate.ToString(CultureInfo.InvariantCulture),
-        "-maxrate",
-        profile.BitRate.ToString(CultureInfo.InvariantCulture),
-        "-bufsize",
-        (profile.BitRate * 2).ToString(CultureInfo.InvariantCulture),
-        "-g",
-        (profile.FrameRate * 2).ToString(CultureInfo.InvariantCulture),
-        "-fs",
-        Math.Max(1, maxBytes - 1024 * 1024).ToString(CultureInfo.InvariantCulture),
-        "-movflags",
-        "+faststart",
-        "-progress",
-        "pipe:1",
-        "-f",
-        "mp4",
-        path,
-      }
+    _arguments = new List<string>
+    {
+      "-hide_banner",
+      "-loglevel",
+      "warning",
+      "-nostats",
+      "-nostdin",
+      "-y",
+      "-filter_threads",
+      "1",
+      "-probesize",
+      "32",
+      "-analyzeduration",
+      "0",
+      "-fpsprobesize",
+      "0",
+      "-f",
+      "matroska",
+      "-i",
+      "pipe:0",
+      "-an",
+    };
+    // Capture already scales to the recording bounds. Do not run a second
+    // scaler in the normal path (including Compact with its smaller preview).
+    if (sourceSize.Width != profile.Width || sourceSize.Height != profile.Height)
+      _arguments.AddRange(
+        new[] { "-vf", "scale=" + profile.Width + ":" + profile.Height + ":flags=bilinear,setsar=1" }
+      );
+    _arguments.AddRange(_encoderPolicy.GetArguments(profile));
+    // Encoder selection was probed during preparation. FFmpeg cannot initialize
+    // its real encoder before the first frame anyway, so start it on the writer
+    // thread only after Attach supplies this run's exact file limit.
+    _writer = Task.Factory.StartNew(
+      WriteFrames,
+      CancellationToken.None,
+      TaskCreationOptions.LongRunning,
+      TaskScheduler.Default
     );
-    _encoder.ErrorDataReceived += (_, args) =>
-    {
-      if (args.Data != null)
-      {
-        _encoderMessages.Enqueue(args.Data);
-        while (_encoderMessages.Count > 16)
-          _encoderMessages.TryDequeue(out string ignored);
-      }
-      if (args.Data != null && args.Data.Contains("Error"))
-        _error = "Camera video could not be encoded. Check FFmpeg and choose a lower recording quality.";
-    };
-    _encoder.OutputDataReceived += (_, args) =>
-    {
-      if (
-        args.Data?.StartsWith("out_time_us=", StringComparison.Ordinal) == true
-        && long.TryParse(args.Data.Substring(12), out long duration)
-      )
-        System.Threading.Interlocked.Exchange(ref _encodedDurationUs, duration);
-    };
-    try
-    {
-      if (!_encoder.Start())
-        throw new IOException("The camera encoder could not start. Check FFmpeg.");
-      _encoder.BeginErrorReadLine();
-      _encoder.BeginOutputReadLine();
-      for (int index = 0; index < _buffers.Length; index++)
-      {
-        _buffers[index] = FrameBuffers.Rent(_frameByteCount);
-        _pool.Enqueue(_buffers[index]);
-      }
-      _writer = Task.Run(WriteFrames);
-    }
-    catch
-    {
-      _encoder.Dispose();
-      ReleaseBuffers();
-      _frames.Dispose();
-      WebcamRecordingStore.Discard(_recording);
-      throw;
-    }
   }
 
   public void Attach(string runId, string destination, long maxBytes, long startTimestampTicks = 0)
@@ -166,186 +125,299 @@ internal sealed class FfmpegCameraRecording
     _recording.RunId = runId;
     _destination = destination;
     _startTimestampTicks = startTimestampTicks;
-    _maxFrames = Math.Max(1, (long)((maxBytes - 1024 * 1024) * 8d / (_profile.BitRate * 1.5d) * _profile.FrameRate));
+    _maxBytes = maxBytes;
   }
 
-  public void Submit(byte[] source, long ticks)
+  // Called serially under the session's sink gate. Only retain the frame;
+  // neither a multi-megabyte copy nor process startup runs on capture.
+  public void Submit(CameraFrame frame)
   {
-    if (ticks < _startTimestampTicks)
+    if (
+      frame.TimestampTicks < _startTimestampTicks
+      || frame.TimestampTicks <= _lastSubmittedTicks
+      || _error != null
+      || _limited
+      || _cancelRequested
+    )
       return;
-    if (_frames.IsAddingCompleted || _error != null || _limited)
-      return;
-    if (!_pool.TryDequeue(out byte[] pixels))
-    {
-      Fail("Camera encoding fell behind. Choose a lower recording quality for the next run.");
-      return;
-    }
-    Buffer.BlockCopy(source, 0, pixels, 0, source.Length);
-    try
-    {
-      if (_frames.TryAdd(new Frame(pixels, ticks)))
-        return;
-      _pool.Enqueue(pixels);
-      Fail("Camera encoding fell behind. Choose a lower recording quality for the next run.");
-    }
-    catch (InvalidOperationException)
-    {
-      _pool.Enqueue(pixels);
-    }
+    if (_frames.Submit(frame))
+      _lastSubmittedTicks = frame.TimestampTicks;
   }
 
   public void Fail(string message)
   {
+    _captureFailed = true;
     _error = message;
-    _frames.CompleteAdding();
+    _frames.Complete();
+  }
+
+  private Process StartEncoder()
+  {
+    lock (_encoderGate)
+    {
+      if (_stopRequested || _cancelRequested || _captureFailed)
+        return null;
+      var arguments = new List<string>(_arguments);
+      arguments.AddRange(
+        new[]
+        {
+          "-fs",
+          Math.Max(1, _maxBytes - 1024 * 1024).ToString(CultureInfo.InvariantCulture),
+          "-movflags",
+          "+faststart",
+          "-progress",
+          "pipe:1",
+          "-f",
+          "mp4",
+          _recording.FilePath,
+        }
+      );
+      _encoder = FfmpegCameraProcess.Create(_executable, arguments);
+      _encoder.ErrorDataReceived += (_, args) =>
+      {
+        if (args.Data == null)
+        {
+          _errorClosed.TrySetResult(true);
+          return;
+        }
+        _encoderMessages.Enqueue(args.Data.Length > 500 ? args.Data.Substring(0, 500) : args.Data);
+        while (_encoderMessages.Count > 16)
+          _encoderMessages.TryDequeue(out string ignored);
+      };
+      _encoder.OutputDataReceived += (_, args) =>
+      {
+        if (args.Data == null)
+          _outputClosed.TrySetResult(true);
+        else if (
+          args.Data.StartsWith("frame=", StringComparison.Ordinal)
+          && long.TryParse(args.Data.Substring(6), NumberStyles.Integer, CultureInfo.InvariantCulture, out long frames)
+        )
+          Interlocked.Exchange(ref _encodedFrames, frames);
+      };
+      if (!_encoder.Start())
+        throw new IOException("The camera encoder could not start. Retry FFmpeg installation in Downloads.");
+      _encoderStarted = true;
+      FfmpegCameraProcess.PreferGameplay(_encoder);
+      _encoder.BeginErrorReadLine();
+      _encoder.BeginOutputReadLine();
+      return _encoder;
+    }
   }
 
   private void WriteFrames()
   {
+    CameraFrame frame = null;
     try
     {
-      Stream output = _encoder.StandardInput.BaseStream;
-      foreach (Frame frame in _frames.GetConsumingEnumerable())
+      frame = _frames.Take();
+      if (frame == null)
+        return;
+      Process encoder = StartEncoder();
+      if (encoder == null)
+        return;
+      using Stream output = encoder.StandardInput.BaseStream;
+      var stream = new FfmpegCameraFrameStream(
+        output,
+        _sourceSize.Width,
+        _sourceSize.Height,
+        _profile.FrameRate,
+        Stopwatch.Frequency
+      );
+      do
       {
-        try
-        {
-          if (_writtenFrames >= _maxFrames)
-          {
-            _limited = true;
-            continue;
-          }
-          // Pool rentals may exceed the logical YUV frame size. Writing their
-          // capacity would shift every following frame in the rawvideo stream.
-          output.Write(frame.Pixels, 0, _frameByteCount);
-          if (_writtenFrames == 0)
-            _recording.CaptureStartTimestampTicks = frame.Ticks;
-          _writtenFrames++;
-        }
-        finally
-        {
-          _pool.Enqueue(frame.Pixels);
-        }
-      }
-      output.Close();
+        stream.WriteFrame(frame.Pixels, frame.TimestampTicks);
+        if (_writtenFrames == 0)
+          _recording.CaptureStartTimestampTicks = stream.FirstTimestampTicks;
+        _durationUs = stream.DurationUs;
+        _writtenFrames++;
+        frame.Release();
+        frame = null;
+      } while ((frame = _frames.Take()) != null);
     }
     catch (Exception exception)
     {
-      if (_encoder.HasExited && _encoder.ExitCode == 0 && _writtenFrames > 0)
-        _limited = true;
-      else
-        _error = exception.Message;
-      _frames.CompleteAdding();
+      if (!_cancelRequested)
+      {
+        // -fs closes input before +faststart finishes moving MP4 metadata.
+        // Classify a broken pipe after final exit, not against a short deadline
+        // that can discard a healthy large recording on a slower disk.
+        if (_writtenFrames > 0 && exception is IOException && _encoderStarted)
+          _pipeFailure = exception.Message;
+        else
+          RecordEncoderFailure(exception.Message);
+      }
     }
+    finally
+    {
+      frame?.Release();
+      _frames.Dispose();
+    }
+  }
+
+  private void RecordEncoderFailure(string message)
+  {
+    if (_error == null)
+      _error = message;
+    if (_encoderStarted && !_captureFailed && !_cancelRequested)
+      _encoderFailed = true;
+  }
+
+  private async Task WaitForOutputAsync()
+  {
+    if (!_encoderStarted)
+      return;
+    await Task.WhenAny(Task.WhenAll(_outputClosed.Task, _errorClosed.Task), Task.Delay(1000)).ConfigureAwait(false);
+  }
+
+  private bool HasOutputFailure()
+  {
+    foreach (string message in _encoderMessages)
+      if (
+        message.IndexOf("No space left", StringComparison.OrdinalIgnoreCase) >= 0
+        || message.IndexOf("Permission denied", StringComparison.OrdinalIgnoreCase) >= 0
+        || message.IndexOf("Read-only file system", StringComparison.OrdinalIgnoreCase) >= 0
+      )
+        return true;
+    return false;
   }
 
   public async Task<WebcamRecording> FinishAsync()
   {
-    _frames.CompleteAdding();
+    _frames.Complete();
     try
     {
-      if (await Task.WhenAny(_writer, Task.Delay(20000)) != _writer)
+      if (await Task.WhenAny(_writer, Task.Delay(20000)).ConfigureAwait(false) != _writer)
       {
-        if (!_encoder.HasExited)
-          _encoder.Kill();
-        throw new IOException("The camera video could not be saved. Choose a lower recording quality and try again.");
+        RecordEncoderFailure("The encoder writer did not finish within 20 seconds.");
+        throw new IOException("The camera video could not finish saving. Check disk space and reconnect the camera.");
       }
-      await _writer;
-      await Task.Run(() =>
+      await _writer.ConfigureAwait(false);
+      if (_encoderStarted)
       {
-        if (!_encoder.WaitForExit(20000))
+        if (!await Task.Run(() => _encoder.WaitForExit(20000)).ConfigureAwait(false))
         {
-          _encoder.Kill();
-          throw new IOException("The camera encoder did not finish. Check FFmpeg.");
+          RecordEncoderFailure("FFmpeg did not exit within 20 seconds.");
+          throw new IOException("The camera encoder did not finish saving. Restart the camera and try again.");
         }
-        _encoder.WaitForExit();
-      });
-      if (_writtenFrames == 0 && _error == null)
+        await WaitForOutputAsync().ConfigureAwait(false);
+        if (_encoder.ExitCode != 0)
+          RecordEncoderFailure(_pipeFailure ?? "FFmpeg exited with code " + _encoder.ExitCode + ".");
+        else if (_pipeFailure != null)
+          _limited = true;
+      }
+      if (_error != null)
+        throw new IOException(
+          "The camera video could not be saved. Restart the camera and check disk space. Your input replay is still available."
+        );
+      if (_writtenFrames == 0)
       {
         WebcamRecordingStore.Discard(_recording);
         return null;
       }
-      if (_error != null || _encoder.ExitCode != 0)
-      {
-        throw new IOException(
-          _error
-            ?? "This camera video could not be saved. Check available disk space and try a lower recording quality."
-        );
-      }
-      _recording.DurationUs =
-        _encodedDurationUs > 0 ? _encodedDurationUs : _writtenFrames * 1_000_000 / _recording.FrameRate;
-      _recording.SizeLimited = _limited;
+      long encodedFrames = Interlocked.Read(ref _encodedFrames);
+      _recording.SizeLimited =
+        _limited
+        || (encodedFrames > 0 && encodedFrames < _writtenFrames)
+        || new FileInfo(_recording.FilePath).Length >= Math.Max(1, _maxBytes - 1024 * 1024);
+      // Progress includes packets the muxer may omit at -fs. Read the finalized
+      // video track for a cutoff; normal capture timing stays exact.
+      _recording.DurationUs = _recording.SizeLimited ? Mp4CameraDuration.ReadUs(_recording.FilePath) : _durationUs;
       if (_destination != null)
       {
         File.Move(_recording.FilePath, _destination);
         _recording.FilePath = _destination;
       }
+      _log?.Invoke(
+        "Camera recording saved: encoded="
+          + encodedFrames
+          + ", dropped="
+          + _frames.Dropped
+          + ", durationUs="
+          + _recording.DurationUs
+      );
       return _recording;
     }
-    catch
+    catch (Exception exception)
     {
+      StopEncoder();
+      await WaitForOutputAsync().ConfigureAwait(false);
+      if (HasOutputFailure())
+        _encoderFailed = false;
+      if (HardwareEncoderFailed)
+        FfmpegCameraEncoder.Invalidate(_executable, _profile);
+      _log?.Invoke(
+        "Camera recording failed ("
+          + _encoderPolicy.Name
+          + "): "
+          + (_error ?? exception.Message)
+          + " | "
+          + string.Join(" | ", _encoderMessages)
+      );
       WebcamRecordingStore.Discard(_recording);
       throw;
     }
     finally
     {
-      _encoder.Dispose();
-      if (_writer.IsCompleted)
-        CleanupBuffers();
-      else
-        _ = _writer.ContinueWith(
-          completed =>
-          {
-            _ = completed.Exception;
-            CleanupBuffers();
-          },
-          TaskScheduler.Default
-        );
+      CleanupWhenFinished();
     }
   }
 
   public async Task CancelAsync()
   {
-    _frames.CompleteAdding();
+    _cancelRequested = true;
+    _frames.Dispose();
     try
     {
-      await Task.Run(() =>
+      await Task.Run(StopEncoder).ConfigureAwait(false);
+      await Task.WhenAny(_writer, Task.Delay(2000)).ConfigureAwait(false);
+    }
+    finally
+    {
+      WebcamRecordingStore.Discard(_recording);
+      CleanupWhenFinished();
+    }
+  }
+
+  private void StopEncoder()
+  {
+    lock (_encoderGate)
+    {
+      _stopRequested = true;
+      if (_encoder == null || !_encoderStarted)
+        return;
+      try
       {
         if (!_encoder.HasExited)
           _encoder.Kill();
         _encoder.WaitForExit(2000);
-      });
-      await Task.WhenAny(_writer, Task.Delay(2000));
-    }
-    finally
-    {
-      _encoder.Dispose();
-      WebcamRecordingStore.Discard(_recording);
-      if (_writer.IsCompleted)
-        CleanupBuffers();
-      else
-        _ = _writer.ContinueWith(
-          completed =>
-          {
-            _ = completed.Exception;
-            CleanupBuffers();
-          },
-          TaskScheduler.Default
-        );
+      }
+      catch (InvalidOperationException) { }
+      catch (System.ComponentModel.Win32Exception) { }
     }
   }
 
-  private void CleanupBuffers()
+  private void CleanupWhenFinished()
   {
-    while (_frames.TryTake(out _)) { }
-    ReleaseBuffers();
+    if (Interlocked.Exchange(ref _cleanupScheduled, 1) != 0)
+      return;
+    if (_writer.IsCompleted)
+      Cleanup();
+    else
+      _ = _writer.ContinueWith(
+        completed =>
+        {
+          _ = completed.Exception;
+          Cleanup();
+          WebcamRecordingStore.Discard(_recording);
+        },
+        TaskScheduler.Default
+      );
+  }
+
+  private void Cleanup()
+  {
     _frames.Dispose();
-  }
-
-  private void ReleaseBuffers()
-  {
-    while (_pool.TryDequeue(out _)) { }
-    foreach (byte[] buffer in _buffers)
-      if (buffer != null)
-        FrameBuffers.Return(buffer);
+    lock (_encoderGate)
+      _encoder?.Dispose();
   }
 }
