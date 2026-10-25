@@ -8,6 +8,7 @@ namespace TUFReplay.Webcam.Capture;
 public interface IWebcamCaptureBackend : IDisposable
 {
   CameraPreviewBuffer Preview { get; }
+  string CaptureWarning { get; }
   Task<List<WebcamDevice>> ListDevicesAsync();
   Task ArmAsync(string deviceId, WebcamCaptureProfile profile, string recordingDirectory = null);
   Task BeginAsync(string runId, string path, long maxBytes, long startTimestampTicks = 0);
