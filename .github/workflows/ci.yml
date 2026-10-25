@@ -30,6 +30,20 @@ jobs:
       - name: Check C# formatting
         run: dotnet csharpier check TUFReplay TUFReplay.Tests
 
+      - name: Setup zig
+        env:
+          ZIG_VERSION: 0.17.0
+          ZIG_SHA256: 1cbe9df9f27e6b78d14ccbca43b6703a404ef79ef1c463de901d7f088d4e2026
+        run: |
+          archive="zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          curl -fsSLo "$RUNNER_TEMP/$archive" "https://ziglang.org/download/${ZIG_VERSION}/${archive}"
+          echo "${ZIG_SHA256}  $RUNNER_TEMP/$archive" | sha256sum -c -
+          tar -xJf "$RUNNER_TEMP/$archive" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/zig-x86_64-linux-${ZIG_VERSION}" >> "$GITHUB_PATH"
+
+      - name: Build Windows native library
+        run: ./scripts/run.sh windows-native
+
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:

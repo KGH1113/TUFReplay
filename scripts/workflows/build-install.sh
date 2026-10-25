@@ -21,6 +21,13 @@ else
   log_skip "Build macOS native input shim (macOS only)"
 fi
 
+if command -v zig >/dev/null 2>&1; then
+  run_task "Build Windows native library" "$TASKS_DIR/build/windows-native.sh"
+  run_task "Validate Windows native library" "$TASKS_DIR/validate/windows-native-artifact.sh"
+else
+  log_skip "Build Windows native library (install zig to build it)"
+fi
+
 run_task "Build bootstrap (Debug)" "$TASKS_DIR/build/bootstrap.sh" Debug
 run_task "Build update engine (Debug)" "$TASKS_DIR/build/update-engine.sh" Debug
 run_task "Build mod (Debug)" "$TASKS_DIR/build/mod.sh" Debug

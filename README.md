@@ -41,6 +41,7 @@ A new countdown starts a fresh payload when the previous capture already reached
 
 - Records OS-native input state changes and hit contexts for custom `.adofai` runs. Runs with forward progress and an input capture failure are retained as activity history with a specific reason and cannot be replayed, even when no input was collected.
 - On macOS, a passive CGEvent session tap records keyboard and mouse-button transitions after OS remapping. It excludes mouse motion, dragging, and scrolling. A dedicated native RunLoop queues fixed-size events without calling managed code or waiting for the game thread; a separate bridge drains them. Devices are merged, mouse buttons use native codes 128–159, and existing keyboard codes and replay CSV format remain compatible. Input Monitoring permission is required. See [macOS CGEvent recording](docs/macos-cgevent-recording.md) for the capture contract, verification, and installation.
+- On Windows, `TUFReplayNative.dll` installs the low-level keyboard hook on a dedicated native thread at above-normal priority. The hook procedure only timestamps and queues fixed-size events. Mono GC pauses and managed work therefore no longer delay the system's serialized hook chain, which ADOFAI's async input shares, and Windows cannot silently remove the hook for a slow response. On a test laptop, `SendInput` reached the hook in about 40 µs (p50) and under 0.6 ms worst case. A managed bridge applies the existing key normalization, and the previous managed hook remains as a fallback if the library cannot load. See [TUFReplay.Native.Windows](TUFReplay.Native.Windows/README.md).
 - Focus loss suspends input recording; focus return discards earlier input backlog and synchronizes held keys and buttons. Queue overflow, tap timeout/disablement, capture-thread failure, and events arriving over one second late make the run unavailable for replay. Activity history explains the failure in English or Korean. The recorder attempts recovery for later runs without treating a partial run as complete.
 - Suspends native input recording and replay emission while the UnityModManager window is open.
 - Schedules replay input on a dedicated worker without making Unity wait for native input emission. Pause, focus loss, seek, and stop commands invalidate pending input; accepted key presses are released by the worker before it restores a new playback state. Shutdown completes asynchronously so Windows keyboard hooks can continue receiving game-thread messages.
@@ -161,6 +162,7 @@ Reflection consumers should cache the resolved type and property getter, query t
 - `ipc/main.tsp`: source of the recorder's typed C# and TS IPC contract.
 - `web/`: Bun/Vite companion web UI, including the pinned generated `@tuf-replay/ipc` package.
 - `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone/camera permission and capture.
+- `TUFReplay.Native.Windows/`: zig-built `TUFReplayNative.dll` for the Windows keyboard hook and audio endpoint queries.
 - `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
 - `scripts/workflows/`, `scripts/tasks/`, `scripts/lib/`: workflow orchestration, independently runnable tasks, and shared shell utilities.
 
@@ -183,6 +185,7 @@ The build script:
 - Builds the fixed launcher, versioned update engine, and TUFReplay payload.
 - Installs DLLs, native libraries, helpers, and assets under `Runtime/versions/<version>` while keeping settings and `Data/` at the mod root.
 - Copies the bundled microphone calibration chart, `calibration_old.ogg`, and its precomputed waveform into `Assets/calibration`; packaging fails if any calibration asset is missing.
+- Cross-compiles `TUFReplayNative.dll` for Windows with zig when it is installed (`brew install zig`); release packaging requires it. `./scripts/run.sh windows-native` builds it alone.
 - On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with microphone and camera usage descriptions. Synthetic webcam self-tests encode and decode H.264 without opening a camera.
 - Runs the C# WAV, schema-generation/reset, incremental BLOB, and replay-contract tests on macOS.
 - Installs the mod into `Mods/TUFReplay` by default.

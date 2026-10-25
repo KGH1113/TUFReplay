@@ -32,6 +32,41 @@ internal static class PerformanceRegressionSuite
     TestLevelFileVerificationReuse(root);
     TestHarmonyPatchesDoNotRequestBoxedArguments();
     TestGameplayIdleGateDefersWork();
+    TestWindowsNativeInputContract();
+  }
+
+  // TUFReplayNative.dll hands raw WH_KEYBOARD_LL data to managed code. The struct must
+  // match tufreplay_win_key_event, and normalization must match the managed hook.
+  private static void TestWindowsNativeInputContract()
+  {
+    Assert(
+      System.Runtime.InteropServices.Marshal.SizeOf<TUFReplay.Shared.Native.WindowsNativeKeyEvent>() == 32,
+      "The native key event layout changed."
+    );
+    Assert(
+      System.Runtime.InteropServices.Marshal.OffsetOf<TUFReplay.Shared.Native.WindowsNativeKeyEvent>("Down")
+        == (IntPtr)24,
+      "The native key event field offsets changed."
+    );
+    Assert(
+      WindowsLowLevelKeyboardEventSource.TryCreateTransition(1234, 7, 0x10, 0x36, 0, true, out var rightShift)
+        && rightShift.Key == 0xA1
+        && rightShift.Down
+        && rightShift.CaptureTimestampTicks == 1234
+        && rightShift.TimestampNs == 7_000_000L,
+      "Right Shift was not normalized like the managed hook."
+    );
+    Assert(
+      WindowsLowLevelKeyboardEventSource.TryCreateTransition(1, 1, 0x11, 0x1D, 0x01, false, out var rightControl)
+        && rightControl.Key == 0xA3
+        && !rightControl.Down,
+      "Right Control was not normalized like the managed hook."
+    );
+    Assert(
+      !WindowsLowLevelKeyboardEventSource.TryCreateTransition(1, 1, 0x01, 0, 0, true, out _),
+      "A mouse button code was recorded from the keyboard hook."
+    );
+    Console.WriteLine("PASS Windows native input contract matches the managed hook");
   }
 
   private static void TestGameplayIdleGateDefersWork()
