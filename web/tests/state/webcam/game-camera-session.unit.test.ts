@@ -92,4 +92,37 @@ describe("shared game camera session", () => {
     session.stop();
     expect(errors).toBe(1);
   });
+
+  test("keeps polling slowly while the game pauses the preview during play", async () => {
+    let reads = 0;
+    let pauses = 0;
+    let frames = 0;
+    let errors = 0;
+    const paused = new Error("paused");
+    const session = startGameCameraSession({
+      read: async () => {
+        reads++;
+        if (reads <= 2) throw paused;
+        return frame;
+      },
+      onFrame() {
+        frames++;
+      },
+      onError() {
+        errors++;
+      },
+      isPaused: (cause) => cause === paused,
+      onPaused() {
+        pauses++;
+      },
+      intervalMs: 1,
+      pausedIntervalMs: 5,
+      timeoutMs: 1,
+    });
+    await wait(40);
+    session.stop();
+    expect(pauses).toBe(2);
+    expect(errors).toBe(0);
+    expect(frames).toBeGreaterThan(0);
+  });
 });

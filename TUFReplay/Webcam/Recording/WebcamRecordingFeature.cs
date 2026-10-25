@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Shared.Timing;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Capture;
@@ -70,15 +71,18 @@ public sealed class WebcamRecordingFeature
           return Task.CompletedTask;
         }
       );
+      // The scan reads every recording's metadata; keep it out of judged gameplay.
       _retention = new System.Threading.Timer(
         _ =>
-          Queue(
-            "storage.retention",
-            () =>
-            {
-              Cleanup();
-              return Task.CompletedTask;
-            }
+          GameplayIdleGate.Run(() =>
+            Queue(
+              "storage.retention",
+              () =>
+              {
+                Cleanup();
+                return Task.CompletedTask;
+              }
+            )
           ),
         null,
         TimeSpan.FromHours(1),

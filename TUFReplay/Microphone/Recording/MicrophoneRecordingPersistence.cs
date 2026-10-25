@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Repositories;
+using TUFReplay.Shared.Threading;
 using UnityEngine;
 
 namespace TUFReplay.Microphone.Recording;
@@ -92,37 +93,50 @@ public sealed partial class MicrophoneRecordingFeature
     {
       if (_deletedRuns.Contains(recording.RunId) || !_persistedRuns.Contains(recording.RunId))
         return;
-      if (!_saving.Add(recording.RunId))
+      if (_saving.Contains(recording.RunId) || !_queuedSaves.Add(recording.RunId))
+        return;
+    }
+
+    // Copying a long WAV into SQLite is heavy disk work. Start it after the attempt
+    // instead of during a quick retry; pending files are recovered on the next launch.
+    GameplayIdleGate.Run(() => SaveQueued(recording));
+  }
+
+  private void SaveQueued(CapturedMicrophoneRecording recording)
+  {
+    lock (_gate)
+    {
+      _queuedSaves.Remove(recording.RunId);
+      if (_deletedRuns.Contains(recording.RunId) || !_persistedRuns.Contains(recording.RunId))
+        return;
+      if (!File.Exists(recording.TempPath) || !_saving.Add(recording.RunId))
         return;
       _savesIdle.Reset();
     }
 
-    ThreadPool.QueueUserWorkItem(_ =>
+    try
     {
-      try
+      MicrophoneRecordingRepository.Save(recording);
+      Delete(recording.TempPath);
+      Delete(MetadataPath(recording.TempPath));
+      Main.Instance?.Log("[Microphone] Recording saved. runId=" + recording.RunId);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log(
+        "[Microphone] Recording save deferred. runId=" + recording.RunId + ", error=" + exception.Message
+      );
+    }
+    finally
+    {
+      lock (_gate)
       {
-        MicrophoneRecordingRepository.Save(recording);
-        Delete(recording.TempPath);
-        Delete(MetadataPath(recording.TempPath));
-        Main.Instance?.Log("[Microphone] Recording saved. runId=" + recording.RunId);
+        _saving.Remove(recording.RunId);
+        Monitor.PulseAll(_gate);
+        if (_saving.Count == 0)
+          _savesIdle.Set();
       }
-      catch (Exception exception)
-      {
-        Main.Instance?.Log(
-          "[Microphone] Recording save deferred. runId=" + recording.RunId + ", error=" + exception.Message
-        );
-      }
-      finally
-      {
-        lock (_gate)
-        {
-          _saving.Remove(recording.RunId);
-          Monitor.PulseAll(_gate);
-          if (_saving.Count == 0)
-            _savesIdle.Set();
-        }
-      }
-    });
+    }
   }
 
   public void BeginRunDeletion(string runId)

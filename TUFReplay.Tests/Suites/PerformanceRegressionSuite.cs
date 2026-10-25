@@ -31,6 +31,35 @@ internal static class PerformanceRegressionSuite
     TestIndexedInputSeek();
     TestLevelFileVerificationReuse(root);
     TestHarmonyPatchesDoNotRequestBoxedArguments();
+    TestGameplayIdleGateDefersWork();
+  }
+
+  private static void TestGameplayIdleGateDefersWork()
+  {
+    using var ran = new ManualResetEventSlim();
+    GameplayIdleGate.SetJudging(true);
+    try
+    {
+      GameplayIdleGate.Run(ran.Set);
+      Assert(!ran.Wait(TimeSpan.FromMilliseconds(100)), "Deferred work ran while ADOFAI was judging input.");
+      Assert(GameplayIdleGate.DeferredCount == 1, "Deferred work was not retained.");
+    }
+    finally
+    {
+      GameplayIdleGate.SetJudging(false);
+    }
+    Assert(ran.Wait(TimeSpan.FromSeconds(5)), "Deferred work did not run after judging stopped.");
+
+    using var immediate = new ManualResetEventSlim();
+    GameplayIdleGate.Run(immediate.Set);
+    Assert(immediate.Wait(TimeSpan.FromSeconds(5)), "Idle work was held.");
+
+    using var released = new ManualResetEventSlim();
+    GameplayIdleGate.SetJudging(true);
+    GameplayIdleGate.Run(released.Set);
+    GameplayIdleGate.Release();
+    Assert(released.Wait(TimeSpan.FromSeconds(5)), "Releasing the gate kept deferred work.");
+    Console.WriteLine("PASS optional background work waits for judged gameplay to end");
   }
 
   // Harmony builds and boxes an object[] on every call when a patch asks for __args.

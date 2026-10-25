@@ -8,6 +8,7 @@ using TUFReplay.Recording.Sessions;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Media;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Webcam.Playback;
 using TUFReplay.Webcam.Recording;
 
@@ -38,6 +39,7 @@ public static class FeatureRegistry
     WebcamRecording = new WebcamRecordingFeature();
 
     _harmony = new Harmony(HarmonyId);
+    GameplayIdleGate.WorkFailed += LogDeferredWorkFailure;
     try
     {
       _harmony.PatchAll(typeof(FeatureRegistry).Assembly);
@@ -62,6 +64,9 @@ public static class FeatureRegistry
 
   public static void Shutdown()
   {
+    // Let held background work run instead of waiting for gameplay that has ended.
+    GameplayIdleGate.Release();
+    GameplayIdleGate.WorkFailed -= LogDeferredWorkFailure;
     Ipc?.Disable();
     MicrophonePermissionWarningCoordinator.Shutdown();
     CameraFirstRunCoordinator.Shutdown();
@@ -83,4 +88,7 @@ public static class FeatureRegistry
     Recording = null;
     Ipc = null;
   }
+
+  private static void LogDeferredWorkFailure(System.Exception exception) =>
+    Main.Instance?.LogException("GameplayIdleGate", exception);
 }

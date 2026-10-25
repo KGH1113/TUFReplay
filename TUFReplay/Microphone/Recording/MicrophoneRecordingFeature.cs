@@ -9,6 +9,7 @@ using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Shared.Unity;
 using UnityEngine;
 
@@ -19,6 +20,7 @@ public sealed partial class MicrophoneRecordingFeature
   private readonly object _gate = new object();
   private readonly HashSet<string> _persisting = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _saving = new HashSet<string>(StringComparer.Ordinal);
+  private readonly HashSet<string> _queuedSaves = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _persistedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _deletedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly ManualResetEventSlim _savesIdle = new ManualResetEventSlim(true);
@@ -52,7 +54,7 @@ public sealed partial class MicrophoneRecordingFeature
         Main.Instance?.LogException("Microphone/Recovery", exception);
       }
       _retentionTimer = new System.Threading.Timer(
-        _ => DeleteExpiredRecordings(),
+        _ => GameplayIdleGate.Run(DeleteExpiredRecordings),
         null,
         TimeSpan.Zero,
         TimeSpan.FromHours(1)
@@ -95,6 +97,7 @@ public sealed partial class MicrophoneRecordingFeature
       _persistedRuns.Clear();
       _persisting.Clear();
       _deletedRuns.Clear();
+      _queuedSaves.Clear();
     }
   }
 

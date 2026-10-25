@@ -382,6 +382,13 @@ internal static class WebcamSuite
       bitmap[54] == 0 && bitmap[56] == 255 && bitmap[62] == 255 && bitmap[64] == 0,
       "The bitmap lost bottom-up orientation or RGBA to BGR conversion."
     );
+    byte[] reused = Enumerable.Repeat((byte)0xAB, bitmap.Length).ToArray();
+    byte[] destination = reused;
+    CameraPreviewBitmap.EncodeInto(snapshot, size, ref destination, out _);
+    Check(
+      ReferenceEquals(destination, reused) && destination.SequenceEqual(bitmap),
+      "Reusing a preview bitmap left stale bytes or allocated a new frame."
+    );
     Check(buffer.TryCopy(new byte[16]), "Browser snapshot consumed the game preview sequence.");
     Check(
       buffer.TryCopySnapshot(snapshot, out _) && !buffer.TryCopy(new byte[16]),

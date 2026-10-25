@@ -19,6 +19,7 @@ using TUFReplay.Shared.Downloads;
 using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Media;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Ipc;
 using static TUFReplay.Shared.Ipc.IpcDtoMapper;
@@ -30,6 +31,9 @@ public sealed class TUFReplayIpcFeature
   private bool _active;
   private ModRegistration<ReplayApiApp> _namespace;
   private long _activityRevision;
+  private readonly object _activityChangeGate = new object();
+  private bool _activityChangePending;
+  private string _pendingActivityRunId;
   private MicrophoneDevicesResponseDto _microphoneState;
 
   public void Enable()
@@ -536,8 +540,38 @@ public sealed class TUFReplayIpcFeature
         WebcamState(FeatureRegistry.WebcamRecording.GetState());
     });
 
+  // A change makes the companion refetch activity lists. During judged gameplay,
+  // coalesce changes and publish once the attempt ends so that refetch work and its
+  // garbage stay out of the attempt. RunId is null when several runs changed.
   private void OnActivityChanged(string runId)
   {
+    if (!_active)
+      return;
+    lock (_activityChangeGate)
+    {
+      if (_activityChangePending)
+      {
+        if (!string.Equals(_pendingActivityRunId, runId, StringComparison.Ordinal))
+          _pendingActivityRunId = null;
+        return;
+      }
+      _activityChangePending = true;
+      _pendingActivityRunId = runId;
+    }
+    GameplayIdleGate.Run(PublishPendingActivityChange);
+  }
+
+  private void PublishPendingActivityChange()
+  {
+    string runId;
+    lock (_activityChangeGate)
+    {
+      if (!_activityChangePending)
+        return;
+      _activityChangePending = false;
+      runId = _pendingActivityRunId;
+      _pendingActivityRunId = null;
+    }
     if (!_active)
       return;
     var value = new ActivityChanged { Revision = Interlocked.Increment(ref _activityRevision), RunId = runId };
