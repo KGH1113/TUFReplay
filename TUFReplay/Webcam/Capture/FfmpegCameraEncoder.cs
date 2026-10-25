@@ -36,6 +36,7 @@ internal sealed class FfmpegCameraEncoder
     new FfmpegCameraEncoder("libx264", "-forced-idr", "-preset", "ultrafast", "-tune", "zerolatency", "-threads", "2"),
   };
 
+  private const int ProbeTimeoutMs = 30000;
   private static readonly FfmpegCameraEncoderCache Cache = new FfmpegCameraEncoderCache(ProbeAsync);
   private readonly string _forcedIdrOption;
   private readonly string[] _options;
@@ -187,8 +188,10 @@ internal sealed class FfmpegCameraEncoder
       process.StandardInput.Close();
       process.BeginErrorReadLine();
       process.BeginOutputReadLine();
-      if (!process.WaitForExit(8000))
-        return new FfmpegCameraEncoderProbe(false, "Probe timed out after 8 seconds.");
+      // Quick Sync took over 8 s to open while the game was loading; a timeout
+      // here records with the software encoder for the rest of the session.
+      if (!process.WaitForExit(ProbeTimeoutMs))
+        return new FfmpegCameraEncoderProbe(false, "Probe timed out after 30 seconds.");
       // WaitForExit() without a timeout also waits for redirected streams, and can
       // block forever with a broken child. Bound the final progress drain instead.
       Task.WaitAll(new Task[] { outputClosed.Task, errorClosed.Task }, 1000);
