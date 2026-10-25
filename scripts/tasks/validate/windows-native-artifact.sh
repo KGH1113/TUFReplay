@@ -20,7 +20,9 @@ done
 [ -n "$objdump_tool" ] || fail "Missing required command: llvm-objdump or objdump"
 
 headers="$("$objdump_tool" -p "$artifact_path")"
-printf '%s\n' "$headers" | grep -Eq 'x86-64|x86_64|pe-x86-64|pei-x86-64' \
+# Here-strings, not pipes: grep -q exits at the first match, and under pipefail
+# the writer's broken pipe would fail a valid artifact.
+grep -Eq 'x86-64|x86_64|pe-x86-64|pei-x86-64' <<<"$headers" \
   || fail "TUFReplayNative.dll is not an x86-64 Windows image."
 
 required_exports=(
@@ -54,7 +56,7 @@ required_exports=(
   tufreplay_camera_recording_destroy
 )
 for symbol in "${required_exports[@]}"; do
-  printf '%s\n' "$headers" | grep -Eq "[[:space:]]$symbol\$" || fail "TUFReplayNative.dll does not export $symbol."
+  grep -Eq "[[:space:]]$symbol\$" <<<"$headers" || fail "TUFReplayNative.dll does not export $symbol."
 done
 
 # Only system DLLs: the library must not need a separately installed runtime.
