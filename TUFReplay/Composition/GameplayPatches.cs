@@ -7,42 +7,79 @@ using TUFReplay.Shared.Compatibility;
 
 namespace TUFReplay.Composition;
 
-[HarmonyPatch]
+// Hit runs inside ADOFAI's async-input judgment loop, including on official levels.
+// Read isAuto by position instead of through __args, which makes Harmony allocate an
+// object[] and box both arguments on every call.
 public static class ScrPlayerHitPatch
 {
-  [HarmonyTargetMethod]
-  private static System.Reflection.MethodBase TargetMethod() => AdofaiRuntimeCompatibility.ResolvePlayerHitMethod();
-
-  [HarmonyPrefix]
-  private static bool OnScrPlayerHitPrefix(scrPlayer __instance, object[] __args, ref bool __result)
+  internal static bool OnPrefix(scrPlayer instance, bool isAuto, ref bool result)
   {
     try
     {
-      if (!ReplayInputPatches.OnScrPlayerHitPrefix(ref __result))
+      if (!ReplayInputPatches.OnScrPlayerHitPrefix(ref result))
         return false;
 
-      bool isAuto = __args.Length > 0 && __args[__args.Length - 1] is bool value && value;
-      return RecordingPatches.OnScrPlayerHitPrefix(__instance, isAuto, ref __result);
+      return RecordingPatches.OnScrPlayerHitPrefix(instance, isAuto, ref result);
     }
     catch (Exception exception)
     {
-      Main.Instance?.LogException(nameof(OnScrPlayerHitPrefix), exception);
+      Main.Instance?.LogException(nameof(OnPrefix), exception);
       return true;
     }
   }
 
-  [HarmonyPostfix]
-  private static void OnScrPlayerHitPostfix(scrPlayer __instance)
+  internal static void OnPostfix(scrPlayer instance)
   {
     try
     {
-      RecordingPatches.OnScrPlayerHitPostfix(__instance);
+      RecordingPatches.OnScrPlayerHitPostfix(instance);
     }
     catch (Exception exception)
     {
-      Main.Instance?.LogException(nameof(OnScrPlayerHitPostfix), exception);
+      Main.Instance?.LogException(nameof(OnPostfix), exception);
     }
   }
+}
+
+// Current builds: Hit(long? hitTick, bool isAuto).
+[HarmonyPatch]
+internal static class ModernScrPlayerHitPatch
+{
+  // Also selected when neither overload exists, so the missing method still fails loudly.
+  [HarmonyPrepare]
+  private static bool Prepare() =>
+    AdofaiRuntimeCompatibility.ModernPlayerHitMethod != null
+    || AdofaiRuntimeCompatibility.LegacyPlayerHitMethod == null;
+
+  [HarmonyTargetMethod]
+  private static System.Reflection.MethodBase TargetMethod() => AdofaiRuntimeCompatibility.ResolvePlayerHitMethod();
+
+  [HarmonyPrefix]
+  private static bool Prefix(scrPlayer __instance, bool __1, ref bool __result) =>
+    ScrPlayerHitPatch.OnPrefix(__instance, __1, ref __result);
+
+  [HarmonyPostfix]
+  private static void Postfix(scrPlayer __instance) => ScrPlayerHitPatch.OnPostfix(__instance);
+}
+
+// Older builds: Hit(bool isAuto).
+[HarmonyPatch]
+internal static class LegacyScrPlayerHitPatch
+{
+  [HarmonyPrepare]
+  private static bool Prepare() =>
+    AdofaiRuntimeCompatibility.ModernPlayerHitMethod == null
+    && AdofaiRuntimeCompatibility.LegacyPlayerHitMethod != null;
+
+  [HarmonyTargetMethod]
+  private static System.Reflection.MethodBase TargetMethod() => AdofaiRuntimeCompatibility.LegacyPlayerHitMethod;
+
+  [HarmonyPrefix]
+  private static bool Prefix(scrPlayer __instance, bool __0, ref bool __result) =>
+    ScrPlayerHitPatch.OnPrefix(__instance, __0, ref __result);
+
+  [HarmonyPostfix]
+  private static void Postfix(scrPlayer __instance) => ScrPlayerHitPatch.OnPostfix(__instance);
 }
 
 [HarmonyPatch]
