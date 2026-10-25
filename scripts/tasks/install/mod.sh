@@ -57,6 +57,7 @@ if is_macos; then
   copy_mac_helper "$runtime" required
   copy_mac_native_input "$runtime" required
 fi
+copy_windows_native "$runtime" optional
 copy_runtime_dependencies "$runtime" optional
 copy_sqlite_override "$runtime"
 copy_debug_symbols "$runtime"
