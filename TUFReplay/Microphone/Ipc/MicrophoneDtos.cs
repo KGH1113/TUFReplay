@@ -10,6 +10,7 @@ public sealed class MicrophoneDeviceDto
   public string Name;
   public int MinFrequency;
   public int MaxFrequency;
+  public bool Bluetooth;
 
   public static MicrophoneDeviceDto From(MicrophoneDeviceInfo device) =>
     new MicrophoneDeviceDto
@@ -18,6 +19,7 @@ public sealed class MicrophoneDeviceDto
       Name = device.Name,
       MinFrequency = device.MinFrequency,
       MaxFrequency = device.MaxFrequency,
+      Bluetooth = device.Bluetooth,
     };
 }
 
@@ -26,6 +28,7 @@ public sealed class MicrophoneDevicesResponseDto
   public bool Enabled;
   public bool ToggleLocked;
   public List<MicrophoneDeviceDto> Devices;
+  public bool DefaultDeviceBluetooth;
   public string SelectedDeviceId;
   public int MicrophoneOffsetMs;
   public int MicrophoneVolumeDb;
@@ -40,6 +43,7 @@ public sealed class MicrophoneDevicesResponseDto
       Enabled = state.Enabled,
       ToggleLocked = state.ToggleLocked,
       Devices = devices,
+      DefaultDeviceBluetooth = state.DefaultDeviceBluetooth,
       SelectedDeviceId = state.SelectedDeviceId,
       MicrophoneOffsetMs = state.MicrophoneOffsetMs,
       MicrophoneVolumeDb = state.MicrophoneVolumeDb,

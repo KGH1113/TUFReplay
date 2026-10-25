@@ -4,7 +4,7 @@ import type { TFunction } from "i18next";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { useTranslation } from "react-i18next";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
-import type { MicrophoneDevice } from "@/models/microphone/microphone-model";
+import { type MicrophoneDevice, recordsFromBluetooth } from "@/models/microphone/microphone-model";
 import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
 
@@ -13,6 +13,7 @@ const SYSTEM_DEFAULT_VALUE = "__tufreplay_system_default__";
 export function MicrophoneDeviceMenu({
   connectionStatus,
   devices,
+  defaultDeviceBluetooth,
   enabled,
   toggleLocked,
   selectedDeviceId,
@@ -29,6 +30,7 @@ export function MicrophoneDeviceMenu({
 }: {
   connectionStatus: ConnectionStatus;
   devices: MicrophoneDevice[];
+  defaultDeviceBluetooth: boolean;
   enabled: boolean;
   toggleLocked: boolean;
   selectedDeviceId: string | null;
@@ -53,6 +55,8 @@ export function MicrophoneDeviceMenu({
       : (devices.find((device) => device.id === selectedDeviceId)?.name ?? selectedDeviceId);
   const selectedValue = selectedDeviceId ?? SYSTEM_DEFAULT_VALUE;
   const saving = pendingDeviceId !== undefined || pendingEnabled !== undefined;
+  const bluetoothInUse =
+    enabled && recordsFromBluetooth({ devices, defaultDeviceBluetooth, selectedDeviceId });
 
   return (
     <DropdownMenuPrimitive.Root onOpenChange={(open) => open && onRefresh()}>
@@ -132,12 +136,11 @@ export function MicrophoneDeviceMenu({
                     key={device.id}
                     value={device.id}
                     name={device.name}
-                    description={frequencyDescription(
-                      device,
-                      locale,
-                      t("availableDevice"),
-                      commonT,
-                    )}
+                    description={
+                      device.bluetooth
+                        ? t("bluetoothDevice")
+                        : frequencyDescription(device, locale, t("availableDevice"), commonT)
+                    }
                     disabled={saving}
                   />
                 ))}
@@ -146,6 +149,14 @@ export function MicrophoneDeviceMenu({
                 <p className="px-2.5 py-2 text-xs text-muted-foreground">{t("noneDetected")}</p>
               ) : null}
             </>
+          ) : null}
+          {bluetoothInUse ? (
+            <p
+              role="status"
+              className="mx-1 mt-1 rounded-md bg-amber-500/12 px-2 py-1.5 text-xs leading-relaxed text-amber-700 dark:text-amber-300"
+            >
+              {t("bluetoothWarning")}
+            </p>
           ) : null}
           {error ? (
             <p

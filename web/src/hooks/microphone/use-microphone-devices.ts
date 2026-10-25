@@ -15,6 +15,7 @@ const EMPTY_STATE: MicrophoneDevicesState = {
   enabled: false,
   toggleLocked: false,
   devices: [],
+  defaultDeviceBluetooth: false,
   selectedDeviceId: null,
   microphoneOffsetMs: 0,
   microphoneVolumeDb: 0,

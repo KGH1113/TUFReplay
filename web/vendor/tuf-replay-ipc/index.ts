@@ -33,9 +33,9 @@ export interface LevelSession { appSessionId: string; artist: string | null; aut
 
 export interface LogicalLevel { artist: string | null; author: string | null; chartAvailable: boolean; clearRunCount: number; firstSeenAtUtc: string; firstStartTile: number | null; floorCount: number; id: string; lastSeenAtUtc: string; lastStartTile: number | null; noFailRunCount: number; relativeLevelPath: string | null; runCount: number; song: string | null; tufLevelId: number | null; visitCount: number }
 
-export interface MicrophoneDevice { id: string; maxFrequency: number; minFrequency: number; name: string }
+export interface MicrophoneDevice { bluetooth: boolean; id: string; maxFrequency: number; minFrequency: number; name: string }
 
-export interface MicrophoneDevices { devices: Array<MicrophoneDevice>; enabled: boolean; microphoneOffsetMs: number; microphoneVolumeDb: number; selectedDeviceId: string | null; toggleLocked: boolean }
+export interface MicrophoneDevices { defaultDeviceBluetooth: boolean; devices: Array<MicrophoneDevice>; enabled: boolean; microphoneOffsetMs: number; microphoneVolumeDb: number; selectedDeviceId: string | null; toggleLocked: boolean }
 
 export interface MicrophoneTiming { microphoneOffsetMs: number; microphoneVolumeDb: number }
 
@@ -130,7 +130,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "9a6375f26aad2ff79bac5deab062cd7fe9f64f2fcc156bdfc3ca9bb62d1828cf",
+  "hash": "2ef495ce267cba121a98b1fc10306b6445138354034088ec24e341a833352efc",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -409,6 +409,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
     },
     "MicrophoneDevice": {
       "object": {
+        "bluetooth": "boolean",
         "id": "string",
         "maxFrequency": "int32",
         "minFrequency": "int32",
@@ -417,6 +418,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
     },
     "MicrophoneDevices": {
       "object": {
+        "defaultDeviceBluetooth": "boolean",
         "devices": {
           "array": {
             "model": "MicrophoneDevice"

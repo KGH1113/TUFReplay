@@ -47,6 +47,8 @@ enum MicrophoneAuthorizationStatus: String, CaseIterable, Encodable {
 struct MicrophoneDeviceResponse: Encodable {
   let id: String
   let name: String
+  let bluetooth: Bool
+  let isDefault: Bool
   let minFrequency = PcmWaveFile.sampleRate
   let maxFrequency = PcmWaveFile.sampleRate
 }

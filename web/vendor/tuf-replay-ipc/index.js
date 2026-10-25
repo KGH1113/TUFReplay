@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "9a6375f26aad2ff79bac5deab062cd7fe9f64f2fcc156bdfc3ca9bb62d1828cf",
+    "hash": "2ef495ce267cba121a98b1fc10306b6445138354034088ec24e341a833352efc",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -281,6 +281,7 @@ export const ReplayApiContract = defineContract({
         },
         "MicrophoneDevice": {
             "object": {
+                "bluetooth": "boolean",
                 "id": "string",
                 "maxFrequency": "int32",
                 "minFrequency": "int32",
@@ -289,6 +290,7 @@ export const ReplayApiContract = defineContract({
         },
         "MicrophoneDevices": {
             "object": {
+                "defaultDeviceBluetooth": "boolean",
                 "devices": {
                     "array": {
                         "model": "MicrophoneDevice"

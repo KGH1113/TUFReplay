@@ -5,6 +5,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Microphone.Capture;
+using TUFReplay.Microphone.Devices;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Replay.Timeline;
@@ -33,6 +34,8 @@ public sealed partial class MicrophoneRecordingFeature
   private string _tempDirectory;
   private bool _active;
   private bool _permissionRequestStarted;
+  private bool _bluetoothWarningShown;
+  private string _bluetoothCheckedFor;
 
   public void Enable()
   {
@@ -140,7 +143,9 @@ public sealed partial class MicrophoneRecordingFeature
       {
         Main.Instance?.Log("[Microphone] Arm failed; this run will have no recording. error=" + error);
         ShowRecordingUnavailable();
+        return;
       }
+      WarnIfBluetoothInput(deviceId);
     }
     catch (Exception exception)
     {
@@ -225,6 +230,23 @@ public sealed partial class MicrophoneRecordingFeature
     }
     ShowRecordingUnavailable();
     return false;
+  }
+
+  // Checked once per selected device per game session, and shown at most once.
+  private void WarnIfBluetoothInput(string deviceId)
+  {
+    string checkedFor = deviceId ?? string.Empty;
+    if (_bluetoothWarningShown || string.Equals(_bluetoothCheckedFor, checkedFor, StringComparison.Ordinal))
+      return;
+    _bluetoothCheckedFor = checkedFor;
+    if (!MicrophoneBluetoothDetector.IsInUseBluetooth(deviceId, _backend.ListDevices()))
+      return;
+    _bluetoothWarningShown = true;
+    Main.Instance?.Log("[Microphone] Recording from a Bluetooth microphone.");
+    ReplayTimelineHud.ShowNotificationToast(
+      "Bluetooth microphone in use",
+      "Recording through a Bluetooth headset microphone switches the headset to its call mode, which can lower the game's audio quality. Choose another microphone in the companion if the song sounds muffled."
+    );
   }
 
   private static void OnRunCaptureFailed(string error)
