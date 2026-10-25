@@ -17,6 +17,7 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
   private MacOsMachTimeConverter _clock;
   private WebcamCaptureProfile _profile;
   public CameraPreviewBuffer Preview { get; private set; }
+  public string CaptureWarning => null;
 
   public Task<List<WebcamDevice>> ListDevicesAsync()
   {

@@ -12,15 +12,17 @@ namespace TUFReplay.Webcam.Capture;
 internal sealed class FfmpegCameraMode
 {
   public FfmpegCameraMode(int width, int height, double frameRate, string format, bool compressed)
+    : this(width, height, FfmpegCameraFrameRate.Create(frameRate), format, compressed) { }
+
+  public FfmpegCameraMode(int width, int height, FfmpegCameraFrameRate frameRate, string format, bool compressed)
   {
+    if (frameRate == null)
+      throw new ArgumentNullException(nameof(frameRate));
     Width = width;
     Height = height;
-    // DirectShow uses integer 100 ns frame intervals. Its %g listing rounds
-    // decimal rates, so reconstruct that interval before requesting the mode.
-    // In particular, requesting 60 from a 59.94-only webcam is not supported.
-    long interval = Math.Max(1, (long)Math.Round(10_000_000d / frameRate));
-    FrameRate = 10_000_000d / interval;
-    FrameRateArgument = "10000000/" + interval.ToString(CultureInfo.InvariantCulture);
+    FrameRate = frameRate.FrameRate;
+    FrameRateArgument = frameRate.Argument;
+    IntervalTicks = frameRate.IntervalTicks;
     Format = format;
     Compressed = compressed;
   }
@@ -29,6 +31,7 @@ internal sealed class FfmpegCameraMode
   public int Height { get; }
   public double FrameRate { get; }
   public string FrameRateArgument { get; }
+  public long IntervalTicks { get; }
   public string Format { get; }
   public bool Compressed { get; }
 
@@ -43,7 +46,18 @@ internal sealed class FfmpegCameraMode
   }
 
   public override string ToString() =>
-    Width + "x" + Height + " @ " + FrameRate.ToString("0.###", CultureInfo.InvariantCulture) + " " + Format;
+    Width
+    + "x"
+    + Height
+    + " @ "
+    + FrameRate.ToString("0.###", CultureInfo.InvariantCulture)
+    + " "
+    + Format
+    + " (fps="
+    + FrameRateArgument
+    + ", interval="
+    + IntervalTicks.ToString(CultureInfo.InvariantCulture)
+    + ")";
 }
 
 internal static class FfmpegCameraModes
@@ -58,12 +72,13 @@ internal static class FfmpegCameraModes
   public static async Task<IReadOnlyList<FfmpegCameraMode>> DiscoverAsync(
     string executable,
     string deviceId,
-    WebcamCaptureProfile profile
+    WebcamCaptureProfile profile,
+    Action<string> log = null
   )
   {
     using var process = FfmpegCameraProcess.Create(
       executable,
-      new[] { "-hide_banner", "-nostdin", "-list_options", "true", "-f", "dshow", "-i", "video=" + deviceId }
+      new[] { "-nostdin", "-list_options", "true", "-f", "dshow", "-i", "video=" + deviceId }
     );
     var lines = new List<string>();
     process.ErrorDataReceived += (_, args) =>
@@ -95,7 +110,20 @@ internal static class FfmpegCameraModes
     // FFmpeg intentionally exits with an error after -list_options. An empty
     // listing lets the caller try the device default without forcing 60 fps.
     lock (lines)
+    {
+      int loggedModes = 0;
+      foreach (string line in lines)
+      {
+        if (line.StartsWith("ffmpeg version ", StringComparison.Ordinal))
+          log?.Invoke("Camera FFmpeg: " + line);
+        Match capability = Capability.Match(line);
+        if (capability.Success && loggedModes++ < 64)
+          log?.Invoke("Camera capability: " + capability.Value);
+      }
+      if (loggedModes > 64)
+        log?.Invoke("Camera capability log truncated: " + loggedModes + " entries.");
       return Parse(lines, profile);
+    }
   }
 
   public static IReadOnlyList<FfmpegCameraMode> Parse(IEnumerable<string> output, WebcamCaptureProfile profile)
@@ -123,6 +151,8 @@ internal static class FfmpegCameraModes
       )
         continue;
       double rate = Math.Max(minRate, Math.Min(profile.FrameRate, maxRate));
+      if (!FfmpegCameraFrameRate.TryCreate(rate, out FfmpegCameraFrameRate frameRate))
+        continue;
       string format = match.Groups["format"].Value;
       bool compressed = match.Groups["type"].Value == "vcodec";
       // The listing omits resolution step sizes. Request advertised endpoints
@@ -132,14 +162,17 @@ internal static class FfmpegCameraModes
 
       void Add(int width, int height)
       {
-        var mode = new FfmpegCameraMode(width, height, rate, format, compressed);
-        string key = width + ":" + height + ":" + mode.FrameRateArgument + ":" + compressed + ":" + format;
-        if (seen.Add(key))
+        var mode = new FfmpegCameraMode(width, height, frameRate, format, compressed);
+        if (seen.Add(ModeKey(mode)))
           modes.Add(mode);
       }
     }
     return modes
-      .OrderByDescending(mode => OutputPixels(mode, profile))
+      // A working low-rate native mode must not hide a smoother mode that needs
+      // scaling. Try the requested rate first, then 30 fps for a 60 fps profile.
+      .OrderBy(mode => FrameRatePriority(mode, profile))
+      .ThenByDescending(mode => FrameRatePriority(mode, profile) == 2 ? mode.FrameRate : 0)
+      .ThenByDescending(mode => OutputPixels(mode, profile))
       .ThenBy(mode => (long)mode.Width * mode.Height)
       .ThenByDescending(mode => Math.Min(mode.FrameRate, profile.FrameRate))
       .ThenBy(mode => mode.FrameRate)
@@ -150,6 +183,38 @@ internal static class FfmpegCameraModes
       )
       .ThenBy(mode => mode.Format, StringComparer.Ordinal)
       .ToArray();
+  }
+
+  public static IReadOnlyList<FfmpegCameraMode> BuildAttempts(
+    IEnumerable<FfmpegCameraMode> modes,
+    WebcamCaptureProfile profile
+  )
+  {
+    if (modes == null)
+      throw new ArgumentNullException(nameof(modes));
+    if (profile == null)
+      throw new ArgumentNullException(nameof(profile));
+    var seen = new HashSet<string>(StringComparer.Ordinal);
+    FfmpegCameraMode[] uniqueModes = modes.Where(mode => mode != null && seen.Add(ModeKey(mode))).ToArray();
+    List<FfmpegCameraMode> attempts = uniqueModes.Where(mode => FrameRatePriority(mode, profile) < 2).Take(8).ToList();
+    // Give native driver negotiation a chance before accepting a slow raw mode.
+    // The caller also bounds the total startup time across all attempts.
+    attempts.Add(null);
+    attempts.AddRange(uniqueModes.Where(mode => FrameRatePriority(mode, profile) == 2).Take(3));
+    return attempts;
+  }
+
+  private static string ModeKey(FfmpegCameraMode mode) =>
+    mode.Width + ":" + mode.Height + ":" + mode.FrameRateArgument + ":" + mode.Compressed + ":" + mode.Format;
+
+  private static int FrameRatePriority(FfmpegCameraMode mode, WebcamCaptureProfile profile)
+  {
+    // Treat common fractional rates (29.97/59.94) as their nominal targets.
+    if (mode.FrameRate >= profile.FrameRate * 0.995)
+      return 0;
+    if (mode.FrameRate >= Math.Min(30, profile.FrameRate) * 0.995)
+      return 1;
+    return 2;
   }
 
   private static long OutputPixels(FfmpegCameraMode mode, WebcamCaptureProfile profile)
