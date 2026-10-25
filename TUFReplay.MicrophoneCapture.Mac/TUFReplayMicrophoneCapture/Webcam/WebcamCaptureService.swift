@@ -16,8 +16,8 @@ struct WebcamProfile: Equatable {
 
   func validate() throws {
     guard width > 0, width <= 1920, height > 0, height <= 1080,
-      width % 2 == 0, height % 2 == 0, frameRate > 0, frameRate <= 30,
-      bitRate >= 100_000, bitRate <= 3_000_000 else {
+      width % 2 == 0, height % 2 == 0, frameRate > 0, frameRate <= 60,
+      bitRate >= 100_000, bitRate <= 8_000_000 else {
       throw CaptureError.message("Unsupported camera quality. Choose Compact, Balanced, or Quality.")
     }
   }
@@ -178,14 +178,26 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
       maxWidth: max(profile.width, CameraPreviewBuffer.maxWidth),
       maxHeight: max(profile.height, CameraPreviewBuffer.maxHeight))
     let nativeAspect = Double(nativeSize.width) / Double(nativeSize.height)
-    let formats = device.formats.filter { format in
-      let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
-      return size.width > 0 && size.height > 0
-        && abs(Double(size.width) / Double(size.height) - nativeAspect) < 0.01
-        && format.videoSupportedFrameRateRanges.contains {
-          $0.minFrameRate <= Double(profile.frameRate) && $0.maxFrameRate >= Double(profile.frameRate)
-        }
+    func nativeAspectFormats(supporting frameRate: Int) -> [AVCaptureDevice.Format] {
+      device.formats.filter { format in
+        let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
+        return size.width > 0 && size.height > 0
+          && abs(Double(size.width) / Double(size.height) - nativeAspect) < 0.01
+          && format.videoSupportedFrameRateRanges.contains {
+            $0.minFrameRate <= Double(frameRate) && $0.maxFrameRate >= Double(frameRate)
+          }
+      }
     }
+    // Quality asks for 60 fps; most webcams only offer 30. Fall back explicitly so
+    // the encoder's expected rate and key-frame interval match the capture.
+    var frameRate = profile.frameRate
+    var formats = nativeAspectFormats(supporting: frameRate)
+    if formats.isEmpty && frameRate > 30 {
+      frameRate = 30
+      formats = nativeAspectFormats(supporting: frameRate)
+    }
+    let captureProfile = WebcamProfile(
+      width: profile.width, height: profile.height, frameRate: frameRate, bitRate: profile.bitRate)
     let suitable = formats.filter { format in
       let size = CMVideoFormatDescriptionGetDimensions(format.formatDescription)
       return size.width >= target.width && size.height >= target.height
@@ -201,17 +213,18 @@ final class WebcamCaptureService: NSObject, AVCaptureVideoDataOutputSampleBuffer
     }
     if let selected { device.activeFormat = selected }
     if device.activeFormat.videoSupportedFrameRateRanges.contains(where: {
-      $0.minFrameRate <= Double(profile.frameRate) && $0.maxFrameRate >= Double(profile.frameRate)
+      $0.minFrameRate <= Double(captureProfile.frameRate) && $0.maxFrameRate >= Double(captureProfile.frameRate)
     }) {
-      let duration = CMTime(value: 1, timescale: CMTimeScale(profile.frameRate))
+      let duration = CMTime(value: 1, timescale: CMTimeScale(captureProfile.frameRate))
       device.activeVideoMinFrameDuration = duration
       device.activeVideoMaxFrameDuration = duration
     }
     device.unlockForConfiguration()
 
     let sourceSize = CMVideoFormatDescriptionGetDimensions(device.activeFormat.formatDescription)
-    requestedProfile = profile
-    self.profile = profile.fitting(width: Int(sourceSize.width), height: Int(sourceSize.height))
+    // Frame-size refits start from what the camera can deliver, keeping the fallback.
+    requestedProfile = captureProfile
+    self.profile = captureProfile.fitting(width: Int(sourceSize.width), height: Int(sourceSize.height))
     self.deviceId = device.uniqueID
     if let previewPath {
       let buffer = try CameraPreviewBuffer(path: previewPath,
