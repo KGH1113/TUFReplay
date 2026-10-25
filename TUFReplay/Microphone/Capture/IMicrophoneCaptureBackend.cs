@@ -7,6 +7,9 @@ namespace TUFReplay.Microphone.Capture;
 
 public interface IMicrophoneCaptureBackend : IDisposable
 {
+  // Raised from a backend worker when a run accepted by BeginRun could not start.
+  event Action<string> RunCaptureFailed;
+
   void RequestPermission();
   void RefreshPermissionStatus();
   MicrophonePermissionStatus GetPermissionStatus();
