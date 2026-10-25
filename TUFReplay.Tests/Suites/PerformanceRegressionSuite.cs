@@ -29,6 +29,31 @@ internal static class PerformanceRegressionSuite
     TestChunkedCsvEncoding();
     TestIndexedInputSeek();
     TestLevelFileVerificationReuse(root);
+    TestHarmonyPatchesDoNotRequestBoxedArguments();
+  }
+
+  // Harmony builds and boxes an object[] on every call when a patch asks for __args.
+  // Patched methods such as scrPlayer.Hit run inside ADOFAI's async-input judgment loop.
+  private static void TestHarmonyPatchesDoNotRequestBoxedArguments()
+  {
+    string assemblyPath = typeof(LevelFileVerificationCache).Assembly.Location;
+    using FileStream stream = File.OpenRead(assemblyPath);
+    using var image = new System.Reflection.PortableExecutable.PEReader(stream);
+    System.Reflection.Metadata.MetadataReader metadata =
+      System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(image);
+    foreach (System.Reflection.Metadata.MethodDefinitionHandle methodHandle in metadata.MethodDefinitions)
+    {
+      System.Reflection.Metadata.MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
+      foreach (System.Reflection.Metadata.ParameterHandle parameterHandle in method.GetParameters())
+      {
+        System.Reflection.Metadata.Parameter parameter = metadata.GetParameter(parameterHandle);
+        Assert(
+          !metadata.StringComparer.Equals(parameter.Name, "__args"),
+          "A Harmony patch requests __args: " + metadata.GetString(method.Name)
+        );
+      }
+    }
+    Console.WriteLine("PASS Harmony patches read arguments without boxing them");
   }
 
   private static void TestLevelFileVerificationReuse(string root)

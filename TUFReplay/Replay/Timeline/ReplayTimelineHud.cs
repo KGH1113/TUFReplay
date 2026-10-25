@@ -29,6 +29,10 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
   private bool? _lastSeekInteractable;
   private bool _isScrubbing;
   private bool _replayPreparationNotificationVisible;
+
+  // The HUD stays alive for the whole game. Hiding resets markers and refreshes the
+  // dropdown's count labels, so run it once per transition instead of every idle frame.
+  private bool _idleHidden;
   private long _scrubDurationTimeUs;
   private readonly Vector3[] _nativeControlCorners = new Vector3[4];
   private int _lastScreenWidth = -1;
@@ -235,10 +239,12 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
         return;
       }
 
-      Hide();
+      if (!_idleHidden)
+        Hide();
       return;
     }
 
+    _idleHidden = false;
     if (!string.Equals(_activeRunId, snapshot.RunId, StringComparison.Ordinal))
       BeginReplay(snapshot);
 
@@ -358,6 +364,7 @@ internal sealed class ReplayTimelineHud : MonoBehaviour
     if (_view.gameObject.activeSelf)
       _view.gameObject.SetActive(false);
     _activeRunId = null;
+    _idleHidden = true;
   }
 
   private void BeginScrub()

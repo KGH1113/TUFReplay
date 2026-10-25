@@ -72,6 +72,9 @@ internal static class AdofaiRuntimeCompatibility
 
   internal static bool HasModernHitMargins => Enum.IsDefined(typeof(HitMargin), "XPerfect");
 
+  internal static MethodInfo ModernPlayerHitMethod => ModernHitMethod;
+  internal static MethodInfo LegacyPlayerHitMethod => LegacyHitMethod;
+
   internal static MethodBase ResolvePlayerHitMethod()
   {
     return ModernHitMethod ?? LegacyHitMethod ?? throw new MissingMethodException(typeof(scrPlayer).FullName, "Hit");
