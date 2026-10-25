@@ -527,6 +527,7 @@ internal static class WebcamSuite
     public int EndCalls;
     public int DisarmCalls;
     public CameraPreviewBuffer Preview => null;
+    public string CaptureWarning => null;
 
     public CompletedCameraBackend(WebcamRecording recording) => _recording = recording;
 

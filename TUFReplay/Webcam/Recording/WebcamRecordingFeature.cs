@@ -270,9 +270,21 @@ public sealed class WebcamRecordingFeature
           {
             throw new IOException("The camera is not sending video. Reconnect it or choose another camera.");
           }
+          string warning = null;
           lock (_gate)
             if (_active && generation == _generation)
+            {
               _armed = true;
+              warning = _backend.CaptureWarning;
+            }
+          if (!string.IsNullOrEmpty(warning))
+            UnityMainThread.Post(() =>
+            {
+              lock (_gate)
+                if (!_active || !_armed || generation != _generation)
+                  return;
+              ReplayTimelineHud.ShowNotificationToast("Camera frame rate reduced", warning);
+            });
         }
         finally
         {
