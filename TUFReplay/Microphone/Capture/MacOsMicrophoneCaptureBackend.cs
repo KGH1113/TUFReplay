@@ -528,6 +528,8 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
             Name = (string)item["name"],
             MinFrequency = (int?)item["minFrequency"] ?? 48000,
             MaxFrequency = (int?)item["maxFrequency"] ?? 48000,
+            Bluetooth = (bool?)item["bluetooth"] ?? false,
+            IsDefault = (bool?)item["isDefault"] ?? false,
           }
         );
       }

@@ -12,11 +12,15 @@ public static class MicrophoneDeviceService
   public static MicrophoneDevicesState GetState()
   {
     bool enabled = TUFReplaySettingStore.Current?.MicrophoneEnabled != false;
+    List<MicrophoneDeviceInfo> devices = enabled
+      ? MicrophoneCaptureRuntime.ListDevices()
+      : new List<MicrophoneDeviceInfo>();
     return new MicrophoneDevicesState
     {
       Enabled = enabled,
       ToggleLocked = IsToggleLocked(),
-      Devices = enabled ? MicrophoneCaptureRuntime.ListDevices() : new List<MicrophoneDeviceInfo>(),
+      Devices = devices,
+      DefaultDeviceBluetooth = enabled && MicrophoneBluetoothDetector.IsDefaultBluetooth(devices),
       SelectedDeviceId = TUFReplaySettingStore.Current?.MicrophoneDeviceId,
       MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
       MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,

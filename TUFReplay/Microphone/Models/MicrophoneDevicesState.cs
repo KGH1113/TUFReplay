@@ -8,6 +8,7 @@ public sealed class MicrophoneDevicesState
   public bool Enabled;
   public bool ToggleLocked;
   public List<MicrophoneDeviceInfo> Devices;
+  public bool DefaultDeviceBluetooth;
   public string SelectedDeviceId;
   public int MicrophoneOffsetMs;
   public int MicrophoneVolumeDb;

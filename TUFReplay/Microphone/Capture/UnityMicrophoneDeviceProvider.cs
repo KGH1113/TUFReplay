@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TUFReplay.Microphone.Devices;
 using TUFReplay.Microphone.Models;
 using UnityEngine;
 
@@ -26,6 +27,7 @@ public static class UnityMicrophoneDeviceProvider
           Name = name,
           MinFrequency = minFrequency,
           MaxFrequency = maxFrequency,
+          Bluetooth = MicrophoneBluetoothDetector.IsBluetoothEndpoint(name),
         }
       );
     }

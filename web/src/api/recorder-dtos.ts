@@ -154,6 +154,7 @@ export function toJudgmentCountsDto(value: JudgmentCounts) {
 
 export function toMicrophoneDevicesDto(value: MicrophoneDevices) {
   return {
+    DefaultDeviceBluetooth: value.defaultDeviceBluetooth,
     Devices: value.devices.map(toMicrophoneDeviceDto),
     Enabled: value.enabled,
     MicrophoneOffsetMs: value.microphoneOffsetMs,
@@ -165,6 +166,7 @@ export function toMicrophoneDevicesDto(value: MicrophoneDevices) {
 
 export function toMicrophoneDeviceDto(value: MicrophoneDevice) {
   return {
+    Bluetooth: value.bluetooth,
     Id: value.id,
     MaxFrequency: value.maxFrequency,
     MinFrequency: value.minFrequency,
