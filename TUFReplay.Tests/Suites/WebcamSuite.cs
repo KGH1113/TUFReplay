@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -25,7 +26,6 @@ internal static class WebcamSuite
   {
     StoreDownloadCancellationReleasesItsLease(root);
     TimelineSkipsRecordedPausesAndHandlesRateChanges();
-    LatestFrameOwnershipRemainsStableAndRejectsStaleFrames();
     AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
     CameraTailSurvivesMicrophoneCompletionUntilEditorOrRetry();
     FailureCameraTailUsesRealTime();
@@ -35,7 +35,6 @@ internal static class WebcamSuite
     CameraInstallationWaitDoesNotStartARun(root);
     CameraRunCannotUseAnInvalidatedBackend(root);
     WonTailAndLatencyHaveTheSameConventionAsMicrophone();
-    WallClockPreservesLargeTimestampPrecision();
     FfmpegDiscoverySeparatesAudioFromVideo();
     SettingsRejectInvalidValuesAndKeepTheCameraOffByDefault();
     LegacyTotalStorageSettingDoesNotBecomeARecordingLimit(root);
@@ -47,8 +46,6 @@ internal static class WebcamSuite
     HiddenPreviewStillWarmsUpAndSkipsUnusedFrames();
     PreviewReadsNeverWaitForTheProducer();
     CameraDownscalingPreservesNativeAspect();
-    PreviewConversionPreservesColorAndOrientation();
-    PreviewDownscalingAveragesFineDetailWithoutAllocating();
     DispositionCompletesOnceInEitherOrder();
     DispositionWaitsForActivityPersistence();
     StoreProtectsPlaybackAndEnforcesRetention(root);
@@ -57,9 +54,9 @@ internal static class WebcamSuite
     StoreDeletionRejectsLateCapture(root);
     StoreRejectsCorruptTimingAndDuplicateSaves(root);
     StoreReleaseNeverWaitsForRetention(root);
-    FfmpegUsesLogicalPooledFrameSize(root);
+    FfmpegUsesLogicalFrameSize(root);
+    NativeRelayPublishesManagedReadablePreviews(root);
     PreparedFfmpegWriterKeepsIdleTimeOutOfVideo(root);
-    LargeCameraBuffersAreReused();
     Console.WriteLine("TUFReplay webcam timing, storage, and disposition tests passed.");
   }
 
@@ -129,10 +126,18 @@ internal static class WebcamSuite
     }
   }
 
+  private static string FindTestFfmpeg() =>
+    Environment.GetEnvironmentVariable("TUFREPLAY_CAMERA_TEST_FFMPEG")
+    ?? Environment.GetEnvironmentVariable("TUFREPLAY_TEST_FFMPEG")
+    ?? (Environment.GetEnvironmentVariable("PATH") ?? "")
+      .Split(Path.PathSeparator)
+      .Select(directory => Path.Combine(directory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
+      .FirstOrDefault(File.Exists);
+
   private static void PreparedFfmpegWriterKeepsIdleTimeOutOfVideo(string root)
   {
     string executable = FindTestFfmpeg();
-    if (string.IsNullOrWhiteSpace(executable))
+    if (string.IsNullOrWhiteSpace(executable) || !SyntheticCameraCapture.IsAvailable)
       return;
     WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality("compact").FitToSource(640, 360);
     var source = new CameraFrameSize(640, 360);
@@ -147,122 +152,185 @@ internal static class WebcamSuite
       source,
       WebcamRecordingStore.MaximumCaptureBytes
     );
+    byte[] pixels = new byte[640 * 360 * 3 / 2];
+    Array.Fill(pixels, (byte)128, 640 * 360, pixels.Length - 640 * 360);
     bool finalizing = false;
-    try
+    using (var capture = new SyntheticCameraCapture(640, 360))
     {
-      // Preparing the encoder must not create footage for the idle interval.
-      Thread.Sleep(100);
-      Check(!File.Exists(destination), "The idle camera writer used a run destination before attachment.");
-      recording.Attach("synthetic-run", destination, WebcamRecordingStore.MaximumCaptureBytes, Ticks(10));
-      byte[] pixels = new byte[640 * 360 * 3 / 2];
-      Array.Fill(pixels, (byte)128, 640 * 360, pixels.Length - 640 * 360);
-      SubmitFrame(recording, pixels, Ticks(9.99)); // A cached camera frame from before input capture must be rejected.
-      for (int frame = 0; frame < 12; frame++)
+      try
       {
-        SubmitFrame(recording, pixels, Ticks(10 + frame / 30d));
-        Thread.Sleep(35);
+        // Preparing the encoder must not create footage for the idle interval.
+        Thread.Sleep(100);
+        Check(!File.Exists(destination), "The idle camera writer used a run destination before attachment.");
+        // A cached camera frame from before input capture must be rejected.
+        capture.Emit(pixels, Ticks(9.99));
+        Check(capture.WaitReady(), "The synthetic camera never became ready.");
+        capture.Now = Ticks(10);
+        recording.Attach("synthetic-run", destination, WebcamRecordingStore.MaximumCaptureBytes, Ticks(10));
+        recording.Connect(capture);
+        for (int frame = 0; frame < 12; frame++)
+        {
+          capture.Emit(pixels, Ticks(10 + frame / 30d));
+          Thread.Sleep(35);
+        }
+        Check(
+          SpinWait.SpinUntil(() => recording.RelayStats.WrittenFrames == 12, TimeSpan.FromSeconds(5)),
+          "The relay did not stream every run frame."
+        );
+        finalizing = true;
+        recording.Seal();
+        WebcamRecording result = recording.FinishAsync().GetAwaiter().GetResult();
+        Check(result.RunId == "synthetic-run" && result.FilePath == destination, "Camera attachment lost its run.");
+        Check(result.CaptureStartTimestampTicks == Ticks(10), "The prepared encoder changed the first frame clock.");
+        Check(
+          result.DurationUs > 0 && result.DurationUs <= 400_000,
+          "The prepared encoder reported an invalid duration: " + result.DurationUs
+        );
+        Check(File.Exists(destination) && !File.Exists(standby), "Camera footage kept the standby destination.");
+        Check(CountDecodedFrames(executable, destination) == 12, "The prepared MP4 saved idle time or lost frames.");
       }
-      finalizing = true;
-      WebcamRecording result = recording.FinishAsync().GetAwaiter().GetResult();
-      Check(result.RunId == "synthetic-run" && result.FilePath == destination, "Camera attachment lost its run.");
-      Check(result.CaptureStartTimestampTicks == Ticks(10), "The prepared encoder changed the first frame clock.");
-      // FFmpeg progress reports the final mux timestamp, which can precede
-      // the MP4 duration when H.264 reorders frames. Verify the frame count
-      // by decoding below rather than treating progress as a frame count.
-      Check(
-        result.DurationUs > 0 && result.DurationUs <= 400_000,
-        "The prepared encoder reported an invalid duration: " + result.DurationUs
-      );
-      Check(File.Exists(destination) && !File.Exists(standby), "Camera footage kept the standby destination.");
-      using var decoder = FfmpegCameraProcess.Create(
+      finally
+      {
+        if (!finalizing)
+          recording.CancelAsync().GetAwaiter().GetResult();
+      }
+
+      string unusedPath = Path.Combine(root, "camera-unused.mp4.partial");
+      var unused = new FfmpegCameraRecording(
         executable,
-        new[] { "-v", "error", "-nostats", "-i", destination, "-an", "-progress", "pipe:1", "-f", "null", "-" }
+        null,
+        unusedPath,
+        "synthetic",
+        profile,
+        source,
+        WebcamRecordingStore.MaximumCaptureBytes
       );
-      Check(decoder.Start(), "Synthetic camera decoding did not start.");
-      decoder.StandardInput.Close();
-      Task<string> progress = decoder.StandardOutput.ReadToEndAsync();
-      Task<string> errors = decoder.StandardError.ReadToEndAsync();
-      if (!decoder.WaitForExit(10000))
-      {
-        decoder.Kill();
-        throw new InvalidOperationException("Synthetic camera decoding timed out.");
-      }
-      Check(decoder.ExitCode == 0, "The prepared camera MP4 could not be decoded: " + errors.GetAwaiter().GetResult());
+      unused.Attach(
+        "empty-retry",
+        Path.Combine(root, "camera-empty.mp4.partial"),
+        WebcamRecordingStore.MaximumCaptureBytes,
+        Ticks(20)
+      );
+      capture.Now = Ticks(20);
+      unused.Connect(capture);
+      capture.EmitAndWaitCaptured(pixels, Ticks(19.5));
+      unused.Seal();
       Check(
-        progress.GetAwaiter().GetResult().Split('\n').Where(line => line.StartsWith("frame=")).LastOrDefault()?.Trim()
-          == "frame=12",
-        "The prepared MP4 saved idle time or did not decode all 12 frames."
+        unused.FinishAsync().GetAwaiter().GetResult() == null,
+        "A retry before the first camera frame produced a video or camera error."
       );
+      Check(!File.Exists(unusedPath), "An idle camera encoder leaked its temporary file.");
     }
-    finally
-    {
-      if (!finalizing)
-        recording.CancelAsync().GetAwaiter().GetResult();
-    }
-    string unusedPath = Path.Combine(root, "camera-unused.mp4.partial");
-    var unused = new FfmpegCameraRecording(
-      executable,
-      null,
-      unusedPath,
-      "synthetic",
-      profile,
-      source,
-      WebcamRecordingStore.MaximumCaptureBytes
-    );
-    unused.Attach(
-      "empty-retry",
-      Path.Combine(root, "camera-empty.mp4.partial"),
-      WebcamRecordingStore.MaximumCaptureBytes,
-      Ticks(10)
-    );
-    SubmitFrame(unused, new byte[source.Width * source.Height * 3 / 2], Ticks(9));
-    Check(
-      unused.FinishAsync().GetAwaiter().GetResult() == null,
-      "A retry before the first camera frame produced a video or camera error."
-    );
-    Check(!File.Exists(unusedPath), "Cancelling an idle camera encoder leaked its temporary file.");
     Console.WriteLine("TUFReplay prepared FFmpeg camera encoder integration test passed (no camera access).");
   }
 
-  private static string FindTestFfmpeg() =>
-    Environment.GetEnvironmentVariable("TUFREPLAY_CAMERA_TEST_FFMPEG")
-    ?? Environment.GetEnvironmentVariable("TUFREPLAY_TEST_FFMPEG")
-    ?? (Environment.GetEnvironmentVariable("PATH") ?? "")
-      .Split(Path.PathSeparator)
-      .Select(directory => Path.Combine(directory, OperatingSystem.IsWindows() ? "ffmpeg.exe" : "ffmpeg"))
-      .FirstOrDefault(File.Exists);
-
-  private static void LatestFrameOwnershipRemainsStableAndRejectsStaleFrames()
+  private static int CountDecodedFrames(string executable, string path)
   {
-    var pool = new CameraFramePool(4, 2);
-    CameraFrame latest = pool.TryRent();
-    latest.Pixels[0] = 1;
-    latest.TimestampTicks = 1000;
-    Check(latest.IsFresh(1060, 1000), "A current camera frame was discarded.");
-    Check(!latest.IsFresh(999, 1000), "A future camera timestamp was accepted.");
-    Check(!latest.IsFresh(1251, 1000), "A stale camera frame was appended to a new run.");
-    CameraFrame reader = pool.TryRent();
-    reader.Pixels[0] = 9;
-    Check(latest.Pixels[0] == 1 && latest.TimestampTicks == 1000, "Reading the next frame changed a retained frame.");
-    reader.Release();
-    long before = GC.GetAllocatedBytesForCurrentThread();
-    for (int frame = 0; frame < 100; frame++)
+    using var decoder = FfmpegCameraProcess.Create(
+      executable,
+      new[] { "-v", "error", "-nostats", "-i", path, "-an", "-progress", "pipe:1", "-f", "null", "-" }
+    );
+    Check(decoder.Start(), "Synthetic camera decoding did not start.");
+    decoder.StandardInput.Close();
+    Task<string> progress = decoder.StandardOutput.ReadToEndAsync();
+    Task<string> errors = decoder.StandardError.ReadToEndAsync();
+    if (!decoder.WaitForExit(10000))
     {
-      reader = pool.TryRent();
-      latest.Release();
-      latest = reader;
+      decoder.Kill();
+      throw new InvalidOperationException("Synthetic camera decoding timed out.");
     }
-    Check(GC.GetAllocatedBytesForCurrentThread() == before, "Idle camera frame rotation allocated memory.");
-    latest.Release();
+    Check(decoder.ExitCode == 0, "The camera MP4 could not be decoded: " + errors.GetAwaiter().GetResult());
+    string last = progress
+      .GetAwaiter()
+      .GetResult()
+      .Split('\n')
+      .Where(line => line.StartsWith("frame="))
+      .LastOrDefault();
+    return last == null ? 0 : int.Parse(last.Trim().Substring(6), CultureInfo.InvariantCulture);
   }
 
-  private static void SubmitFrame(FfmpegCameraRecording recording, byte[] pixels, long ticks)
+  private static void FfmpegUsesLogicalFrameSize(string root)
   {
-    CameraFrame frame = new CameraFramePool(pixels.Length, 1).TryRent();
-    Buffer.BlockCopy(pixels, 0, frame.Pixels, 0, pixels.Length);
-    frame.TimestampTicks = ticks;
-    recording.Submit(frame);
-    frame.Release();
+    string executable = FindTestFfmpeg();
+    if (string.IsNullOrEmpty(executable) || !File.Exists(executable) || !SyntheticCameraCapture.IsAvailable)
+    {
+      Console.WriteLine("SKIP synthetic FFmpeg frame test: FFmpeg or the camera relay is unavailable.");
+      return;
+    }
+    var size = new CameraFrameSize(12, 8);
+    WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality("compact").FitToSource(size.Width, size.Height);
+    string path = Path.Combine(root, "camera-logical-frames.mp4");
+    var recording = new FfmpegCameraRecording(
+      executable,
+      "logical-frames",
+      path,
+      "synthetic",
+      profile,
+      size,
+      8 * 1024 * 1024
+    );
+    var pixels = new byte[size.Width * size.Height * 3 / 2];
+    Array.Fill(pixels, (byte)128);
+    using (var capture = new SyntheticCameraCapture(size.Width, size.Height))
+    {
+      capture.Emit(pixels, Ticks(0.5));
+      Check(capture.WaitReady(), "The synthetic camera never became ready.");
+      capture.Now = Ticks(1);
+      recording.Attach("logical-frames", path + ".saved", 8 * 1024 * 1024, Ticks(1));
+      recording.Connect(capture);
+      for (int frame = 0; frame < 3; frame++)
+      {
+        long before = recording.RelayStats.WrittenFrames;
+        capture.Emit(pixels, Ticks(1 + frame / 30d));
+        Check(
+          SpinWait.SpinUntil(() => recording.RelayStats.WrittenFrames > before, TimeSpan.FromSeconds(5)),
+          "The relay did not stream a synthetic frame."
+        );
+      }
+      recording.Seal();
+    }
+    WebcamRecording saved = recording.FinishAsync().GetAwaiter().GetResult();
+    using Process decoder = FfmpegCameraProcess.Create(
+      executable,
+      new[] { "-v", "error", "-i", saved.FilePath, "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1" }
+    );
+    Check(decoder.Start(), "Synthetic camera decoder did not start.");
+    decoder.BeginErrorReadLine();
+    using var decoded = new MemoryStream();
+    decoder.StandardOutput.BaseStream.CopyTo(decoded);
+    Check(decoder.WaitForExit(5000) && decoder.ExitCode == 0, "Synthetic camera footage did not decode.");
+    Check(decoded.Length == pixels.Length * 3, "Frame boundaries were corrupted in the encoder stream.");
+    WebcamRecordingStore.Discard(saved);
+  }
+
+  // The native relay writes the shared preview mapping that Unity and the
+  // companion read through CameraPreviewBuffer.
+  private static void NativeRelayPublishesManagedReadablePreviews(string root)
+  {
+    if (!SyntheticCameraCapture.IsAvailable)
+      return;
+    using var buffer = new CameraPreviewBuffer(CameraPreviewBuffer.MaxWidth, CameraPreviewBuffer.MaxHeight);
+    using var capture = new SyntheticCameraCapture(1280, 720, buffer.Path);
+    var pixels = new byte[1280 * 720 * 3 / 2];
+    Array.Fill(pixels, (byte)235, 0, 1280 * 720);
+    Array.Fill(pixels, (byte)128, 1280 * 720, pixels.Length - 1280 * 720);
+    capture.Emit(pixels, Ticks(1));
+    Check(capture.WaitReady(), "The synthetic camera never became ready.");
+    Check(
+      SpinWait.SpinUntil(() => buffer.HasFrame, TimeSpan.FromSeconds(5)),
+      "The native relay never published its first preview frame."
+    );
+    Check(
+      buffer.TryGetFrameSize(out CameraFrameSize size) && size.Width == 960 && size.Height == 540,
+      "The native preview lost the camera aspect ratio."
+    );
+    var rgba = new byte[size.ByteCount];
+    Check(buffer.TryCopy(rgba), "Managed code could not read the native preview frame.");
+    Check(rgba[0] == 255 && rgba[1] == 255 && rgba[2] == 255 && rgba[3] == 255, "The native preview colors changed.");
+    buffer.SetPreviewRequested(false);
+    long published = capture.State.PreviewsPublished;
+    capture.EmitAndWaitCaptured(pixels, Ticks(2));
+    Check(capture.State.PreviewsPublished == published, "Previews kept converting without demand.");
   }
 
   private static void AttachingAnEarlierCameraFrameKeepsReplaySynchronized()
@@ -619,16 +687,6 @@ internal static class WebcamSuite
     Near(4, WebcamPlaybackClock.ToVideoSeconds(Snapshot(4_000_000, won: 3_000_000), recording, 0));
   }
 
-  private static void WallClockPreservesLargeTimestampPrecision()
-  {
-    const long epochUs = 1_790_000_000_000_000;
-    var clock = new WebcamWallClock(epochUs, Ticks(10));
-    Check(
-      Math.Abs(clock.ToTimestamp(epochUs * 10 + 370, 1, 10_000_000) - Ticks(10.000037)) <= 1,
-      "Large FFmpeg timestamps lost sub-frame precision."
-    );
-  }
-
   private static void SettingsRejectInvalidValuesAndKeepTheCameraOffByDefault()
   {
     var settings = new TUFReplaySetting();
@@ -802,7 +860,7 @@ internal static class WebcamSuite
     using var preview = new CameraPreviewBuffer(32, 24);
     var pixels = new byte[preview.ByteCount];
     Check(!preview.HasFrame && !preview.TryCopy(pixels), "An uninitialized camera frame was displayed.");
-    using var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(preview.Path, FileMode.Open);
+    using var map = OpenProducerMapping(preview.Path);
     using var writer = map.CreateViewAccessor();
     writer.Write(0, 1L);
     writer.WriteArray(
@@ -911,7 +969,7 @@ internal static class WebcamSuite
       new FileInfo(preview.Path).Length == CameraPreviewBuffer.HeaderSize + 320 * 240 * 4,
       "A changing camera ratio grew preview storage."
     );
-    using var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(preview.Path, FileMode.Open);
+    using var map = OpenProducerMapping(preview.Path);
     using var writer = map.CreateViewAccessor();
     writer.Write(0, 7L);
     writer.Write(8, 1920);
@@ -933,10 +991,25 @@ internal static class WebcamSuite
     );
   }
 
+  // Opens the preview file the way a native producer does: sharing access with
+  // the managed mapping, which Windows otherwise refuses.
+  private static System.IO.MemoryMappedFiles.MemoryMappedFile OpenProducerMapping(string path)
+  {
+    var file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+    return System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(
+      file,
+      null,
+      0,
+      System.IO.MemoryMappedFiles.MemoryMappedFileAccess.ReadWrite,
+      HandleInheritability.None,
+      leaveOpen: false
+    );
+  }
+
   private static void PreviewRemainsReadyWhileTheNextFrameIsWritten()
   {
     using var preview = new CameraPreviewBuffer(32, 32);
-    using var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(preview.Path, FileMode.Open);
+    using var map = OpenProducerMapping(preview.Path);
     using var writer = map.CreateViewAccessor();
     writer.Write(0, 1L);
     Check(!preview.HasFrame, "An unfinished first camera frame marked the camera ready.");
@@ -980,7 +1053,7 @@ internal static class WebcamSuite
     Check(preview.HasFrame && !preview.ShouldPublish, "A hidden preview kept rendering unused frames.");
     preview.SetPreviewRequested(true);
     Check(preview.ShouldPublish, "Showing the preview did not resume publication.");
-    using var map = System.IO.MemoryMappedFiles.MemoryMappedFile.CreateFromFile(preview.Path, FileMode.Open);
+    using var map = OpenProducerMapping(preview.Path);
     using var native = map.CreateViewAccessor();
     Check(native.ReadInt32(16) == 1, "The native helper could not read preview demand.");
     preview.SetPreviewRequested(false);
@@ -1038,44 +1111,6 @@ internal static class WebcamSuite
       release.Set();
       holder.GetAwaiter().GetResult();
     }
-  }
-
-  private static void PreviewConversionPreservesColorAndOrientation()
-  {
-    // Top row black, bottom row white, neutral chroma. Unity textures are bottom-up.
-    var yuv = new byte[] { 16, 16, 235, 235, 128, 128 };
-    var rgba = new byte[16];
-    CameraPreviewPixels.FromYuv420(yuv, 2, 2, rgba, 2, 2);
-    Check(
-      rgba[0] == 255 && rgba[1] == 255 && rgba[2] == 255 && rgba[8] == 0 && rgba[11] == 255,
-      "Camera preview color or orientation changed."
-    );
-  }
-
-  private static void PreviewDownscalingAveragesFineDetailWithoutAllocating()
-  {
-    var yuv = new byte[6 * 6 * 3 / 2];
-    for (int y = 0; y < 6; y++)
-    for (int x = 0; x < 6; x++)
-      yuv[y * 6 + x] = (byte)((x + y) % 2 == 0 ? 16 : 235);
-    for (int index = 36; index < yuv.Length; index++)
-      yuv[index] = 128;
-    var rgba = new byte[2 * 2 * 4];
-    var converter = new CameraPreviewPixels(6, 6, 2, 2);
-    converter.Convert(yuv, rgba);
-    for (int pixel = 0; pixel < rgba.Length; pixel += 4)
-      Check(
-        rgba[pixel] >= 110
-          && rgba[pixel] <= 145
-          && rgba[pixel] == rgba[pixel + 1]
-          && rgba[pixel] == rgba[pixel + 2]
-          && rgba[pixel + 3] == 255,
-        "Downscaling aliased fine camera detail instead of averaging it."
-      );
-    long before = GC.GetAllocatedBytesForCurrentThread();
-    for (int frame = 0; frame < 100; frame++)
-      converter.Convert(yuv, rgba);
-    Check(GC.GetAllocatedBytesForCurrentThread() == before, "Preview conversion allocated on every frame.");
   }
 
   private static void DispositionCompletesOnceInEitherOrder()
@@ -1304,64 +1339,6 @@ internal static class WebcamSuite
       store.PendingReleases.Wait(TimeSpan.FromSeconds(5)) && !File.Exists(recording.FilePath),
       "An asynchronously released video was never deleted."
     );
-  }
-
-  private static void FfmpegUsesLogicalPooledFrameSize(string root)
-  {
-    string executable = FindTestFfmpeg();
-    if (string.IsNullOrEmpty(executable) || !File.Exists(executable))
-    {
-      Console.WriteLine("SKIP synthetic FFmpeg frame test: FFmpeg is not installed.");
-      return;
-    }
-    var size = new CameraFrameSize(12, 8);
-    WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality("compact").FitToSource(size.Width, size.Height);
-    string path = Path.Combine(root, "camera-pooled-frames.mp4");
-    var capture = new FfmpegCameraRecording(
-      executable,
-      "pooled-frames",
-      path,
-      "synthetic",
-      profile,
-      size,
-      8 * 1024 * 1024
-    );
-    var pixels = new byte[size.Width * size.Height * 3 / 2];
-    Array.Fill(pixels, (byte)128);
-    for (int frame = 0; frame < 3; frame++)
-      SubmitFrame(capture, pixels, Ticks(1 + frame / 30d));
-    WebcamRecording recording = capture.FinishAsync().GetAwaiter().GetResult();
-    using Process decoder = FfmpegCameraProcess.Create(
-      executable,
-      new[] { "-v", "error", "-i", path, "-f", "rawvideo", "-pix_fmt", "yuv420p", "pipe:1" }
-    );
-    Check(decoder.Start(), "Synthetic camera decoder did not start.");
-    decoder.BeginErrorReadLine();
-    using var decoded = new MemoryStream();
-    decoder.StandardOutput.BaseStream.CopyTo(decoded);
-    Check(decoder.WaitForExit(5000) && decoder.ExitCode == 0, "Synthetic camera footage did not decode.");
-    Check(decoded.Length == pixels.Length * 3, "Pool capacity was written as frame data, corrupting frame boundaries.");
-    WebcamRecordingStore.Discard(recording);
-  }
-
-  private static void LargeCameraBuffersAreReused()
-  {
-    int bytes = 1920 * 1080 * 3 / 2;
-    var pool = new CameraFramePool(bytes);
-    CameraFrame original = pool.TryRent();
-    original.Release();
-    CameraFrame reused = pool.TryRent();
-    try
-    {
-      Check(
-        ReferenceEquals(original, reused) && reused.Pixels.Length == bytes,
-        "1080p camera buffers exceeded the Unity/Mono pool and allocated again."
-      );
-    }
-    finally
-    {
-      reused.Release();
-    }
   }
 
   private static void StoreDownloadCancellationReleasesItsLease(string root)

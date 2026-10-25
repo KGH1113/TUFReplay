@@ -74,7 +74,7 @@ internal sealed class WindowsNativeLibrary
   [UnmanagedFunctionPointer(CallingConvention.Cdecl, CharSet = CharSet.Unicode)]
   private delegate int AudioTransportDelegate([MarshalAs(UnmanagedType.LPWStr)] string name);
 
-  private readonly IntPtr _handle;
+  private readonly NativeModule _module;
   private readonly CreateDelegate _create;
   private readonly ContextResultDelegate _start;
   private readonly ContextActionDelegate _stop;
@@ -89,10 +89,7 @@ internal sealed class WindowsNativeLibrary
 
   private WindowsNativeLibrary(string path)
   {
-    _handle = LoadLibraryW(path);
-    if (_handle == IntPtr.Zero)
-      throw new DllNotFoundException(path + ": LoadLibrary failed. error=" + Marshal.GetLastWin32Error());
-
+    _module = NativeModule.Open(path);
     if (Bind<AbiVersionDelegate>("tufreplay_win_native_abi_version")() != ExpectedAbiVersion)
       throw new InvalidOperationException("Windows native library ABI version mismatch.");
     _create = Bind<CreateDelegate>("tufreplay_win_input_create");
@@ -169,17 +166,5 @@ internal sealed class WindowsNativeLibrary
     (WindowsAudioTransport)_audioTransport(endpointName);
 
   private T Bind<T>(string name)
-    where T : class
-  {
-    IntPtr symbol = GetProcAddress(_handle, name);
-    if (symbol == IntPtr.Zero)
-      throw new EntryPointNotFoundException(name);
-    return (T)(object)Marshal.GetDelegateForFunctionPointer(symbol, typeof(T));
-  }
-
-  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
-  private static extern IntPtr LoadLibraryW(string path);
-
-  [DllImport("kernel32.dll", CharSet = CharSet.Ansi, ExactSpelling = true)]
-  private static extern IntPtr GetProcAddress(IntPtr module, string name);
+    where T : class => _module.Bind<T>(name);
 }
