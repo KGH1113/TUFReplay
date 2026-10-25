@@ -36,6 +36,21 @@ required_exports=(
   tufreplay_win_input_take_dropped
   tufreplay_win_input_get_stats
   tufreplay_win_audio_capture_transport
+  tufreplay_camera_abi_version
+  tufreplay_camera_create
+  tufreplay_camera_last_create_error
+  tufreplay_camera_wait_ready
+  tufreplay_camera_get_state
+  tufreplay_camera_get_diagnostics
+  tufreplay_camera_stop
+  tufreplay_camera_destroy
+  tufreplay_camera_recording_attach
+  tufreplay_camera_recording_set_output
+  tufreplay_camera_recording_get_stats
+  tufreplay_camera_recording_seal
+  tufreplay_camera_recording_finish
+  tufreplay_camera_recording_cancel
+  tufreplay_camera_recording_destroy
 )
 for symbol in "${required_exports[@]}"; do
   printf '%s\n' "$headers" | grep -Eq "[[:space:]]$symbol\$" || fail "TUFReplayNative.dll does not export $symbol."

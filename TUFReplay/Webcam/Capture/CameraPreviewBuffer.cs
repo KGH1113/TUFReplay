@@ -33,17 +33,28 @@ public sealed class CameraPreviewBuffer : IDisposable
       System.IO.Path.GetTempPath(),
       "tufreplay-camera-" + Guid.NewGuid().ToString("N") + ".frame"
     );
-    using (
-      var file = new FileStream(Path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete)
-    )
+    // The producer (macOS helper or the Windows camera relay) opens this file for
+    // writing, so the mapping's own handle must share read and write access.
+    var file = new FileStream(Path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete);
+    try
+    {
       file.SetLength(HeaderSize + ByteCount);
-    _mapping = MemoryMappedFile.CreateFromFile(
-      Path,
-      FileMode.Open,
-      null,
-      HeaderSize + ByteCount,
-      MemoryMappedFileAccess.ReadWrite
-    );
+      if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        File.SetAttributes(Path, FileAttributes.Temporary); // Keep the frame cache-resident.
+      _mapping = MemoryMappedFile.CreateFromFile(
+        file,
+        null,
+        HeaderSize + ByteCount,
+        MemoryMappedFileAccess.ReadWrite,
+        HandleInheritability.None,
+        leaveOpen: false
+      );
+    }
+    catch
+    {
+      file.Dispose();
+      throw;
+    }
     _view = _mapping.CreateViewAccessor();
     _view.Write(8, Width);
     _view.Write(12, Height);
