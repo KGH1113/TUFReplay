@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text;
 using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Migrations;
@@ -110,6 +111,7 @@ internal static class ActivityDatabaseSuite
     Assert(stored.HitContextCsv.SequenceEqual(new byte[] { 4, 5 }), "Replay hit payload changed.");
     Assert(stored.MetaJson == "{\"v\":1}", "Replay metadata changed.");
     Assert(RunRepository.Get("run")?.ReplayPlayable == true, "Current replay artifact was not marked playable.");
+    TestCompressedReplayArtifacts(path);
     RunRecord activityRun = RunRepository.Get("run");
     Assert(
       activityRun?.JudgmentSystem == RunJudgmentSystem.ModernCompetitive,
@@ -280,6 +282,59 @@ internal static class ActivityDatabaseSuite
       HitContextCount = artifact.HitContextCount,
       ReplayArtifact = artifact,
     };
+  }
+
+  private static void TestCompressedReplayArtifacts(string path)
+  {
+    var input = new StringBuilder();
+    var hits = new StringBuilder();
+    for (int i = 0; i < 20_000; i++)
+    {
+      input.Append(i * 1000L).Append(",32,").Append(i % 2).Append(",-1,0\n");
+      hits.Append(i).Append(",3.14159").Append(i).Append(",0,1,0,0,1.5,2.5,0,0,0,3,").Append(i * 250L).Append('\n');
+    }
+    byte[] inputCsv = Encoding.UTF8.GetBytes(input.ToString());
+    byte[] hitCsv = Encoding.UTF8.GetBytes(hits.ToString());
+    ReplayArtifact artifact = CreateArtifact();
+    artifact.InputCsv = inputCsv;
+    artifact.HitContextCsv = hitCsv;
+    RunRepository.Save(CreateRun("compressed-run", 1, artifact));
+
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "SELECT input_csv, hit_context_csv FROM replay_artifacts WHERE run_id='compressed-run'";
+      using SqliteDataReader reader = command.ExecuteReader();
+      Assert(reader.Read(), "Compressed replay artifact was not stored.");
+      byte[] storedInput = (byte[])reader[0];
+      byte[] storedHits = (byte[])reader[1];
+      Assert(
+        storedInput[0] == 0x1f && storedInput[1] == 0x8b && storedInput.Length * 4 < inputCsv.Length,
+        "Replay input CSV was not stored compressed."
+      );
+      Assert(storedHits.Length * 4 < hitCsv.Length, "Replay hit CSV was not stored compressed.");
+    }
+
+    StoredReplayRun stored = RunRepository.GetReplayRun("compressed-run");
+    Assert(
+      stored.InputCsv.SequenceEqual(inputCsv) && stored.HitContextCsv.SequenceEqual(hitCsv),
+      "Compressed replay CSVs did not decode to the recorded bytes."
+    );
+    Assert(stored.FormatVersion == ReplayFormat.FormatVersion, "Storage compression changed the replay format.");
+
+    // Rows written before compression keep loading unchanged.
+    using (SqliteConnection connection = Database.OpenConnection())
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "UPDATE replay_artifacts SET input_csv=@input WHERE run_id='compressed-run'";
+      command.Parameters.AddWithValue("@input", inputCsv);
+      command.ExecuteNonQuery();
+    }
+    Assert(
+      RunRepository.GetReplayRun("compressed-run").InputCsv.SequenceEqual(inputCsv),
+      "A raw pre-compression replay CSV no longer loads."
+    );
+    Console.WriteLine("PASS replay CSV blobs are stored compressed and legacy raw rows still load");
   }
 
   private static ReplayArtifact CreateArtifact()
