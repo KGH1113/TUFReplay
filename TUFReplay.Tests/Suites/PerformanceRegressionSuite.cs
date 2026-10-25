@@ -28,6 +28,47 @@ internal static class PerformanceRegressionSuite
     TestHashBytesAndAllocations();
     TestChunkedCsvEncoding();
     TestIndexedInputSeek();
+    TestLevelFileVerificationReuse(root);
+  }
+
+  private static void TestLevelFileVerificationReuse(string root)
+  {
+    string path = Path.Combine(root, "verified-chart.adofai");
+    File.WriteAllText(path, "{\"angleData\":[0,90]}");
+    int verifications = 0;
+    int reads = 0;
+    var cache = new LevelFileVerificationCache(
+      (string file, out string source, out byte[] hash) =>
+      {
+        verifications++;
+        source = File.ReadAllText(file);
+        hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        return true;
+      },
+      file =>
+      {
+        reads++;
+        return File.ReadAllText(file);
+      },
+      capacity: 4
+    );
+
+    Assert(cache.TryRead(path, out string first, out byte[] firstHash), "The first chart read failed.");
+    Assert(cache.TryRead(path, out string second, out byte[] secondHash), "The cached chart read failed.");
+    Assert(verifications == 1 && reads == 1, "An unchanged chart was fully verified again.");
+    Assert(first == second && firstHash.SequenceEqual(secondHash), "The cached chart read changed its result.");
+    secondHash[0] ^= 0xff;
+    Assert(cache.TryRead(path, out _, out byte[] thirdHash), "The cached chart read failed after hash mutation.");
+    Assert(thirdHash.SequenceEqual(firstHash), "A caller could mutate the cached hash.");
+
+    File.WriteAllText(path, "{\"angleData\":[0,180]}");
+    File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
+    Assert(cache.TryRead(path, out string changed, out _), "The modified chart read failed.");
+    Assert(verifications == 2 && changed.Contains("180"), "A modified chart reused the old verification.");
+
+    File.Delete(path);
+    Assert(!cache.TryRead(path, out _, out _) && verifications == 2, "A deleted chart was served.");
+    Console.WriteLine("PASS unchanged level files reuse their verified gameplay hash");
   }
 
   private static void TestBackgroundQueueOrdering()

@@ -11,6 +11,19 @@ export const activityQueryKeys = {
   logicalLevelChart: (id: string) => ["activity", "logical-level", id, "chart"] as const,
 };
 
+/**
+ * A logical level's chart text belongs to one immutable gameplay revision, so a new run
+ * never changes it. Producing it makes the game re-read and validate the whole level
+ * file, which creates enough garbage to delay ADOFAI's async input during the retry.
+ */
+export function refreshesOnActivityChange(queryKey: readonly unknown[]) {
+  return !(
+    queryKey[0] === "activity" &&
+    queryKey[1] === "logical-level" &&
+    queryKey[3] === "chart"
+  );
+}
+
 export function mergeRecentAppSessions(
   current: AppSession[],
   recent: AppSession[],

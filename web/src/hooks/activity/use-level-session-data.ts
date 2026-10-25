@@ -39,6 +39,8 @@ export function useLevelSessionData(
     queryFn: async ({ signal }) =>
       (await apiPromise).activity.getLogicalLevelChart(id as string, { signal }),
     enabled: Boolean(id && chartAvailable),
+    // The chart of one logical level never changes; reconnects still invalidate it.
+    staleTime: Number.POSITIVE_INFINITY,
   });
 
   const appSessionScope = JSON.stringify([...appSessionIds].sort());
