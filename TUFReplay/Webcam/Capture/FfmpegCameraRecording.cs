@@ -13,7 +13,8 @@ namespace TUFReplay.Webcam.Capture;
 
 // One run's camera video. The native relay queues the run's frames and streams
 // them with their capture times to this run's FFmpeg encoder; managed code only
-// starts, finishes and classifies the encoder.
+// starts, finishes and classifies the encoder. The encoder can be started ahead
+// of the run, so a slow hardware encoder session is already open when it begins.
 internal sealed class FfmpegCameraRecording
 {
   private const int QueueCapacity = 3;
@@ -34,6 +35,8 @@ internal sealed class FfmpegCameraRecording
   private ICameraRelaySource _source;
   private CameraRelayLibrary _relay;
   private IntPtr _native;
+  private volatile bool _begun;
+  private bool _yieldToRecording;
   private Task _encoderStart = Task.CompletedTask;
   private volatile string _error;
   private string _pipeFailure;
@@ -121,19 +124,81 @@ internal sealed class FfmpegCameraRecording
     _maxBytes = maxBytes;
   }
 
-  // Called when the run starts. A prepared recording holds no encoder session;
-  // the encoder starts now that this run's file-size limit is known.
-  internal void Connect(ICameraRelaySource source)
+  public FfmpegCameraEncoder Encoder => _encoderPolicy;
+  public bool IsWarm => _native != IntPtr.Zero;
+
+  // Starts the encoder before the run with maxBytes as its file-size limit. The
+  // relay feeds it a warm-up frame, so the encoder session opens now. While
+  // another run records, the starting encoder yields to that run's capture.
+  internal void Warm(ICameraRelaySource source, long maxBytes, bool yieldToRecording)
   {
     if (_native != IntPtr.Zero)
+      return;
+    _maxBytes = maxBytes;
+    _yieldToRecording = yieldToRecording;
+    Prepare(source);
+  }
+
+  // Whether a warm encoder can record a run with this limit. An encoder that
+  // exited while waiting (for example, a lost GPU session) is not reused.
+  internal bool CanRecord(long maxBytes, out string reason)
+  {
+    reason = null;
+    if (_native == IntPtr.Zero)
+      return true;
+    if (maxBytes != _maxBytes)
+      reason = "the recording limit changed";
+    else if (_error != null)
+      reason = _error;
+    else if (_relay.GetStats(_native).WriterFinished != 0 || EncoderExited())
+      reason = "the encoder exited while waiting | " + string.Join(" | ", _encoderMessages);
+    return reason == null;
+  }
+
+  // Called when the run starts. A recording that was not warmed starts its
+  // encoder now that this run's file-size limit is known.
+  internal void Connect(ICameraRelaySource source)
+  {
+    if (_begun)
       throw new InvalidOperationException("The camera recording is already connected.");
-    IntPtr native = source.AttachRecording(_startTimestampTicks, _profile.FrameRate, QueueCapacity);
+    if (_native == IntPtr.Zero)
+      Prepare(source);
+    else if (!ReferenceEquals(source, _source))
+      throw new InvalidOperationException("The camera recording was prepared for another camera session.");
+    if (source.BeginRecording(_native, _startTimestampTicks) != CameraRelayError.None)
+      throw new IOException(source.Error ?? "Camera capture was stopped before recording could start.");
+    lock (_encoderGate)
+    {
+      _begun = true;
+      if (_encoderStarted && _yieldToRecording)
+        FfmpegCameraProcess.PreferGameplay(_encoder);
+    }
+  }
+
+  private void Prepare(ICameraRelaySource source)
+  {
+    IntPtr native = source.PrepareRecording(_profile.FrameRate, QueueCapacity);
     if (native == IntPtr.Zero)
       throw new IOException(source.Error ?? "Camera capture was stopped before recording could start.");
     _source = source;
     _relay = source.Relay;
     _native = native;
     _encoderStart = Task.Run(StartEncoderAndConnect);
+  }
+
+  private bool EncoderExited()
+  {
+    lock (_encoderGate)
+    {
+      try
+      {
+        return _encoderStarted && _encoder.HasExited;
+      }
+      catch (InvalidOperationException)
+      {
+        return true;
+      }
+    }
   }
 
   // The relay's progress for this run, for diagnostics and tests.
@@ -214,7 +279,10 @@ internal sealed class FfmpegCameraRecording
       if (!_encoder.Start())
         throw new IOException("The camera encoder could not start. Retry FFmpeg installation in Downloads.");
       _encoderStarted = true;
-      FfmpegCameraProcess.PreferGameplay(_encoder);
+      if (_yieldToRecording && !_begun)
+        FfmpegCameraProcess.PreferCapture(_encoder);
+      else
+        FfmpegCameraProcess.PreferGameplay(_encoder);
       _encoder.BeginErrorReadLine();
       _encoder.BeginOutputReadLine();
       return _encoder;
@@ -256,6 +324,12 @@ internal sealed class FfmpegCameraRecording
       {
         // Prepared but never used by a run: no encoder ran and no file exists.
         WebcamRecordingStore.Discard(_recording);
+        return null;
+      }
+      if (!_begun)
+      {
+        // Warmed but never used by a run.
+        await CancelAsync().ConfigureAwait(false);
         return null;
       }
       await _encoderStart.ConfigureAwait(false);

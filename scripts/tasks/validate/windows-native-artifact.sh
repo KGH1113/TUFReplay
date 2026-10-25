@@ -44,7 +44,8 @@ required_exports=(
   tufreplay_camera_get_diagnostics
   tufreplay_camera_stop
   tufreplay_camera_destroy
-  tufreplay_camera_recording_attach
+  tufreplay_camera_recording_prepare
+  tufreplay_camera_recording_begin
   tufreplay_camera_recording_set_output
   tufreplay_camera_recording_get_stats
   tufreplay_camera_recording_seal

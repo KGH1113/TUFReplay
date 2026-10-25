@@ -634,6 +634,10 @@ internal static class WebcamSuite
       return Task.CompletedTask;
     }
 
+    public Task KeepEncoderReadyAsync(long maxBytes) => Task.CompletedTask;
+
+    public Task ReleaseEncoderAsync() => Task.CompletedTask;
+
     public void Dispose() { }
   }
 

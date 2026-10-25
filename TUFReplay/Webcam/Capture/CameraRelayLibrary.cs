@@ -97,13 +97,10 @@ internal sealed class CameraRelayLibrary
   private delegate int DestroyDelegate(IntPtr handle, int timeoutMs);
 
   [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-  private delegate IntPtr AttachDelegate(
-    IntPtr camera,
-    long boundaryTicks,
-    long nowTicks,
-    int frameRate,
-    int queueCapacity
-  );
+  private delegate IntPtr PrepareDelegate(IntPtr camera, int frameRate, int queueCapacity);
+
+  [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+  private delegate int BeginDelegate(IntPtr recording, long boundaryTicks, long nowTicks);
 
   [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
   private delegate int SetOutputDelegate(IntPtr recording, long outputHandle);
@@ -121,7 +118,8 @@ internal sealed class CameraRelayLibrary
   private readonly GetDiagnosticsDelegate _getDiagnostics;
   private readonly ActionDelegate _stop;
   private readonly DestroyDelegate _destroy;
-  private readonly AttachDelegate _attach;
+  private readonly PrepareDelegate _prepare;
+  private readonly BeginDelegate _begin;
   private readonly SetOutputDelegate _setOutput;
   private readonly GetStatsDelegate _getStats;
   private readonly ActionDelegate _seal;
@@ -140,7 +138,8 @@ internal sealed class CameraRelayLibrary
     _getDiagnostics = module.Bind<GetDiagnosticsDelegate>("tufreplay_camera_get_diagnostics");
     _stop = module.Bind<ActionDelegate>("tufreplay_camera_stop");
     _destroy = module.Bind<DestroyDelegate>("tufreplay_camera_destroy");
-    _attach = module.Bind<AttachDelegate>("tufreplay_camera_recording_attach");
+    _prepare = module.Bind<PrepareDelegate>("tufreplay_camera_recording_prepare");
+    _begin = module.Bind<BeginDelegate>("tufreplay_camera_recording_begin");
     _setOutput = module.Bind<SetOutputDelegate>("tufreplay_camera_recording_set_output");
     _getStats = module.Bind<GetStatsDelegate>("tufreplay_camera_recording_get_stats");
     _seal = module.Bind<ActionDelegate>("tufreplay_camera_recording_seal");
@@ -230,8 +229,11 @@ internal sealed class CameraRelayLibrary
 
   public bool Destroy(IntPtr camera, int timeoutMs) => _destroy(camera, timeoutMs) != 0;
 
-  public IntPtr Attach(IntPtr camera, long boundaryTicks, long nowTicks, int frameRate, int queueCapacity) =>
-    _attach(camera, boundaryTicks, nowTicks, frameRate, queueCapacity);
+  public IntPtr PrepareRecording(IntPtr camera, int frameRate, int queueCapacity) =>
+    _prepare(camera, frameRate, queueCapacity);
+
+  public CameraRelayError BeginRecording(IntPtr recording, long boundaryTicks, long nowTicks) =>
+    (CameraRelayError)_begin(recording, boundaryTicks, nowTicks);
 
   public CameraRelayError SetOutput(IntPtr recording, long outputHandle) =>
     (CameraRelayError)_setOutput(recording, outputHandle);

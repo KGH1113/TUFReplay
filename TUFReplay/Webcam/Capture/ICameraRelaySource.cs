@@ -9,6 +9,9 @@ internal interface ICameraRelaySource
   CameraRelayLibrary Relay { get; }
   string Error { get; }
 
+  // A run's encoder stream that receives no frames until it begins.
+  IntPtr PrepareRecording(int frameRate, int queueCapacity);
+
   // Excludes frames before boundaryTicks; may reuse a fresh latest frame.
-  IntPtr AttachRecording(long boundaryTicks, int frameRate, int queueCapacity);
+  CameraRelayError BeginRecording(IntPtr recording, long boundaryTicks);
 }

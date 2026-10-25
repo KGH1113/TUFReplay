@@ -19,6 +19,7 @@ internal sealed class FfmpegCameraEncoder
   {
     new FfmpegCameraEncoder(
       "h264_nvenc",
+      "-forced-idr",
       "-preset",
       "p1",
       "-tune",
@@ -30,17 +31,19 @@ internal sealed class FfmpegCameraEncoder
       "-rc-lookahead",
       "0"
     ),
-    new FfmpegCameraEncoder("h264_qsv", "-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0"),
-    new FfmpegCameraEncoder("h264_amf", "-usage", "ultralowlatency", "-quality", "speed", "-rc", "cbr"),
-    new FfmpegCameraEncoder("libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-threads", "2"),
+    new FfmpegCameraEncoder("h264_qsv", "-forced_idr", "-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0"),
+    new FfmpegCameraEncoder("h264_amf", "-forced_idr", "-usage", "ultralowlatency", "-quality", "speed", "-rc", "cbr"),
+    new FfmpegCameraEncoder("libx264", "-forced-idr", "-preset", "ultrafast", "-tune", "zerolatency", "-threads", "2"),
   };
 
   private static readonly FfmpegCameraEncoderCache Cache = new FfmpegCameraEncoderCache(ProbeAsync);
+  private readonly string _forcedIdrOption;
   private readonly string[] _options;
 
-  private FfmpegCameraEncoder(string name, params string[] options)
+  private FfmpegCameraEncoder(string name, string forcedIdrOption, params string[] options)
   {
     Name = name;
+    _forcedIdrOption = forcedIdrOption;
     _options = options;
   }
 
@@ -82,6 +85,15 @@ internal sealed class FfmpegCameraEncoder
         (profile.BitRate * 2).ToString(CultureInfo.InvariantCulture),
         "-g",
         (profile.FrameRate * 2).ToString(CultureInfo.InvariantCulture),
+        // The relay's first frame only opens the encoder session before the run
+        // (hardware encoders can take seconds). Drop its packet, start the video
+        // on an IDR frame, and rebase timestamps so the run still starts at zero.
+        _forcedIdrOption,
+        "1",
+        "-force_key_frames",
+        "expr:eq(n,1)",
+        "-bsf:v",
+        "noise=drop=not(n),setts=pts=PTS-STARTPTS:dts=DTS-STARTDTS",
       }
     );
     return arguments;
@@ -121,8 +133,9 @@ internal sealed class FfmpegCameraEncoder
       "lavfi",
       "-i",
       "color=c=black:s=" + profile.Width + "x" + profile.Height + ":r=" + profile.FrameRate,
+      // The first frame is the dropped warm-up frame; three are written.
       "-frames:v",
-      "3",
+      "4",
       "-an",
     };
     arguments.AddRange(encoder.GetArguments(profile));

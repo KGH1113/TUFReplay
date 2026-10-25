@@ -73,6 +73,11 @@ internal sealed class MacOsWebcamCaptureBackend : IWebcamCaptureBackend
     return Task.CompletedTask;
   }
 
+  // The helper already prepares its AVAssetWriter before each run.
+  public Task KeepEncoderReadyAsync(long maxBytes) => Task.CompletedTask;
+
+  public Task ReleaseEncoderAsync() => Task.CompletedTask;
+
   public Task<WebcamRecording> EndAsync()
   {
     WebcamRecording recording = _run;

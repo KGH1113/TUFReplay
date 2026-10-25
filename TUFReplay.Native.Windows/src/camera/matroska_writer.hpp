@@ -24,6 +24,10 @@ class MatroskaWriter {
   MatroskaWriter(ByteSink &sink, int32_t width, int32_t height, int32_t frame_rate, int64_t ticks_frequency);
 
   Result write_header();
+  // A black frame at time zero, before any captured frame. It makes the encoder
+  // open its session ahead of the run; the encoder drops its packet and rebases
+  // the run's timestamps (see FfmpegCameraEncoder.GetWarmUpArguments).
+  Result write_warm_up_frame();
   // pixels must hold width * height * 3 / 2 bytes.
   Result write_frame(const uint8_t *pixels, int64_t timestamp_ticks);
 
@@ -33,6 +37,8 @@ class MatroskaWriter {
   int64_t duration_us() const { return has_frame_ ? last_us_ + frame_duration_us_ : 0; }
 
  private:
+  Result write_block(const uint8_t *pixels, int64_t timecode_us);
+
   ByteSink &sink_;
   int32_t width_, height_, frame_rate_;
   int64_t frequency_;
@@ -43,6 +49,8 @@ class MatroskaWriter {
   int64_t first_ticks_ = 0;
   int64_t last_ticks_ = 0;
   int64_t last_us_ = 0;
+  // Captured frames follow the warm-up frame by one frame duration.
+  int64_t offset_us_ = 0;
   uint8_t packet_header_[64] = {};
 };
 
