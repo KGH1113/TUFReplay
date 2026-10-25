@@ -41,7 +41,9 @@ public static partial class ActivitySchema
   internal static void Validate(SqliteConnection connection)
   {
     using SqliteCommand command = connection.CreateCommand();
-    command.CommandText = "PRAGMA integrity_check;";
+    // quick_check verifies page and record structure in O(N) without the full index
+    // cross-check. The database grows with every run and this runs at mod start.
+    command.CommandText = "PRAGMA quick_check;";
     if (!string.Equals(Convert.ToString(command.ExecuteScalar()), "ok", StringComparison.OrdinalIgnoreCase))
       throw new InvalidOperationException("TUFReplay activity database integrity check failed.");
 
