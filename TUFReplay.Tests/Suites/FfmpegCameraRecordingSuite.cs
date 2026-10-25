@@ -23,19 +23,23 @@ internal static class FfmpegCameraRecordingSuite
       Console.WriteLine("SKIP camera recorder FFmpeg integration: the camera relay library is not built.");
       return;
     }
-    SavedVideoKeepsCaptureGapsAndExcludesPreRunFrames(executable, root);
+    SavedVideoKeepsCaptureGapsAndExcludesPreRunFrames(executable, root, warm: false);
+    SavedVideoKeepsCaptureGapsAndExcludesPreRunFrames(executable, root, warm: true);
     AttachedRunLimitControlsTheActualSavedFile(executable, root);
     Console.WriteLine("TUFReplay camera recorder integration tests passed.");
   }
 
   private static long Microseconds(long microseconds) => microseconds * Stopwatch.Frequency / 1_000_000;
 
-  private static void SavedVideoKeepsCaptureGapsAndExcludesPreRunFrames(string executable, string root)
+  // A warm encoder, opened before the run with a dropped warm-up frame, must save
+  // exactly the same video as one started by the run.
+  private static void SavedVideoKeepsCaptureGapsAndExcludesPreRunFrames(string executable, string root, bool warm)
   {
     var size = new CameraFrameSize(12, 8);
     WebcamCaptureProfile profile = WebcamCaptureProfile.ForQuality("quality").FitToSource(size.Width, size.Height);
-    string partial = Path.Combine(root, "camera-gaps.mp4.partial");
-    string destination = Path.Combine(root, "camera-gaps.mp4");
+    string name = warm ? "camera-gaps-warm" : "camera-gaps";
+    string partial = Path.Combine(root, name + ".mp4.partial");
+    string destination = Path.Combine(root, name + ".mp4");
     var messages = new List<string>();
     var recording = new FfmpegCameraRecording(
       executable,
@@ -58,6 +62,19 @@ internal static class FfmpegCameraRecordingSuite
       // A recent pre-run camera frame must be excluded, not reused.
       capture.Emit(pixels, inputStart - Microseconds(1));
       Assert(capture.WaitReady(), "The synthetic camera never became ready.");
+      if (warm)
+      {
+        recording.Warm(capture, 32 * 1024 * 1024, yieldToRecording: false);
+        Assert(recording.CanRecord(32 * 1024 * 1024, out _), "A healthy warm encoder was not reused.");
+        Assert(
+          !recording.CanRecord(64 * 1024 * 1024, out string reason) && reason.Contains("limit"),
+          "A warm encoder was reused with a stale file-size limit."
+        );
+        // Frames before the run never reach a warm encoder.
+        capture.Emit(pixels, inputStart - Microseconds(500_000));
+        Thread.Sleep(300);
+        Assert(recording.RelayStats.WrittenFrames == 0, "A warm encoder recorded a frame before its run.");
+      }
       capture.Now = inputStart;
       recording.Attach("gap-run", destination, 32 * 1024 * 1024, inputStart);
       recording.Connect(capture);

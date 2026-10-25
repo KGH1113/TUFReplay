@@ -1,5 +1,6 @@
 #include "matroska_writer.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <limits>
 
@@ -120,18 +121,37 @@ MatroskaWriter::Result MatroskaWriter::write_frame(const uint8_t *pixels, int64_
   // Splitting whole seconds avoids overflowing when recording for many hours.
   const int64_t timestamp_us = elapsed / frequency_ * 1'000'000
     + static_cast<int64_t>(static_cast<double>(elapsed % frequency_) * (1'000'000.0 / static_cast<double>(frequency_)));
+  Result result = write_block(pixels, timestamp_us + offset_us_);
+  if (result != Result::Ok) return result;
+  first_ticks_ = first;
+  last_ticks_ = timestamp_ticks;
+  last_us_ = timestamp_us;
+  has_frame_ = true;
+  return Result::Ok;
+}
+
+MatroskaWriter::Result MatroskaWriter::write_warm_up_frame() {
+  if (!valid_ || has_frame_ || offset_us_ != 0) return Result::Invalid;
+  std::vector<uint8_t> black(frame_bytes_, 128);
+  std::fill(black.begin(), black.begin() + static_cast<size_t>(width_) * static_cast<size_t>(height_), 16);
+  Result result = write_block(black.data(), 0);
+  if (result == Result::Ok) offset_us_ = frame_duration_us_;
+  return result;
+}
+
+MatroskaWriter::Result MatroskaWriter::write_block(const uint8_t *pixels, int64_t timecode_us) {
   // One known-size cluster per frame keeps the block's signed relative timestamp
   // zero, including after a long scheduling or camera stall.
   int offset = 0;
   write_id(packet_header_, offset, 0x1F43B675);
-  const int time_bytes = unsigned_size(static_cast<uint64_t>(timestamp_us));
+  const int time_bytes = unsigned_size(static_cast<uint64_t>(timecode_us));
   const uint64_t block_bytes = frame_bytes_ + 4;
   const uint64_t cluster_bytes =
     1 + 1 + static_cast<uint64_t>(time_bytes) + 1 + static_cast<uint64_t>(vint_size(block_bytes)) + block_bytes;
   write_vint(packet_header_, offset, cluster_bytes);
   write_id(packet_header_, offset, 0xE7);
   write_vint(packet_header_, offset, static_cast<uint64_t>(time_bytes));
-  write_unsigned(packet_header_, offset, static_cast<uint64_t>(timestamp_us), time_bytes);
+  write_unsigned(packet_header_, offset, static_cast<uint64_t>(timecode_us), time_bytes);
   write_id(packet_header_, offset, 0xA3);
   write_vint(packet_header_, offset, block_bytes);
   packet_header_[offset++] = 0x81; // Track 1.
@@ -140,10 +160,6 @@ MatroskaWriter::Result MatroskaWriter::write_frame(const uint8_t *pixels, int64_
   packet_header_[offset++] = 0x80; // Keyframe, no lacing.
   if (!sink_.write(packet_header_, static_cast<size_t>(offset)) || !sink_.write(pixels, frame_bytes_))
     return Result::WriteFailed;
-  first_ticks_ = first;
-  last_ticks_ = timestamp_ticks;
-  last_us_ = timestamp_us;
-  has_frame_ = true;
   return Result::Ok;
 }
 

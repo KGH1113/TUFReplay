@@ -83,12 +83,16 @@ TUFREPLAY_CAMERA_EXPORT void tufreplay_camera_stop(void *camera);
 // Frees the relay once its readers ended; returns 0 and keeps it alive otherwise.
 TUFREPLAY_CAMERA_EXPORT int32_t tufreplay_camera_destroy(void *camera, int32_t timeout_ms);
 
-// Attaches a run. Frames captured before boundary_ticks are excluded; the latest
-// frame is reused when it is at most 250 ms older than now_ticks.
-TUFREPLAY_CAMERA_EXPORT void *tufreplay_camera_recording_attach(
-  void *camera, int64_t boundary_ticks, int64_t now_ticks, int32_t frame_rate, int32_t queue_capacity);
-// Starts writing the timestamped stream to the encoder's stdin (duplicated).
+// Prepares a run's encoder stream once the camera is ready. It receives no frames
+// until begin.
+TUFREPLAY_CAMERA_EXPORT void *tufreplay_camera_recording_prepare(void *camera, int32_t frame_rate, int32_t queue_capacity);
+// Starts writing to the encoder's stdin (duplicated): the stream header and a black
+// warm-up frame at once, then the run's frames. Valid before or after begin.
 TUFREPLAY_CAMERA_EXPORT int32_t tufreplay_camera_recording_set_output(void *recording, int64_t output_handle);
+// Starts the run. Frames captured before boundary_ticks are excluded; the latest
+// frame is reused when it is at most 250 ms older than now_ticks. Fails once the
+// recording was sealed, cancelled or begun, or the camera stopped.
+TUFREPLAY_CAMERA_EXPORT int32_t tufreplay_camera_recording_begin(void *recording, int64_t boundary_ticks, int64_t now_ticks);
 TUFREPLAY_CAMERA_EXPORT void tufreplay_camera_recording_get_stats(void *recording, tufreplay_camera_recording_stats *stats);
 // Ends the run boundary: no new frames are accepted. Queued frames stay queued and
 // are still written once the output is set; call finish afterwards.

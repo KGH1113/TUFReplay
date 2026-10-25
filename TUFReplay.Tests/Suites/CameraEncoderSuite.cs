@@ -155,7 +155,7 @@ internal static class CameraEncoderSuite
         "Probe did not use the actual recording resolution and frame rate."
       );
       Check(
-        Option(probe, "-frames:v") == "3" && Option(probe, "-progress") == "pipe:1",
+        Option(probe, "-frames:v") == "4" && Option(probe, "-progress") == "pipe:1",
         "Probe only checked codec availability instead of encoded frames."
       );
       string[] options = encoder.GetArguments(profile).ToArray();
@@ -174,6 +174,13 @@ internal static class CameraEncoderSuite
           && Option(options, "-fps_mode") == "vfr"
           && Option(options, "-enc_time_base") == "1:1000000",
         "Encoder lost capture timestamp precision or uses an incompatible CFR override."
+      );
+      string idr = encoder.Name == "h264_nvenc" || encoder.Name == "libx264" ? "-forced-idr" : "-forced_idr";
+      Check(
+        Option(options, idr) == "1"
+          && Option(options, "-force_key_frames") == "expr:eq(n,1)"
+          && Option(options, "-bsf:v") == "noise=drop=not(n),setts=pts=PTS-STARTPTS:dts=DTS-STARTDTS",
+        "Encoder does not drop the relay's warm-up frame or start the run on an IDR frame."
       );
     }
   }

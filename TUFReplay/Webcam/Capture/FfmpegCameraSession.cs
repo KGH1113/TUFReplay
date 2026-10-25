@@ -233,21 +233,24 @@ internal sealed class FfmpegCameraSession : ICameraRelaySource, IDisposable
     recording?.Connect(this);
   }
 
-  // The relay reuses the latest frame when it is at most 250 ms old and not
-  // earlier than the boundary, keeping its real capture timestamp.
-  public IntPtr AttachRecording(long boundaryTicks, int frameRate, int queueCapacity)
+  public IntPtr PrepareRecording(int frameRate, int queueCapacity)
   {
     if (!TryEnterNative(out IntPtr camera))
       return IntPtr.Zero;
     try
     {
-      return Relay.Attach(camera, boundaryTicks, Stopwatch.GetTimestamp(), frameRate, queueCapacity);
+      return Relay.PrepareRecording(camera, frameRate, queueCapacity);
     }
     finally
     {
       ExitNative();
     }
   }
+
+  // The relay reuses the latest frame when it is at most 250 ms old and not
+  // earlier than the boundary, keeping its real capture timestamp.
+  public CameraRelayError BeginRecording(IntPtr recording, long boundaryTicks) =>
+    Relay.BeginRecording(recording, boundaryTicks, Stopwatch.GetTimestamp());
 
   private CameraRelayState ReadState()
   {

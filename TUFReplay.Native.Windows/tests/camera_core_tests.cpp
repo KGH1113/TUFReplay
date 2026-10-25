@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -300,6 +301,27 @@ void wall_clock_keeps_large_timestamp_precision() {
   check(!wall_clock_to_ticks(1, 0, 1, 0, 0, 1000, &ticks), "A zero time base was accepted.");
 }
 
+void warm_up_frame_precedes_the_run_by_one_frame() {
+  MemorySink sink;
+  MatroskaWriter writer(sink, 4, 2, 30, 1000);
+  check(writer.write_header() == MatroskaWriter::Result::Ok, "The header was not written.");
+  check(writer.write_warm_up_frame() == MatroskaWriter::Result::Ok, "The warm-up frame was not written.");
+  check(writer.duration_us() == 0, "The warm-up frame counted as captured video.");
+  std::vector<uint8_t> pixels(12, 200);
+  check(writer.write_frame(pixels.data(), 5000) == MatroskaWriter::Result::Ok
+      && writer.write_frame(pixels.data(), 5100) == MatroskaWriter::Result::Ok,
+    "Captured frames after the warm-up were rejected.");
+  check(writer.write_warm_up_frame() == MatroskaWriter::Result::Invalid, "A warm-up frame followed captured video.");
+  check(writer.first_timestamp_ticks() == 5000 && writer.duration_us() == 100'000 + 33'333,
+    "The warm-up frame changed the run's timing.");
+  auto frames = parse_frames(sink.bytes);
+  check(frames.size() == 3 && frames[0].timestamp == 0 && frames[1].timestamp == 33'333
+      && frames[2].timestamp == 133'333,
+    "Captured frames did not follow the warm-up frame by one frame.");
+  check(frames[0].pixels[0] == 16 && frames[0].pixels[8] == 128 && frames[1].pixels[0] == 200,
+    "The warm-up frame was not black.");
+}
+
 std::string temp_path(const char *name) {
   const char *root = std::getenv("TMPDIR");
   std::string path = std::string(root ? root : "/tmp") + "/" + name + std::to_string(getpid());
@@ -390,21 +412,45 @@ void relay_pairs_timestamps_with_frames_and_records_from_the_boundary() {
   check(std::string(diagnostics, static_cast<size_t>(length)) == "[dshow @ 0] camera warming up",
     "FFmpeg diagnostics were lost.");
 
-  // A run starting 50 ms after the latest frame reuses it with its real capture time.
-  const int64_t boundary = anchor_ticks;
-  void *recording = tufreplay_camera_recording_attach(camera, boundary, anchor_ticks + frequency / 20, 30, 3);
-  check(recording != nullptr, "The recording did not attach.");
+  auto attach = [&](int64_t boundary, int64_t now) {
+    void *prepared = tufreplay_camera_recording_prepare(camera, 30, 3);
+    check(prepared != nullptr, "The recording was not prepared.");
+    check(tufreplay_camera_recording_begin(prepared, boundary, now) == 0, "The recording did not begin.");
+    return prepared;
+  };
+
+  // A prepared recording opens its encoder with a warm-up frame before the run.
+  void *recording = tufreplay_camera_recording_prepare(camera, 30, 3);
+  check(recording != nullptr, "The recording was not prepared.");
+  std::mutex written_gate;
   std::vector<uint8_t> written;
   std::thread reader([&] {
     uint8_t buffer[4096];
     for (;;) {
       ssize_t count = read(output_pipe[0], buffer, sizeof(buffer));
       if (count <= 0) break;
+      std::lock_guard<std::mutex> lock(written_gate);
       written.insert(written.end(), buffer, buffer + count);
     }
   });
   check(tufreplay_camera_recording_set_output(recording, output_pipe[1]) == 0, "The encoder output was rejected.");
   close(output_pipe[1]);
+  for (int attempt = 0; attempt < 1000; ++attempt) {
+    {
+      std::lock_guard<std::mutex> lock(written_gate);
+      if (parse_frames(written).size() == 1) break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+  {
+    std::lock_guard<std::mutex> lock(written_gate);
+    check(parse_frames(written).size() == 1, "The warm-up frame was not written before the run.");
+  }
+  // A run starting 50 ms after the latest frame reuses it with its real capture time.
+  const int64_t boundary = anchor_ticks;
+  check(tufreplay_camera_recording_begin(recording, boundary, anchor_ticks + frequency / 20) == 0,
+    "The prepared recording did not begin.");
+  check(tufreplay_camera_recording_begin(recording, boundary, anchor_ticks) != 0, "A recording began twice.");
   // Pace the fixture by the writer, so the bounded queue never replaces a frame.
   auto wait_written = [&](int64_t count) {
     for (int attempt = 0; attempt < 1000; ++attempt) {
@@ -430,14 +476,15 @@ void relay_pairs_timestamps_with_frames_and_records_from_the_boundary() {
     "The recording lost frames or its first capture time.");
   check(stats.duration_us == 2'000'000 + 1'000'000 / 30, "The recording duration ignored the capture gap.");
   auto frames = parse_frames(written);
-  check(frames.size() == 4 && frames[0].timestamp == 0 && frames[1].timestamp == 33'333
-      && frames[2].timestamp == 66'667 && frames[3].timestamp == 2'000'000,
+  check(frames.size() == 5 && frames[0].timestamp == 0 && frames[1].timestamp == 33'333
+      && frames[2].timestamp == 66'666 && frames[3].timestamp == 100'000 && frames[4].timestamp == 2'033'333,
     "The encoder stream lost real capture times.");
-  check(frames[0].pixels[0] == 1 && frames[3].pixels[0] == 4, "Frames were paired with the wrong timestamps.");
+  check(frames[0].pixels[0] == 16 && frames[1].pixels[0] == 1 && frames[4].pixels[0] == 4,
+    "Frames were paired with the wrong timestamps.");
   tufreplay_camera_recording_destroy(recording, 1000);
 
   // A run that ends before its encoder starts still encodes the frames it queued.
-  void *early = tufreplay_camera_recording_attach(camera, anchor_ticks, anchor_ticks + frequency / 20, 30, 3);
+  void *early = attach(anchor_ticks, anchor_ticks + frequency / 20);
   emit(6, 2'100'000);
   for (int attempt = 0; attempt < 1000; ++attempt) {
     tufreplay_camera_recording_stats queued{};
@@ -465,13 +512,12 @@ void relay_pairs_timestamps_with_frames_and_records_from_the_boundary() {
   check(tufreplay_camera_recording_finish(early, 5000, &early_stats) == 1, "The sealed writer did not finish.");
   early_reader.join();
   close(early_pipe[0]);
-  check(early_stats.written_frames == 1 && parse_frames(early_written).size() == 1,
+  check(early_stats.written_frames == 1 && parse_frames(early_written).size() == 2,
     "Frames queued before the encoder started were lost.");
   tufreplay_camera_recording_destroy(early, 1000);
 
   // A later run excludes frames from before its boundary.
-  void *late = tufreplay_camera_recording_attach(camera, anchor_ticks + 3 * frequency, anchor_ticks + 3 * frequency, 30, 3);
-  check(late != nullptr, "A second recording did not attach.");
+  void *late = attach(anchor_ticks + 3 * frequency, anchor_ticks + 3 * frequency);
   emit(5, 2'500'000);
   for (int attempt = 0; attempt < 1000; ++attempt) {
     tufreplay_camera_state current{};
@@ -483,6 +529,12 @@ void relay_pairs_timestamps_with_frames_and_records_from_the_boundary() {
   check(tufreplay_camera_recording_finish(late, 1000, &late_stats) == 1 && late_stats.written_frames == 0,
     "A frame from before the run boundary was recorded.");
   tufreplay_camera_recording_destroy(late, 1000);
+
+  // A prepared recording released before its run never receives frames.
+  void *unused = tufreplay_camera_recording_prepare(camera, 30, 3);
+  tufreplay_camera_recording_seal(unused);
+  check(tufreplay_camera_recording_begin(unused, anchor_ticks, anchor_ticks) != 0, "A sealed recording began.");
+  tufreplay_camera_recording_destroy(unused, 1000);
 
   tufreplay_camera_get_state(camera, &state);
   check(state.previews_published >= 1, "The relay never published a preview frame.");
@@ -509,6 +561,7 @@ int main() {
   preview_matches_the_previous_conversion();
   log_lines_parse_like_the_managed_patterns();
   wall_clock_keeps_large_timestamp_precision();
+  warm_up_frame_precedes_the_run_by_one_frame();
   preview_target_uses_the_shared_layout();
   relay_pairs_timestamps_with_frames_and_records_from_the_boundary();
   failed_output_reports_an_encoder_failure();

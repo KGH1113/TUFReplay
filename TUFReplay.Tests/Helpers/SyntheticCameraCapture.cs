@@ -59,12 +59,15 @@ internal sealed class SyntheticCameraCapture : ICameraRelaySource, IDisposable
   public CameraRelayLibrary Relay { get; }
   public string Error => null;
 
-  // The Stopwatch time the run attaches at; the relay reuses a latest frame at
+  // The Stopwatch time the run begins at; the relay reuses a latest frame at
   // most 250 ms older than this.
   public long Now { get; set; }
 
-  public IntPtr AttachRecording(long boundaryTicks, int frameRate, int queueCapacity) =>
-    Relay.Attach(_camera, boundaryTicks, Now, frameRate, queueCapacity);
+  public IntPtr PrepareRecording(int frameRate, int queueCapacity) =>
+    Relay.PrepareRecording(_camera, frameRate, queueCapacity);
+
+  public CameraRelayError BeginRecording(IntPtr recording, long boundaryTicks) =>
+    Relay.BeginRecording(recording, boundaryTicks, Now);
 
   public CameraRelayState State => Relay.GetState(_camera);
 

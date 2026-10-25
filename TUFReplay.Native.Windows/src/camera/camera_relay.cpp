@@ -39,12 +39,14 @@ struct FrameInfo {
 
 class CameraCore;
 
+// One run's encoder stream. It is prepared before the run, so its writer can open
+// the encoder with a warm-up frame, and begins receiving frames at the run boundary.
 class Recording : public ByteSink, public std::enable_shared_from_this<Recording> {
  public:
-  Recording(std::shared_ptr<CameraCore> core, std::shared_ptr<FramePool> pool, int64_t boundary, int32_t width,
-    int32_t height, int32_t frame_rate, int64_t frequency, size_t queue_capacity)
-      : core_(std::move(core)), pool_(std::move(pool)), boundary_(boundary), width_(width), height_(height),
-        frame_rate_(frame_rate), frequency_(frequency), frames_(queue_capacity) {}
+  Recording(std::shared_ptr<CameraCore> core, std::shared_ptr<FramePool> pool, int32_t width, int32_t height,
+    int32_t frame_rate, int64_t frequency, size_t queue_capacity)
+      : core_(std::move(core)), pool_(std::move(pool)), width_(width), height_(height), frame_rate_(frame_rate),
+        frequency_(frequency), frames_(queue_capacity) {}
 
   ~Recording() override {
     frames_.dispose();
@@ -63,7 +65,16 @@ class Recording : public ByteSink, public std::enable_shared_from_this<Recording
     frames_.complete();
   }
 
+  // Called under the camera's sink gate before this recording becomes the sink.
+  bool start(int64_t boundary) {
+    if (started_ || cancelled_.load() || sealed_.load()) return false;
+    boundary_ = boundary;
+    started_ = true;
+    return true;
+  }
+
   int32_t set_output(OsHandle handle);
+  int32_t begin(int64_t boundary, int64_t now);
   void seal();
   int32_t finish(int32_t timeout_ms, tufreplay_camera_recording_stats *stats);
   void cancel();
@@ -80,7 +91,8 @@ class Recording : public ByteSink, public std::enable_shared_from_this<Recording
 
   std::shared_ptr<CameraCore> core_;
   std::shared_ptr<FramePool> pool_;
-  const int64_t boundary_;
+  int64_t boundary_ = INT64_MAX; // Guarded by the camera's sink gate.
+  bool started_ = false;         // Guarded by the camera's sink gate.
   const int32_t width_, height_, frame_rate_;
   const int64_t frequency_;
   int64_t last_submitted_ = INT64_MIN;
@@ -88,7 +100,7 @@ class Recording : public ByteSink, public std::enable_shared_from_this<Recording
   std::mutex gate_;
   OsHandle output_ = kInvalidHandle;
   WorkerThread writer_;
-  std::atomic<bool> capture_failed_{false}, cancelled_{false}, finished_{false};
+  std::atomic<bool> capture_failed_{false}, cancelled_{false}, finished_{false}, sealed_{false};
   std::atomic<bool> writer_finished_{false}, write_failed_{false}, output_closed_early_{false};
   std::atomic<int64_t> written_{0}, first_ticks_{0}, duration_us_{0};
 };
@@ -190,15 +202,20 @@ class CameraCore : public std::enable_shared_from_this<CameraCore> {
     return frame_thread_.wait(static_cast<int32_t>(remaining));
   }
 
-  std::shared_ptr<Recording> attach(int64_t boundary, int64_t now, int32_t frame_rate, int32_t queue_capacity) {
+  std::shared_ptr<Recording> prepare(int32_t frame_rate, int32_t queue_capacity) {
     std::lock_guard<std::mutex> lock(sink_gate_);
     if (disposed_ || pool_ == nullptr || error_snapshot() != TUFREPLAY_CAMERA_ERROR_NONE) return nullptr;
-    auto recording = std::make_shared<Recording>(shared_from_this(), pool_, boundary, width_snapshot_,
-      height_snapshot_, frame_rate, frequency_, static_cast<size_t>(queue_capacity > 0 ? queue_capacity : 3));
+    return std::make_shared<Recording>(shared_from_this(), pool_, width_snapshot_, height_snapshot_, frame_rate,
+      frequency_, static_cast<size_t>(queue_capacity > 0 ? queue_capacity : 3));
+  }
+
+  bool begin(const std::shared_ptr<Recording> &recording, int64_t boundary, int64_t now) {
+    std::lock_guard<std::mutex> lock(sink_gate_);
+    if (disposed_ || error_snapshot() != TUFREPLAY_CAMERA_ERROR_NONE || !recording->start(boundary)) return false;
     sink_ = recording;
     // Keep the last complete frame's real capture time when it is recent enough.
     if (latest_ != nullptr && latest_->fresh(now, frequency_)) recording->submit(latest_);
-    return recording;
+    return true;
   }
 
   void detach(const Recording *recording) {
@@ -506,6 +523,11 @@ int32_t Recording::set_output(OsHandle handle) {
   return TUFREPLAY_CAMERA_ERROR_NONE;
 }
 
+int32_t Recording::begin(int64_t boundary, int64_t now) {
+  return core_ != nullptr && core_->begin(shared_from_this(), boundary, now) ? TUFREPLAY_CAMERA_ERROR_NONE
+                                                                            : TUFREPLAY_CAMERA_ERROR_STOPPED;
+}
+
 void Recording::writer_entry(void *opaque) {
   std::unique_ptr<std::shared_ptr<Recording>> recording(static_cast<std::shared_ptr<Recording> *>(opaque));
   (*recording)->run_writer();
@@ -514,7 +536,10 @@ void Recording::writer_entry(void *opaque) {
 void Recording::run_writer() {
   lower_current_thread_priority();
   MatroskaWriter stream(*this, width_, height_, frame_rate_, frequency_);
-  bool failed = stream.write_header() != MatroskaWriter::Result::Ok;
+  // The warm-up frame opens the encoder session now instead of at the first
+  // captured frame, which a hardware encoder can take seconds to do.
+  bool failed = stream.write_header() != MatroskaWriter::Result::Ok
+    || stream.write_warm_up_frame() != MatroskaWriter::Result::Ok;
   if (failed) write_failed_.store(true);
   while (!failed) {
     Frame *frame = frames_.take();
@@ -547,6 +572,7 @@ void Recording::detach() {
 }
 
 void Recording::seal() {
+  sealed_.store(true);
   detach();
   frames_.complete();
 }
@@ -660,13 +686,18 @@ int32_t tufreplay_camera_destroy(void *camera, int32_t timeout_ms) {
   return ended ? 1 : 0;
 }
 
-void *tufreplay_camera_recording_attach(
-  void *camera, int64_t boundary_ticks, int64_t now_ticks, int32_t frame_rate, int32_t queue_capacity) {
+void *tufreplay_camera_recording_prepare(void *camera, int32_t frame_rate, int32_t queue_capacity) {
   auto *handle = static_cast<CameraHandle *>(camera);
   if (handle == nullptr || frame_rate < 1) return nullptr;
-  auto recording = handle->core->attach(boundary_ticks, now_ticks, frame_rate, queue_capacity);
+  auto recording = handle->core->prepare(frame_rate, queue_capacity);
   if (recording == nullptr) return nullptr;
   return new (std::nothrow) RecordingHandle{std::move(recording)};
+}
+
+int32_t tufreplay_camera_recording_begin(void *recording, int64_t boundary_ticks, int64_t now_ticks) {
+  auto *handle = static_cast<RecordingHandle *>(recording);
+  return handle == nullptr ? TUFREPLAY_CAMERA_ERROR_INVALID_ARGUMENT
+                           : handle->recording->begin(boundary_ticks, now_ticks);
 }
 
 int32_t tufreplay_camera_recording_set_output(void *recording, int64_t output_handle) {

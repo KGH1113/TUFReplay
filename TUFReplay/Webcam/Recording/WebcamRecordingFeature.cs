@@ -15,6 +15,7 @@ using TUFReplay.Webcam.Ipc;
 using TUFReplay.Webcam.Models;
 using TUFReplay.Webcam.Repositories;
 using TUFReplay.Webcam.Timing;
+using UnityEngine.SceneManagement;
 
 namespace TUFReplay.Webcam.Recording;
 
@@ -32,6 +33,7 @@ public sealed class WebcamRecordingFeature
   private bool _armed;
   private bool _arming;
   private bool _recording;
+  private bool _levelOpen;
   private bool _refreshQueued;
   private DateTime _lastDeviceRefreshUtc = DateTime.MinValue;
   private int _finalizing;
@@ -58,6 +60,7 @@ public sealed class WebcamRecordingFeature
   public void Enable()
   {
     _active = true;
+    SceneManager.activeSceneChanged += OnActiveSceneChanged;
     try
     {
       Store = new WebcamRecordingStore(Path.Combine(Main.Instance.InstallPath, "Data", "Webcam"));
@@ -99,9 +102,11 @@ public sealed class WebcamRecordingFeature
 
   public void Disable()
   {
+    SceneManager.activeSceneChanged -= OnActiveSceneChanged;
     lock (_gate)
     {
       _active = false;
+      _levelOpen = false;
       _armed = false;
       _arming = false;
       _generation++;
@@ -281,6 +286,7 @@ public sealed class WebcamRecordingFeature
               _armed = true;
               warning = _backend.CaptureWarning;
             }
+          await ApplyLevelEncoder();
           if (!string.IsNullOrEmpty(warning))
             UnityMainThread.Post(() =>
             {
@@ -298,6 +304,44 @@ public sealed class WebcamRecordingFeature
         }
       }
     );
+  }
+
+  // A level was opened (true) or left (false). While one is open, the next run's
+  // encoder session stays open, so its video starts with the run instead of
+  // after a hardware encoder's multi-second startup.
+  public void SetLevelOpen(bool open)
+  {
+    lock (_gate)
+    {
+      if (_levelOpen == open || (open && !_active))
+        return;
+      _levelOpen = open;
+    }
+    Queue(open ? "capture.encoder.ready" : "capture.encoder.release", ApplyLevelEncoder);
+  }
+
+  private void OnActiveSceneChanged(Scene previous, Scene next)
+  {
+    // Custom levels are edited and played in the editor scene.
+    if (next.name != "scnEditor")
+      SetLevelOpen(false);
+  }
+
+  private Task ApplyLevelEncoder()
+  {
+    IWebcamCaptureBackend backend;
+    bool open;
+    lock (_gate)
+    {
+      if (!_active || !_armed || _backend == null)
+        return Task.CompletedTask;
+      backend = _backend;
+      open = _levelOpen;
+    }
+    TUFReplaySetting settings = Main.Settings;
+    return open && settings.AutoRecord
+      ? backend.KeepEncoderReadyAsync(settings.WebcamRecordingLimitMb * 1024L * 1024)
+      : backend.ReleaseEncoderAsync();
   }
 
   public bool BeginRun(string runId, long startTimestampTicks = 0)
@@ -352,42 +396,59 @@ public sealed class WebcamRecordingFeature
     }
     Queue(
       "capture.end",
-      async () =>
+      () =>
       {
-        WebcamRecording recording = null;
+        bool current;
+        lock (_gate)
+          current = backend != null && generation == _generation && ReferenceEquals(backend, _backend);
+        Task<WebcamRecording> saving;
         try
         {
-          bool current;
-          lock (_gate)
-            current = backend != null && generation == _generation && ReferenceEquals(backend, _backend);
-          if (current)
-            recording = await backend.EndAsync();
-          if (recording != null)
-          {
-            if (timeline?.TryApplyTo(recording) != true)
-            {
-              // A run can end before its game clock advances. The camera is
-              // still healthy; discard this video without disarming capture.
-
-              WebcamRecordingStore.Discard(recording);
-              recording = null;
-            }
-          }
-          completed?.Invoke(recording);
+          saving = current ? backend.EndAsync() : Task.FromResult<WebcamRecording>(null);
         }
         catch (Exception exception)
         {
-          WebcamRecordingStore.Discard(recording);
-          SetError(exception, "capture.end");
-          completed?.Invoke(null);
+          saving = Task.FromException<WebcamRecording>(exception);
         }
-        finally
-        {
-          lock (_gate)
-            _finalizing--;
-        }
+        // Ending seals the run at once. A retry's recording begins next in the
+        // queue instead of waiting for this video to finish saving.
+        _ = CompleteRunAsync(saving, timeline, completed);
+        return Task.CompletedTask;
       }
     );
+  }
+
+  private async Task CompleteRunAsync(
+    Task<WebcamRecording> saving,
+    WebcamCaptureTimeline timeline,
+    Action<WebcamRecording> completed
+  )
+  {
+    WebcamRecording recording = null;
+    try
+    {
+      recording = await saving;
+      if (recording != null && timeline?.TryApplyTo(recording) != true)
+      {
+        // A run can end before its game clock advances. The camera is still
+        // healthy; discard this video without disarming capture.
+        WebcamRecordingStore.Discard(recording);
+        recording = null;
+      }
+      completed?.Invoke(recording);
+    }
+    catch (Exception exception)
+    {
+      WebcamRecordingStore.Discard(recording);
+      SetError(exception, "capture.end");
+      completed?.Invoke(null);
+    }
+    finally
+    {
+      lock (_gate)
+        _finalizing--;
+      NotifyStateChanged();
+    }
   }
 
   public void Persist(WebcamRecording recording)
