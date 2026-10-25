@@ -60,6 +60,12 @@ public static class ReplayLevelFilePickerCoordinator
     if (!ReplayPlaybackCoordinator.ValidateReplayArtifact(run, out string code, out string message))
       return Error(runId, code, message);
 
+    // The operation outlives the picker until the next pick, but only needs the run's
+    // identity, level path and hash. Replay loads the payload again by id.
+    run.InputCsv = null;
+    run.HitContextCsv = null;
+    run.MetaJson = null;
+
     PickOperation operation;
     lock (Gate)
     {

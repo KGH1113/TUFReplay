@@ -10,6 +10,7 @@ import {
   activityQueryKeys,
   mergeRecentAppSessions,
   RECENT_ACTIVITY_SESSION_LIMIT,
+  refreshesOnActivityChange,
 } from "@/state/activity/activity-queries";
 import {
   type ActivityConnectionSnapshot,
@@ -36,7 +37,10 @@ export function useActivityData() {
       .then((api) => {
         if (disposed) return;
         const activity = api.events.on("activity.changed", () => {
-          void queryClient.invalidateQueries({ queryKey: activityQueryKeys.all });
+          void queryClient.invalidateQueries({
+            queryKey: activityQueryKeys.all,
+            predicate: (query) => refreshesOnActivityChange(query.queryKey),
+          });
         });
         const connection = observeActivityConnection(api.events, setConnectionState, () => {
           void queryClient.invalidateQueries({}, { cancelRefetch: false });

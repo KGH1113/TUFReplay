@@ -244,6 +244,12 @@ public sealed class RecordingActivityTracker
         failed?.Invoke(exception);
         throw;
       }
+      finally
+      {
+        // The run draft stays referenced until the next attempt; only the database
+        // write needs the serialized CSVs.
+        run.ReplayArtifact = null;
+      }
       result.TrySetResult(true);
       persisted?.Invoke();
       ActivityChanges.Notify(run.Id);

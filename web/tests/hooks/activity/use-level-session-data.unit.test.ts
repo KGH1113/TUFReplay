@@ -1,7 +1,11 @@
 import { describe, expect, test } from "bun:test";
 
 import type { ActivityRun } from "@/models/activity/activity-model";
-import { activityQueryKeys, removeRunById } from "@/state/activity/activity-queries";
+import {
+  activityQueryKeys,
+  refreshesOnActivityChange,
+  removeRunById,
+} from "@/state/activity/activity-queries";
 
 describe("level session query state", () => {
   test("scopes run caches by logical level and day", () => {
@@ -12,6 +16,15 @@ describe("level session query state", () => {
       "runs",
       "2026-10-01",
     ]);
+  });
+
+  test("keeps the immutable chart cached when a run is saved", () => {
+    expect(refreshesOnActivityChange(activityQueryKeys.logicalLevelChart("level-1"))).toBe(false);
+    expect(refreshesOnActivityChange(activityQueryKeys.logicalLevel("level-1"))).toBe(true);
+    expect(refreshesOnActivityChange(activityQueryKeys.logicalLevelRuns("level-1", null))).toBe(
+      true,
+    );
+    expect(refreshesOnActivityChange(activityQueryKeys.sessions)).toBe(true);
   });
 
   test("removes only the deleted run without renumbering the remaining runs", () => {

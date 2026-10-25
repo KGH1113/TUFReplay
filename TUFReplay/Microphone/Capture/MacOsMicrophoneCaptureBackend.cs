@@ -149,8 +149,24 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     }
   }
 
+  public event Action<string> RunCaptureFailed;
+
+  // Called on the game thread at countdown. The helper aligns audio to the first
+  // written sample's host time, so the begin command travels on the helper worker,
+  // ahead of the run's queued end, instead of blocking ADOFAI on socket I/O.
   public bool BeginRun(string runId, string tempPath, out string error)
   {
+    var run = new PendingRun(runId, tempPath);
+    try
+    {
+      run.Clock = MacOsMachTimeConverter.CaptureSystemClock();
+    }
+    catch (Exception exception)
+    {
+      error = exception.Message;
+      return false;
+    }
+
     lock (_stateGate)
     {
       if (_armState != ArmState.Armed)
@@ -161,12 +177,27 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
             : _armError ?? "Microphone is not armed.";
         return false;
       }
+      _run = run;
     }
 
-    var run = new PendingRun(runId, tempPath);
+    if (!QueueCommand(() => CompleteBegin(run)))
+    {
+      lock (_stateGate)
+      {
+        if (ReferenceEquals(_run, run))
+          _run = null;
+      }
+      error = "macOS microphone helper is shutting down.";
+      return false;
+    }
+    error = null;
+    return true;
+  }
+
+  private void CompleteBegin(PendingRun run)
+  {
     try
     {
-      run.Clock = MacOsMachTimeConverter.CaptureSystemClock();
       Send(
         new JObject
         {
@@ -176,16 +207,11 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
         }
       );
       run.BeginSucceeded = true;
-      lock (_stateGate)
-        _run = run;
-      error = null;
-      return true;
     }
     catch (Exception exception)
     {
       Main.Instance?.Log("[Microphone] macOS helper failed to begin capture. error=" + exception.Message);
-      error = exception.Message;
-      return false;
+      RunCaptureFailed?.Invoke(exception.Message);
     }
   }
 
@@ -502,6 +528,8 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
             Name = (string)item["name"],
             MinFrequency = (int?)item["minFrequency"] ?? 48000,
             MaxFrequency = (int?)item["maxFrequency"] ?? 48000,
+            Bluetooth = (bool?)item["bluetooth"] ?? false,
+            IsDefault = (bool?)item["isDefault"] ?? false,
           }
         );
       }
@@ -526,6 +554,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   {
     lock (_transportGate)
     {
+      bool responded = false;
       try
       {
         EnsureConnection();
@@ -534,6 +563,7 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
         string line = _reader.ReadLine();
         if (line == null)
           throw new IOException("macOS microphone helper closed its connection.");
+        responded = true;
         JObject response = JObject.Parse(line);
         if ((bool?)response["ok"] != true)
           throw new IOException((string)response["error"] ?? "macOS microphone helper rejected the command.");
@@ -542,8 +572,24 @@ public sealed class MacOsMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       catch
       {
         ResetConnection();
+        if (!responded)
+          MarkHelperDisconnected();
         throw;
       }
+    }
+  }
+
+  // A lost helper connection also loses its armed capture session. Report that now
+  // so the next run fails fast instead of reconnecting from the game thread, and the
+  // next editor play arms again.
+  private void MarkHelperDisconnected()
+  {
+    lock (_stateGate)
+    {
+      if (_armState != ArmState.Armed)
+        return;
+      _armState = ArmState.Failed;
+      _armError = "The macOS microphone helper disconnected. Microphone capture is prepared again on the next play.";
     }
   }
 

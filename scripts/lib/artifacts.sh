@@ -123,6 +123,19 @@ copy_mac_native_input() {
   cp "$TUFREPLAY_MAC_INPUT_LIBRARY" "$destination/libTUFReplayInput.dylib"
 }
 
+copy_windows_native() {
+  local destination="$1"
+  local requirement="${2:-required}"
+
+  if [ "$requirement" = "required" ]; then
+    require_file "$TUFREPLAY_WIN_NATIVE_LIBRARY"
+  elif [ ! -f "$TUFREPLAY_WIN_NATIVE_LIBRARY" ]; then
+    return 0
+  fi
+
+  cp "$TUFREPLAY_WIN_NATIVE_LIBRARY" "$destination/TUFReplayNative.dll"
+}
+
 copy_debug_symbols() {
   local destination="$1"
 

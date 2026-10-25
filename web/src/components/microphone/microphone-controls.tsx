@@ -33,6 +33,7 @@ export const MicrophoneControls = memo(function MicrophoneControls({
       <MicrophoneDeviceMenu
         connectionStatus={connectionStatus}
         devices={microphones.devices}
+        defaultDeviceBluetooth={microphones.defaultDeviceBluetooth}
         enabled={microphones.enabled}
         toggleLocked={microphones.toggleLocked}
         selectedDeviceId={microphones.selectedDeviceId}

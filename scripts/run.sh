@@ -25,6 +25,7 @@ Commands:
   web-check   Run web tests, typecheck, Biome, and production build
   web-dev     Run the companion web development server (extra arguments go to Vite)
   mac-helper  Build and verify the macOS microphone/webcam helper
+  windows-native Cross-compile and validate the Windows native library (needs zig)
   unity-ui    Rebuild the Unity runtime prefab and platform UI bundles
   source-format Format C# source with the repository tool
   source-check  Check C# source formatting
@@ -81,6 +82,10 @@ case "$command_name" in
   web-dev)
     shift
     exec bash "$SCRIPTS_DIR/tasks/dev/web.sh" "$@"
+    ;;
+  windows-native)
+    run_task "Build Windows native library" "$SCRIPTS_DIR/tasks/build/windows-native.sh"
+    run_task "Validate Windows native library" "$SCRIPTS_DIR/tasks/validate/windows-native-artifact.sh"
     ;;
   mac-helper)
     run_task "Build macOS microphone helper" "$SCRIPTS_DIR/tasks/build/macos-microphone-helper.sh"

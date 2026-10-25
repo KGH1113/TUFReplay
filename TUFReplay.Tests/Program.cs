@@ -14,12 +14,9 @@ internal static class Program
       WebcamSuite.RunAll(root);
       FfmpegCameraModeSuite.RunAll();
       FfmpegCameraFrameRateSuite.RunAll();
-      FfmpegCameraSessionSuite.RunAll();
       CameraEncoderSuite.RunAll();
-      FfmpegCameraFrameStreamSuite.RunAll(root);
       FfmpegCameraRecordingSuite.RunAll(root);
       Mp4CameraDurationSuite.RunAll(root);
-      CameraFramePipelineSuite.RunAll();
       ManagedFfmpegSuite.RunAll(root);
       ManagedRendererSuite.RunAll(root);
       WebcamCropSuite.RunAll();

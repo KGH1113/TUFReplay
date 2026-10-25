@@ -27,7 +27,138 @@ internal static class PerformanceRegressionSuite
     TestLargeTimelineBuckets();
     TestHashBytesAndAllocations();
     TestChunkedCsvEncoding();
+    TestHitContextCsvMatchesStringFormatting();
     TestIndexedInputSeek();
+    TestLevelFileVerificationReuse(root);
+    TestHarmonyPatchesDoNotRequestBoxedArguments();
+    TestGameplayIdleGateDefersWork();
+    TestWindowsNativeInputContract();
+  }
+
+  // TUFReplayNative.dll hands raw WH_KEYBOARD_LL data to managed code. The struct must
+  // match tufreplay_win_key_event, and normalization must match the managed hook.
+  private static void TestWindowsNativeInputContract()
+  {
+    Assert(
+      System.Runtime.InteropServices.Marshal.SizeOf<TUFReplay.Shared.Native.WindowsNativeKeyEvent>() == 32,
+      "The native key event layout changed."
+    );
+    Assert(
+      System.Runtime.InteropServices.Marshal.OffsetOf<TUFReplay.Shared.Native.WindowsNativeKeyEvent>("Down")
+        == (IntPtr)24,
+      "The native key event field offsets changed."
+    );
+    Assert(
+      WindowsLowLevelKeyboardEventSource.TryCreateTransition(1234, 7, 0x10, 0x36, 0, true, out var rightShift)
+        && rightShift.Key == 0xA1
+        && rightShift.Down
+        && rightShift.CaptureTimestampTicks == 1234
+        && rightShift.TimestampNs == 7_000_000L,
+      "Right Shift was not normalized like the managed hook."
+    );
+    Assert(
+      WindowsLowLevelKeyboardEventSource.TryCreateTransition(1, 1, 0x11, 0x1D, 0x01, false, out var rightControl)
+        && rightControl.Key == 0xA3
+        && !rightControl.Down,
+      "Right Control was not normalized like the managed hook."
+    );
+    Assert(
+      !WindowsLowLevelKeyboardEventSource.TryCreateTransition(1, 1, 0x01, 0, 0, true, out _),
+      "A mouse button code was recorded from the keyboard hook."
+    );
+    Console.WriteLine("PASS Windows native input contract matches the managed hook");
+  }
+
+  private static void TestGameplayIdleGateDefersWork()
+  {
+    using var ran = new ManualResetEventSlim();
+    GameplayIdleGate.SetJudging(true);
+    try
+    {
+      GameplayIdleGate.Run(ran.Set);
+      Assert(!ran.Wait(TimeSpan.FromMilliseconds(100)), "Deferred work ran while ADOFAI was judging input.");
+      Assert(GameplayIdleGate.DeferredCount == 1, "Deferred work was not retained.");
+    }
+    finally
+    {
+      GameplayIdleGate.SetJudging(false);
+    }
+    Assert(ran.Wait(TimeSpan.FromSeconds(5)), "Deferred work did not run after judging stopped.");
+
+    using var immediate = new ManualResetEventSlim();
+    GameplayIdleGate.Run(immediate.Set);
+    Assert(immediate.Wait(TimeSpan.FromSeconds(5)), "Idle work was held.");
+
+    using var released = new ManualResetEventSlim();
+    GameplayIdleGate.SetJudging(true);
+    GameplayIdleGate.Run(released.Set);
+    GameplayIdleGate.Release();
+    Assert(released.Wait(TimeSpan.FromSeconds(5)), "Releasing the gate kept deferred work.");
+    Console.WriteLine("PASS optional background work waits for judged gameplay to end");
+  }
+
+  // Harmony builds and boxes an object[] on every call when a patch asks for __args.
+  // Patched methods such as scrPlayer.Hit run inside ADOFAI's async-input judgment loop.
+  private static void TestHarmonyPatchesDoNotRequestBoxedArguments()
+  {
+    string assemblyPath = typeof(LevelFileVerificationCache).Assembly.Location;
+    using FileStream stream = File.OpenRead(assemblyPath);
+    using var image = new System.Reflection.PortableExecutable.PEReader(stream);
+    System.Reflection.Metadata.MetadataReader metadata =
+      System.Reflection.Metadata.PEReaderExtensions.GetMetadataReader(image);
+    foreach (System.Reflection.Metadata.MethodDefinitionHandle methodHandle in metadata.MethodDefinitions)
+    {
+      System.Reflection.Metadata.MethodDefinition method = metadata.GetMethodDefinition(methodHandle);
+      foreach (System.Reflection.Metadata.ParameterHandle parameterHandle in method.GetParameters())
+      {
+        System.Reflection.Metadata.Parameter parameter = metadata.GetParameter(parameterHandle);
+        Assert(
+          !metadata.StringComparer.Equals(parameter.Name, "__args"),
+          "A Harmony patch requests __args: " + metadata.GetString(method.Name)
+        );
+      }
+    }
+    Console.WriteLine("PASS Harmony patches read arguments without boxing them");
+  }
+
+  private static void TestLevelFileVerificationReuse(string root)
+  {
+    string path = Path.Combine(root, "verified-chart.adofai");
+    File.WriteAllText(path, "{\"angleData\":[0,90]}");
+    int verifications = 0;
+    int reads = 0;
+    var cache = new LevelFileVerificationCache(
+      (string file, out string source, out byte[] hash) =>
+      {
+        verifications++;
+        source = File.ReadAllText(file);
+        hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        return true;
+      },
+      file =>
+      {
+        reads++;
+        return File.ReadAllText(file);
+      },
+      capacity: 4
+    );
+
+    Assert(cache.TryRead(path, out string first, out byte[] firstHash), "The first chart read failed.");
+    Assert(cache.TryRead(path, out string second, out byte[] secondHash), "The cached chart read failed.");
+    Assert(verifications == 1 && reads == 1, "An unchanged chart was fully verified again.");
+    Assert(first == second && firstHash.SequenceEqual(secondHash), "The cached chart read changed its result.");
+    secondHash[0] ^= 0xff;
+    Assert(cache.TryRead(path, out _, out byte[] thirdHash), "The cached chart read failed after hash mutation.");
+    Assert(thirdHash.SequenceEqual(firstHash), "A caller could mutate the cached hash.");
+
+    File.WriteAllText(path, "{\"angleData\":[0,180]}");
+    File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
+    Assert(cache.TryRead(path, out string changed, out _), "The modified chart read failed.");
+    Assert(verifications == 2 && changed.Contains("180"), "A modified chart reused the old verification.");
+
+    File.Delete(path);
+    Assert(!cache.TryRead(path, out _, out _) && verifications == 2, "A deleted chart was served.");
+    Console.WriteLine("PASS unchanged level files reuse their verified gameplay hash");
   }
 
   private static void TestBackgroundQueueOrdering()
@@ -192,6 +323,120 @@ internal static class PerformanceRegressionSuite
     large.WriteAngles(angles);
     long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
     Assert(allocated < angles.Length * 12L, "Chart hashing still allocates a temporary array per angle.");
+  }
+
+  // The pooled UTF-8 writer must keep the exact bytes of the previous
+  // StringBuilder + ToString("R") serialization, across 64 KiB chunk boundaries.
+  private static void TestHitContextCsvMatchesStringFormatting()
+  {
+    double[] doubles =
+    {
+      0d,
+      -0d,
+      1d / 3d,
+      -Math.PI,
+      double.Epsilon,
+      double.MaxValue,
+      double.MinValue,
+      1e-300,
+      123456789.123456789,
+      double.NaN,
+      double.PositiveInfinity,
+      double.NegativeInfinity,
+    };
+    float[] floats = { 0f, -0f, 1f / 3f, float.Epsilon, float.MaxValue, float.MinValue, float.NaN, 0.1f };
+    var payload = new RecordedRunPayload();
+    var random = new Random(1234);
+    for (int i = 0; i < 4_000; i++)
+    {
+      payload.HitContexts.Add(
+        new RecordedHitContext
+        {
+          CurrentFloorID = i % 7 == 0 ? int.MinValue + i : i,
+          CurrAngle = i < doubles.Length ? doubles[i] : random.NextDouble() * 1e6 - 5e5,
+          OverloadCounter = i < floats.Length ? floats[i] : (float)random.NextDouble(),
+          NoFailHit = i % 2 == 0,
+          IsAuto = i % 3 == 0,
+          NextFloorAuto = i % 5 == 0,
+          CachedAngle = doubles[i % doubles.Length],
+          TargetExitAngle = random.NextDouble() * Math.PI,
+          MidspinInfiniteMargin = i % 11 == 0,
+          RDCAuto = i % 13 == 0,
+          CurFreeRoamSection = -i,
+          ResolvedHitMargin = i % 4 == 0 ? null : i % 9,
+          TimeUs = i % 8 == 1 ? null : long.MaxValue - i,
+        }
+      );
+      payload.Inputs.Add(
+        new RecordedInput(long.MinValue + i, i, (RecordInputFlags)(ushort)(i * 977), -i, ulong.MaxValue - (ulong)i)
+      );
+    }
+
+    byte[] hits = payload.ToHitContextCsvBytes();
+    byte[] inputs = payload.ToInputCsvBytes();
+    Assert(hits.Length > 3 * 64 * 1024, "The hit CSV fixture does not cross several chunks.");
+    Assert(hits.SequenceEqual(ReferenceHitCsv(payload)), "Hit-context CSV bytes changed.");
+    Assert(inputs.SequenceEqual(ReferenceInputCsv(payload)), "Input CSV bytes changed.");
+    Console.WriteLine("PASS pooled replay CSV writer keeps the previous bytes");
+  }
+
+  private static byte[] ReferenceInputCsv(RecordedRunPayload payload)
+  {
+    var builder = new StringBuilder();
+    foreach (RecordedInput input in payload.Inputs)
+    {
+      builder
+        .Append(input.TimeUs)
+        .Append(',')
+        .Append(input.Key)
+        .Append(',')
+        .Append((ushort)input.Flags)
+        .Append(',')
+        .Append(input.NativeCode)
+        .Append(',')
+        .Append(input.NativeFlags)
+        .Append('\n');
+    }
+    return new UTF8Encoding(false).GetBytes(builder.ToString());
+  }
+
+  private static byte[] ReferenceHitCsv(RecordedRunPayload payload)
+  {
+    var invariant = System.Globalization.CultureInfo.InvariantCulture;
+    var builder = new StringBuilder();
+    foreach (RecordedHitContext hit in payload.HitContexts)
+    {
+      builder
+        .Append(hit.CurrentFloorID)
+        .Append(',')
+        .Append(hit.CurrAngle.ToString("R", invariant))
+        .Append(',')
+        .Append(hit.OverloadCounter.ToString("R", invariant))
+        .Append(',')
+        .Append(hit.NoFailHit ? '1' : '0')
+        .Append(',')
+        .Append(hit.IsAuto ? '1' : '0')
+        .Append(',')
+        .Append(hit.NextFloorAuto ? '1' : '0')
+        .Append(',')
+        .Append(hit.CachedAngle.ToString("R", invariant))
+        .Append(',')
+        .Append(hit.TargetExitAngle.ToString("R", invariant))
+        .Append(',')
+        .Append(hit.MidspinInfiniteMargin ? '1' : '0')
+        .Append(',')
+        .Append(hit.RDCAuto ? '1' : '0')
+        .Append(',')
+        .Append(hit.CurFreeRoamSection);
+      if (hit.ResolvedHitMargin.HasValue)
+      {
+        builder.Append(',').Append(hit.ResolvedHitMargin.Value);
+        if (hit.TimeUs.HasValue)
+          builder.Append(',').Append(hit.TimeUs.Value);
+      }
+      builder.Append('\n');
+    }
+    return new UTF8Encoding(false).GetBytes(builder.ToString());
   }
 
   private static void TestChunkedCsvEncoding()

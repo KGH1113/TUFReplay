@@ -82,8 +82,8 @@ run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_cont
       q.Parameters.AddWithValue("@format", artifact.FormatVersion);
       q.Parameters.AddWithValue("@inputs", artifact.InputCount);
       q.Parameters.AddWithValue("@hits", artifact.HitContextCount);
-      q.Parameters.AddWithValue("@inputCsv", artifact.InputCsv ?? new byte[0]);
-      q.Parameters.AddWithValue("@hitCsv", artifact.HitContextCsv ?? new byte[0]);
+      q.Parameters.AddWithValue("@inputCsv", ReplayArtifactStorage.Encode(artifact.InputCsv));
+      q.Parameters.AddWithValue("@hitCsv", ReplayArtifactStorage.Encode(artifact.HitContextCsv));
       q.Parameters.AddWithValue("@metadata", artifact.MetadataJson ?? "{}");
       q.ExecuteNonQuery();
     }
@@ -293,8 +293,8 @@ LIMIT 1";
       StartTile = r.GetInt32(5),
       LastTile = DbValue.NullableInt(r, 6),
       Result = r.GetString(7),
-      InputCsv = r.IsDBNull(8) ? null : (byte[])r.GetValue(8),
-      HitContextCsv = r.IsDBNull(9) ? null : (byte[])r.GetValue(9),
+      InputCsv = r.IsDBNull(8) ? null : ReplayArtifactStorage.Decode((byte[])r.GetValue(8)),
+      HitContextCsv = r.IsDBNull(9) ? null : ReplayArtifactStorage.Decode((byte[])r.GetValue(9)),
       MetaJson = DbValue.NullableString(r, 10),
       GameplayHash = r.IsDBNull(11) ? null : (byte[])r.GetValue(11),
       GameplayHashVersion = DbValue.NullableInt(r, 12),

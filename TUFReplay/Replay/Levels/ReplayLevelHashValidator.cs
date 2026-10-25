@@ -50,14 +50,26 @@ public static class ReplayLevelHashValidator
     string loadedPath,
     out string errorCode,
     out string errorMessage
+  ) => ValidateLoaded(run, levelData, loadedPath, out errorCode, out errorMessage, out _);
+
+  // loadedHash is the loaded level's own gameplay hash, so callers need not hash it again.
+  public static bool ValidateLoaded(
+    StoredReplayRun run,
+    LevelData levelData,
+    string loadedPath,
+    out string errorCode,
+    out string errorMessage,
+    out byte[] loadedHash
   )
   {
     errorCode = null;
     errorMessage = null;
+    loadedHash = null;
     if (!ValidateStoredHash(run, out errorCode, out errorMessage))
       return false;
     if (!GameplayChartHash.TryCompute(levelData, out byte[] actualHash, out string hashError))
       return Error("level_file_invalid", hashError, out errorCode, out errorMessage);
+    loadedHash = actualHash;
 
     if (run.GameplayHash == null)
     {

@@ -11,33 +11,39 @@ using TUFReplay.Webcam.Repositories;
 
 namespace TUFReplay.Webcam.Capture;
 
+// One run's camera video. The native relay queues the run's frames and streams
+// them with their capture times to this run's FFmpeg encoder; managed code only
+// starts, finishes and classifies the encoder. The encoder can be started ahead
+// of the run, so a slow hardware encoder session is already open when it begins.
 internal sealed class FfmpegCameraRecording
 {
+  private const int QueueCapacity = 3;
+  private const int FinishTimeoutMs = 20000;
   private readonly object _encoderGate = new object();
   private Process _encoder;
   private volatile bool _encoderStarted;
   private bool _stopRequested;
   private readonly FfmpegCameraEncoder _encoderPolicy;
   private readonly List<string> _arguments;
-  private readonly CameraFrameQueue _frames = new CameraFrameQueue(3);
-  private readonly Task _writer;
   private readonly WebcamRecording _recording;
   private readonly WebcamCaptureProfile _profile;
-  private readonly CameraFrameSize _sourceSize;
   private readonly string _executable;
   private readonly Action<string> _log;
   private long _maxBytes;
   private string _destination;
   private long _startTimestampTicks;
-  private long _lastSubmittedTicks = long.MinValue;
+  private ICameraRelaySource _source;
+  private CameraRelayLibrary _relay;
+  private IntPtr _native;
+  private volatile bool _begun;
+  private bool _yieldToRecording;
+  private Task _encoderStart = Task.CompletedTask;
   private volatile string _error;
   private string _pipeFailure;
   private volatile bool _limited;
   private volatile bool _captureFailed;
   private volatile bool _encoderFailed;
   private volatile bool _cancelRequested;
-  private long _writtenFrames;
-  private long _durationUs;
   private long _encodedFrames;
   private int _cleanupScheduled;
   private readonly ConcurrentQueue<string> _encoderMessages = new ConcurrentQueue<string>();
@@ -65,7 +71,6 @@ internal sealed class FfmpegCameraRecording
   {
     _executable = executable;
     _profile = profile;
-    _sourceSize = sourceSize;
     _log = log;
     _maxBytes = maxBytes;
     _encoderPolicy = encoder ?? FfmpegCameraEncoder.Software;
@@ -107,15 +112,6 @@ internal sealed class FfmpegCameraRecording
         new[] { "-vf", "scale=" + profile.Width + ":" + profile.Height + ":flags=bilinear,setsar=1" }
       );
     _arguments.AddRange(_encoderPolicy.GetArguments(profile));
-    // Encoder selection was probed during preparation. FFmpeg cannot initialize
-    // its real encoder before the first frame anyway, so start it on the writer
-    // thread only after Attach supplies this run's exact file limit.
-    _writer = Task.Factory.StartNew(
-      WriteFrames,
-      CancellationToken.None,
-      TaskCreationOptions.LongRunning,
-      TaskScheduler.Default
-    );
   }
 
   public void Attach(string runId, string destination, long maxBytes, long startTimestampTicks = 0)
@@ -128,27 +124,113 @@ internal sealed class FfmpegCameraRecording
     _maxBytes = maxBytes;
   }
 
-  // Called serially under the session's sink gate. Only retain the frame;
-  // neither a multi-megabyte copy nor process startup runs on capture.
-  public void Submit(CameraFrame frame)
+  public FfmpegCameraEncoder Encoder => _encoderPolicy;
+  public bool IsWarm => _native != IntPtr.Zero;
+
+  // Starts the encoder before the run with maxBytes as its file-size limit. The
+  // relay feeds it a warm-up frame, so the encoder session opens now. While
+  // another run records, the starting encoder yields to that run's capture.
+  internal void Warm(ICameraRelaySource source, long maxBytes, bool yieldToRecording)
   {
-    if (
-      frame.TimestampTicks < _startTimestampTicks
-      || frame.TimestampTicks <= _lastSubmittedTicks
-      || _error != null
-      || _limited
-      || _cancelRequested
-    )
+    if (_native != IntPtr.Zero)
       return;
-    if (_frames.Submit(frame))
-      _lastSubmittedTicks = frame.TimestampTicks;
+    _maxBytes = maxBytes;
+    _yieldToRecording = yieldToRecording;
+    Prepare(source);
   }
 
-  public void Fail(string message)
+  // Whether a warm encoder can record a run with this limit. An encoder that
+  // exited while waiting (for example, a lost GPU session) is not reused.
+  internal bool CanRecord(long maxBytes, out string reason)
   {
-    _captureFailed = true;
-    _error = message;
-    _frames.Complete();
+    reason = null;
+    if (_native == IntPtr.Zero)
+      return true;
+    if (maxBytes != _maxBytes)
+      reason = "the recording limit changed";
+    else if (_error != null)
+      reason = _error;
+    else if (_relay.GetStats(_native).WriterFinished != 0 || EncoderExited())
+      reason = "the encoder exited while waiting | " + string.Join(" | ", _encoderMessages);
+    return reason == null;
+  }
+
+  // Called when the run starts. A recording that was not warmed starts its
+  // encoder now that this run's file-size limit is known.
+  internal void Connect(ICameraRelaySource source)
+  {
+    if (_begun)
+      throw new InvalidOperationException("The camera recording is already connected.");
+    if (_native == IntPtr.Zero)
+      Prepare(source);
+    else if (!ReferenceEquals(source, _source))
+      throw new InvalidOperationException("The camera recording was prepared for another camera session.");
+    if (source.BeginRecording(_native, _startTimestampTicks) != CameraRelayError.None)
+      throw new IOException(source.Error ?? "Camera capture was stopped before recording could start.");
+    lock (_encoderGate)
+    {
+      _begun = true;
+      if (_encoderStarted && _yieldToRecording)
+        FfmpegCameraProcess.PreferGameplay(_encoder);
+    }
+  }
+
+  private void Prepare(ICameraRelaySource source)
+  {
+    IntPtr native = source.PrepareRecording(_profile.FrameRate, QueueCapacity);
+    if (native == IntPtr.Zero)
+      throw new IOException(source.Error ?? "Camera capture was stopped before recording could start.");
+    _source = source;
+    _relay = source.Relay;
+    _native = native;
+    _encoderStart = Task.Run(StartEncoderAndConnect);
+  }
+
+  private bool EncoderExited()
+  {
+    lock (_encoderGate)
+    {
+      try
+      {
+        return _encoderStarted && _encoder.HasExited;
+      }
+      catch (InvalidOperationException)
+      {
+        return true;
+      }
+    }
+  }
+
+  // The relay's progress for this run, for diagnostics and tests.
+  internal CameraRelayRecordingStats RelayStats => _native == IntPtr.Zero ? default : _relay.GetStats(_native);
+
+  // Ends the run boundary immediately. Frames already queued are still saved.
+  internal void Seal()
+  {
+    if (_native != IntPtr.Zero)
+      _relay.Seal(_native);
+  }
+
+  private void StartEncoderAndConnect()
+  {
+    try
+    {
+      Process encoder = StartEncoder();
+      if (encoder == null)
+        return;
+      StreamWriter input = encoder.StandardInput;
+      CameraRelayError error = _relay.SetOutput(_native, CameraRelayLibrary.OsHandle(input.BaseStream));
+      // The relay writes through its own duplicate and closes it at the end of the
+      // run, which lets FFmpeg finalize the MP4.
+      input.Close();
+      if (error != CameraRelayError.None)
+        RecordEncoderFailure("The camera encoder input could not be connected.");
+    }
+    catch (Exception exception)
+    {
+      if (!_cancelRequested)
+        RecordEncoderFailure(exception.Message);
+    }
   }
 
   private Process StartEncoder()
@@ -197,60 +279,13 @@ internal sealed class FfmpegCameraRecording
       if (!_encoder.Start())
         throw new IOException("The camera encoder could not start. Retry FFmpeg installation in Downloads.");
       _encoderStarted = true;
-      FfmpegCameraProcess.PreferGameplay(_encoder);
+      if (_yieldToRecording && !_begun)
+        FfmpegCameraProcess.PreferCapture(_encoder);
+      else
+        FfmpegCameraProcess.PreferGameplay(_encoder);
       _encoder.BeginErrorReadLine();
       _encoder.BeginOutputReadLine();
       return _encoder;
-    }
-  }
-
-  private void WriteFrames()
-  {
-    CameraFrame frame = null;
-    try
-    {
-      frame = _frames.Take();
-      if (frame == null)
-        return;
-      Process encoder = StartEncoder();
-      if (encoder == null)
-        return;
-      using Stream output = encoder.StandardInput.BaseStream;
-      var stream = new FfmpegCameraFrameStream(
-        output,
-        _sourceSize.Width,
-        _sourceSize.Height,
-        _profile.FrameRate,
-        Stopwatch.Frequency
-      );
-      do
-      {
-        stream.WriteFrame(frame.Pixels, frame.TimestampTicks);
-        if (_writtenFrames == 0)
-          _recording.CaptureStartTimestampTicks = stream.FirstTimestampTicks;
-        _durationUs = stream.DurationUs;
-        _writtenFrames++;
-        frame.Release();
-        frame = null;
-      } while ((frame = _frames.Take()) != null);
-    }
-    catch (Exception exception)
-    {
-      if (!_cancelRequested)
-      {
-        // -fs closes input before +faststart finishes moving MP4 metadata.
-        // Classify a broken pipe after final exit, not against a short deadline
-        // that can discard a healthy large recording on a slower disk.
-        if (_writtenFrames > 0 && exception is IOException && _encoderStarted)
-          _pipeFailure = exception.Message;
-        else
-          RecordEncoderFailure(exception.Message);
-      }
-    }
-    finally
-    {
-      frame?.Release();
-      _frames.Dispose();
     }
   }
 
@@ -283,15 +318,47 @@ internal sealed class FfmpegCameraRecording
 
   public async Task<WebcamRecording> FinishAsync()
   {
-    _frames.Complete();
     try
     {
-      if (await Task.WhenAny(_writer, Task.Delay(20000)).ConfigureAwait(false) != _writer)
+      if (_native == IntPtr.Zero)
+      {
+        // Prepared but never used by a run: no encoder ran and no file exists.
+        WebcamRecordingStore.Discard(_recording);
+        return null;
+      }
+      if (!_begun)
+      {
+        // Warmed but never used by a run.
+        await CancelAsync().ConfigureAwait(false);
+        return null;
+      }
+      await _encoderStart.ConfigureAwait(false);
+      CameraRelayRecordingStats stats = default;
+      bool finished = await Task.Run(() => _relay.Finish(_native, FinishTimeoutMs, out stats)).ConfigureAwait(false);
+      if (!finished)
       {
         RecordEncoderFailure("The encoder writer did not finish within 20 seconds.");
         throw new IOException("The camera video could not finish saving. Check disk space and reconnect the camera.");
       }
-      await _writer.ConfigureAwait(false);
+      if (stats.CaptureFailed != 0)
+      {
+        _captureFailed = true;
+        if (_error == null)
+          _error = _source?.Error ?? "Camera capture was stopped.";
+      }
+      if (stats.WriteFailed != 0)
+        RecordEncoderFailure("The camera encoder stopped accepting video.");
+      // -fs closes input before the MP4 finishes. Classify the closed pipe after
+      // the encoder exits, not against a short deadline that could discard a
+      // healthy large recording on a slower disk.
+      if (stats.OutputClosedEarly != 0)
+        _pipeFailure = "The camera encoder closed its input.";
+      if (_error == null && stats.WrittenFrames == 0)
+      {
+        StopEncoder();
+        WebcamRecordingStore.Discard(_recording);
+        return null;
+      }
       if (_encoderStarted)
       {
         if (!await Task.Run(() => _encoder.WaitForExit(20000)).ConfigureAwait(false))
@@ -309,19 +376,15 @@ internal sealed class FfmpegCameraRecording
         throw new IOException(
           "The camera video could not be saved. Restart the camera and check disk space. Your input replay is still available."
         );
-      if (_writtenFrames == 0)
-      {
-        WebcamRecordingStore.Discard(_recording);
-        return null;
-      }
+      _recording.CaptureStartTimestampTicks = stats.FirstTimestampTicks;
       long encodedFrames = Interlocked.Read(ref _encodedFrames);
       _recording.SizeLimited =
         _limited
-        || (encodedFrames > 0 && encodedFrames < _writtenFrames)
+        || (encodedFrames > 0 && encodedFrames < stats.WrittenFrames)
         || new FileInfo(_recording.FilePath).Length >= Math.Max(1, _maxBytes - 1024 * 1024);
       // Progress includes packets the muxer may omit at -fs. Read the finalized
       // video track for a cutoff; normal capture timing stays exact.
-      _recording.DurationUs = _recording.SizeLimited ? Mp4CameraDuration.ReadUs(_recording.FilePath) : _durationUs;
+      _recording.DurationUs = _recording.SizeLimited ? Mp4CameraDuration.ReadUs(_recording.FilePath) : stats.DurationUs;
       if (_destination != null)
       {
         File.Move(_recording.FilePath, _destination);
@@ -331,7 +394,7 @@ internal sealed class FfmpegCameraRecording
         "Camera recording saved: encoded="
           + encodedFrames
           + ", dropped="
-          + _frames.Dropped
+          + stats.DroppedFrames
           + ", durationUs="
           + _recording.DurationUs
       );
@@ -365,11 +428,13 @@ internal sealed class FfmpegCameraRecording
   public async Task CancelAsync()
   {
     _cancelRequested = true;
-    _frames.Dispose();
+    if (_native != IntPtr.Zero)
+      _relay.Cancel(_native);
     try
     {
+      // Killing the encoder unblocks a relay write that FFmpeg stopped reading.
       await Task.Run(StopEncoder).ConfigureAwait(false);
-      await Task.WhenAny(_writer, Task.Delay(2000)).ConfigureAwait(false);
+      await Task.WhenAny(_encoderStart, Task.Delay(2000)).ConfigureAwait(false);
     }
     finally
     {
@@ -400,24 +465,16 @@ internal sealed class FfmpegCameraRecording
   {
     if (Interlocked.Exchange(ref _cleanupScheduled, 1) != 0)
       return;
-    if (_writer.IsCompleted)
-      Cleanup();
-    else
-      _ = _writer.ContinueWith(
-        completed =>
-        {
-          _ = completed.Exception;
-          Cleanup();
-          WebcamRecordingStore.Discard(_recording);
-        },
-        TaskScheduler.Default
-      );
-  }
-
-  private void Cleanup()
-  {
-    _frames.Dispose();
-    lock (_encoderGate)
-      _encoder?.Dispose();
+    _ = Task.Run(async () =>
+    {
+      await Task.WhenAny(_encoderStart, Task.Delay(FinishTimeoutMs)).ConfigureAwait(false);
+      IntPtr native = _native;
+      _native = IntPtr.Zero;
+      // A writer still blocked on a stalled encoder keeps its own reference.
+      if (native != IntPtr.Zero)
+        _relay.DestroyRecording(native, 2000);
+      lock (_encoderGate)
+        _encoder?.Dispose();
+    });
   }
 }

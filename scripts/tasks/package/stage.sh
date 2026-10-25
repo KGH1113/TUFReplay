@@ -25,6 +25,8 @@ runtime="$TUFREPLAY_PACKAGE_STAGE/Runtime/versions/$version"
 copy_launcher_payload "$TUFREPLAY_PACKAGE_STAGE"
 copy_runtime_core "$runtime"
 copy_windows_sqlite "$runtime"
+copy_windows_native "$runtime" required
+"$TASK_DIR/../validate/windows-native-artifact.sh" "$runtime/TUFReplayNative.dll"
 copy_assets "$runtime" required
 copy_mac_helper "$runtime" required
 copy_mac_native_input "$runtime" required

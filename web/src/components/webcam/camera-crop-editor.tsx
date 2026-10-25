@@ -298,6 +298,14 @@ export function CameraCropEditor({
                 }}
               />
             ) : null}
+            {available && preview.paused ? (
+              <p
+                role="status"
+                className="absolute inset-x-0 bottom-0 bg-black/70 px-3 py-1.5 text-center text-xs leading-relaxed text-white/90"
+              >
+                {t("cropPreview.paused")}
+              </p>
+            ) : null}
           </div>
           {available ? (
             <>
@@ -409,7 +417,7 @@ export function CameraCropEditor({
                   </>
                 ) : (
                   <p role="status" className="max-w-80 text-xs leading-relaxed text-white/70">
-                    {t("cropPreview.waiting")}
+                    {preview.paused ? t("cropPreview.paused") : t("cropPreview.waiting")}
                   </p>
                 )
               ) : (

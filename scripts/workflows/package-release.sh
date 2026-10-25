@@ -19,6 +19,8 @@ else
   log_skip "Build macOS native input shim (using existing artifact)"
 fi
 
+run_task "Build Windows native library" "$TASKS_DIR/build/windows-native.sh"
+run_task "Validate Windows native library" "$TASKS_DIR/validate/windows-native-artifact.sh"
 run_task "Validate macOS helper artifact" "$TASKS_DIR/validate/macos-helper-artifact.sh"
 run_task "Validate macOS native input artifact" "$TASKS_DIR/validate/macos-native-input-artifact.sh"
 run_task "Verify AdofaiIpc dependency" "$TASKS_DIR/verify/adofai-ipc.sh"

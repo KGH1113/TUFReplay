@@ -12,6 +12,8 @@
   "systemDefault": "System default",
   "systemDefaultDescription": "Use the operating system input device",
   "availableDevice": "Available input device",
+  "bluetoothDevice": "Bluetooth · can lower game audio quality",
+  "bluetoothWarning": "This Bluetooth headset switches to its call mode while the microphone records, which can make the song sound muffled. Choose a built-in or wired microphone for better game audio.",
   "noneDetected": "No microphone devices were detected.",
   "errors": {
     "readDevices": "Could not load microphones. Reconnect the device, then refresh the list.",

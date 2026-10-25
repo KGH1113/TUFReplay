@@ -7,8 +7,6 @@ namespace TUFReplay.Shared.Compatibility;
 
 internal static class AdofaiRuntimeCompatibility
 {
-  private delegate bool HitInputEventModern(scrPlayer player, bool isAuto, InputEventState state, bool handleAll);
-  private delegate bool HitInputEventLegacy(scrPlayer player, bool isAuto, InputEventState state);
   private delegate scrPlanet SwitchChosenWithTick(scrPlanet planet, long? hitTick);
   private delegate scrPlanet SwitchChosenLegacy(scrPlanet planet);
   private delegate void UpdateHitErrorMeter(
@@ -35,15 +33,15 @@ internal static class AdofaiRuntimeCompatibility
     "Hit",
     new[] { typeof(bool) }
   );
-  private static readonly HitInputEventModern ModernHitInputEvent = CreateDelegate<HitInputEventModern>(
-    AccessTools.Method(
-      typeof(scrPlayer),
-      "HitInputEvent",
-      new[] { typeof(bool), typeof(InputEventState), typeof(bool) }
-    )
+  private static readonly MethodInfo ModernHitInputEventMethod = AccessTools.Method(
+    typeof(scrPlayer),
+    "HitInputEvent",
+    new[] { typeof(bool), typeof(InputEventState), typeof(bool) }
   );
-  private static readonly HitInputEventLegacy LegacyHitInputEvent = CreateDelegate<HitInputEventLegacy>(
-    AccessTools.Method(typeof(scrPlayer), "HitInputEvent", new[] { typeof(bool), typeof(InputEventState) })
+  private static readonly MethodInfo LegacyHitInputEventMethod = AccessTools.Method(
+    typeof(scrPlayer),
+    "HitInputEvent",
+    new[] { typeof(bool), typeof(InputEventState) }
   );
   private static readonly SwitchChosenWithTick ModernSwitchChosen = CreateDelegate<SwitchChosenWithTick>(
     AccessTools.Method(typeof(scrPlanet), "SwitchChosen", new[] { typeof(long?) })
@@ -72,6 +70,9 @@ internal static class AdofaiRuntimeCompatibility
 
   internal static bool HasModernHitMargins => Enum.IsDefined(typeof(HitMargin), "XPerfect");
 
+  internal static MethodInfo ModernPlayerHitMethod => ModernHitMethod;
+  internal static MethodInfo LegacyPlayerHitMethod => LegacyHitMethod;
+
   internal static MethodBase ResolvePlayerHitMethod()
   {
     return ModernHitMethod ?? LegacyHitMethod ?? throw new MissingMethodException(typeof(scrPlayer).FullName, "Hit");
@@ -94,16 +95,9 @@ internal static class AdofaiRuntimeCompatibility
     }
   }
 
-  internal static bool HandleHitInputEvent(scrPlayer player, bool isAuto, InputEventState state)
-  {
-    if (ModernHitInputEvent != null)
-      return ModernHitInputEvent(player, isAuto, state, true);
-    if (LegacyHitInputEvent != null)
-      return LegacyHitInputEvent(player, isAuto, state);
-
-    // Older ADOFAI builds handle this inside Hit and expose no separate input-event API.
-    return true;
-  }
+  // The input-event method Hit calls before switching planets; null on builds that
+  // resolve input events inside Hit. InputEventState is the second parameter in both.
+  internal static MethodInfo PlayerHitInputEventMethod => ModernHitInputEventMethod ?? LegacyHitInputEventMethod;
 
   internal static RunJudgmentSystem ParseJudgmentSystem(string value)
   {
