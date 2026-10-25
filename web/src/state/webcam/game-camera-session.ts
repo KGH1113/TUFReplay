@@ -6,7 +6,11 @@ export function startGameCameraSession(options: {
   read: (signal: AbortSignal) => Promise<CameraPreviewFrame | null>;
   onFrame: (frame: CameraPreviewFrame) => void;
   onError: (cause: unknown) => void;
+  /** The game pauses the preview while it judges input; keep the session alive. */
+  isPaused?: (cause: unknown) => boolean;
+  onPaused?: () => void;
   intervalMs?: number;
+  pausedIntervalMs?: number;
   timeoutMs?: number;
 }) {
   const controller = new AbortController();
@@ -35,6 +39,12 @@ export function startGameCameraSession(options: {
       timer = setTimeout(() => void tick(), options.intervalMs ?? 125);
     } catch (cause) {
       if (controller.signal.aborted) return;
+      if (options.isPaused?.(cause)) {
+        lastFrame = Date.now();
+        options.onPaused?.();
+        timer = setTimeout(() => void tick(), options.pausedIntervalMs ?? 1_000);
+        return;
+      }
       stop();
       options.onError(cause);
     } finally {
