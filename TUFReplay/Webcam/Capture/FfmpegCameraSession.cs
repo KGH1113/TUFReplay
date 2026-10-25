@@ -29,6 +29,7 @@ internal sealed class FfmpegCameraSession : IDisposable
   }
 
   private static readonly Regex TimeBase = new Regex(@"config in time_base: (\d+)/(\d+)", RegexOptions.Compiled);
+  private static readonly Regex FrameRate = new Regex(@"\bframe_rate:\s*(\d+)/(\d+)(?:\s|$)", RegexOptions.Compiled);
   private static readonly Regex Timestamp = new Regex(@"\bn:\s*\d+\s+pts:\s*(-?\d+)", RegexOptions.Compiled);
   private static readonly Regex Dimensions = new Regex(@"\bs:(\d+)x(\d+)", RegexOptions.Compiled);
   private readonly Process _process;
@@ -53,6 +54,7 @@ internal sealed class FfmpegCameraSession : IDisposable
   public CameraPreviewBuffer Preview { get; }
   public WebcamCaptureProfile RecordingProfile => _recordingProfile;
   public CameraFrameSize SourceSize { get; private set; }
+  public double InputFrameRate { get; private set; }
   public string Error { get; private set; }
   public bool IsDisposed => _disposed;
   public bool IsReady => _ready.Task.Status == TaskStatus.RanToCompletion;
@@ -65,7 +67,8 @@ internal sealed class FfmpegCameraSession : IDisposable
     FfmpegCameraMode mode = null
   )
   {
-    _profile = mode == null ? profile : profile.LimitFrameRate((int)Math.Round(mode.FrameRate));
+    _profile = profile;
+    InputFrameRate = mode?.FrameRate ?? 0;
     Preview = new CameraPreviewBuffer(CameraPreviewBuffer.MaxWidth, CameraPreviewBuffer.MaxHeight);
     _captureBounds = new CameraFrameSize(profile.Width, profile.Height);
     var arguments = new List<string>
@@ -155,9 +158,9 @@ internal sealed class FfmpegCameraSession : IDisposable
     }
   }
 
-  public async Task WaitUntilReadyAsync()
+  public async Task WaitUntilReadyAsync(int timeoutMilliseconds = 10000)
   {
-    if (await Task.WhenAny(_ready.Task, Task.Delay(10000)).ConfigureAwait(false) != _ready.Task)
+    if (await Task.WhenAny(_ready.Task, Task.Delay(timeoutMilliseconds)).ConfigureAwait(false) != _ready.Task)
       throw new IOException("The camera is not sending video. Reconnect it or choose another camera.");
     await _ready.Task.ConfigureAwait(false);
   }
@@ -190,6 +193,8 @@ internal sealed class FfmpegCameraSession : IDisposable
         int.TryParse(timeBase.Groups[1].Value, out _numerator);
         int.TryParse(timeBase.Groups[2].Value, out _denominator);
       }
+      if (TryParseInputFrameRate(line, out double frameRate))
+        InputFrameRate = frameRate;
       return;
     }
     if (!line.Contains(" n:"))
@@ -228,6 +233,27 @@ internal sealed class FfmpegCameraSession : IDisposable
     }
   }
 
+  internal static bool TryParseInputFrameRate(string line, out double frameRate)
+  {
+    frameRate = 0;
+    if (line == null || !line.Contains("config in time_base:"))
+      return false;
+    Match match = FrameRate.Match(line);
+    if (
+      !match.Success
+      || !long.TryParse(match.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out long numerator)
+      || !long.TryParse(match.Groups[2].Value, NumberStyles.None, CultureInfo.InvariantCulture, out long denominator)
+      || numerator <= 0
+      || denominator <= 0
+    )
+      return false;
+    double value = (double)numerator / denominator;
+    if (double.IsNaN(value) || double.IsInfinity(value) || value <= 0)
+      return false;
+    frameRate = value;
+    return true;
+  }
+
   private void ReadFrames()
   {
     CameraFrame frame = null;
@@ -251,7 +277,12 @@ internal sealed class FfmpegCameraSession : IDisposable
         if (frame == null)
         {
           SourceSize = info.Size;
-          _recordingProfile = _profile.FitToSource(info.Size.Width, info.Size.Height);
+          WebcamCaptureProfile recordingProfile = _profile;
+          if (InputFrameRate > 0)
+            recordingProfile = recordingProfile.LimitFrameRate(
+              (int)Math.Round(Math.Min(_profile.FrameRate, InputFrameRate))
+            );
+          _recordingProfile = recordingProfile.FitToSource(info.Size.Width, info.Size.Height);
           pool = new CameraFramePool(info.Size.Width * info.Size.Height * 3 / 2);
           frame = pool.TryRent();
           lock (_sinkGate)

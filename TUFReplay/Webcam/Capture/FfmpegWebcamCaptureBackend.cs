@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -19,6 +21,7 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
   private string _recordingDirectory;
   private Task<FfmpegCameraRecording> _standby;
   public CameraPreviewBuffer Preview => _session?.Preview;
+  public string CaptureWarning { get; private set; }
 
   public FfmpegWebcamCaptureBackend(string managedExecutable)
   {
@@ -69,27 +72,59 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
     _encoderOverride = null;
     _recordingDirectory = recordingDirectory ?? Path.GetTempPath();
     Directory.CreateDirectory(_recordingDirectory);
-    IReadOnlyList<FfmpegCameraMode> modes = await FfmpegCameraModes.DiscoverAsync(_executable, _deviceId, profile);
-    // Some drivers advertise unusable combinations. Bound startup retries and
-    // finally let DirectShow negotiate its default without forcing 60 fps.
-    foreach (FfmpegCameraMode mode in modes.Take(4).Concat(new FfmpegCameraMode[] { null }))
+    IReadOnlyList<FfmpegCameraMode> modes = await FfmpegCameraModes.DiscoverAsync(_executable, _deviceId, profile, Log);
+    // Try smooth supported modes, then the driver's default, before accepting a
+    // slow raw fallback. Bound both the number of attempts and total wait time.
+    var startup = Stopwatch.StartNew();
+    Exception lastFailure = null;
+    foreach (FfmpegCameraMode mode in FfmpegCameraModes.BuildAttempts(modes, profile))
     {
+      int remainingMs = (int)Math.Max(0, 30000 - startup.ElapsedMilliseconds);
+      if (remainingMs == 0)
+        break;
       var session = new FfmpegCameraSession(_executable, _deviceId, profile, mode);
       try
       {
-        await session.WaitUntilReadyAsync();
+        await session.WaitUntilReadyAsync(Math.Min(10000, remainingMs));
+        if (session.Error != null)
+          throw new IOException(session.Error);
         _session = session;
         Log("Camera capture mode: " + (mode?.ToString() ?? "device default"));
+        double inputRate = session.InputFrameRate;
+        Log(
+          "Camera output: "
+            + session.SourceSize.Width
+            + "x"
+            + session.SourceSize.Height
+            + "; input_fps="
+            + inputRate.ToString("0.######", CultureInfo.InvariantCulture)
+            + "; target_fps="
+            + profile.FrameRate
+        );
+        if (inputRate > 0 && inputRate < profile.FrameRate * 0.995)
+        {
+          CaptureWarning =
+            "Camera connected at "
+            + inputRate.ToString("0.##", CultureInfo.InvariantCulture)
+            + " fps; this quality targets "
+            + profile.FrameRate
+            + " fps. Try a lower camera quality and reconnect.";
+          Log("Camera frame rate reduced: " + CaptureWarning);
+        }
         break;
       }
-      catch
+      catch (Exception exception)
       {
+        lastFailure = exception;
         Log("Camera mode failed: " + (mode?.ToString() ?? "device default") + " | " + session.Diagnostic);
         await session.StopAsync();
-        if (mode == null)
-          throw;
       }
     }
+    if (_session == null)
+      throw new IOException(
+        "The camera could not start with its supported settings. Close other apps using the camera, reconnect it, and try again.",
+        lastFailure
+      );
     try
     {
       PrepareNextRecording();
@@ -192,6 +227,7 @@ internal sealed class FfmpegWebcamCaptureBackend : IWebcamCaptureBackend
 
   public async Task DisarmAsync()
   {
+    CaptureWarning = null;
     try
     {
       WebcamRecordingStore.Discard(await EndAsync(false));
