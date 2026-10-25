@@ -19,6 +19,7 @@ internal sealed class FfmpegCameraEncoder
   {
     new FfmpegCameraEncoder(
       "h264_nvenc",
+      "-forced-idr",
       "-preset",
       "p1",
       "-tune",
@@ -30,17 +31,20 @@ internal sealed class FfmpegCameraEncoder
       "-rc-lookahead",
       "0"
     ),
-    new FfmpegCameraEncoder("h264_qsv", "-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0"),
-    new FfmpegCameraEncoder("h264_amf", "-usage", "ultralowlatency", "-quality", "speed", "-rc", "cbr"),
-    new FfmpegCameraEncoder("libx264", "-preset", "ultrafast", "-tune", "zerolatency", "-threads", "2"),
+    new FfmpegCameraEncoder("h264_qsv", "-forced_idr", "-preset", "veryfast", "-async_depth", "1", "-look_ahead", "0"),
+    new FfmpegCameraEncoder("h264_amf", "-forced_idr", "-usage", "ultralowlatency", "-quality", "speed", "-rc", "cbr"),
+    new FfmpegCameraEncoder("libx264", "-forced-idr", "-preset", "ultrafast", "-tune", "zerolatency", "-threads", "2"),
   };
 
+  private const int ProbeTimeoutMs = 30000;
   private static readonly FfmpegCameraEncoderCache Cache = new FfmpegCameraEncoderCache(ProbeAsync);
+  private readonly string _forcedIdrOption;
   private readonly string[] _options;
 
-  private FfmpegCameraEncoder(string name, params string[] options)
+  private FfmpegCameraEncoder(string name, string forcedIdrOption, params string[] options)
   {
     Name = name;
+    _forcedIdrOption = forcedIdrOption;
     _options = options;
   }
 
@@ -82,6 +86,15 @@ internal sealed class FfmpegCameraEncoder
         (profile.BitRate * 2).ToString(CultureInfo.InvariantCulture),
         "-g",
         (profile.FrameRate * 2).ToString(CultureInfo.InvariantCulture),
+        // The relay's first frame only opens the encoder session before the run
+        // (hardware encoders can take seconds). Drop its packet, start the video
+        // on an IDR frame, and rebase timestamps so the run still starts at zero.
+        _forcedIdrOption,
+        "1",
+        "-force_key_frames",
+        "expr:eq(n,1)",
+        "-bsf:v",
+        "noise=drop=not(n),setts=pts=PTS-STARTPTS:dts=DTS-STARTDTS",
       }
     );
     return arguments;
@@ -121,8 +134,9 @@ internal sealed class FfmpegCameraEncoder
       "lavfi",
       "-i",
       "color=c=black:s=" + profile.Width + "x" + profile.Height + ":r=" + profile.FrameRate,
+      // The first frame is the dropped warm-up frame; three are written.
       "-frames:v",
-      "3",
+      "4",
       "-an",
     };
     arguments.AddRange(encoder.GetArguments(profile));
@@ -174,8 +188,10 @@ internal sealed class FfmpegCameraEncoder
       process.StandardInput.Close();
       process.BeginErrorReadLine();
       process.BeginOutputReadLine();
-      if (!process.WaitForExit(8000))
-        return new FfmpegCameraEncoderProbe(false, "Probe timed out after 8 seconds.");
+      // Quick Sync took over 8 s to open while the game was loading; a timeout
+      // here records with the software encoder for the rest of the session.
+      if (!process.WaitForExit(ProbeTimeoutMs))
+        return new FfmpegCameraEncoderProbe(false, "Probe timed out after 30 seconds.");
       // WaitForExit() without a timeout also waits for redirected streams, and can
       // block forever with a broken child. Bound the final progress drain instead.
       Task.WaitAll(new Task[] { outputClosed.Task, errorClosed.Task }, 1000);

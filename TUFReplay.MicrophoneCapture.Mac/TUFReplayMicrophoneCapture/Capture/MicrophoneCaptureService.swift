@@ -81,9 +81,21 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   private var firstSampleHostTime: UInt64 = 0
   private var activeDeviceId: String?
 
+  // Opening a Bluetooth headset's microphone switches it to the hands-free profile,
+  // which lowers the game's audio output quality. The game warns about it.
+  private static let bluetoothTransports: Set<Int32> = [
+    0x626C_7565, // kAudioDeviceTransportTypeBluetooth ('blue')
+    0x626C_6561, // kAudioDeviceTransportTypeBluetoothLE ('blea')
+  ]
+
   func devices() -> [MicrophoneDeviceResponse] {
-    discoverySession().devices.map {
-      MicrophoneDeviceResponse(id: $0.uniqueID, name: $0.localizedName)
+    let defaultId = AVCaptureDevice.default(for: .audio)?.uniqueID
+    return discoverySession().devices.map {
+      MicrophoneDeviceResponse(
+        id: $0.uniqueID,
+        name: $0.localizedName,
+        bluetooth: Self.bluetoothTransports.contains($0.transportType),
+        isDefault: $0.uniqueID == defaultId)
     }
   }
 

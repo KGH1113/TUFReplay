@@ -14,8 +14,15 @@ require_file "$sqlite_library"
 require_file "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll"
 require_file "$TUFREPLAY_MAC_INPUT_LIBRARY"
 
+# The Windows camera relay core, built for this host by the windows-native task.
+camera_library=""
+if [ -f "$TUFREPLAY_CAMERA_HOST_LIBRARY" ]; then
+  camera_library="$TUFREPLAY_CAMERA_HOST_LIBRARY"
+fi
+
 TUFREPLAY_SQLITE_NATIVE_LIBRARY="$sqlite_library" \
 TUFREPLAY_MAC_INPUT_LIBRARY="$TUFREPLAY_MAC_INPUT_LIBRARY" \
+TUFREPLAY_CAMERA_NATIVE_LIBRARY="$camera_library" \
 DOTNET_ROOT="$DOTNET_ROOT" DOTNET_ROOT_ARM64="$DOTNET_ROOT_ARM64" \
   "$DOTNET_EXE" run --project "$TUFREPLAY_PROJECT_ROOT/TUFReplay.Tests/TUFReplay.Tests.csproj" \
     -p:TUFReplayDll="$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" \

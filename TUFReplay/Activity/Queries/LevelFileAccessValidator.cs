@@ -10,6 +10,13 @@ public static class LevelFileAccessValidator
   public const string InvalidMessage = "The level file could not be read.";
   public const string ModifiedMessage = "The level file's gameplay no longer matches this replay.";
 
+  private static readonly LevelFileVerificationCache VerifiedFiles = new LevelFileVerificationCache(
+    (string path, out string source, out byte[] hash) =>
+      GameplayChartHash.TryLoadCustomLevel(path, out source, out _, out hash, out _),
+    path => RDFile.ReadAllText(path),
+    capacity: 64
+  );
+
   public static bool TryValidate(
     LevelSession session,
     out string canonicalPath,
@@ -29,7 +36,7 @@ public static class LevelFileAccessValidator
       return Error("level_file_missing", MissingMessage, out errorCode, out errorMessage);
     }
 
-    if (!GameplayChartHash.TryLoadCustomLevel(canonicalPath, out levelText, out _, out byte[] actualHash, out _))
+    if (!VerifiedFiles.TryRead(canonicalPath, out levelText, out byte[] actualHash))
     {
       return Error("level_file_invalid", InvalidMessage, out errorCode, out errorMessage);
     }

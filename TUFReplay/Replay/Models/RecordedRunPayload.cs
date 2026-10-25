@@ -1,10 +1,6 @@
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Globalization;
-using System.IO;
 using System.Runtime.InteropServices;
-using System.Text;
 using Newtonsoft.Json;
 using TUFReplay.Activity.Models;
 
@@ -133,38 +129,35 @@ public class RecordedRunPayload
 
   public byte[] ToInputCsvBytes()
   {
-    StringBuilder builder = new StringBuilder();
-
+    using var writer = new Utf8CsvWriter();
     foreach (RecordedInput input in Inputs)
     {
-      builder
+      writer
         .Append(input.TimeUs)
         .Append(',')
         .Append(input.Key)
         .Append(',')
-        .Append((ushort)input.Flags)
+        .Append((int)(ushort)input.Flags)
         .Append(',')
         .Append(input.NativeCode)
         .Append(',')
         .Append(input.NativeFlags)
         .Append('\n');
     }
-
-    return ToUtf8(builder);
+    return writer.ToArray();
   }
 
   public byte[] ToHitContextCsvBytes()
   {
-    StringBuilder builder = new StringBuilder();
-
+    using var writer = new Utf8CsvWriter();
     foreach (RecordedHitContext hit in HitContexts)
     {
-      builder
+      writer
         .Append(hit.CurrentFloorID)
         .Append(',')
-        .Append(hit.CurrAngle.ToString("R", CultureInfo.InvariantCulture))
+        .AppendRoundTrip(hit.CurrAngle)
         .Append(',')
-        .Append(hit.OverloadCounter.ToString("R", CultureInfo.InvariantCulture))
+        .AppendRoundTrip(hit.OverloadCounter)
         .Append(',')
         .Append(hit.NoFailHit ? '1' : '0')
         .Append(',')
@@ -172,9 +165,9 @@ public class RecordedRunPayload
         .Append(',')
         .Append(hit.NextFloorAuto ? '1' : '0')
         .Append(',')
-        .Append(hit.CachedAngle.ToString("R", CultureInfo.InvariantCulture))
+        .AppendRoundTrip(hit.CachedAngle)
         .Append(',')
-        .Append(hit.TargetExitAngle.ToString("R", CultureInfo.InvariantCulture))
+        .AppendRoundTrip(hit.TargetExitAngle)
         .Append(',')
         .Append(hit.MidspinInfiniteMargin ? '1' : '0')
         .Append(',')
@@ -184,39 +177,14 @@ public class RecordedRunPayload
 
       if (hit.ResolvedHitMargin.HasValue)
       {
-        builder.Append(',').Append(hit.ResolvedHitMargin.Value);
+        writer.Append(',').Append(hit.ResolvedHitMargin.Value);
         if (hit.TimeUs.HasValue)
-        {
-          builder.Append(',').Append(hit.TimeUs.Value);
-        }
+          writer.Append(',').Append(hit.TimeUs.Value);
       }
 
-      builder.Append('\n');
+      writer.Append('\n');
     }
-
-    return ToUtf8(builder);
-  }
-
-  private static byte[] ToUtf8(StringBuilder builder)
-  {
-    using var bytes = new MemoryStream();
-    char[] chunk = ArrayPool<char>.Shared.Rent(4096);
-    try
-    {
-      using var writer = new StreamWriter(bytes, new UTF8Encoding(false), 4096, true);
-      for (int offset = 0; offset < builder.Length; )
-      {
-        int count = Math.Min(chunk.Length, builder.Length - offset);
-        builder.CopyTo(offset, chunk, 0, count);
-        writer.Write(chunk, 0, count);
-        offset += count;
-      }
-    }
-    finally
-    {
-      ArrayPool<char>.Shared.Return(chunk);
-    }
-    return bytes.ToArray();
+    return writer.ToArray();
   }
 
   public bool TryCreateArtifact(string runId, out ReplayArtifact artifact)

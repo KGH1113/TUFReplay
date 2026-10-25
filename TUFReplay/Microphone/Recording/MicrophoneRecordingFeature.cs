@@ -5,10 +5,12 @@ using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using TUFReplay.Microphone.Capture;
+using TUFReplay.Microphone.Devices;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Replay.Timeline;
 using TUFReplay.Shared.Settings;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Shared.Unity;
 using UnityEngine;
 
@@ -19,6 +21,7 @@ public sealed partial class MicrophoneRecordingFeature
   private readonly object _gate = new object();
   private readonly HashSet<string> _persisting = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _saving = new HashSet<string>(StringComparer.Ordinal);
+  private readonly HashSet<string> _queuedSaves = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _persistedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly HashSet<string> _deletedRuns = new HashSet<string>(StringComparer.Ordinal);
   private readonly ManualResetEventSlim _savesIdle = new ManualResetEventSlim(true);
@@ -31,6 +34,8 @@ public sealed partial class MicrophoneRecordingFeature
   private string _tempDirectory;
   private bool _active;
   private bool _permissionRequestStarted;
+  private bool _bluetoothWarningShown;
+  private string _bluetoothCheckedFor;
 
   public void Enable()
   {
@@ -52,7 +57,7 @@ public sealed partial class MicrophoneRecordingFeature
         Main.Instance?.LogException("Microphone/Recovery", exception);
       }
       _retentionTimer = new System.Threading.Timer(
-        _ => DeleteExpiredRecordings(),
+        _ => GameplayIdleGate.Run(DeleteExpiredRecordings),
         null,
         TimeSpan.Zero,
         TimeSpan.FromHours(1)
@@ -95,6 +100,7 @@ public sealed partial class MicrophoneRecordingFeature
       _persistedRuns.Clear();
       _persisting.Clear();
       _deletedRuns.Clear();
+      _queuedSaves.Clear();
     }
   }
 
@@ -137,7 +143,9 @@ public sealed partial class MicrophoneRecordingFeature
       {
         Main.Instance?.Log("[Microphone] Arm failed; this run will have no recording. error=" + error);
         ShowRecordingUnavailable();
+        return;
       }
+      WarnIfBluetoothInput(deviceId);
     }
     catch (Exception exception)
     {
@@ -222,6 +230,29 @@ public sealed partial class MicrophoneRecordingFeature
     }
     ShowRecordingUnavailable();
     return false;
+  }
+
+  // Checked once per selected device per game session, and shown at most once.
+  private void WarnIfBluetoothInput(string deviceId)
+  {
+    string checkedFor = deviceId ?? string.Empty;
+    if (_bluetoothWarningShown || string.Equals(_bluetoothCheckedFor, checkedFor, StringComparison.Ordinal))
+      return;
+    _bluetoothCheckedFor = checkedFor;
+    if (!MicrophoneBluetoothDetector.IsInUseBluetooth(deviceId, _backend.ListDevices()))
+      return;
+    _bluetoothWarningShown = true;
+    Main.Instance?.Log("[Microphone] Recording from a Bluetooth microphone.");
+    ReplayTimelineHud.ShowNotificationToast(
+      "Bluetooth microphone in use",
+      "Recording through a Bluetooth headset microphone switches the headset to its call mode, which can lower the game's audio quality. Choose another microphone in the companion if the song sounds muffled."
+    );
+  }
+
+  private static void OnRunCaptureFailed(string error)
+  {
+    Main.Instance?.Log("[Microphone] Capture start failed; this run will have no recording. error=" + error);
+    UnityMainThread.Post(ShowRecordingUnavailable);
   }
 
   private static void ShowRecordingUnavailable()
@@ -313,6 +344,7 @@ public sealed partial class MicrophoneRecordingFeature
       UnityEngine.Object.DontDestroyOnLoad(gameObject);
       MicrophoneCaptureTicker ticker = gameObject.AddComponent<MicrophoneCaptureTicker>();
       ticker.Backend = backend;
+      backend.RunCaptureFailed += OnRunCaptureFailed;
       _backend = backend;
       _ticker = ticker;
       MicrophoneCaptureRuntime.Backend = backend;
@@ -342,6 +374,7 @@ public sealed partial class MicrophoneRecordingFeature
 
     if (backend == null)
       return;
+    backend.RunCaptureFailed -= OnRunCaptureFailed;
     try
     {
       backend.Disarm();

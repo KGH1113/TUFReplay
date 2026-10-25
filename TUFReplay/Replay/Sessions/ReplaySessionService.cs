@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using ADOFAI;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
@@ -242,16 +243,49 @@ public static partial class ReplaySessionService
     return true;
   }
 
+  // Hashing the whole level on every state change costs tens of milliseconds and
+  // several MB of garbage on large charts. Reuse a positive result while the same
+  // LevelData is open and the editor has recorded no edit since it was verified.
+  // Typed as object so this type initializer never loads game types.
+  private static readonly WeakReference<object> VerifiedReplayLevelData = new WeakReference<object>(null);
+  private static byte[] _verifiedReplayHash;
+  private static long _verifiedReplayEditStamp;
+
   private static bool IsActiveReplayHashCurrent()
   {
-    return _activeContext != null
-      && GameplayChartHash.IsSupported(_activeContext.GameplayHashVersion, _activeContext.GameplayHash)
-      && GameplayChartHash.TryCompute(
-        ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData,
-        out byte[] currentHash,
-        out _
-      )
-      && GameplayChartHash.Equals(_activeContext.GameplayHash, currentHash);
+    ActiveReplayContext context = _activeContext;
+    if (context == null || !GameplayChartHash.IsSupported(context.GameplayHashVersion, context.GameplayHash))
+      return false;
+
+    LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
+    if (levelData == null)
+      return false;
+
+    long editStamp = ReplayLevelEditStamp.Read(ADOBase.editor);
+    if (
+      editStamp != ReplayLevelEditStamp.Unknown
+      && editStamp == _verifiedReplayEditStamp
+      && ReferenceEquals(_verifiedReplayHash, context.GameplayHash)
+      && VerifiedReplayLevelData.TryGetTarget(out object verified)
+      && ReferenceEquals(verified, levelData)
+    )
+      return true;
+
+    bool current =
+      GameplayChartHash.TryCompute(levelData, out byte[] currentHash, out _)
+      && GameplayChartHash.Equals(context.GameplayHash, currentHash);
+    if (current)
+    {
+      VerifiedReplayLevelData.SetTarget(levelData);
+      _verifiedReplayHash = context.GameplayHash;
+      _verifiedReplayEditStamp = editStamp;
+    }
+    else
+    {
+      VerifiedReplayLevelData.SetTarget(null);
+      _verifiedReplayHash = null;
+    }
+    return current;
   }
 
   private static void PrepareReplayRunRestart(string reason, bool preserveClockOrigin = false)

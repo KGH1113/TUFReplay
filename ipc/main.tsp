@@ -65,9 +65,9 @@ namespace ReplayApi {
     outcome: "picking" | "selected" | "mismatch" | "cancelled" | "error";
     levelPath: string | null; errorCode: string | null; message: string | null;
   }
-  model MicrophoneDevice { id: string; name: string; minFrequency: int32; maxFrequency: int32; }
+  model MicrophoneDevice { id: string; name: string; minFrequency: int32; maxFrequency: int32; bluetooth: boolean; }
   model MicrophoneDevices {
-    enabled: boolean; toggleLocked: boolean; devices: MicrophoneDevice[];
+    enabled: boolean; toggleLocked: boolean; devices: MicrophoneDevice[]; defaultDeviceBluetooth: boolean;
     selectedDeviceId: string | null; microphoneOffsetMs: int32; microphoneVolumeDb: int32;
   }
   model MicrophoneTiming { microphoneOffsetMs: int32; microphoneVolumeDb: int32; }

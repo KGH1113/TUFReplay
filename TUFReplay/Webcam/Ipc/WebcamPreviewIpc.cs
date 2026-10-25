@@ -5,6 +5,7 @@ using AdofaiIpc;
 using TUFReplay.Composition;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
+using TUFReplay.Shared.Threading;
 using TUFReplay.Webcam.Capture;
 using TUFReplay.Webcam.Models;
 
@@ -15,6 +16,11 @@ internal sealed class WebcamPreviewIpc
   private readonly object _gate = new object();
   private byte[] _pixels;
   private byte[] _bitmap;
+
+  // A returned bitmap is streamed to the companion after Read returns. Alternate two
+  // buffers so the next encode never overwrites the frame still being sent.
+  private readonly byte[][] _bitmaps = new byte[2][];
+  private int _bitmapSlot;
   private CameraFrameSize _size;
   private CameraPreviewBuffer _buffer;
   private long _snapshotAt;
@@ -28,6 +34,17 @@ internal sealed class WebcamPreviewIpc
     if (state?.Enabled != true || deviceId != state.SelectedDeviceId)
     {
       throw IpcDomainError.Create("camera_preview_changed", "The camera changed. Open the preview again.");
+    }
+    // Copying, encoding and streaming frames creates garbage and keeps preview
+    // conversion running; pause the companion preview while ADOFAI judges input.
+    if (GameplayIdleGate.IsJudging)
+    {
+      lock (_gate)
+        _lastRequestAt = 0;
+      throw IpcDomainError.Create(
+        "camera_preview_paused",
+        "The camera preview pauses while you play and resumes after the attempt."
+      );
     }
     lock (_gate)
     {
@@ -70,7 +87,9 @@ internal sealed class WebcamPreviewIpc
         {
           return null;
         }
-        _bitmap = CameraPreviewBitmap.Encode(_pixels, size, out _size);
+        _bitmapSlot ^= 1;
+        CameraPreviewBitmap.EncodeInto(_pixels, size, ref _bitmaps[_bitmapSlot], out _size);
+        _bitmap = _bitmaps[_bitmapSlot];
         _buffer = buffer;
         _snapshotAt = now;
       }

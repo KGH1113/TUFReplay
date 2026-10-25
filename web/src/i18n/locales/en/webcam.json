@@ -66,6 +66,7 @@
     "hide": "Hide preview",
     "off": "Turn the camera on to preview and crop it.",
     "waiting": "Waiting for the game’s camera image…",
+    "paused": "The preview pauses while you play and resumes after the attempt.",
     "disconnected": "Connect to the game to preview your camera.",
     "failed": "The game’s camera preview stopped. Check the game connection and camera settings, then try again.",
     "permission": "Camera access is blocked. Allow camera access for this page in your browser, then try again.",

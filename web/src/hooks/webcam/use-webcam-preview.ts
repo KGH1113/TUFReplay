@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useApiPromise } from "@/api/app-api-provider";
 import i18n from "@/i18n/i18n";
+import { ApiError } from "@/shared/errors/api-error";
 import { startGameCameraSession } from "@/state/webcam/game-camera-session";
+
+const isGameplayPause = (cause: unknown) =>
+  cause instanceof ApiError && cause.code === "camera_preview_paused";
 
 type Request = { target: string };
 type Frame = { request: Request; url: string; width: number; height: number };
@@ -18,6 +22,7 @@ export function useWebcamPreview(
   const [frame, setFrame] = useState<Frame | null>(null);
   const [loaded, setLoaded] = useState<Request | null>(null);
   const [error, setError] = useState("");
+  const [paused, setPaused] = useState(false);
   const target = JSON.stringify([gameDeviceId, gameLabel]);
   const revealed = active && visible && request?.target === target;
   const current = revealed && frame?.request === request ? frame : null;
@@ -49,6 +54,7 @@ export function useWebcamPreview(
     setFrame(null);
     setLoaded(null);
     setError("");
+    setPaused(false);
     let url = "";
     const next = startGameCameraSession({
       async read(signal) {
@@ -57,6 +63,7 @@ export function useWebcamPreview(
         return app.webcam.getPreviewFrame(gameDeviceId, { signal });
       },
       onFrame(nextFrame) {
+        setPaused(false);
         const previous = url;
         url = URL.createObjectURL(new Blob([nextFrame.bytes], { type: "image/bmp" }));
         setFrame({ request, url, width: nextFrame.width, height: nextFrame.height });
@@ -65,6 +72,10 @@ export function useWebcamPreview(
       onError() {
         setFrame(null);
         setError(i18n.t("cropPreview.failed", { ns: "webcam" }));
+      },
+      isPaused: isGameplayPause,
+      onPaused() {
+        setPaused(true);
       },
     });
     session.current = next;
@@ -82,6 +93,7 @@ export function useWebcamPreview(
     width: current?.width ?? 0,
     height: current?.height ?? 0,
     error: revealed ? error : "",
+    paused: revealed && paused,
     label: revealed ? gameLabel : null,
     reveal() {
       setRequest({ target });

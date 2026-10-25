@@ -12,6 +12,8 @@
   "systemDefault": "시스템 기본값",
   "systemDefaultDescription": "운영체제의 기본 입력 장치 사용",
   "availableDevice": "사용 가능한 입력 장치",
+  "bluetoothDevice": "블루투스 · 게임 음질이 낮아질 수 있어요",
+  "bluetoothWarning": "블루투스 헤드셋은 마이크를 켜는 동안 통화 모드로 바뀌어서 곡이 먹먹하게 들릴 수 있어요. 게임 소리가 중요하다면 내장 마이크나 유선 마이크를 골라 주세요.",
   "noneDetected": "감지된 마이크 장치가 없습니다.",
   "errors": {
     "readDevices": "마이크 목록을 불러오지 못했어요. 장치를 다시 연결한 뒤 새로고침해 주세요.",

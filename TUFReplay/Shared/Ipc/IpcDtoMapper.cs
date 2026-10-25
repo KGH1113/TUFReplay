@@ -152,6 +152,7 @@ internal static class IpcDtoMapper
       Name = value.Name,
       MinFrequency = value.MinFrequency,
       MaxFrequency = value.MaxFrequency,
+      Bluetooth = value.Bluetooth,
     };
 
   public static Api.MicrophoneDevices Map(TUFReplay.Microphone.Ipc.MicrophoneDevicesResponseDto value) =>
@@ -160,6 +161,7 @@ internal static class IpcDtoMapper
       Enabled = value.Enabled,
       ToggleLocked = value.ToggleLocked,
       Devices = value.Devices.Select(Map).ToArray(),
+      DefaultDeviceBluetooth = value.DefaultDeviceBluetooth,
       SelectedDeviceId = value.SelectedDeviceId,
       MicrophoneOffsetMs = value.MicrophoneOffsetMs,
       MicrophoneVolumeDb = value.MicrophoneVolumeDb,

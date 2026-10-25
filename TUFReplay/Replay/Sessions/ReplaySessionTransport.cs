@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TUFReplay.Activity.Models;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Timeline;
@@ -56,18 +57,13 @@ public static partial class ReplaySessionService
       return true;
 
     long durationTimeUs = TimelineDurationTimeUs(context);
+    RunJudgmentSystem judgmentSystem = AdofaiRuntimeCompatibility.ParseJudgmentSystem(context.Meta?.judgmentSystem);
     List<ReplayTimelineJudgmentSnapshot> resolved = new List<ReplayTimelineJudgmentSnapshot>(hitContexts.Count);
     for (int i = 0; i < hitContexts.Count; i++)
     {
       ReplayHitContext hitContext = hitContexts[i];
       HitMargin hitMargin = ReplayHitContextPlayer.ResolveHitMargin(ADOBase.controller, hitContext);
-      if (
-        !ReplayTimelineJudgmentMath.TryMapHitMargin(
-          hitMargin,
-          AdofaiRuntimeCompatibility.ParseJudgmentSystem(context.Meta?.judgmentSystem),
-          out ReplayTimelineJudgmentKind kind
-        )
-      )
+      if (!ReplayTimelineJudgmentMath.TryMapHitMargin(hitMargin, judgmentSystem, out ReplayTimelineJudgmentKind kind))
         continue;
 
       long timeUs = Math.Max(0L, Math.Min(hitContext.TimeUs, durationTimeUs));

@@ -139,12 +139,14 @@ export interface LogicalLevel {
     visitCount: number;
 }
 export interface MicrophoneDevice {
+    bluetooth: boolean;
     id: string;
     maxFrequency: number;
     minFrequency: number;
     name: string;
 }
 export interface MicrophoneDevices {
+    defaultDeviceBluetooth: boolean;
     devices: Array<MicrophoneDevice>;
     enabled: boolean;
     microphoneOffsetMs: number;

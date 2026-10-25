@@ -13,6 +13,8 @@ enum WebcamCaptureSelfTest {
       throw CaptureError.message("Balanced camera capture did not preserve a 4:3 aspect ratio.")
     }
     try WebcamProfile(width: 1920, height: 1080, frameRate: 30, bitRate: 3_000_000).validate()
+    // The Quality preset requests 1080p60 at 6 Mbps.
+    try WebcamProfile(width: 1920, height: 1080, frameRate: 60, bitRate: 6_000_000).validate()
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("tufreplay-webcam-self-test-\(UUID().uuidString).mp4")
     defer { try? FileManager.default.removeItem(at: url) }
     let prepared = try CameraPreparedWriter(directory: FileManager.default.temporaryDirectory.path, profile: profile)

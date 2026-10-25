@@ -219,12 +219,14 @@ export interface MicrophoneDevice {
   Name: string;
   MinFrequency: number;
   MaxFrequency: number;
+  Bluetooth: boolean;
 }
 
 export interface MicrophoneDevicesState {
   Enabled: boolean;
   ToggleLocked: boolean;
   Devices: MicrophoneDevice[];
+  DefaultDeviceBluetooth: boolean;
   SelectedDeviceId: string | null;
   MicrophoneOffsetMs: number;
   MicrophoneVolumeDb: number;

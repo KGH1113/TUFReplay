@@ -102,6 +102,17 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
     return true;
   }
 
+  internal static bool TryReadAsyncKeyState(int keyCode, out bool isDown)
+  {
+    if (keyCode <= 0 || keyCode > byte.MaxValue || WindowsNativeInputKey.IsMouseButton(keyCode))
+    {
+      isDown = false;
+      return false;
+    }
+    isDown = IsAsyncKeyDown(GetAsyncKeyState(keyCode));
+    return true;
+  }
+
   public void RefreshPhysicalState() { }
 
   public long ConsumeDroppedEvents() => 0;
@@ -152,28 +163,56 @@ internal sealed class WindowsLowLevelKeyboardEventSource : INativeInputEventSour
       if (down || up)
       {
         KeyboardHookData data = Marshal.PtrToStructure<KeyboardHookData>(lParam);
-        bool reportedExtended = (data.Flags & LlkhfExtended) != 0;
-        int scanCode = unchecked((int)data.ScanCode);
-        int key = NormalizeModifierKey(unchecked((int)data.VirtualKey), scanCode, reportedExtended);
-        bool extended = WindowsNativeInputKey.NormalizeExtended(key, scanCode, reportedExtended);
-        if (key > 0 && key <= byte.MaxValue && !WindowsNativeInputKey.IsMouseButton(key))
-        {
-          _onTransition?.Invoke(
-            new NativeInputTransition(
-              Stopwatch.GetTimestamp(),
-              data.Time * 1_000_000L,
-              key,
-              down,
-              extended,
-              scanCode,
-              data.Flags
-            )
-          );
-        }
+        if (
+          TryCreateTransition(
+            Stopwatch.GetTimestamp(),
+            data.Time,
+            data.VirtualKey,
+            data.ScanCode,
+            data.Flags,
+            down,
+            out NativeInputTransition transition
+          )
+        )
+          _onTransition?.Invoke(transition);
       }
     }
     return CallNextHookEx(_hook, code, wParam, lParam);
   }
+
+  // Shared with the native hook bridge so both sources record identical transitions.
+  internal static bool TryCreateTransition(
+    long captureTimestampTicks,
+    uint timeMs,
+    uint virtualKey,
+    uint scanCode,
+    uint flags,
+    bool down,
+    out NativeInputTransition transition
+  )
+  {
+    bool reportedExtended = (flags & LlkhfExtended) != 0;
+    int scan = unchecked((int)scanCode);
+    int key = NormalizeModifierKey(unchecked((int)virtualKey), scan, reportedExtended);
+    if (key <= 0 || key > byte.MaxValue || WindowsNativeInputKey.IsMouseButton(key))
+    {
+      transition = default;
+      return false;
+    }
+    bool extended = WindowsNativeInputKey.NormalizeExtended(key, scan, reportedExtended);
+    transition = new NativeInputTransition(
+      captureTimestampTicks,
+      timeMs * 1_000_000L,
+      key,
+      down,
+      extended,
+      scan,
+      flags
+    );
+    return true;
+  }
+
+  internal static IReadOnlyList<int> PhysicalKeys => PhysicalKeyCodes;
 
   internal static int NormalizeModifierKey(int virtualKey, int scanCode, bool extended)
   {

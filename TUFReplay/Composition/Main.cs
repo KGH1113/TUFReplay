@@ -122,6 +122,7 @@ public sealed class Main
 
   private static void OnUpdate(UnityModManager.ModEntry modEntry, float deltaTime)
   {
+    GameplayJudgingMonitor.Tick();
     ModBootstrap.UpdateRuntime();
     UnityMainThread.DrainPending();
     MicrophonePermissionWarningCoordinator.Tick();
