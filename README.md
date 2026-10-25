@@ -54,7 +54,7 @@ A new countdown starts a fresh payload when the previous capture already reached
 - Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
 - Removes level and app sessions that close without any saved runs.
 - Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
-- Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash.
+- Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash. A file whose size and last-write time are unchanged reuses its verified gameplay hash instead of decoding the level again, and the companion keeps a loaded chart when a new run is saved because a logical level's chart never changes.
 - Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels open with path editing locked and continue directly into replay from the run's recorded start tile.
 - Stores SHA-256 gameplay hash v4 so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. Imported activity resolves its current hash lazily when the original level file is still available.
 - Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
