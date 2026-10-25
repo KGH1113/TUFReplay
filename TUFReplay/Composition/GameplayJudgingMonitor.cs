@@ -18,6 +18,11 @@ internal static class GameplayJudgingMonitor
       // The level-select worlds also use PlayerControl to move the planet.
       if (controller == null || ADOBase.isLevelSelect)
         return false;
+      // Returning to the editor keeps the last play state, so edit mode would
+      // otherwise hold background work and the camera preview indefinitely.
+      scnEditor editor = scnEditor.instance;
+      if (editor != null && !editor.playMode)
+        return false;
       return controller.stateMachine?.GetState() is States state
         && (state == States.Countdown || state == States.Checkpoint || state == States.PlayerControl);
     }
