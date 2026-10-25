@@ -135,14 +135,30 @@ public static class RecordingPatches
     RecordInputTracker.DrainCapturedTransitions(session);
   }
 
+  // Hit calls HitInputEvent(isAuto, Down, handleAll: false) after its own checks and
+  // before switching planets. Recording observes that single vanilla call instead of
+  // invoking it again: a second call fires SetInputEvent effects for other targets,
+  // honors ignoreInput from them, and runs during reunification, changing gameplay.
+  private static scrPlayer _hitInProgress;
+  private static bool _hitInProgressIsAuto;
+
   public static bool OnScrPlayerHitPrefix(scrPlayer __instance, bool isAuto, ref bool __result)
   {
     _pendingHitMarginCapture = false;
+    _hitInProgress = null;
     if (!IsActive)
       return true;
     if (!ShouldCaptureHitContext(__instance))
       return true;
 
+    if (AdofaiRuntimeCompatibility.PlayerHitInputEventMethod != null)
+    {
+      _hitInProgress = __instance;
+      _hitInProgressIsAuto = isAuto;
+      return true;
+    }
+
+    // Builds without a separate input-event method resolve input inside Hit itself.
     if (!__instance.responsive)
     {
       __result = false;
@@ -155,15 +171,25 @@ public static class RecordingPatches
       return false;
     }
 
-    if (!AdofaiRuntimeCompatibility.HandleHitInputEvent(__instance, isAuto, InputEventState.Down))
-    {
-      __result = false;
-      return false;
-    }
+    CaptureHitContext(isAuto);
+    return true;
+  }
 
+  public static void OnScrPlayerHitInputEventPostfix(scrPlayer __instance, InputEventState state, bool accepted)
+  {
+    if (state != InputEventState.Down || !ReferenceEquals(_hitInProgress, __instance))
+      return;
+    bool isAuto = _hitInProgressIsAuto;
+    _hitInProgress = null;
+    if (accepted)
+      CaptureHitContext(isAuto);
+  }
+
+  private static void CaptureHitContext(bool isAuto)
+  {
     RecordingSession session = RecordingFeature.Instance?.Session;
     if (session == null || !session.IsRecording)
-      return true;
+      return;
 
     scrController controller = scrController.instance;
     scrFloor currentHitFloor = controller.chosenPlanet.currfloor;
@@ -178,12 +204,11 @@ public static class RecordingPatches
     HitMargins.Capture(currentHitMarginsCount);
     session.AddHitContext(BuildHitContext(controller, isAuto));
     _pendingHitMarginCapture = true;
-
-    return true;
   }
 
   public static void OnScrPlayerHitPostfix(scrPlayer __instance)
   {
+    _hitInProgress = null;
     if (!_pendingHitMarginCapture)
       return;
 

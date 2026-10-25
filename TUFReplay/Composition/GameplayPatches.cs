@@ -82,6 +82,30 @@ internal static class LegacyScrPlayerHitPatch
   private static void Postfix(scrPlayer __instance) => ScrPlayerHitPatch.OnPostfix(__instance);
 }
 
+// Observes the vanilla input-event check inside Hit; see RecordingPatches.
+[HarmonyPatch]
+internal static class ScrPlayerHitInputEventPatch
+{
+  [HarmonyPrepare]
+  private static bool Prepare() => AdofaiRuntimeCompatibility.PlayerHitInputEventMethod != null;
+
+  [HarmonyTargetMethod]
+  private static System.Reflection.MethodBase TargetMethod() => AdofaiRuntimeCompatibility.PlayerHitInputEventMethod;
+
+  [HarmonyPostfix]
+  private static void Postfix(scrPlayer __instance, InputEventState __1, bool __result)
+  {
+    try
+    {
+      RecordingPatches.OnScrPlayerHitInputEventPostfix(__instance, __1, __result);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.LogException(nameof(ScrPlayerHitInputEventPatch), exception);
+    }
+  }
+}
+
 [HarmonyPatch]
 public static class GameplayStatePatch
 {
