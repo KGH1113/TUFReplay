@@ -227,6 +227,12 @@ public sealed partial class MicrophoneRecordingFeature
     return false;
   }
 
+  private static void OnRunCaptureFailed(string error)
+  {
+    Main.Instance?.Log("[Microphone] Capture start failed; this run will have no recording. error=" + error);
+    UnityMainThread.Post(ShowRecordingUnavailable);
+  }
+
   private static void ShowRecordingUnavailable()
   {
     ReplayTimelineHud.ShowPersistentNotification(
@@ -316,6 +322,7 @@ public sealed partial class MicrophoneRecordingFeature
       UnityEngine.Object.DontDestroyOnLoad(gameObject);
       MicrophoneCaptureTicker ticker = gameObject.AddComponent<MicrophoneCaptureTicker>();
       ticker.Backend = backend;
+      backend.RunCaptureFailed += OnRunCaptureFailed;
       _backend = backend;
       _ticker = ticker;
       MicrophoneCaptureRuntime.Backend = backend;
@@ -345,6 +352,7 @@ public sealed partial class MicrophoneRecordingFeature
 
     if (backend == null)
       return;
+    backend.RunCaptureFailed -= OnRunCaptureFailed;
     try
     {
       backend.Disarm();

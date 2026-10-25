@@ -16,6 +16,13 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   private const int ClipSeconds = 10;
   internal const int CaptureChunkFrames = SampleRate / 50;
   private const int MaxChunksPerTick = 4;
+
+  // Drain whole backlogs past this point so a slow frame rate can never let the
+  // reader fall a full loop behind, where the clip would silently overwrite audio.
+  private const int CatchUpBacklogFrames = SampleRate / 2;
+
+  // Polling gaps longer than this fail the run before the 10 s loop can wrap.
+  private const float StallSeconds = ClipSeconds - 2f;
   internal const int WriterQueueCapacity = ClipSeconds * SampleRate / CaptureChunkFrames + 1;
 
   private AudioClip _clip;
@@ -38,10 +45,23 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
   public List<MicrophoneDeviceInfo> ListDevices() => UnityMicrophoneDeviceProvider.ListDevices();
 
+  public event Action<string> RunCaptureFailed
+  {
+    add { }
+    remove { }
+  }
+
   public bool Arm(string deviceId, out string error)
   {
-    Disarm();
     error = null;
+    // Reopening the same input costs a device restart on the game thread.
+    if (_clip != null && _deviceId == deviceId && UnityEngine.Microphone.IsRecording(deviceId))
+    {
+      AbortWriter();
+      return true;
+    }
+
+    Disarm();
     try
     {
       _deviceId = deviceId;
@@ -120,7 +140,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
     try
     {
       float now = Time.realtimeSinceStartup;
-      if (now - _lastPollRealtime >= ClipSeconds)
+      if (now - _lastPollRealtime >= StallSeconds)
         throw new IOException("Microphone polling stalled longer than the loop buffer.");
       int position = UnityEngine.Microphone.GetPosition(_deviceId);
       if (position < 0)
@@ -130,7 +150,8 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
         return;
 
       int chunks = 0;
-      while (availableFrames > 0 && (includePartialChunk || chunks < MaxChunksPerTick))
+      bool catchUp = includePartialChunk || availableFrames >= CatchUpBacklogFrames;
+      while (availableFrames > 0 && (catchUp || chunks < MaxChunksPerTick))
       {
         int frames = MicrophoneCaptureChunking.NextChunkFrames(
           availableFrames,
