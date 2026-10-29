@@ -43,7 +43,7 @@ A new countdown starts a fresh payload when the previous capture already reached
 - On macOS, a passive CGEvent session tap records keyboard and mouse-button transitions after OS remapping. It excludes mouse motion, dragging, and scrolling. A dedicated native RunLoop queues fixed-size events without calling managed code or waiting for the game thread; a separate bridge drains them. Devices are merged, mouse buttons use native codes 128–159, and existing keyboard codes and replay CSV format remain compatible. Input Monitoring permission is required. See [macOS CGEvent recording](docs/macos-cgevent-recording.md) for the capture contract, verification, and installation.
 - On Windows, `TUFReplayNative.dll` installs the low-level keyboard hook on a dedicated native thread at above-normal priority. The hook procedure only timestamps and queues fixed-size events. Mono GC pauses and managed work therefore no longer delay the system's serialized hook chain, which ADOFAI's async input shares, and Windows cannot silently remove the hook for a slow response. On a test laptop, `SendInput` reached the hook in about 40 µs (p50) and under 0.6 ms worst case. A managed bridge applies the existing key normalization, and the previous managed hook remains as a fallback if the library cannot load. See [TUFReplay.Native.Windows](TUFReplay.Native.Windows/README.md).
 - Focus loss suspends input recording; focus return discards earlier input backlog and synchronizes held keys and buttons. Queue overflow, tap timeout/disablement, capture-thread failure, and events arriving over one second late make the run unavailable for replay. Activity history explains the failure in English or Korean. The recorder attempts recovery for later runs without treating a partial run as complete.
-- Suspends native input recording and replay emission while the UnityModManager window is open.
+- Suspends native input recording and replay emission while the UnityModManager window is open or another mod asks for a pause through `NativeInputPause`, for example while its own settings window takes the keyboard.
 - Schedules replay input on a dedicated worker without making Unity wait for native input emission. Pause, focus loss, seek, and stop commands invalidate pending input; accepted key presses are released by the worker before it restores a new playback state. Shutdown completes asynchronously so Windows keyboard hooks can continue receiving game-thread messages.
 - Keeps optional background work out of judged gameplay. While ADOFAI is in countdown, checkpoint, or player control (outside the level-select worlds and the editor's edit mode, which keeps the last play state after Esc), copying microphone recordings into SQLite, hourly microphone and camera retention scans, and activity-change notifications to the companion wait until the attempt ends; activity changes made during an attempt are announced once afterward. ADOFAI's async input timestamps keys on a Mono-attached thread, so GC pauses and contention from this work could otherwise shift judgments. Pending microphone copies are still recovered on the next launch.
 - Captures each hit context from ADOFAI's own input-event check inside `Hit`, after the game's reunification and pause checks, so recording never fires extra SetInputEvent effects or applies another target's ignoreInput.
@@ -146,6 +146,21 @@ When replay camera visibility is enabled, decoder preparation starts as soon as 
 Other mods can detect a TUFReplay-owned replay operation without taking a compile-time dependency on TUFReplay. Resolve the public type `TUFReplay.ReplayRuntime` from the loaded TUFReplay assembly and read its static `IsPlaybackActive` property. The property is true throughout replay preparation, level loading, playback, and the return to the editor. `ReplayRuntime.ApiVersion` is `1` for this contract.
 
 Reflection consumers should cache the resolved type and property getter, query the value only at relevant lifecycle boundaries, and treat a missing type, property, or assembly as an inactive replay.
+
+Other mods can also pause TUFReplay's native input while their own UI takes the keyboard away from the game. Resolve `TUFReplay.NativeInputPause` the same way, call its static `Request(string owner)` when the UI takes the keyboard, and call `Release(string owner)` when it gives the keyboard back and when the mod is disabled. While any owner holds a request, recording ignores native keyboard and mouse-button input and replay sends none, as while the UnityModManager window is open; input resumes 0.2 s after the last release. Requests are keyed by owner, so repeating one is harmless and a single release ends it. Use a stable id such as `MyMod.Settings`; a null or blank owner throws `ArgumentException`. Both methods can be called from any thread. The static `IsPaused` property reports whether the UMM window or any request currently pauses input. `NativeInputPause.ApiVersion` is `1` and changes only when an existing member changes its signature or meaning.
+
+Request a pause only while ADOFAI itself does not receive those keys. TUFReplay must keep recording input the game judges, or the replay will not match the run.
+
+```csharp
+Type pause = AppDomain.CurrentDomain.GetAssemblies()
+  .FirstOrDefault(assembly => assembly.GetName().Name == "TUFReplay")
+  ?.GetType("TUFReplay.NativeInputPause");
+var request = (Action<string>)Delegate.CreateDelegate(
+  typeof(Action<string>),
+  pause.GetMethod("Request", new[] { typeof(string) })
+);
+request("MyMod.Settings"); // resolve "Release" the same way
+```
 
 ## Repository Layout
 

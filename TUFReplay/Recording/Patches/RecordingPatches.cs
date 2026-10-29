@@ -300,7 +300,7 @@ public static class RecordingPatches
 
   private static bool IsNativeInputCaptureAllowed()
   {
-    return UnityEngine.Application.isFocused && !NativeInputUmmWindowInterlock.IsBlocked;
+    return UnityEngine.Application.isFocused && !NativeInputPauseGate.IsBlocked;
   }
 
   private static void ObserveCapturePermissionTransition(RecordingSession session, bool captureAllowed)
