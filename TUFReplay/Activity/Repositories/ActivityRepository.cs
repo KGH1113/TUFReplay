@@ -9,10 +9,20 @@ namespace TUFReplay.Activity.Repositories;
 
 public static class ActivityRepository
 {
+  // A clear is a full run from the first tile without no-fail. Shared by counts and run locks.
+  internal const string ClearRunCondition =
+    "lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0";
+
   private const string Select =
     @"SELECT l.id,l.level_id,l.app_session_id,g.tuf_level_id,l.opened_at_utc,l.closed_at_utc,g.level_tile_count,
-count(r.id),coalesce(sum(CASE WHEN lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0 THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
-g.adofai_path,g.song,g.author,g.artist,g.metadata_state
+count(r.id),coalesce(sum(CASE WHEN "
+    + ClearRunCondition
+    + @" THEN 1 ELSE 0 END),0),coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile),
+g.adofai_path,g.song,g.author,g.artist,g.metadata_state,
+coalesce(sum(CASE WHEN r.locked!=0 THEN 1 ELSE 0 END),0),
+coalesce(sum(CASE WHEN r.locked!=0 AND "
+    + ClearRunCondition
+    + @" THEN 1 ELSE 0 END),0)
 FROM level_sessions l JOIN levels g ON g.id=l.level_id LEFT JOIN runs r ON r.level_session_id=l.id ";
 
   public static LevelSessionOverview GetLevelSessionOverview(string id)
@@ -32,7 +42,9 @@ FROM level_sessions l JOIN levels g ON g.id=l.level_id LEFT JOIN runs r ON r.lev
     q.CommandText =
       @"SELECT g.id,g.tuf_level_id,g.adofai_path,g.song,g.author,g.artist,g.first_seen_at_utc,g.last_seen_at_utc,
 g.level_tile_count,count(DISTINCT l.id),count(r.id),
-coalesce(sum(CASE WHEN lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0 THEN 1 ELSE 0 END),0),
+coalesce(sum(CASE WHEN "
+      + ClearRunCondition
+      + @" THEN 1 ELSE 0 END),0),
 coalesce(sum(CASE WHEN r.no_fail_mode!=0 THEN 1 ELSE 0 END),0),min(r.start_tile),max(r.start_tile)
 FROM levels g
 LEFT JOIN level_sessions l ON l.level_id=g.id
@@ -116,6 +128,8 @@ WHERE g.id=@id GROUP BY g.id";
       Author = DbValue.NullableString(r, 14),
       Artist = DbValue.NullableString(r, 15),
       MetadataState = (LevelMetadataState)r.GetInt32(16),
+      LockedRunCount = r.GetInt32(17),
+      LockedClearRunCount = r.GetInt32(18),
     };
 
   private static bool HasAvailableChart(string id)

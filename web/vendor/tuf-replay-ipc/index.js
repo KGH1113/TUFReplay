@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "2ef495ce267cba121a98b1fc10306b6445138354034088ec24e341a833352efc",
+    "hash": "3af65acac4dae3674ca2b45f2bd5f05fb8d1e805b0a5ad25130cce06c476af60",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -230,6 +230,8 @@ export const ReplayApiContract = defineContract({
                     "nullable": "int32"
                 },
                 "levelGroupId": "string",
+                "lockedClearRunCount": "int32",
+                "lockedRunCount": "int32",
                 "logicalLevelId": "string",
                 "noFailRunCount": "int32",
                 "openedAtUtc": "string",
@@ -243,6 +245,12 @@ export const ReplayApiContract = defineContract({
                 "tufLevelId": {
                     "nullable": "int32"
                 }
+            }
+        },
+        "LockResult": {
+            "object": {
+                "locked": "boolean",
+                "runId": "string"
             }
         },
         "LogicalLevel": {
@@ -463,6 +471,7 @@ export const ReplayApiContract = defineContract({
                     "nullable": "int32"
                 },
                 "levelSessionId": "string",
+                "locked": "boolean",
                 "microphoneChannels": {
                     "nullable": "int32"
                 },
@@ -492,6 +501,13 @@ export const ReplayApiContract = defineContract({
                 "xAccuracy": {
                     "nullable": "float64"
                 }
+            }
+        },
+        "RunBatchDeleteResult": {
+            "object": {
+                "deletedRunCount": "int32",
+                "keptInUseRunCount": "int32",
+                "keptLockedRunCount": "int32"
             }
         },
         "WebcamCrop": {
@@ -721,6 +737,18 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "MicrophoneTiming"
+            }
+        },
+        "changeRunLock": {
+            "wireName": "rpc.mod.changerunlock",
+            "input": {
+                "object": {
+                    "locked": "boolean",
+                    "runId": "string"
+                }
+            },
+            "output": {
+                "model": "LockResult"
             }
         },
         "changeWebcamSettings": {
@@ -1083,6 +1111,20 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "FfmpegState"
+            }
+        },
+        "removeAppSessionRuns": {
+            "wireName": "rpc.mod.removeappsessionruns",
+            "input": {
+                "object": {
+                    "appSessionIds": {
+                        "array": "string"
+                    },
+                    "keepClears": "boolean"
+                }
+            },
+            "output": {
+                "model": "RunBatchDeleteResult"
             }
         },
         "removeCameraRecording": {

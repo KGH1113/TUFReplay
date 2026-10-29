@@ -42,4 +42,6 @@ public class LevelSessionOverview
   public string Author;
   public string Artist;
   public LevelMetadataState MetadataState;
+  public int LockedRunCount;
+  public int LockedClearRunCount;
 }

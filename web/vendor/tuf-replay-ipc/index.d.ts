@@ -112,6 +112,8 @@ export interface LevelSession {
     id: string;
     lastStartTile: number | null;
     levelGroupId: string;
+    lockedClearRunCount: number;
+    lockedRunCount: number;
     logicalLevelId: string;
     noFailRunCount: number;
     openedAtUtc: string;
@@ -119,6 +121,10 @@ export interface LevelSession {
     runCount: number;
     song: string | null;
     tufLevelId: number | null;
+}
+export interface LockResult {
+    locked: boolean;
+    runId: string;
 }
 export interface LogicalLevel {
     artist: string | null;
@@ -215,6 +221,7 @@ export interface Run {
     lastTile: number | null;
     levelPitchPercent: number | null;
     levelSessionId: string;
+    locked: boolean;
     microphoneChannels: number | null;
     microphoneDurationSeconds: number | null;
     microphoneRecordingBytes: number;
@@ -230,6 +237,11 @@ export interface Run {
     startTile: number;
     tufLevelId: number | null;
     xAccuracy: number | null;
+}
+export interface RunBatchDeleteResult {
+    deletedRunCount: number;
+    keptInUseRunCount: number;
+    keptLockedRunCount: number;
 }
 export interface WebcamCrop {
     height: number;
@@ -308,6 +320,10 @@ export interface ReplayApiMod {
     "changeMicrophoneVolume"(request: {
         volumeDb: number;
     }): Promise<MicrophoneTiming>;
+    "changeRunLock"(request: {
+        locked: boolean;
+        runId: string;
+    }): Promise<LockResult>;
     "changeWebcamSettings"(request: {
         settings: WebcamSettings;
     }): Promise<WebcamState>;
@@ -387,6 +403,10 @@ export interface ReplayApiMod {
         refreshDevices?: boolean;
     }): Promise<WebcamState>;
     "releaseFfmpeg"(): Promise<FfmpegState>;
+    "removeAppSessionRuns"(request: {
+        appSessionIds: Array<string>;
+        keepClears: boolean;
+    }): Promise<RunBatchDeleteResult>;
     "removeCameraRecording"(request: {
         runId: string;
     }): Promise<DeleteResult>;

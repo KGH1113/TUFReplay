@@ -19,6 +19,7 @@ namespace ReplayApi {
     openedAtUtc: string; closedAtUtc: string | null; floorCount: int32; runCount: int32;
     clearRunCount: int32; noFailRunCount: int32; firstStartTile: int32 | null;
     lastStartTile: int32 | null; chartAvailable: boolean;
+    lockedRunCount: int32; lockedClearRunCount: int32;
   }
   model LogicalLevel {
     id: string; tufLevelId: int32 | null; relativeLevelPath: string | null;
@@ -48,12 +49,14 @@ namespace ReplayApi {
     microphoneRecordingPermanent: boolean; microphoneRecordingExpiresAtUtc: string | null;
     hasCameraRecording: boolean; cameraRecordingBytes: safeint;
     cameraRecordingPermanent: boolean; cameraRecordingExpiresAtUtc: string | null;
-    replayPlayable: boolean; replayUnavailableReason: string | null;
+    replayPlayable: boolean; replayUnavailableReason: string | null; locked: boolean;
   }
   model Chart { levelSessionId: string; floorCount: int32; file: ipc.File; }
   model LegacyReplayStatus { hasLegacyReplays: boolean; }
   model DeleteResult { runId: string; deleted: boolean; }
   model RetainResult { runId: string; permanent: boolean; }
+  model LockResult { runId: string; locked: boolean; }
+  model RunBatchDeleteResult { deletedRunCount: int32; keptLockedRunCount: int32; keptInUseRunCount: int32; }
   model ActivityChanged { revision: safeint; runId: string | null; }
   model ReplayState {
     operationId: string | null; runId: string | null;
@@ -131,6 +134,8 @@ namespace ReplayApi {
   op listLogicalLevelRuns(id: string, appSessionIds: string[], offset?: int32, limit?: int32): Run[];
   op readLogicalLevelChart(id: string): Chart;
   op removeRun(runId: string): DeleteResult;
+  op removeAppSessionRuns(appSessionIds: string[], keepClears: boolean): RunBatchDeleteResult;
+  op changeRunLock(runId: string, locked: boolean): LockResult;
   op removeMicrophoneRecording(runId: string): DeleteResult;
   op retainMicrophoneRecording(runId: string): RetainResult;
   op exportMicrophoneRecording(runId: string): ipc.File;

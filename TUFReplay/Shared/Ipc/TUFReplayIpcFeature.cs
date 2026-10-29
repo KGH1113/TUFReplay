@@ -134,6 +134,23 @@ public sealed class TUFReplayIpcFeature
       (r, _) => Map(ActivityIpcHandlers.GetLogicalLevelChart(Required(r.Id, "invalid_logical_level_id")))
     );
     Register(ReplayApiMethods.RemoveRun, (r, _) => Map(ActivityIpcHandlers.DeleteRun(Required(r.RunId))));
+    RegisterWhenGameplayIdle(
+      ReplayApiMethods.RemoveAppSessionRuns,
+      (r, _) =>
+        Map(
+          ActivityIpcHandlers.DeleteAppSessionRuns(
+            (r.AppSessionIds ?? Array.Empty<string>())
+              .Select(id => Required(id, "invalid_app_session_ids"))
+              .Distinct(StringComparer.Ordinal)
+              .ToArray(),
+            r.KeepClears
+          )
+        )
+    );
+    Register(
+      ReplayApiMethods.ChangeRunLock,
+      (r, _) => Map(ActivityIpcHandlers.ChangeRunLock(Required(r.RunId), r.Locked))
+    );
     Register(
       ReplayApiMethods.RemoveMicrophoneRecording,
       (r, _) => Map(MicrophoneRecordingIpcHandlers.Delete(Required(r.RunId)))
@@ -323,6 +340,41 @@ public sealed class TUFReplayIpcFeature
           ? OnGameThread(() => handler(request, context), context.CancellationToken)
           : Task.FromResult(handler(request, context))
     );
+
+  // Bulk disk work waits until ADOFAI stops judging input, then runs on the thread pool.
+  private void RegisterWhenGameplayIdle<TRequest, TResult>(
+    IpcMethod<TRequest, TResult> method,
+    Func<TRequest, ModCallContext<ReplayApiApp>, TResult> handler
+  ) =>
+    _namespace.Handle(
+      method,
+      (request, context) => WhenGameplayIdle(() => handler(request, context), context.CancellationToken)
+    );
+
+  private static async Task<T> WhenGameplayIdle<T>(Func<T> action, CancellationToken cancellationToken)
+  {
+    var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (cancellationToken.Register(() => completion.TrySetCanceled()))
+    {
+      GameplayIdleGate.Run(() =>
+      {
+        if (cancellationToken.IsCancellationRequested)
+        {
+          completion.TrySetCanceled();
+          return;
+        }
+        try
+        {
+          completion.TrySetResult(action());
+        }
+        catch (Exception error)
+        {
+          completion.TrySetException(error);
+        }
+      });
+      return await completion.Task.ConfigureAwait(false);
+    }
+  }
 
   private static async Task<T> OnGameThread<T>(Func<T> action, CancellationToken cancellationToken)
   {

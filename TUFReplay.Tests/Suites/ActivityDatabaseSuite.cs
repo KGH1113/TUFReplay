@@ -474,7 +474,7 @@ INSERT INTO microphone_recordings VALUES(
     return connection;
   }
 
-  private static void SetDatabasePath(string path)
+  internal static void SetDatabasePath(string path)
   {
     PropertyInfo property = typeof(Database).GetProperty("DbPath", BindingFlags.Public | BindingFlags.Static);
     property.SetValue(null, path);
