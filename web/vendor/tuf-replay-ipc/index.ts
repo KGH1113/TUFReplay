@@ -55,6 +55,8 @@ export interface Run { cameraRecordingBytes: number; cameraRecordingExpiresAtUtc
 
 export interface RunBatchDeleteResult { deletedRunCount: number; keptInUseRunCount: number; keptLockedRunCount: number }
 
+export interface RunJudgmentTimeline { durationMs: number; kinds: Array<"Early" | "EarlyPerfect" | "Late" | "LatePerfect" | "Miss" | "Overload" | "TooEarly" | "TooLate">; runId: string; timesMs: Array<number> }
+
 export interface WebcamCrop { height: number; width: number; x: number; y: number }
 
 export interface WebcamDevice { id: string; name: string }
@@ -102,6 +104,7 @@ export interface ReplayApiMod {
   "readLogicalLevelChart"(request: { id: string }): Promise<Chart>;
   "readRenderBundleState"(request: { jobId: string }): Promise<RenderBundleState>;
   "readReplayState"(): Promise<ReplayState>;
+  "readRunJudgmentTimelines"(request: { runIds: Array<string> }): Promise<Array<RunJudgmentTimeline>>;
   "readWebcamPreview"(request: { deviceId: string | null }): Promise<WebcamPreview | null>;
   "refreshMicrophoneDevices"(): Promise<MicrophoneDevices>;
   "refreshWebcamState"(request: { refreshDevices?: boolean }): Promise<WebcamState>;
@@ -136,7 +139,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "3af65acac4dae3674ca2b45f2bd5f05fb8d1e805b0a5ad25130cce06c476af60",
+  "hash": "e968328bd044754fe7c09283d90683c6f96b433f5707c67ad4937cb41a23313f",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -642,6 +645,29 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "deletedRunCount": "int32",
         "keptInUseRunCount": "int32",
         "keptLockedRunCount": "int32"
+      }
+    },
+    "RunJudgmentTimeline": {
+      "object": {
+        "durationMs": "int32",
+        "kinds": {
+          "array": {
+            "enum": [
+              "Early",
+              "EarlyPerfect",
+              "Late",
+              "LatePerfect",
+              "Miss",
+              "Overload",
+              "TooEarly",
+              "TooLate"
+            ]
+          }
+        },
+        "runId": "string",
+        "timesMs": {
+          "array": "int32"
+        }
       }
     },
     "WebcamCrop": {
@@ -1199,6 +1225,21 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       },
       "output": {
         "model": "ReplayState"
+      }
+    },
+    "readRunJudgmentTimelines": {
+      "wireName": "rpc.mod.readrunjudgmenttimelines",
+      "input": {
+        "object": {
+          "runIds": {
+            "array": "string"
+          }
+        }
+      },
+      "output": {
+        "array": {
+          "model": "RunJudgmentTimeline"
+        }
       }
     },
     "readWebcamPreview": {

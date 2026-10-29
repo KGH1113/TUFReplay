@@ -140,6 +140,17 @@ public sealed class TUFReplayIpcFeature
       ReplayApiMethods.ReadLogicalLevelChart,
       (r, _) => Map(ActivityIpcHandlers.GetLogicalLevelChart(Required(r.Id, "invalid_logical_level_id")))
     );
+    // Payload decoding allocates, so it waits until ADOFAI stops judging input.
+    RegisterWhenGameplayIdle(
+      ReplayApiMethods.ReadRunJudgmentTimelines,
+      (r, _) =>
+        RunJudgmentTimelineIpcHandlers
+          .Read(
+            (r.RunIds ?? Array.Empty<string>()).Select(id => Required(id)).Distinct(StringComparer.Ordinal).ToArray()
+          )
+          .Select(Map)
+          .ToArray()
+    );
     Register(ReplayApiMethods.RemoveRun, (r, _) => Map(ActivityIpcHandlers.DeleteRun(Required(r.RunId))));
     RegisterWhenGameplayIdle(
       ReplayApiMethods.RemoveAppSessionRuns,
