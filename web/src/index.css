@@ -21,7 +21,7 @@ body,
 
 @theme inline {
   --font-heading: var(--font-sans);
-  --font-sans: "Figtree Variable", sans-serif;
+  --font-sans: "Figtree Variable", "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,9 +39,12 @@ body,
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
@@ -51,6 +54,7 @@ body,
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-surface: var(--surface);
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --radius-sm: calc(var(--radius) * 0.6);
@@ -60,75 +64,87 @@ body,
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* Light tokens mirror the TUFReplay landing page; the companion runs in dark mode. */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.841 0.238 128.85);
-  --primary-foreground: oklch(0.405 0.101 131.063);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
+  --background: oklch(0.975 0.006 125);
+  --foreground: oklch(0.24 0.02 130);
+  --surface: oklch(0.955 0.008 125);
+  --card: oklch(0.99 0.004 125);
+  --card-foreground: oklch(0.24 0.02 130);
+  --popover: oklch(0.99 0.004 125);
+  --popover-foreground: oklch(0.24 0.02 130);
+  --primary: oklch(0.72 0.2 130);
+  --primary-foreground: oklch(0.22 0.06 130);
+  --secondary: oklch(0.93 0.01 125);
+  --secondary-foreground: oklch(0.24 0.02 130);
+  --muted: oklch(0.93 0.01 125);
+  --muted-foreground: oklch(0.47 0.02 128);
+  --subtle-foreground: oklch(0.6 0.015 128);
+  --accent: oklch(0.93 0.01 125);
+  --accent-foreground: oklch(0.24 0.02 130);
+  --destructive: oklch(0.58 0.22 27);
+  --warning: oklch(0.66 0.15 70);
+  --success: oklch(0.6 0.17 135);
+  --border: oklch(0.88 0.012 125);
+  --input: oklch(0.88 0.012 125);
+  --ring: oklch(0.55 0.15 130);
   --chart-1: oklch(0.897 0.196 126.665);
   --chart-2: oklch(0.768 0.233 130.85);
   --chart-3: oklch(0.648 0.2 131.684);
   --chart-4: oklch(0.532 0.157 131.589);
   --chart-5: oklch(0.453 0.124 130.933);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.648 0.2 131.684);
-  --sidebar-primary-foreground: oklch(0.986 0.031 120.757);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --sidebar: oklch(0.955 0.008 125);
+  --sidebar-foreground: oklch(0.24 0.02 130);
+  --sidebar-primary: oklch(0.72 0.2 130);
+  --sidebar-primary-foreground: oklch(0.22 0.06 130);
+  --sidebar-accent: oklch(0.92 0.012 125);
+  --sidebar-accent-foreground: oklch(0.24 0.02 130);
+  --sidebar-border: oklch(0.88 0.012 125);
+  --sidebar-ring: oklch(0.55 0.15 130);
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.768 0.233 130.85);
-  --primary-foreground: oklch(0.405 0.101 131.063);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
+  color-scheme: dark;
+  /* Green-tinted neutrals from the TUFReplay brand, stepped by elevation. */
+  --background: oklch(0.155 0.006 135);
+  --surface: oklch(0.18 0.007 135);
+  --card: oklch(0.2 0.008 135);
+  --card-foreground: oklch(0.96 0.008 120);
+  --popover: oklch(0.225 0.009 135);
+  --popover-foreground: oklch(0.96 0.008 120);
+  --foreground: oklch(0.96 0.008 120);
+  --primary: oklch(0.86 0.2 128);
+  --primary-foreground: oklch(0.24 0.07 132);
+  --secondary: oklch(0.27 0.01 135);
+  --secondary-foreground: oklch(0.96 0.008 120);
+  --muted: oklch(0.26 0.01 135);
+  --muted-foreground: oklch(0.74 0.014 125);
+  --subtle-foreground: oklch(0.58 0.012 128);
+  --accent: oklch(0.27 0.012 135);
+  --accent-foreground: oklch(0.96 0.008 120);
+  --destructive: oklch(0.7 0.19 24);
+  --warning: oklch(0.82 0.14 78);
+  --success: oklch(0.86 0.2 128);
+  --border: oklch(0.96 0.02 120 / 8%);
+  --input: oklch(0.96 0.02 120 / 12%);
+  --ring: oklch(0.86 0.2 128 / 60%);
   --chart-1: oklch(0.897 0.196 126.665);
   --chart-2: oklch(0.768 0.233 130.85);
   --chart-3: oklch(0.648 0.2 131.684);
   --chart-4: oklch(0.532 0.157 131.589);
   --chart-5: oklch(0.453 0.124 130.933);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.768 0.233 130.85);
-  --sidebar-primary-foreground: oklch(0.274 0.072 132.109);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar: oklch(0.135 0.006 135);
+  --sidebar-foreground: oklch(0.96 0.008 120);
+  --sidebar-primary: oklch(0.86 0.2 128);
+  --sidebar-primary-foreground: oklch(0.24 0.07 132);
+  --sidebar-accent: oklch(0.96 0.02 120 / 6%);
+  --sidebar-accent-foreground: oklch(0.96 0.008 120);
+  --sidebar-border: oklch(0.96 0.02 120 / 7%);
+  --sidebar-ring: oklch(0.86 0.2 128 / 60%);
 }
 
 @layer base {
@@ -136,49 +152,158 @@ body,
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
   }
   html {
     @apply font-sans;
   }
+  button,
+  a {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
 }
 
 @layer components {
-  .glass-structural {
-    background: color-mix(in oklab, var(--card) 72%, transparent);
-    border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
-    box-shadow:
-      inset 0 1px 0 color-mix(in oklab, var(--foreground) 9%, transparent),
-      0 20px 48px oklch(0 0 0 / 28%);
-    -webkit-backdrop-filter: blur(24px) saturate(160%);
-    backdrop-filter: blur(24px) saturate(160%);
+  /* Quiet panels that sit on the page; elevation comes from tone, not heavy shadows. */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-xl);
   }
 
-  .glass-toolbar {
-    background: color-mix(in oklab, var(--card) 58%, transparent);
-    border: 1px solid color-mix(in oklab, var(--foreground) 9%, transparent);
+  /* Floating chrome over the chart: translucent so the level path stays visible underneath. */
+  .material-chrome {
+    background: color-mix(in oklab, var(--popover) 78%, transparent);
+    border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
     box-shadow:
-      inset 0 1px 0 color-mix(in oklab, var(--foreground) 8%, transparent),
-      0 12px 32px oklch(0 0 0 / 20%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
-    backdrop-filter: blur(20px) saturate(150%);
+      inset 0 1px 0 color-mix(in oklab, var(--foreground) 7%, transparent),
+      0 12px 32px oklch(0 0 0 / 32%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--foreground) 16%, transparent) transparent;
+  }
+
+  /* Fades content into the edge of a horizontally scrolling strip. */
+  .fade-x {
+    mask-image: linear-gradient(
+      to right,
+      transparent,
+      black 0.75rem,
+      black calc(100% - 1.5rem),
+      transparent
+    );
+  }
+}
+
+/* Attempts table: one aligned line on wide panes, two lines when the pane is narrow. */
+.attempts-container {
+  container: attempts / inline-size;
+}
+
+.attempt-grid {
+  display: grid;
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.25rem;
+  grid-template-columns: 2rem 4.5rem 4.5rem 3.5rem minmax(0, 1fr) 4.25rem 1.75rem 1.75rem;
+  grid-template-areas:
+    "play progress acc pitch timeline time lock menu"
+    "play judg judg judg judg flags flags flags";
+}
+
+.attempt-grid > [data-area="play"] {
+  grid-area: play;
+}
+.attempt-grid > [data-area="progress"] {
+  grid-area: progress;
+}
+.attempt-grid > [data-area="acc"] {
+  grid-area: acc;
+}
+.attempt-grid > [data-area="pitch"] {
+  grid-area: pitch;
+}
+.attempt-grid > [data-area="judg"] {
+  grid-area: judg;
+}
+.attempt-grid > [data-area="time"] {
+  grid-area: time;
+}
+.attempt-grid > [data-area="timeline"] {
+  grid-area: timeline;
+}
+.attempt-grid > [data-area="flags"] {
+  grid-area: flags;
+}
+.attempt-grid > [data-area="lock"] {
+  grid-area: lock;
+}
+.attempt-grid > [data-area="menu"] {
+  grid-area: menu;
+}
+
+@container attempts (max-width: 34rem) {
+  .attempt-grid {
+    column-gap: 0.5rem;
+    grid-template-columns: 2rem auto auto auto minmax(0, 1fr) auto 1.75rem;
+    grid-template-areas:
+      "play progress acc pitch . time menu"
+      "play judg judg judg judg judg judg"
+      "play timeline timeline timeline timeline flags lock";
+  }
+  .attempt-grid .judgment-strip {
+    grid-template-columns: repeat(var(--judgment-count, 9), minmax(0, 1fr));
+  }
+}
+
+@container attempts (min-width: 56rem) {
+  .attempt-grid {
+    row-gap: 0;
+    column-gap: 1.25rem;
+    /* The judgment timeline takes the spare width, so the other columns keep even gaps. */
+    grid-template-columns:
+      2rem 4.5rem 4.5rem 3.5rem 4rem var(--judgment-width, 15.75rem) minmax(8rem, 1fr)
+      6.5rem 1.75rem 1.75rem;
+    grid-template-areas: "play progress acc pitch time judg timeline flags lock menu";
   }
 }
 
 @media (prefers-reduced-transparency: reduce) {
-  .glass-structural,
-  .glass-toolbar {
-    background: var(--card);
+  .material-chrome {
+    background: var(--popover);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
 }
 
 @media (prefers-contrast: more) {
-  .glass-structural,
-  .glass-toolbar {
-    background: var(--card);
+  .panel,
+  .material-chrome {
     border-color: color-mix(in oklab, var(--foreground) 35%, transparent);
     box-shadow: none;
+  }
+}
+
+@keyframes playing-bar {
+  0%,
+  100% {
+    transform: scaleY(0.35);
+  }
+  50% {
+    transform: scaleY(1);
   }
 }

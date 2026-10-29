@@ -3,7 +3,11 @@
     "title": "영상 렌더링은 준비 중이에요",
     "description": "저장된 플레이를 영상으로 만드는 기능을 개발하고 있어요. 기능이 공개되면 사용할 수 있어요."
   },
-  "settingsMode": { "label": "영상 설정 방식", "recommended": "추천", "advanced": "고급" },
+  "settingsMode": {
+    "label": "영상 설정 방식",
+    "recommended": "추천",
+    "advanced": "고급"
+  },
   "qualities": {
     "lowest": "최저",
     "low": "낮음",
@@ -141,7 +145,7 @@
     "render_option_invalid": "영상 설정에 올바르지 않은 값이 있어요. 아래 항목을 확인한 뒤 다시 시도해 주세요.",
     "render_engine_unavailable": "렌더러를 사용할 수 없어요. TUFReplay-Renderer를 활성화하고 ADOFAI를 다시 실행해 주세요.",
     "ffmpeg_unavailable": "FFmpeg를 실행하지 못했어요. 웹 다운로드 센터에서 설치를 다시 시도해 주세요.",
-    "ffmpeg_owner_unavailable": "TUFReplay의 설치 기능에 연결하지 못했어요. 최신 TUFReplay와 AdofaiIpc를 켠 뒤 다시 시도해 주세요.",
+    "ffmpeg_owner_unavailable": "TUFReplay의 설치 기능에 연결하지 못했어요. 최신 TUFReplay를 켠 뒤 다시 시도해 주세요.",
     "ffmpeg_install_declined": "FFmpeg 설치를 건너뛰었어요. 렌더링을 다시 시작하고 웹 다운로드 센터에서 설치에 동의해 주세요.",
     "ffmpeg_install_failed": "FFmpeg를 설치하지 못했어요. 아래 원인을 확인한 뒤 웹 다운로드 센터에서 다시 설치해 주세요.",
     "ffmpeg_install_invalid": "TUFReplay의 FFmpeg 설치 파일을 찾지 못했어요. 웹 다운로드 센터에서 다시 설치해 주세요.",

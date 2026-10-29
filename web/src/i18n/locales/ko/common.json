@@ -17,18 +17,36 @@
     "delete": "삭제",
     "close": "닫기",
     "refresh": "새로고침",
-    "save": "저장"
+    "save": "저장",
+    "retry": "다시 시도"
   },
   "details": "세부 정보",
   "unknown": "알 수 없음",
   "errors": {
     "notConnected": "TUFReplay에 연결되어 있지 않습니다.",
     "notConnectedToGame": "TUFReplay가 얼불춤에 연결되어 있지 않습니다.",
-    "localEndpoint": "로컬 IPC 엔드포인트가 응답하지 않았습니다."
+    "localEndpoint": "게임이 응답하지 않았어요."
   },
   "units": {
     "milliseconds": "{{value}}ms",
     "seconds": "{{value}}초",
     "hertz": "{{value}}Hz"
+  },
+  "sidebar": {
+    "label": "탐색"
+  },
+  "settings": {
+    "label": "녹음·녹화",
+    "microphone": "마이크",
+    "camera": "카메라",
+    "needsConnection": "게임 연결 필요",
+    "openToCheck": "눌러서 확인"
+  },
+  "connection": {
+    "connected": "얼불춤에 연결됨",
+    "connecting": "얼불춤에 연결하는 중…",
+    "disconnected": "얼불춤에 연결되지 않음",
+    "updateRequired": "업데이트 필요",
+    "demo": "데모 데이터 · 연결 안 됨"
   }
 }

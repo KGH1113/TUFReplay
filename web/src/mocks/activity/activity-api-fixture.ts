@@ -18,6 +18,10 @@ import type {
   ReplayStatus,
 } from "@/mocks/activity/activity-wire-fixture";
 import { mockMicrophoneOffsetCalibration } from "@/mocks/calibration/microphone-offset-fixture";
+import type {
+  RunJudgmentTimeline,
+  TimelineJudgmentKind,
+} from "@/models/activity/judgment-timeline";
 import level5Text from "./levels/tuf-5.adofai?raw";
 import level303Text from "./levels/tuf-303.adofai?raw";
 import level871Text from "./levels/tuf-871.adofai?raw";
@@ -60,6 +64,7 @@ interface ActivityWireFixture {
     keepClears: boolean,
   ): Promise<ActivityRunBatchDeleteResult>;
   setCameraRetentionDays(days: number): boolean;
+  judgmentTimelines(runIds: string[]): RunJudgmentTimeline[];
   assertCameraRecording(runId: string): void;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
   getReplayStatus(): Promise<ReplayStatus>;
@@ -120,9 +125,12 @@ const levels = [
   ),
 ];
 
+levels.push(createPracticeLevel());
+
 const appSessions: ActivityAppSession[] = [
   createAppSession("app-2026-07-13", "2026-07-13T01:18:00.000Z"),
   createAppSession("app-2026-07-12", "2026-07-12T09:08:00.000Z", "2026-07-12T11:40:00.000Z"),
+  createAppSession("app-2026-07-08", "2026-07-08T11:02:00.000Z", "2026-07-08T13:55:00.000Z"),
 ];
 
 class MockActivityDomainError extends Error {
@@ -229,6 +237,14 @@ export function createActivityWireFixture(): ActivityWireFixture {
     MicrophoneVolumeDb: 0,
   };
   return {
+    judgmentTimelines: (runIds) =>
+      runIds.flatMap((runId) => {
+        for (const level of levels) {
+          const run = level.runs.find((candidate) => candidate.Id === runId);
+          if (run) return [mockJudgmentTimeline(run)];
+        }
+        return [];
+      }),
     assertCameraRecording: (runId) => {
       for (const level of levels) {
         const run = level.runs.find((candidate) => candidate.Id === runId);
@@ -652,6 +668,127 @@ function createRun(
     ReplayPlayable: true,
     Locked: false,
     ReplayUnavailableReason: null,
+  };
+}
+
+/**
+ * A long practice session: many attempts from several checkpoints, a few clears, locked and
+ * unplayable runs, mixed pitch and competitive judgments, so busy days can be previewed.
+ */
+function createPracticeLevel(): MockLevel {
+  const level = createLevel(
+    "level-871-practice",
+    "app-2026-07-08",
+    871,
+    "2026-07-08T11:05:00.000Z",
+    level871Text,
+    [],
+  );
+  const floorCount = level.session.FloorCount;
+  const starts = [0, 0, 0, 214, 214, 356, 356, 356, 480, 0, 214, 356, 0, 0, 480, 480];
+  level.runs = Array.from({ length: 64 }, (_, index) => {
+    const startTile = starts[index % starts.length];
+    const run = createRun(
+      level.session.Id,
+      871,
+      level.session.OpenedAtUtc,
+      floorCount,
+      startTile,
+      index,
+    );
+    const cleared = startTile === 0 && (index === 24 || index === 51 || index === 60);
+    const reach = Math.min(
+      floorCount - 1,
+      startTile + 20 + ((index * 97) % Math.max(1, floorCount - startTile - 20)),
+    );
+    run.LastTile = cleared ? floorCount - 1 : reach;
+    run.Result = cleared ? "Cleared" : index % 11 === 7 ? "Aborted" : "Failed";
+    run.StartedAtUtc = new Date(
+      Date.parse(level.session.OpenedAtUtc) + index * 150_000,
+    ).toISOString();
+    run.EndedAtUtc = new Date(
+      Date.parse(run.StartedAtUtc) + 20_000 + ((run.LastTile - startTile) / floorCount) * 180_000,
+    ).toISOString();
+    run.XAccuracy = cleared ? 0.9912 - index * 0.0001 : 0.93 + ((index * 37) % 60) / 1000;
+    run.LevelPitchPercent = index % 9 === 4 ? 110 : index % 13 === 6 ? 90 : 100;
+    run.JudgmentSystem = index >= 40 ? "ModernCompetitive" : "ModernClassic";
+    run.JudgmentCounts.Perfect = Math.max(1, run.LastTile - startTile - 12);
+    if (run.JudgmentSystem === "ModernCompetitive") {
+      run.JudgmentCounts.XPerfect = Math.round(run.JudgmentCounts.Perfect * 0.7);
+      run.JudgmentCounts.PerfectMinus = Math.round(run.JudgmentCounts.Perfect * 0.16);
+      run.JudgmentCounts.PerfectPlus =
+        run.JudgmentCounts.Perfect - run.JudgmentCounts.XPerfect - run.JudgmentCounts.PerfectMinus;
+    }
+    run.JudgmentCounts.Miss = cleared ? 0 : 1;
+    run.NoFailMode = index === 33;
+    run.Locked = cleared || index === 17;
+    if (run.Locked) {
+      run.MicrophoneRecordingPermanent = run.HasMicrophoneRecording;
+      run.MicrophoneRecordingExpiresAtUtc = null;
+      run.CameraRecordingPermanent = run.HasCameraRecording;
+      run.CameraRecordingExpiresAtUtc = null;
+    }
+    if (index === 9) {
+      run.ReplayPlayable = false;
+      run.ReplayUnavailableReason = "input_queue_overflow";
+    }
+    return run;
+  });
+  recountLevel(level);
+  level.session.FirstStartTile = 0;
+  level.session.LastStartTile = 480;
+  level.session.ClosedAtUtc = "2026-07-08T13:50:00.000Z";
+  level.session.RelativeLevelPath = "871 Xtrullor - Cry/level.adofai";
+  // A separate download folder, so this practice copy stays openable next to the newer visit.
+  level.session.LevelGroupId = "mock-tuf-871-practice";
+  return level;
+}
+
+const timelineKinds = [
+  "Overload",
+  "TooEarly",
+  "Early",
+  "EarlyPerfect",
+  "LatePerfect",
+  "Late",
+  "TooLate",
+  "Miss",
+] as const satisfies readonly TimelineJudgmentKind[];
+
+/**
+ * Spreads a run's non-perfect counts across its length with a seeded generator, so each run
+ * has a stable, believable timeline; a failed run's miss lands at the point it ended.
+ */
+function mockJudgmentTimeline(run: ActivityRun): RunJudgmentTimeline {
+  const durationMs = Math.max(
+    1_000,
+    Date.parse(run.EndedAtUtc ?? run.StartedAtUtc) - Date.parse(run.StartedAtUtc),
+  );
+  let seed = [...run.Id].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
+  const random = () => {
+    seed = (seed * 1_664_525 + 1_013_904_223) >>> 0;
+    return seed / 2 ** 32;
+  };
+  const events: { timeMs: number; kind: TimelineJudgmentKind }[] = [];
+  for (const kind of timelineKinds) {
+    const count = Math.min(400, run.JudgmentCounts[kind] ?? 0);
+    for (let index = 0; index < count; index++) {
+      const failed =
+        kind === "Miss" && run.Result.toLowerCase() === "failed" && index === count - 1;
+      // Mistakes cluster around a few hard sections instead of spreading evenly.
+      const section = Math.floor(random() * 4) / 4 + 0.08;
+      const timeMs = failed
+        ? durationMs - 200
+        : Math.round(Math.min(0.99, section + random() * 0.18) * durationMs);
+      events.push({ timeMs, kind });
+    }
+  }
+  events.sort((left, right) => left.timeMs - right.timeMs);
+  return {
+    runId: run.Id,
+    durationMs,
+    timesMs: events.map((event) => event.timeMs),
+    kinds: events.map((event) => event.kind),
   };
 }
 

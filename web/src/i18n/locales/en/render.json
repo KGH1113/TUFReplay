@@ -145,7 +145,7 @@
     "render_option_invalid": "A video setting is invalid. Check the affected setting below and try again.",
     "render_engine_unavailable": "The renderer is unavailable. Enable TUFReplay-Renderer and restart ADOFAI.",
     "ffmpeg_unavailable": "FFmpeg could not run. Retry installation in TUFReplay's web download center.",
-    "ffmpeg_owner_unavailable": "TUFReplay's installer could not be reached. Enable the latest TUFReplay and AdofaiIpc, then retry.",
+    "ffmpeg_owner_unavailable": "TUFReplay's installer could not be reached. Enable the latest TUFReplay, then retry.",
     "ffmpeg_install_declined": "FFmpeg installation was skipped. Start rendering again and approve installation in the web download center.",
     "ffmpeg_install_failed": "FFmpeg could not be installed. Check the details below and retry installation in the web download center.",
     "ffmpeg_install_invalid": "TUFReplay's FFmpeg installation is missing. Retry installation in the web download center.",

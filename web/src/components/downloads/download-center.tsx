@@ -1,8 +1,9 @@
 import { Download04Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import type { TFunction } from "i18next";
 import { Popover as PopoverPrimitive } from "radix-ui";
 import { useTranslation } from "react-i18next";
-import { installationBusy } from "@/api/downloads/downloads-api";
+import { type InstallState, installationBusy } from "@/api/downloads/downloads-api";
+import { SidebarSettingButton } from "@/components/shell/sidebar-setting-button";
 import { useDownloadCenter } from "@/hooks/downloads/use-download-center";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
 import { Button } from "@/shared/ui/button";
@@ -11,6 +12,7 @@ import { DownloadDialog } from "./download-dialog";
 
 export function DownloadCenter({ connectionStatus }: { connectionStatus: ConnectionStatus }) {
   const { t } = useTranslation("downloads");
+  const { t: commonT } = useTranslation("common");
   const center = useDownloadCenter(connectionStatus === "online");
   const ffmpeg = center.state?.Ffmpeg;
   const busy = ffmpeg ? installationBusy(ffmpeg) : false;
@@ -19,18 +21,34 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
     <>
       <Popover open={center.menuOpen} onOpenChange={center.setMenuOpen}>
         <PopoverPrimitive.Trigger asChild>
-          <Button
+          <SidebarSettingButton
             ref={center.trigger}
-            variant="ghost"
-            size="icon-sm"
+            icon={Download04Icon}
+            label={t("title")}
+            value={
+              connectionStatus !== "online"
+                ? commonT("settings.needsConnection")
+                : center.error
+                  ? t("connectionIssue")
+                  : ffmpeg
+                    ? downloadsSummary(ffmpeg, busy, t)
+                    : undefined
+            }
+            attention={
+              connectionStatus === "online" &&
+              (Boolean(center.error) ||
+                ffmpeg?.Status === "failed" ||
+                ffmpeg?.Status === "awaiting-consent" ||
+                ffmpeg?.Status === "restart-required")
+            }
             aria-label={t("title")}
-            title={t("title")}
             disabled={connectionStatus !== "online"}
-          >
-            <HugeiconsIcon icon={Download04Icon} size={17} strokeWidth={2} aria-hidden="true" />
-          </Button>
+          />
         </PopoverPrimitive.Trigger>
         <PopoverContent
+          side="right"
+          align="end"
+          sideOffset={12}
           className="w-[min(21rem,calc(100vw-2rem))] rounded-xl p-0"
           aria-label={t("title")}
         >
@@ -93,4 +111,22 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
       <DownloadDialog center={center} />
     </>
   );
+}
+
+/** One line for the sidebar that never names a single component, since the center lists several. */
+function downloadsSummary(
+  state: InstallState,
+  busy: boolean,
+  t: TFunction<"downloads">,
+): string | undefined {
+  if (busy && state.Status !== "checking")
+    return state.TotalBytes
+      ? t("summary.downloadingPercent", {
+          percent: Math.round((state.DownloadedBytes / state.TotalBytes) * 100),
+        })
+      : t("summary.downloading");
+  if (state.Status === "awaiting-consent") return t("summary.approval");
+  if (state.Status === "failed") return t("summary.failed");
+  if (state.Status === "restart-required") return t("summary.restart");
+  return undefined;
 }

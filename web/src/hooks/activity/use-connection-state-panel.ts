@@ -9,7 +9,7 @@ interface ConnectionStatePanelCopy {
   retryLabel: string;
   guideLabel: string;
   steps: string[];
-  action: "retry" | "download" | "reload";
+  action: "retry" | "reload";
 }
 
 interface UseConnectionStatePanelOptions {
@@ -28,18 +28,10 @@ export function useConnectionStatePanelViewModel({
   const { t: activityT } = useTranslation("activity");
   const { t: commonT } = useTranslation("common");
   const copy = getConnectionStatePanelCopy(status, activityT, versionMismatch);
-  const primaryAction =
-    copy.action === "download"
-      ? {
-          kind: "link" as const,
-          label: copy.retryLabel,
-          href: "https://github.com/KGH1113/adofai-ipc/releases/latest",
-        }
-      : {
-          kind: "button" as const,
-          label: copy.retryLabel,
-          onPress: copy.action === "reload" ? () => window.location.reload() : onRetry,
-        };
+  const primaryAction = {
+    label: copy.retryLabel,
+    onPress: copy.action === "reload" ? () => window.location.reload() : onRetry,
+  };
 
   return {
     connecting: status === "connecting",
@@ -68,16 +60,6 @@ export function getConnectionStatePanelCopy(
       action: "reload",
     };
 
-  if (versionMismatch === "server_outdated" || versionMismatch === "legacy_server")
-    return {
-      title: t("connection.ipcUpdateTitle"),
-      description: t("connection.ipcUpdateDescription"),
-      retryLabel: t("connection.downloadIpc"),
-      guideLabel: t("connection.ipcUpdateGuide"),
-      steps: t("connection.ipcUpdateSteps", { returnObjects: true }),
-      action: "download",
-    };
-
   if (status === "connecting")
     return {
       title: t("connection.connectingTitle"),
@@ -88,7 +70,12 @@ export function getConnectionStatePanelCopy(
       action: "retry",
     };
 
-  if (status === "incompatible")
+  // The connection library ships inside TUFReplay, so an older game side means an older mod.
+  if (
+    status === "incompatible" ||
+    versionMismatch === "server_outdated" ||
+    versionMismatch === "legacy_server"
+  )
     return {
       title: t("connection.updateTitle"),
       description: t("connection.updateDescription"),

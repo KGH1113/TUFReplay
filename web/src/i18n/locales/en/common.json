@@ -17,18 +17,36 @@
     "delete": "Delete",
     "close": "Close",
     "refresh": "Refresh",
-    "save": "Save"
+    "save": "Save",
+    "retry": "Retry"
   },
   "details": "Details",
   "unknown": "Unknown",
   "errors": {
     "notConnected": "TUFReplay is not connected.",
     "notConnectedToGame": "TUFReplay is not connected to ADOFAI.",
-    "localEndpoint": "The local IPC endpoint did not respond."
+    "localEndpoint": "The game did not respond."
   },
   "units": {
     "milliseconds": "{{value}} ms",
     "seconds": "{{value}} s",
     "hertz": "{{value}} Hz"
+  },
+  "sidebar": {
+    "label": "Navigation"
+  },
+  "settings": {
+    "label": "Recording",
+    "microphone": "Microphone",
+    "camera": "Camera",
+    "needsConnection": "Needs game connection",
+    "openToCheck": "Open to check"
+  },
+  "connection": {
+    "connected": "Connected to ADOFAI",
+    "connecting": "Connecting to ADOFAI…",
+    "disconnected": "Not connected to ADOFAI",
+    "updateRequired": "Update required",
+    "demo": "Demo data · not connected"
   }
 }

@@ -9,6 +9,7 @@ export const activityQueryKeys = {
   logicalLevelRuns: (id: string, date: string | null) =>
     ["activity", "logical-level", id, "runs", date] as const,
   logicalLevelChart: (id: string) => ["activity", "logical-level", id, "chart"] as const,
+  judgmentTimeline: (runId: string) => ["activity", "run", runId, "judgment-timeline"] as const,
 };
 
 /**
