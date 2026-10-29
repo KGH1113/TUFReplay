@@ -139,6 +139,7 @@ run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_cont
     return result;
   }
 
+  // Returns false when the run is missing or locked; callers check IsLocked to tell them apart.
   public static bool Delete(string runId)
   {
     if (string.IsNullOrWhiteSpace(runId))
@@ -149,19 +150,16 @@ run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_cont
     using SqliteCommand q = c.CreateCommand();
     q.Transaction = transaction;
     q.CommandText =
-      @"SELECT r.level_session_id,l.level_id,l.app_session_id,l.closed_at_utc,a.ended_at_utc
+      @"SELECT r.level_session_id,l.level_id,l.app_session_id
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
-JOIN app_sessions a ON a.id=l.app_session_id
-WHERE r.id=@id
+WHERE r.id=@id AND r.locked=0
 LIMIT 1";
     q.Parameters.AddWithValue("@id", runId);
 
     string levelSessionId;
     string levelId;
     string appSessionId;
-    bool levelSessionClosed;
-    bool appSessionClosed;
     using (SqliteDataReader reader = q.ExecuteReader())
     {
       if (!reader.Read())
@@ -169,42 +167,221 @@ LIMIT 1";
       levelSessionId = reader.GetString(0);
       levelId = reader.GetString(1);
       appSessionId = reader.GetString(2);
-      levelSessionClosed = !reader.IsDBNull(3);
-      appSessionClosed = !reader.IsDBNull(4);
     }
 
-    q.CommandText = "DELETE FROM runs WHERE id=@id";
-    int deleted = q.ExecuteNonQuery();
-    if (deleted == 0)
+    q.CommandText = "DELETE FROM runs WHERE id=@id AND locked=0";
+    if (q.ExecuteNonQuery() == 0)
       return false;
 
-    if (levelSessionClosed)
-    {
-      q.CommandText =
-        @"DELETE FROM level_sessions
+    DeleteEmptyClosedParents(c, transaction, levelSessionId, levelId, appSessionId);
+    transaction.Commit();
+    return true;
+  }
+
+  public static bool IsLocked(string runId)
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      return false;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "SELECT 1 FROM runs WHERE id=@id AND locked!=0 LIMIT 1";
+    q.Parameters.AddWithValue("@id", runId);
+    return q.ExecuteScalar() != null;
+  }
+
+  // Returns false when the run does not exist.
+  public static bool SetLocked(string runId, bool locked)
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      return false;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    q.CommandText = "UPDATE runs SET locked=@locked WHERE id=@id";
+    q.Parameters.AddWithValue("@locked", DbValue.Bool(locked));
+    q.Parameters.AddWithValue("@id", runId);
+    return DatabaseStore.ExecuteNonQueryWithLockRetry(q) != 0;
+  }
+
+  // Locks the unlocked clears recorded in the app sessions and returns their ids.
+  public static List<string> LockClearsInAppSessions(IReadOnlyList<string> appSessionIds)
+  {
+    var locked = new List<string>();
+    if (appSessionIds == null || appSessionIds.Count == 0)
+      return locked;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteTransaction transaction = c.BeginTransaction();
+    ReadIdsInAppSessions(
+      c,
+      transaction,
+      appSessionIds,
+      "r.locked=0 AND " + ActivityRepository.ClearRunCondition,
+      locked
+    );
+    ForEachBatch(
+      locked,
+      (start, count) =>
+      {
+        using SqliteCommand q = c.CreateCommand();
+        q.Transaction = transaction;
+        q.CommandText = "UPDATE runs SET locked=1 WHERE id IN (" + AddParameters(q, "@run", locked, start, count) + ")";
+        q.ExecuteNonQuery();
+      }
+    );
+    transaction.Commit();
+    return locked;
+  }
+
+  public static List<string> ListUnlockedRunIdsInAppSessions(IReadOnlyList<string> appSessionIds)
+  {
+    var ids = new List<string>();
+    if (appSessionIds == null || appSessionIds.Count == 0)
+      return ids;
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    ReadIdsInAppSessions(c, null, appSessionIds, "r.locked=0", ids);
+    return ids;
+  }
+
+  public static int CountLockedRunsInAppSessions(IReadOnlyList<string> appSessionIds)
+  {
+    var ids = new List<string>();
+    if (appSessionIds == null || appSessionIds.Count == 0)
+      return 0;
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    ReadIdsInAppSessions(c, null, appSessionIds, "r.locked!=0", ids);
+    return ids.Count;
+  }
+
+  // Deletes, in one transaction, the given runs that are still unlocked and returns their ids.
+  public static List<string> DeleteUnlocked(IReadOnlyList<string> runIds)
+  {
+    var deleted = new List<string>();
+    if (runIds == null || runIds.Count == 0)
+      return deleted;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteTransaction transaction = c.BeginTransaction();
+    var parents = new Dictionary<string, KeyValuePair<string, string>>(System.StringComparer.Ordinal);
+    ForEachBatch(
+      runIds,
+      (start, count) =>
+      {
+        using SqliteCommand q = c.CreateCommand();
+        q.Transaction = transaction;
+        q.CommandText =
+          @"SELECT r.id,r.level_session_id,l.level_id,l.app_session_id
+FROM runs r
+JOIN level_sessions l ON l.id=r.level_session_id
+WHERE r.locked=0 AND r.id IN ("
+          + AddParameters(q, "@run", runIds, start, count)
+          + ")";
+        using SqliteDataReader reader = q.ExecuteReader();
+        while (reader.Read())
+        {
+          deleted.Add(reader.GetString(0));
+          parents[reader.GetString(1)] = new KeyValuePair<string, string>(reader.GetString(2), reader.GetString(3));
+        }
+      }
+    );
+    ForEachBatch(
+      deleted,
+      (start, count) =>
+      {
+        using SqliteCommand q = c.CreateCommand();
+        q.Transaction = transaction;
+        q.CommandText = "DELETE FROM runs WHERE id IN (" + AddParameters(q, "@run", deleted, start, count) + ")";
+        q.ExecuteNonQuery();
+      }
+    );
+    foreach (KeyValuePair<string, KeyValuePair<string, string>> parent in parents)
+      DeleteEmptyClosedParents(c, transaction, parent.Key, parent.Value.Key, parent.Value.Value);
+    transaction.Commit();
+    return deleted;
+  }
+
+  // Open sessions stay even when empty: the recorder keeps writing runs into them.
+  private static void DeleteEmptyClosedParents(
+    SqliteConnection c,
+    SqliteTransaction transaction,
+    string levelSessionId,
+    string levelId,
+    string appSessionId
+  )
+  {
+    using SqliteCommand q = c.CreateCommand();
+    q.Transaction = transaction;
+    q.CommandText =
+      @"DELETE FROM level_sessions
 WHERE id=@level
   AND closed_at_utc IS NOT NULL
   AND NOT EXISTS(SELECT 1 FROM runs WHERE level_session_id=@level)";
-      q.Parameters.AddWithValue("@level", levelSessionId);
-      int levelDeleted = q.ExecuteNonQuery();
-      if (levelDeleted > 0)
-      {
-        LevelRepository.DeleteIfOrphaned(c, transaction, levelId);
-        if (appSessionClosed)
-        {
-          q.CommandText =
-            @"DELETE FROM app_sessions
+    q.Parameters.AddWithValue("@level", levelSessionId);
+    if (q.ExecuteNonQuery() == 0)
+      return;
+
+    LevelRepository.DeleteIfOrphaned(c, transaction, levelId);
+    q.Parameters.Clear();
+    q.CommandText =
+      @"DELETE FROM app_sessions
 WHERE id=@app
   AND ended_at_utc IS NOT NULL
   AND NOT EXISTS(SELECT 1 FROM level_sessions WHERE app_session_id=@app)";
-          q.Parameters.AddWithValue("@app", appSessionId);
-          q.ExecuteNonQuery();
-        }
-      }
-    }
+    q.Parameters.AddWithValue("@app", appSessionId);
+    q.ExecuteNonQuery();
+  }
 
-    transaction.Commit();
-    return true;
+  private static void ReadIdsInAppSessions(
+    SqliteConnection c,
+    SqliteTransaction transaction,
+    IReadOnlyList<string> appSessionIds,
+    string condition,
+    List<string> output
+  )
+  {
+    ForEachBatch(
+      appSessionIds,
+      (start, count) =>
+      {
+        using SqliteCommand q = c.CreateCommand();
+        q.Transaction = transaction;
+        q.CommandText =
+          "SELECT r.id FROM runs r JOIN level_sessions l ON l.id=r.level_session_id WHERE l.app_session_id IN ("
+          + AddParameters(q, "@app", appSessionIds, start, count)
+          + ") AND "
+          + condition;
+        using SqliteDataReader reader = q.ExecuteReader();
+        while (reader.Read())
+          output.Add(reader.GetString(0));
+      }
+    );
+  }
+
+  // SQLite limits bound parameters per statement; stay well under the oldest default (999).
+  private const int ParameterBatchSize = 500;
+
+  private static void ForEachBatch(IReadOnlyList<string> values, System.Action<int, int> run)
+  {
+    for (int start = 0; start < values.Count; start += ParameterBatchSize)
+      run(start, System.Math.Min(ParameterBatchSize, values.Count - start));
+  }
+
+  private static string AddParameters(
+    SqliteCommand command,
+    string prefix,
+    IReadOnlyList<string> values,
+    int start,
+    int count
+  )
+  {
+    var names = new string[count];
+    for (int index = 0; index < count; index++)
+    {
+      names[index] = prefix + index;
+      command.Parameters.AddWithValue(names[index], values[start + index]);
+    }
+    return string.Join(",", names);
   }
 
   public static List<RunRecord> ListByLevelSession(string id, int offset, int limit)
@@ -329,7 +506,7 @@ r.judgment_perfect_minus,r.judgment_x_perfect,r.judgment_perfect_plus,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 g.gameplay_hash,g.gameplay_hash_version,
 r.input_count,r.hit_context_count,coalesce(length(a.input_csv),0),coalesce(length(a.hit_context_csv),0),
-r.replay_unavailable_reason,a.run_id,a.engine_id,a.format_version
+r.replay_unavailable_reason,a.run_id,a.engine_id,a.format_version,r.locked
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 JOIN levels g ON g.id=l.level_id
@@ -389,6 +566,7 @@ LEFT JOIN replay_artifacts a ON a.run_id=r.id";
         && string.Equals(DbValue.NullableString(r, 38), ReplayFormat.EngineId, System.StringComparison.Ordinal)
         && !r.IsDBNull(39)
         && r.GetInt32(39) == ReplayFormat.FormatVersion,
+      Locked = r.GetInt32(40) != 0,
     };
 
   private static string ResolveReplayUnavailableReason(

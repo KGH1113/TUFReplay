@@ -34,6 +34,26 @@ public static class MicrophoneRecordingRepository
     return command.ExecuteNonQuery() != 0;
   }
 
+  public static int DeleteMany(IReadOnlyList<string> runIds)
+  {
+    if (runIds == null || runIds.Count == 0)
+      return 0;
+    using SqliteConnection connection = AudioDatabase.OpenConnection();
+    using SqliteTransaction transaction = connection.BeginTransaction();
+    using SqliteCommand command = connection.CreateCommand();
+    command.Transaction = transaction;
+    command.CommandText = "DELETE FROM microphone_recordings WHERE run_id=@run";
+    SqliteParameter run = command.Parameters.Add("@run", SqliteType.Text);
+    int deleted = 0;
+    foreach (string runId in runIds)
+    {
+      run.Value = runId;
+      deleted += command.ExecuteNonQuery();
+    }
+    transaction.Commit();
+    return deleted;
+  }
+
   public static bool Exists(string runId)
   {
     using SqliteConnection connection = AudioDatabase.OpenConnection();

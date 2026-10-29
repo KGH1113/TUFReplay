@@ -38,6 +38,8 @@ internal static class IpcDtoMapper
       FirstStartTile = value.FirstStartTile,
       LastStartTile = value.LastStartTile,
       ChartAvailable = value.ChartAvailable,
+      LockedRunCount = value.LockedRunCount,
+      LockedClearRunCount = value.LockedClearRunCount,
     };
 
   public static Api.LogicalLevel Map(TUFReplay.Activity.Ipc.ActivityLogicalLevelOverviewDto value) =>
@@ -99,6 +101,7 @@ internal static class IpcDtoMapper
       CameraRecordingExpiresAtUtc = value.CameraRecordingExpiresAtUtc,
       ReplayPlayable = value.ReplayPlayable,
       ReplayUnavailableReason = value.ReplayUnavailableReason,
+      Locked = value.Locked,
     };
 
   public static Api.JudgmentCounts Map(TUFReplay.Activity.Ipc.JudgmentCountsDto value) =>
@@ -123,6 +126,17 @@ internal static class IpcDtoMapper
 
   public static Api.DeleteResult Map(TUFReplay.Activity.Ipc.ActivityRunDeleteResultDto value) =>
     new Api.DeleteResult { RunId = value.RunId, Deleted = value.Deleted };
+
+  public static Api.LockResult Map(TUFReplay.Activity.Ipc.ActivityRunLockResultDto value) =>
+    new Api.LockResult { RunId = value.RunId, Locked = value.Locked };
+
+  public static Api.RunBatchDeleteResult Map(TUFReplay.Activity.Ipc.ActivityRunBatchDeleteResultDto value) =>
+    new Api.RunBatchDeleteResult
+    {
+      DeletedRunCount = value.DeletedRunCount,
+      KeptLockedRunCount = value.KeptLockedRunCount,
+      KeptInUseRunCount = value.KeptInUseRunCount,
+    };
 
   public static Api.ReplayState Map(TUFReplay.Replay.Ipc.ReplayPlaybackStatusDto value) =>
     new Api.ReplayState

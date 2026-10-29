@@ -29,7 +29,9 @@ export interface LegacyReplayStatus { hasLegacyReplays: boolean }
 
 export interface LevelFileResult { errorCode: string | null; levelPath: string | null; message: string | null; operationId: string | null; outcome: "cancelled" | "error" | "mismatch" | "picking" | "selected"; runId: string | null }
 
-export interface LevelSession { appSessionId: string; artist: string | null; author: string | null; chartAvailable: boolean; clearRunCount: number; closedAtUtc: string | null; firstStartTile: number | null; floorCount: number; id: string; lastStartTile: number | null; levelGroupId: string; logicalLevelId: string; noFailRunCount: number; openedAtUtc: string; relativeLevelPath: string | null; runCount: number; song: string | null; tufLevelId: number | null }
+export interface LevelSession { appSessionId: string; artist: string | null; author: string | null; chartAvailable: boolean; clearRunCount: number; closedAtUtc: string | null; firstStartTile: number | null; floorCount: number; id: string; lastStartTile: number | null; levelGroupId: string; lockedClearRunCount: number; lockedRunCount: number; logicalLevelId: string; noFailRunCount: number; openedAtUtc: string; relativeLevelPath: string | null; runCount: number; song: string | null; tufLevelId: number | null }
+
+export interface LockResult { locked: boolean; runId: string }
 
 export interface LogicalLevel { artist: string | null; author: string | null; chartAvailable: boolean; clearRunCount: number; firstSeenAtUtc: string; firstStartTile: number | null; floorCount: number; id: string; lastSeenAtUtc: string; lastStartTile: number | null; noFailRunCount: number; relativeLevelPath: string | null; runCount: number; song: string | null; tufLevelId: number | null; visitCount: number }
 
@@ -49,7 +51,9 @@ export interface ReplayState { errorCode: string | null; message: string | null;
 
 export interface RetainResult { permanent: boolean; runId: string }
 
-export interface Run { cameraRecordingBytes: number; cameraRecordingExpiresAtUtc: string | null; cameraRecordingPermanent: boolean; effectivePitch: number | null; endedAtUtc: string | null; floorCount: number; gameplayStartSongPosition: number | null; hasCameraRecording: boolean; hasMicrophoneRecording: boolean; hitContextBytes: number; hitContextCount: number; id: string; inputBytes: number; inputCount: number; judgmentCounts: JudgmentCounts; judgmentDifficulty: "Lenient" | "Normal" | "Strict" | null; judgmentSystem: "Legacy" | "ModernClassic" | "ModernCompetitive"; lastTile: number | null; levelPitchPercent: number | null; levelSessionId: string; microphoneChannels: number | null; microphoneDurationSeconds: number | null; microphoneRecordingBytes: number; microphoneRecordingExpiresAtUtc: string | null; microphoneRecordingPermanent: boolean; microphoneSampleRate: number | null; noFailMode: boolean; replayPlayable: boolean; replayUnavailableReason: string | null; result: string; runIndex: number; startedAtUtc: string; startTile: number; tufLevelId: number | null; xAccuracy: number | null }
+export interface Run { cameraRecordingBytes: number; cameraRecordingExpiresAtUtc: string | null; cameraRecordingPermanent: boolean; effectivePitch: number | null; endedAtUtc: string | null; floorCount: number; gameplayStartSongPosition: number | null; hasCameraRecording: boolean; hasMicrophoneRecording: boolean; hitContextBytes: number; hitContextCount: number; id: string; inputBytes: number; inputCount: number; judgmentCounts: JudgmentCounts; judgmentDifficulty: "Lenient" | "Normal" | "Strict" | null; judgmentSystem: "Legacy" | "ModernClassic" | "ModernCompetitive"; lastTile: number | null; levelPitchPercent: number | null; levelSessionId: string; locked: boolean; microphoneChannels: number | null; microphoneDurationSeconds: number | null; microphoneRecordingBytes: number; microphoneRecordingExpiresAtUtc: string | null; microphoneRecordingPermanent: boolean; microphoneSampleRate: number | null; noFailMode: boolean; replayPlayable: boolean; replayUnavailableReason: string | null; result: string; runIndex: number; startedAtUtc: string; startTile: number; tufLevelId: number | null; xAccuracy: number | null }
+
+export interface RunBatchDeleteResult { deletedRunCount: number; keptInUseRunCount: number; keptLockedRunCount: number }
 
 export interface WebcamCrop { height: number; width: number; x: number; y: number }
 
@@ -71,6 +75,7 @@ export interface ReplayApiMod {
   "changeMicrophoneAccess"(request: { enabled: boolean }): Promise<MicrophoneDevices>;
   "changeMicrophoneOffset"(request: { offsetMs: number }): Promise<MicrophoneTiming>;
   "changeMicrophoneVolume"(request: { volumeDb: number }): Promise<MicrophoneTiming>;
+  "changeRunLock"(request: { locked: boolean; runId: string }): Promise<LockResult>;
   "changeWebcamSettings"(request: { settings: WebcamSettings }): Promise<WebcamState>;
   "chooseLevelFile"(request: { purpose?: "render" | "replay"; runId: string }): Promise<LevelFileResult>;
   "chooseMicrophoneDevice"(request: { deviceId: string | null }): Promise<MicrophoneDevices>;
@@ -101,6 +106,7 @@ export interface ReplayApiMod {
   "refreshMicrophoneDevices"(): Promise<MicrophoneDevices>;
   "refreshWebcamState"(request: { refreshDevices?: boolean }): Promise<WebcamState>;
   "releaseFfmpeg"(): Promise<FfmpegState>;
+  "removeAppSessionRuns"(request: { appSessionIds: Array<string>; keepClears: boolean }): Promise<RunBatchDeleteResult>;
   "removeCameraRecording"(request: { runId: string }): Promise<DeleteResult>;
   "removeMicrophoneRecording"(request: { runId: string }): Promise<DeleteResult>;
   "removeRun"(request: { runId: string }): Promise<DeleteResult>;
@@ -130,7 +136,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "2ef495ce267cba121a98b1fc10306b6445138354034088ec24e341a833352efc",
+  "hash": "3af65acac4dae3674ca2b45f2bd5f05fb8d1e805b0a5ad25130cce06c476af60",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -358,6 +364,8 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
           "nullable": "int32"
         },
         "levelGroupId": "string",
+        "lockedClearRunCount": "int32",
+        "lockedRunCount": "int32",
         "logicalLevelId": "string",
         "noFailRunCount": "int32",
         "openedAtUtc": "string",
@@ -371,6 +379,12 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "tufLevelId": {
           "nullable": "int32"
         }
+      }
+    },
+    "LockResult": {
+      "object": {
+        "locked": "boolean",
+        "runId": "string"
       }
     },
     "LogicalLevel": {
@@ -591,6 +605,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
           "nullable": "int32"
         },
         "levelSessionId": "string",
+        "locked": "boolean",
         "microphoneChannels": {
           "nullable": "int32"
         },
@@ -620,6 +635,13 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "xAccuracy": {
           "nullable": "float64"
         }
+      }
+    },
+    "RunBatchDeleteResult": {
+      "object": {
+        "deletedRunCount": "int32",
+        "keptInUseRunCount": "int32",
+        "keptLockedRunCount": "int32"
       }
     },
     "WebcamCrop": {
@@ -849,6 +871,18 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       },
       "output": {
         "model": "MicrophoneTiming"
+      }
+    },
+    "changeRunLock": {
+      "wireName": "rpc.mod.changerunlock",
+      "input": {
+        "object": {
+          "locked": "boolean",
+          "runId": "string"
+        }
+      },
+      "output": {
+        "model": "LockResult"
       }
     },
     "changeWebcamSettings": {
@@ -1211,6 +1245,20 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       },
       "output": {
         "model": "FfmpegState"
+      }
+    },
+    "removeAppSessionRuns": {
+      "wireName": "rpc.mod.removeappsessionruns",
+      "input": {
+        "object": {
+          "appSessionIds": {
+            "array": "string"
+          },
+          "keepClears": "boolean"
+        }
+      },
+      "output": {
+        "model": "RunBatchDeleteResult"
       }
     },
     "removeCameraRecording": {
