@@ -59,6 +59,7 @@ internal static class ReplayNativeInputSuite
     TestHitContextPlaybackPositionComparison();
     TestReplayNoFailPolicy();
     TestNativeInputUmmWindowInterlock();
+    TestNativeInputPauseRequests();
     TestWindowsNativeModifierNormalization();
     TestWindowsPhysicalStateUsesCurrentDownBit();
     TestMacOsTimestampConversion();
@@ -762,6 +763,50 @@ internal static class ReplayNativeInputSuite
       "UMM reflection fallback remained active after the Harmony patch was available."
     );
     NativeInputUmmWindowInterlock.Reset();
+  }
+
+  private static void TestNativeInputPauseRequests()
+  {
+    NativeInputUmmWindowInterlock.Reset();
+    NativeInputPauseRequests.Reset();
+    Assert(!NativeInputPauseRequests.IsBlockedAt(1_000L), "Native input started paused without a request.");
+
+    Assert(NativeInputPauseRequests.RequestAt("A.Settings", 1_000L), "The first request did not start the pause.");
+    Assert(!NativeInputPauseRequests.RequestAt("A.Settings", 1_100L), "A repeated request started a second pause.");
+    Assert(!NativeInputPauseRequests.RequestAt("B.Editor", 1_200L), "A second owner restarted the held pause.");
+    Assert(NativeInputPauseRequests.IsBlockedAt(1_200L), "A held request did not pause native input.");
+    Assert(
+      NativeInputPauseGate.TryGetBlockReason(out string reason) && reason == "mod_pause_requested_or_stabilizing",
+      "The pause gate did not report the mod request."
+    );
+
+    Assert(!NativeInputPauseRequests.ReleaseAt("A.Settings", 2_000L), "Releasing one of two owners ended the pause.");
+    Assert(NativeInputPauseRequests.IsHeld, "The remaining owner's request was dropped.");
+    Assert(!NativeInputPauseRequests.ReleaseAt("Unknown", 2_000L), "Releasing an unknown owner ended the pause.");
+
+    Assert(NativeInputPauseRequests.ReleaseAt("B.Editor", 3_000L), "The last release did not end the pause.");
+    Assert(!NativeInputPauseRequests.IsHeld, "The pause stayed held after every owner released.");
+    Assert(NativeInputPauseRequests.IsBlockedAt(3_000L), "The last release skipped the stabilization window.");
+    Assert(
+      !NativeInputPauseRequests.IsBlockedAt(3_000L + NativeInputPauseGate.ResumeDelayTicks),
+      "Native input stayed paused after the stabilization window."
+    );
+    Assert(!NativeInputPauseRequests.ReleaseAt("B.Editor", 4_000L), "A repeated release ended the pause twice.");
+
+    NativeInputPauseRequests.RequestAt("A.Settings", 5_000L);
+    NativeInputUmmWindowInterlock.SetWindowOpenAt(true, 5_000L);
+    Assert(
+      NativeInputPauseGate.TryGetBlockReason(out reason) && reason == "umm_window_open_or_stabilizing",
+      "The pause gate did not report the UMM window first."
+    );
+    NativeInputPauseRequests.ReleaseAt("A.Settings", 5_100L);
+    Assert(NativeInputPauseGate.IsHeld, "Releasing a mod request ignored the open UMM window.");
+
+    AssertThrows<ArgumentException>(() => NativeInputPause.Request(null), "A null owner was accepted.");
+    AssertThrows<ArgumentException>(() => NativeInputPause.Release(" "), "A blank owner was accepted.");
+
+    NativeInputUmmWindowInterlock.Reset();
+    NativeInputPauseRequests.Reset();
   }
 
   private static void TestReplaySchedulerChord()
