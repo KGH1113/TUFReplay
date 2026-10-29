@@ -20,6 +20,23 @@ internal static class RunRecordManagementSuite
     TestDayDeleteWithoutKeepingClears(root);
     TestDayDeleteSkipsRunInUse(root);
     TestMicrophoneBatchDelete(root);
+    TestNoFailRunWithoutDeathsIsAClear(root);
+  }
+
+  private static void TestNoFailRunWithoutDeathsIsAClear(string root)
+  {
+    Open(root, "no-fail-clear.sqlite");
+    SaveRun("normal", "level-closed", 0, clear: true);
+    SaveRun("no-fail-clean", "level-closed", 1, clear: true, noFail: true);
+    SaveRun("no-fail-miss", "level-closed", 2, clear: true, noFail: true, misses: 1);
+    SaveRun("no-fail-overload", "level-closed", 3, clear: true, noFail: true, overloads: 1);
+
+    LevelSessionOverview overview = ActivityRepository.GetLevelSessionOverview("level-closed");
+    Assert(
+      overview.ClearRunCount == 2,
+      "A No-Fail run without a Miss or Overload should count as a clear, and one with either should not."
+    );
+    Console.WriteLine("PASS No-Fail runs without deaths count as clears");
   }
 
   private static void TestExistingDatabaseGainsLockColumn(string root)
@@ -182,7 +199,15 @@ VALUES('level-closed','level','app-closed','2026-10-23T00:00:00Z','2026-10-23T04
     command.ExecuteNonQuery();
   }
 
-  private static void SaveRun(string id, string levelSessionId, int index, bool clear)
+  private static void SaveRun(
+    string id,
+    string levelSessionId,
+    int index,
+    bool clear,
+    bool noFail = false,
+    int misses = 0,
+    int overloads = 0
+  )
   {
     RunRepository.Save(
       new RunRecord
@@ -195,7 +220,8 @@ VALUES('level-closed','level','app-closed','2026-10-23T00:00:00Z','2026-10-23T04
         StartTile = 0,
         LastTile = clear ? 100 : 40,
         Result = clear ? "cleared" : "failed",
-        JudgmentCounts = new JudgmentCounts(),
+        NoFailMode = noFail,
+        JudgmentCounts = new JudgmentCounts { Miss = misses, Overload = overloads },
       }
     );
   }

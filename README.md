@@ -79,7 +79,7 @@ A new countdown starts a fresh payload when the previous capture already reached
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
 - Groups revisions of the same `.adofai` path into one level entry, keeping different files in one TUFHelperLite download separate. A day's levels are listed under the selected day in the sidebar, ordered by the last time each level was opened, newest first. The level header shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by a hover card with the level's details.
-- Counts a run as a clear only when it starts at tile zero, reaches the clear terminal state, and does not use No-Fail mode.
+- Counts a run as a clear when it starts at tile zero and reaches the clear terminal state. A No-Fail run counts only when it has no Miss and no Overload, the judgments that would have ended a normal run.
 - Lists days in a calendar-style sidebar grouped under sticky month headers. Each day shows its weekday and date, with run, level, and clear counts; today's date and nonzero clears are highlighted, and a lock count appears on days that hold locked runs. Below the large breakpoint the sidebar becomes a drawer.
 
 ## Runtime
