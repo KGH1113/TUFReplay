@@ -8,9 +8,7 @@ namespace TUFReplay.Shared.NativeInput;
 
 internal static class NativeInputUmmWindowInterlock
 {
-  private const double ResumeDelaySeconds = 0.2d;
   private const double FallbackPollIntervalSeconds = 1d;
-  private static readonly long ResumeDelayTicks = Math.Max(1L, (long)(Stopwatch.Frequency * ResumeDelaySeconds));
   internal static readonly long FallbackPollIntervalTicks = Math.Max(
     1L,
     (long)(Stopwatch.Frequency * FallbackPollIntervalSeconds)
@@ -25,6 +23,8 @@ internal static class NativeInputUmmWindowInterlock
   {
     get => IsBlockedAt(Stopwatch.GetTimestamp());
   }
+
+  public static bool IsWindowOpen => Volatile.Read(ref _windowOpen) != 0;
 
   public static void NotifyWindowOpen(bool open)
   {
@@ -104,7 +104,7 @@ internal static class NativeInputUmmWindowInterlock
       return;
     }
 
-    Interlocked.Exchange(ref _resumeAllowedAt, timestamp + ResumeDelayTicks);
+    Interlocked.Exchange(ref _resumeAllowedAt, timestamp + NativeInputPauseGate.ResumeDelayTicks);
     Volatile.Write(ref _windowOpen, 0);
   }
 
