@@ -129,4 +129,42 @@ describe("activity mock", () => {
       microphoneDurationSeconds: null,
     });
   });
+
+  test("locked runs survive single and day deletes and keep their recordings", async () => {
+    const api = createMockApi();
+    const sessions = await api.activity.listAllAppSessions();
+    const app = sessions.find((item) => item.endedAtUtc !== null);
+    const level = app?.levelSessions[0];
+    if (!app || !level) throw new Error("mock closed session is missing");
+    const list = () => api.activity.listLogicalLevelRuns(level.logicalLevelId, [app.id]);
+    const [locked, clear] = [
+      (await list()).find((item) => !isClear(item)),
+      (await list()).find(isClear),
+    ];
+    if (!locked || !clear) throw new Error("mock runs are missing");
+
+    await api.run.setRunLocked(locked.id, true);
+    expect((await list()).find((item) => item.id === locked.id)).toMatchObject({ locked: true });
+    await expect(api.run.deleteRun(locked.id)).rejects.toMatchObject({ code: "run_locked" });
+
+    const result = await api.run.deleteAppSessionRuns([app.id], true);
+    expect(result.keptLockedRunCount).toBe(
+      app.levelSessions.reduce((sum, visit) => sum + visit.clearRunCount, 0) + 1,
+    );
+    const remaining = await list();
+    expect(remaining.map((item) => item.id).sort()).toEqual([clear.id, locked.id].sort());
+    expect(remaining.every((item) => item.locked)).toBe(true);
+
+    for (const visit of app.levelSessions)
+      for (const item of await api.activity.listLogicalLevelRuns(visit.logicalLevelId, [app.id]))
+        await api.run.setRunLocked(item.id, false);
+    await api.run.deleteAppSessionRuns([app.id], false);
+    const after = await api.activity.listAllAppSessions();
+    expect(after.some((item) => item.id === app.id)).toBe(false);
+  });
 });
+
+function isClear(run: { result: string; startTile: number; noFailMode: boolean }) {
+  const result = run.result.toLowerCase();
+  return (result === "cleared" || result === "completed") && run.startTile === 0 && !run.noFailMode;
+}

@@ -4,6 +4,33 @@ export function formatDayLabel(date: string, locale: string) {
   return parsed.toLocaleDateString(locale, { month: "short", day: "numeric" });
 }
 
+/** Calendar-stamp parts for a `YYYY-MM-DD` day key. */
+export function dayStampParts(date: string, locale: string) {
+  const parsed = parseDate(date);
+  if (!parsed)
+    return {
+      weekday: "",
+      day: date,
+      monthKey: date,
+      monthLabel: date,
+      fullLabel: date,
+      shortLabel: date,
+    };
+  return {
+    weekday: parsed.toLocaleDateString(locale, { weekday: "short" }),
+    day: String(parsed.getDate()),
+    monthKey: date.slice(0, 7),
+    monthLabel: formatMonthLabel(parsed, locale),
+    fullLabel: parsed.toLocaleDateString(locale, {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+    }),
+    shortLabel: formatDayLabel(date, locale),
+  };
+}
+
 export function parseDate(date: string) {
   const parsed = new Date(`${date}T00:00:00`);
   if (Number.isNaN(parsed.getTime())) return null;

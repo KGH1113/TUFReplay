@@ -5,6 +5,8 @@ import {
   isClearRun,
 } from "@/models/activity/activity-data";
 import type { ActivityRun, AppSession, LevelSession } from "@/models/activity/activity-model";
+import { dayDeleteBlocker, summarizeDayDeletion } from "@/models/activity/day-deletion";
+import { adjustLockedRunCounts } from "@/state/activity/activity-queries";
 
 const session = (id: string, started: string): AppSession => ({
   id: id,
@@ -23,6 +25,8 @@ const visit = (
   levelGroupId = "group-7",
   clearRunCount = 0,
   noFailRunCount = 0,
+  lockedRunCount = 0,
+  lockedClearRunCount = 0,
 ): LevelSession => ({
   id: id,
   logicalLevelId: logicalLevelId,
@@ -42,6 +46,8 @@ const visit = (
   firstStartTile: 0,
   lastStartTile: 0,
   chartAvailable: true,
+  lockedRunCount: lockedRunCount,
+  lockedClearRunCount: lockedClearRunCount,
 });
 const run = (id: string, start: number, last: number, result = "failed"): ActivityRun => ({
   id: id,
@@ -92,6 +98,7 @@ const run = (id: string, start: number, last: number, result = "failed"): Activi
   cameraRecordingExpiresAtUtc: null,
   replayPlayable: true,
   replayUnavailableReason: null,
+  locked: false,
 });
 
 describe("activity data", () => {
@@ -288,5 +295,105 @@ describe("activity data", () => {
       ["2026-01-01", 2],
     ]);
     expect(days.map((day) => day.levelSessions[0].hiddenRunCount)).toEqual([0, 0]);
+  });
+
+  test("counts locked runs across every visit of the day, including hidden revisions", () => {
+    const before = session("app-before", "2026-01-01T01:00:00Z");
+    const after = session("app-after", "2026-01-01T02:00:00Z");
+    before.levelSessions = [
+      visit(
+        "visit-before",
+        "revision-before",
+        before.id,
+        before.startedAtUtc,
+        3,
+        "group-7",
+        1,
+        0,
+        1,
+      ),
+    ];
+    after.levelSessions = [
+      visit(
+        "visit-after",
+        "revision-after",
+        after.id,
+        after.startedAtUtc,
+        5,
+        "group-7",
+        2,
+        0,
+        2,
+        1,
+      ),
+    ];
+
+    const [day] = groupSessionsByDay([before, after], "UTC");
+    expect(day.lockedRunCount).toBe(3);
+  });
+});
+
+describe("day deletion", () => {
+  const dayWith = (...visits: LevelSession[]) => {
+    const app = session("app", "2026-01-01T01:00:00Z");
+    app.levelSessions = visits;
+    return groupSessionsByDay([app], "UTC")[0];
+  };
+
+  test("deletes every unlocked run and keeps clears only when asked", () => {
+    const day = dayWith(
+      visit("a", "level-a", "app", "2026-01-01T01:00:00Z", 10, "group-a", 3, 0, 2, 1),
+      visit("b", "level-b", "app", "2026-01-01T01:10:00Z", 4, "group-b", 1),
+    );
+
+    expect(summarizeDayDeletion(day, true)).toMatchObject({
+      totalRunCount: 14,
+      lockedRunCount: 2,
+      unlockedClearRunCount: 3,
+      keepRunCount: 5,
+      deleteRunCount: 9,
+    });
+    expect(summarizeDayDeletion(day, false)).toMatchObject({ keepRunCount: 2, deleteRunCount: 12 });
+  });
+
+  test("counts runs from older revisions that the level list hides", () => {
+    const app = session("app", "2026-01-01T01:00:00Z");
+    app.levelSessions = [
+      visit("old", "revision-old", "app", "2026-01-01T01:00:00Z", 3),
+      visit("new", "revision-new", "app", "2026-01-01T02:00:00Z", 5),
+    ];
+    const [day] = groupSessionsByDay([app], "UTC");
+
+    expect(summarizeDayDeletion(day, false)).toMatchObject({
+      totalRunCount: 8,
+      hiddenRunCount: 3,
+      deleteRunCount: 8,
+    });
+  });
+
+  test("explains why a day cannot be deleted", () => {
+    expect(
+      dayDeleteBlocker(dayWith(visit("a", "l", "app", "2026-01-01T01:00:00Z", 2, "g", 0, 0, 2))),
+    ).toBe("all_locked");
+    expect(dayDeleteBlocker(dayWith(visit("a", "l", "app", "2026-01-01T01:00:00Z", 0)))).toBe(
+      "empty",
+    );
+    expect(
+      dayDeleteBlocker(dayWith(visit("a", "l", "app", "2026-01-01T01:00:00Z", 2, "g", 0, 0, 1))),
+    ).toBe(null);
+  });
+
+  test("patches the cached lock counts of one level session", () => {
+    const app = session("app", "2026-01-01T01:00:00Z");
+    app.levelSessions = [
+      visit("a", "level-a", "app", "2026-01-01T01:00:00Z", 4, "group-a", 2, 0, 1, 0),
+      visit("b", "level-b", "app", "2026-01-01T01:10:00Z", 4),
+    ];
+
+    const [locked] = adjustLockedRunCounts([app], "a", 1, 1);
+    expect(locked.levelSessions[0]).toMatchObject({ lockedRunCount: 2, lockedClearRunCount: 1 });
+    expect(locked.levelSessions[1]).toBe(app.levelSessions[1]);
+    const [unlocked] = adjustLockedRunCounts([app], "b", -1, 0);
+    expect(unlocked.levelSessions[1]).toMatchObject({ lockedRunCount: 0 });
   });
 });

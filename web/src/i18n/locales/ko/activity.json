@@ -140,7 +140,10 @@
     "chart_permission_denied": "레벨 파일을 읽을 권한이 없어요. 파일 권한을 확인한 뒤 다시 시도해 주세요.",
     "activity_busy": "플레이 기록을 정리하는 중이에요. 잠시 후 다시 시도해 주세요.",
     "run_in_use": "이 리플레이가 재생 중이라 삭제할 수 없어요. 재생을 종료한 뒤 다시 시도해 주세요.",
-    "run_delete_failed": "플레이를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
+    "run_delete_failed": "플레이를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "run_locked": "잠긴 플레이예요. 잠금을 해제하면 삭제할 수 있어요.",
+    "run_lock_failed": "잠금을 바꾸지 못했어요. 잠시 후 다시 시도해 주세요.",
+    "day_delete_failed": "플레이를 삭제하지 못했어요. 잠시 후 다시 시도해 주세요."
   },
   "time": {
     "open": "진행 중",
@@ -229,5 +232,58 @@
     "Late": "느림",
     "TooLate": "매우느림",
     "Miss": "놓침"
+  },
+  "dayRail": {
+    "openActions": "{{date}} 작업",
+    "today": "오늘",
+    "locked_one": "잠긴 플레이 {{count}}개",
+    "locked_other": "잠긴 플레이 {{count}}개"
+  },
+  "dayDelete": {
+    "action": "이 날짜 삭제…",
+    "blocked": {
+      "all_locked": "이 날짜의 플레이가 모두 잠겨 있어요",
+      "empty": "삭제할 플레이가 없어요"
+    },
+    "title_one": "{{date}}의 플레이 {{count}}개를 삭제할까요?",
+    "title_other": "{{date}}의 플레이 {{count}}개를 삭제할까요?",
+    "deletes_one": "<strong>플레이 {{count}}개</strong>와 리플레이, 마이크 녹음, 카메라 영상이 삭제돼요.",
+    "deletes_other": "<strong>플레이 {{count}}개</strong>와 리플레이, 마이크 녹음, 카메라 영상이 삭제돼요.",
+    "keeps_one": "<strong>잠긴 플레이 {{count}}개</strong>는 남고, 날짜도 함께 남아요.",
+    "keeps_other": "<strong>잠긴 플레이 {{count}}개</strong>는 남고, 날짜도 함께 남아요.",
+    "hidden_one": "레벨 목록에 보이지 않는 이전 버전 레벨의 플레이 {{count}}개도 포함돼요.",
+    "hidden_other": "레벨 목록에 보이지 않는 이전 버전 레벨의 플레이 {{count}}개도 포함돼요.",
+    "keepClears_one": "클리어 {{count}}개 남기기",
+    "keepClears_other": "클리어 {{count}}개 남기기",
+    "keepClearsOn": "클리어를 잠가서 이후 삭제에서도 지켜요.",
+    "keepClearsOff_one": "클리어 {{count}}개도 함께 삭제돼요.",
+    "keepClearsOff_other": "클리어 {{count}}개도 함께 삭제돼요.",
+    "irreversible": "삭제하면 되돌릴 수 없어요.",
+    "slow": "삭제하는 중이에요. 플레이 중이라면 그 시도가 끝난 뒤에 마무리돼요.",
+    "confirm_one": "플레이 {{count}}개 삭제",
+    "confirm_other": "플레이 {{count}}개 삭제",
+    "deleting_one": "플레이 {{count}}개 삭제 중…",
+    "deleting_other": "플레이 {{count}}개 삭제 중…",
+    "nothing": "삭제할 플레이 없음",
+    "done_one": "플레이 {{count}}개를 삭제했어요",
+    "done_other": "플레이 {{count}}개를 삭제했어요",
+    "doneKept_one": "{{date}} · 잠긴 플레이 {{count}}개는 남겼어요",
+    "doneKept_other": "{{date}} · 잠긴 플레이 {{count}}개는 남겼어요",
+    "doneEmpty": "{{date}}에 남은 플레이가 없어요",
+    "doneInUse": "리플레이로 재생 중인 플레이는 남겼어요.",
+    "failed": "플레이를 삭제하지 못했어요. 얼불춤이 실행 중인지 확인한 뒤 다시 시도해 주세요.",
+    "timeout": "얼불춤이 아직 삭제를 마치지 못했어요. 플레이 중이라면 그 시도가 끝난 뒤 삭제되고, 목록은 자동으로 새로고침돼요."
+  },
+  "lock": {
+    "lock": "플레이 잠그기",
+    "unlock": "잠금 해제",
+    "lockHint": "플레이와 녹음·영상을 지켜요",
+    "toggleLock": "플레이 {{runIndex}} 잠그기",
+    "toggleUnlock": "플레이 {{runIndex}} 잠금 해제",
+    "lockedTooltip": "잠긴 플레이예요. 삭제되지 않고 녹음·영상도 영구 보관돼요.",
+    "unlockedTooltip": "잠그면 플레이와 녹음·영상을 지켜요",
+    "deleteBlocked": "잠금을 해제하면 삭제할 수 있어요",
+    "recordingDeleteBlocked": "잠긴 플레이예요. 잠금을 해제하면 녹음과 영상을 삭제할 수 있어요.",
+    "failed": "잠금을 바꾸지 못했어요. 얼불춤이 실행 중인지 확인한 뒤 다시 시도해 주세요."
   }
 }

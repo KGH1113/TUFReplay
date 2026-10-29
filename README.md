@@ -79,6 +79,7 @@ A new countdown starts a fresh payload when the previous capture already reached
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
 - Groups revisions of the same `.adofai` path into one web activity card, keeping different files in one TUFHelperLite download separate. Cards for a day are ordered by the last time each level was opened, newest first. The card shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by warning tooltips.
 - Counts a run as a clear only when it starts at tile zero, reaches the clear terminal state, and does not use No-Fail mode.
+- Lists days in a calendar-style rail grouped under sticky month headers. Each day shows its weekday and date, with run, level, and clear counts; today's date and nonzero clears are highlighted, and a lock count appears on days that hold locked runs.
 
 ## Runtime
 

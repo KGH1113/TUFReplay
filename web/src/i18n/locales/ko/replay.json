@@ -53,7 +53,7 @@
     "submit": "플레이 제출",
     "delete": "플레이 삭제",
     "deleteTitle": "플레이를 삭제할까요?",
-    "deleteDescription": "플레이 #{{runIndex}}, 리플레이 데이터 및 마이크 녹음을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
+    "deleteDescription": "플레이 #{{runIndex}}, 리플레이 데이터, 마이크 녹음과 카메라 영상을 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
     "deleteFailed": "플레이를 삭제하지 못했습니다",
     "deleting": "삭제 중…"
   },

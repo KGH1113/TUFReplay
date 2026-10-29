@@ -2,11 +2,14 @@ import {
   Delete02Icon,
   FolderLibraryIcon,
   MoreVerticalIcon,
+  SquareLock02Icon,
+  SquareUnlock02Icon,
   Upload04Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { RunRecordingsDialog } from "@/components/activity/run-recordings-dialog";
 import type { ActivityRun } from "@/models/activity/activity-model";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
@@ -34,6 +37,7 @@ export function RunActionsMenu({
   onDownloadCameraRecording,
   onDeleteCameraRecording,
   onDeleteRun,
+  onSetRunLocked,
 }: {
   run: ActivityRun;
   disabled: boolean;
@@ -47,6 +51,7 @@ export function RunActionsMenu({
   onDownloadCameraRecording: RunRecordingAction;
   onDeleteCameraRecording: RunRecordingAction;
   onDeleteRun: RunRecordingAction;
+  onSetRunLocked: (run: ActivityRun, locked: boolean) => Promise<void>;
 }) {
   const { t } = useTranslation("replay");
   const { t: activityT } = useTranslation("activity");
@@ -60,8 +65,16 @@ export function RunActionsMenu({
   const trigger = useRef<HTMLButtonElement>(null);
   const openingDialog = useRef(false);
 
+  const deleteBlockedByLock = run.locked;
+  const setLocked = async (locked: boolean) => {
+    try {
+      await onSetRunLocked(run, locked);
+    } catch (cause) {
+      toast.error(localizedErrorMessage(cause, activityT("lock.failed")));
+    }
+  };
   const deleteRun = async () => {
-    if (disabled || runDeleteDisabled || deleting) return;
+    if (disabled || runDeleteDisabled || deleteBlockedByLock || deleting) return;
     setDeleting(true);
     setError("");
     try {
@@ -132,8 +145,25 @@ export function RunActionsMenu({
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
-            className="text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
-            disabled={disabled || runDeleteDisabled || deleting}
+            className="items-start"
+            disabled={disabled}
+            onSelect={() => void setLocked(!run.locked)}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={run.locked ? SquareUnlock02Icon : SquareLock02Icon}
+              className="mt-0.5 size-4"
+            />
+            <span className="grid gap-0.5">
+              <span>{activityT(run.locked ? "lock.unlock" : "lock.lock")}</span>
+              {run.locked ? null : (
+                <span className="text-xs text-muted-foreground">{activityT("lock.lockHint")}</span>
+              )}
+            </span>
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="items-start text-destructive data-highlighted:bg-destructive/10 data-highlighted:text-destructive"
+            disabled={disabled || runDeleteDisabled || deleteBlockedByLock || deleting}
             onSelect={() => {
               openingDialog.current = true;
               setMenuOpen(false);
@@ -141,8 +171,15 @@ export function RunActionsMenu({
               setRunDialogOpen(true);
             }}
           >
-            <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="size-4" />
-            {t("run.delete")}
+            <HugeiconsIcon aria-hidden="true" icon={Delete02Icon} className="mt-0.5 size-4" />
+            <span className="grid gap-0.5">
+              <span>{t("run.delete")}</span>
+              {deleteBlockedByLock ? (
+                <span className="text-xs text-muted-foreground">
+                  {activityT("lock.deleteBlocked")}
+                </span>
+              ) : null}
+            </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -150,7 +187,7 @@ export function RunActionsMenu({
         run={run}
         open={recordingsOpen}
         disabled={disabled}
-        deletionDisabled={runDeleteDisabled}
+        deletionDisabled={runDeleteDisabled || run.locked}
         onOpenChange={setRecordingsOpen}
         restoreFocus={() => trigger.current?.focus()}
         actions={{

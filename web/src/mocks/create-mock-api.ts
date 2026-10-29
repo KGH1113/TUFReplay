@@ -127,6 +127,20 @@ export function createMockApi(): AppApi {
         const result = await fixture.keepMicrophoneRecording(runId);
         return { runId: result.RunId, changed: result.Permanent };
       },
+      async setRunLocked(runId, locked) {
+        const result = await fixture.changeRunLock(runId, locked);
+        source.emit("activity.changed", { revision: ++activityRevision, runId });
+        return { runId: result.RunId, locked: result.Locked };
+      },
+      async deleteAppSessionRuns(appSessionIds, keepClears) {
+        const result = await fixture.deleteAppSessionRuns(appSessionIds, keepClears);
+        source.emit("activity.changed", { revision: ++activityRevision, runId: null });
+        return {
+          deletedRunCount: result.DeletedRunCount,
+          keptLockedRunCount: result.KeptLockedRunCount,
+          keptInUseRunCount: result.KeptInUseRunCount,
+        };
+      },
     },
     replay: createReplayApiMock((status) => source.emit("replay.changed", status)),
     webcam: createWebcamApiMock((state) => {

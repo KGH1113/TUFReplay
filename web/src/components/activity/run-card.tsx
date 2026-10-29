@@ -13,6 +13,7 @@ import { useTranslation } from "react-i18next";
 import { RunActionsMenu } from "@/components/activity/run-actions-menu";
 import { RunDifficultyIcon } from "@/components/activity/run-difficulty-icon";
 import { RunJudgmentStrip } from "@/components/activity/run-judgment-strip";
+import { RunLockButton } from "@/components/activity/run-lock-button";
 import { RunNoFailIcon } from "@/components/activity/run-no-fail-icon";
 import { formatTimeWithOffsetParts } from "@/models/activity/activity-date";
 import type { ActivityRun } from "@/models/activity/activity-model";
@@ -36,6 +37,7 @@ export const RunCard = memo(function RunCard({
   onPlayReplay,
   onRender,
   onDeleteRun,
+  onSetRunLocked,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
   onDeleteMicrophoneRecording,
@@ -55,6 +57,7 @@ export const RunCard = memo(function RunCard({
   onPlayReplay: (run: ActivityRun) => void;
   onRender?: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
+  onSetRunLocked: (run: ActivityRun, locked: boolean) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -98,6 +101,7 @@ export const RunCard = memo(function RunCard({
           <RunNoFailIcon enabled={run.noFailMode} />
           {run.hasMicrophoneRecording ? <MicrophoneRecordingIndicator /> : null}
           {run.hasCameraRecording ? <CameraRecordingIndicator /> : null}
+          <RunLockButton run={run} disabled={readOnly} onSetLocked={onSetRunLocked} />
         </div>
         <RunActionsMenu
           run={run}
@@ -116,6 +120,7 @@ export const RunCard = memo(function RunCard({
           onDownloadCameraRecording={onDownloadCameraRecording}
           onDeleteCameraRecording={onDeleteCameraRecording}
           onDeleteRun={onDeleteRun}
+          onSetRunLocked={onSetRunLocked}
         />
       </div>
 
