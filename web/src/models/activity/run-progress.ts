@@ -22,18 +22,26 @@ export function runEndPercent(run: ProgressRun) {
 }
 
 /**
- * A clear counts only from tile zero without No-Fail; reaching the end any other way is
- * "finished" so players can tell practice from a submittable clear.
+ * A clear is a full run from tile zero. A No-Fail run counts too when nothing in it would have
+ * ended a normal run (no Miss, no Overload). Reaching the end any other way is "finished", so
+ * players can tell practice from a submittable clear.
  */
 export function runOutcome(
-  run: Pick<ActivityRun, "result" | "startTile" | "noFailMode">,
+  run: Pick<ActivityRun, "result" | "startTile" | "noFailMode" | "judgmentCounts">,
 ): RunOutcome {
   const result = run.result.toLowerCase();
   if (result === "cleared" || result === "completed")
-    return run.startTile === 0 && !run.noFailMode ? "clear" : "finished";
+    return run.startTile === 0 && survivedWithoutNoFail(run) ? "clear" : "finished";
   if (result === "failed") return "failed";
   if (result === "aborted") return "quit";
   return "unknown";
+}
+
+/** Misses and overloads end a normal run; without counts a No-Fail run can't be trusted. */
+function survivedWithoutNoFail(run: Pick<ActivityRun, "noFailMode" | "judgmentCounts">) {
+  if (!run.noFailMode) return true;
+  const counts = run.judgmentCounts;
+  return Boolean(counts) && (counts?.Miss ?? 0) === 0 && (counts?.Overload ?? 0) === 0;
 }
 
 export function runDurationMs(run: Pick<ActivityRun, "startedAtUtc" | "endedAtUtc">) {

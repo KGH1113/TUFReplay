@@ -93,9 +93,14 @@ interface ActivityWireFixture {
   closeMicrophoneCalibration(operationId: string): Promise<MicrophoneCalibrationStatus>;
 }
 
+// Mirrors the recorder: No-Fail runs count when they had no Miss or Overload.
 function isClearRun(run: ActivityRun) {
   const result = run.Result.toLowerCase();
-  return (result === "cleared" || result === "completed") && run.StartTile === 0 && !run.NoFailMode;
+  return (
+    (result === "cleared" || result === "completed") &&
+    run.StartTile === 0 &&
+    (!run.NoFailMode || (run.JudgmentCounts.Miss === 0 && run.JudgmentCounts.Overload === 0))
+  );
 }
 
 const levels = [

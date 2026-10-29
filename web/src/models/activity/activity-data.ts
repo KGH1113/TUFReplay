@@ -6,6 +6,7 @@ import type {
   LevelSession,
   RunMarker,
 } from "@/models/activity/activity-model";
+import { runOutcome } from "@/models/activity/run-progress";
 
 const dateKeyFormatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -101,9 +102,9 @@ export function runsForMarker(runs: ActivityRun[], marker: RunMarker | null) {
   return marker ? runs.filter((run) => run.startTile === marker.floorIndex) : [];
 }
 
+/** Same rule as the recorder's clear counts; see `runOutcome`. */
 export function isClearRun(run: ActivityRun) {
-  const result = run.result.toLowerCase();
-  return (result === "cleared" || result === "completed") && run.startTile === 0 && !run.noFailMode;
+  return runOutcome(run) === "clear";
 }
 
 function buildLatestRevisionByGroup(sessions: AppSession[]) {

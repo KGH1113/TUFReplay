@@ -9,9 +9,11 @@ namespace TUFReplay.Activity.Repositories;
 
 public static class ActivityRepository
 {
-  // A clear is a full run from the first tile without no-fail. Shared by counts and run locks.
+  // A clear is a full run from the first tile. A No-Fail run counts when nothing in it would have
+  // ended a normal run: no Miss and no Overload. Shared by counts and run locks.
   internal const string ClearRunCondition =
-    "lower(r.result) IN ('cleared','completed') AND r.start_tile=0 AND r.no_fail_mode=0";
+    "lower(r.result) IN ('cleared','completed') AND r.start_tile=0 "
+    + "AND (r.no_fail_mode=0 OR (r.judgment_miss=0 AND r.judgment_overload=0))";
 
   private const string Select =
     @"SELECT l.id,l.level_id,l.app_session_id,g.tuf_level_id,l.opened_at_utc,l.closed_at_utc,g.level_tile_count,

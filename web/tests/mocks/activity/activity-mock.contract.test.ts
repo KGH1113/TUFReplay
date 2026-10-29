@@ -164,7 +164,16 @@ describe("activity mock", () => {
   });
 });
 
-function isClear(run: { result: string; startTile: number; noFailMode: boolean }) {
+function isClear(run: {
+  result: string;
+  startTile: number;
+  noFailMode: boolean;
+  judgmentCounts: { Miss: number; Overload: number };
+}) {
   const result = run.result.toLowerCase();
-  return (result === "cleared" || result === "completed") && run.startTile === 0 && !run.noFailMode;
+  return (
+    (result === "cleared" || result === "completed") &&
+    run.startTile === 0 &&
+    (!run.noFailMode || (run.judgmentCounts.Miss === 0 && run.judgmentCounts.Overload === 0))
+  );
 }

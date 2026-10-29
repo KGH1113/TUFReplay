@@ -124,20 +124,36 @@ describe("activity data", () => {
     ]);
   });
 
-  test("counts a clear only for a full normal-mode run from tile zero", () => {
+  test("counts a full run from tile zero, including No-Fail runs without a death", () => {
     const qualified = run("qualified", 0, 100, "cleared");
     const checkpoint = run("checkpoint", 40, 100, "cleared");
     const noFail = { ...run("no-fail", 0, 100, "completed"), noFailMode: true };
     const roundedOnly = run("rounded", 0, 99, "failed");
+    const noFailMiss = run("no-fail-miss", 0, 100, "completed");
+    const noFailOverload = run("no-fail-overload", 0, 100, "completed");
 
     expect([qualified, checkpoint, noFail, roundedOnly].map(isClearRun)).toEqual([
       true,
       false,
-      false,
+      true,
       false,
     ]);
+    expect(
+      isClearRun({
+        ...noFailMiss,
+        noFailMode: true,
+        judgmentCounts: { ...noFailMiss.judgmentCounts, Miss: 1 },
+      }),
+    ).toBe(false);
+    expect(
+      isClearRun({
+        ...noFailOverload,
+        noFailMode: true,
+        judgmentCounts: { ...noFailOverload.judgmentCounts, Overload: 1 },
+      }),
+    ).toBe(false);
     expect(aggregateRunMarkers([qualified, checkpoint, noFail, roundedOnly])).toEqual([
-      { id: "floor-0", floorIndex: 0, count: 3, clearCount: 1, bestLastFloorIndex: 100 },
+      { id: "floor-0", floorIndex: 0, count: 3, clearCount: 2, bestLastFloorIndex: 100 },
       { id: "floor-40", floorIndex: 40, count: 1, clearCount: 0, bestLastFloorIndex: 100 },
     ]);
   });
