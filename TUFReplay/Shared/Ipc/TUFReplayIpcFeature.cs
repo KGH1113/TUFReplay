@@ -53,6 +53,13 @@ public sealed class TUFReplayIpcFeature
         "http://guhyeons-macbook-pro.tail234c02.ts.net",
         "http://localhost",
         "http://127.0.0.1",
+        // The IPC loader matches origins exactly, port included: Vite dev (5173/5174) and preview (4173).
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
       }
     );
     try

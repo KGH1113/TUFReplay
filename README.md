@@ -251,6 +251,8 @@ Run the companion web UI:
 VITE_WEB_ADOFAI_EMBED_URL=http://127.0.0.1:5173/embed/chart ./scripts/run.sh web-dev
 ```
 
+The mod accepts the companion only from listed origins, matched exactly including the port. Besides the deployed sites, it allows `localhost` and `127.0.0.1` on Vite's dev ports (5173, 5174) and preview port (4173); serve the web UI on another port and the game rejects it with `origin_not_allowed`.
+
 The web UI bundles English and Korean translation resources under `web/src/i18n/locales`. The language menu stores the explicit selection in `localStorage`; without a saved selection, Korean browser locales use Korean and all other locales use English.
 
 The companion keeps discovering the game when opened before ADOFAI starts and reconnects after a game restart. WebSocket connectivity and TUFReplay readiness are separate: activity reads recover on recorder readiness, including after a previous readiness timeout, while retained records stay read-only during disconnection. The SDK validates idle connections with ping/pong and releases the old page's socket on navigation; focus, visibility return, network return and restored pages check the retained session. Reconnection never replays user actions. Browser storage and unrelated site caches are preserved.
