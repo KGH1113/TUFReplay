@@ -474,7 +474,7 @@ public static partial class ReplaySessionService
     return true;
   }
 
-  internal static void SuspendNativeInputForUmmWindow()
+  internal static void SuspendNativeInputPlayback()
   {
     ReplayNativeInputPlayer player = _activeContext?.NativeInputPlayer;
     if (player == null)
@@ -491,7 +491,7 @@ public static partial class ReplaySessionService
     ReplayPlaybackCoordinator.OnReplayTimeAdvanced(nowUs);
   }
 
-  internal static void ResumeNativeInputAfterUmmWindow()
+  internal static void ResumeNativeInputPlayback()
   {
     if (_activeContext?.NativeInputPlayer == null || ADOBase.controller == null || ADOBase.controller.paused)
       return;
@@ -523,11 +523,11 @@ public static partial class ReplaySessionService
       return;
     if (!focused)
     {
-      SuspendNativeInputForUmmWindow();
+      SuspendNativeInputPlayback();
       return;
     }
     if (ADOBase.controller != null && !ADOBase.controller.paused)
-      ResumeNativeInputAfterUmmWindow();
+      ResumeNativeInputPlayback();
   }
 
   private static bool EnsurePlayerControlRunStarted()

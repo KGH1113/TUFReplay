@@ -47,9 +47,8 @@ internal abstract class StableNativeInputFocusGuard : INativeInputFocusGuard
 
   public bool IsForegroundTarget(out string reason)
   {
-    if (NativeInputUmmWindowInterlock.IsBlocked)
+    if (NativeInputPauseGate.TryGetBlockReason(out reason))
     {
-      reason = "umm_window_open_or_stabilizing";
       InvalidateStability();
       return false;
     }
