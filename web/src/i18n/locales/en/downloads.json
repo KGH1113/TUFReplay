@@ -53,5 +53,12 @@
     "renderer_release_invalid": "The published Renderer package or verification file is incomplete. Try again after the release is corrected.",
     "renderer_checksum_mismatch": "The Renderer download did not match the published file. Try downloading it again.",
     "renderer_directory_exists": "A Renderer folder already exists. Restart the game and check the installed mod. Move an incomplete installation aside before trying again."
+  },
+  "summary": {
+    "downloading": "Downloading…",
+    "downloadingPercent": "Downloading · {{percent}}%",
+    "approval": "Approval needed",
+    "failed": "Install failed",
+    "restart": "Restart ADOFAI to finish"
   }
 }

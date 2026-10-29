@@ -24,7 +24,8 @@
     "ready": "카메라가 켜져 있어요",
     "recording": "카메라 영상을 녹화하고 있어요",
     "saving": "카메라 영상을 저장하고 있어요…",
-    "error": "카메라 설정을 확인해 주세요"
+    "error": "카메라 설정을 확인해 주세요",
+    "warming": "카메라 준비 중…"
   },
   "qualityLabel": "녹화 화질",
   "quality": {
@@ -101,5 +102,6 @@
   "liveVisibleDescription": "직접 플레이할 때 실시간 카메라 화면을 게임에 표시해요.",
   "playbackVisibleDescription": "리플레이를 재생할 때 해당 플레이의 카메라 영상을 함께 표시해요.",
   "offsetDescription": "양수는 영상을 더 일찍, 음수는 더 늦게 표시해요.",
-  "settingInfo": "{{setting}} 도움말"
+  "settingInfo": "{{setting}} 도움말",
+  "recordingSwitch": "카메라 녹화"
 }

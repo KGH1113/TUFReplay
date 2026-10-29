@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "3af65acac4dae3674ca2b45f2bd5f05fb8d1e805b0a5ad25130cce06c476af60",
+    "hash": "e968328bd044754fe7c09283d90683c6f96b433f5707c67ad4937cb41a23313f",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -508,6 +508,29 @@ export const ReplayApiContract = defineContract({
                 "deletedRunCount": "int32",
                 "keptInUseRunCount": "int32",
                 "keptLockedRunCount": "int32"
+            }
+        },
+        "RunJudgmentTimeline": {
+            "object": {
+                "durationMs": "int32",
+                "kinds": {
+                    "array": {
+                        "enum": [
+                            "Early",
+                            "EarlyPerfect",
+                            "Late",
+                            "LatePerfect",
+                            "Miss",
+                            "Overload",
+                            "TooEarly",
+                            "TooLate"
+                        ]
+                    }
+                },
+                "runId": "string",
+                "timesMs": {
+                    "array": "int32"
+                }
             }
         },
         "WebcamCrop": {
@@ -1065,6 +1088,21 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "ReplayState"
+            }
+        },
+        "readRunJudgmentTimelines": {
+            "wireName": "rpc.mod.readrunjudgmenttimelines",
+            "input": {
+                "object": {
+                    "runIds": {
+                        "array": "string"
+                    }
+                }
+            },
+            "output": {
+                "array": {
+                    "model": "RunJudgmentTimeline"
+                }
             }
         },
         "readWebcamPreview": {

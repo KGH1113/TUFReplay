@@ -1,29 +1,60 @@
+import { ArrowDown01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { DayDeleteDialog, type DayDeleteOutcome } from "@/components/activity/day-delete-dialog";
-import { DayRailRow } from "@/components/activity/day-rail-row";
+import { DayListRow } from "@/components/activity/day-list-row";
+import { useScrollEdges } from "@/hooks/shared/use-scroll-edges";
 import { dayStampParts } from "@/models/activity/activity-date";
-import type { ActivityDay } from "@/models/activity/activity-model";
+import type { ActivityDay, LevelCard, LevelMetadata } from "@/models/activity/activity-model";
+import { cn } from "@/shared/lib/cn";
 
-export function DayRail({
+/** Days grouped by month; the selected day lists its levels underneath. */
+export function DayList({
   days,
   selectedDate,
+  selectedLevelGroupId,
   todayDate,
+  timeZone,
   readOnly,
-  onSelectDate,
+  metadataFor,
+  onSelectLevel,
   onDeleteDay,
 }: {
   days: ActivityDay[];
   selectedDate: string | null;
+  selectedLevelGroupId: string | null;
   todayDate: string;
+  timeZone: string;
   readOnly: boolean;
-  onSelectDate: (date: string) => void;
+  metadataFor: (level: LevelCard) => LevelMetadata;
+  onSelectLevel: (date: string, levelGroupId: string) => void;
   onDeleteDay: (day: ActivityDay, keepClears: boolean) => Promise<DayDeleteOutcome>;
 }) {
   const { t, i18n } = useTranslation("activity");
   const locale = i18n.resolvedLanguage ?? "en";
   const refs = useRef(new Map<string, HTMLButtonElement>());
+  const scrollRef = useRef<HTMLDivElement>(null);
+  // Days open and close independently; the day holding the selected level always starts open.
+  const [expandedDates, setExpandedDates] = useState<ReadonlySet<string>>(
+    () => new Set(selectedDate ? [selectedDate] : []),
+  );
+  const [openedForDate, setOpenedForDate] = useState(selectedDate);
+  if (openedForDate !== selectedDate) {
+    setOpenedForDate(selectedDate);
+    if (selectedDate && !expandedDates.has(selectedDate))
+      setExpandedDates(new Set([...expandedDates, selectedDate]));
+  }
+  const toggleExpanded = useCallback((date: string) => {
+    setExpandedDates((current) => {
+      const next = new Set(current);
+      if (next.has(date)) next.delete(date);
+      else next.add(date);
+      return next;
+    });
+  }, []);
+  const edges = useScrollEdges(scrollRef);
   const returnFocus = useRef<HTMLElement | null>(null);
   // Kept after closing so the dialog can animate out even when its day was just deleted.
   const [pending, setPending] = useState<ActivityDay | null>(null);
@@ -59,33 +90,64 @@ export function DayRail({
   };
 
   return (
-    <aside className="glass-structural flex min-h-0 flex-col overflow-hidden rounded-2xl">
-      <div className="px-3 pb-1 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        {t("days")}
-      </div>
-      <div className="relative min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <nav aria-label={t("days")} className="relative min-h-0 flex-1">
+      <div
+        ref={scrollRef}
+        className={cn(
+          "scrollbar-thin h-full overflow-x-hidden overflow-y-auto overscroll-contain px-2 pb-3",
+          edges.below &&
+            "[mask-image:linear-gradient(to_bottom,black_calc(100%-3.5rem),transparent)]",
+        )}
+      >
         {months.map((month) => (
           <section key={month.key} aria-label={month.label}>
-            <h3 className="sticky top-0 z-10 -mx-1.5 bg-linear-to-b from-[color-mix(in_oklab,var(--card)_92%,var(--background))] from-70% to-transparent px-3.5 pb-2 pt-2 text-[11px] font-bold uppercase tracking-[0.08em] text-muted-foreground">
+            <h3 className="sticky top-0 z-10 bg-linear-to-b from-sidebar from-75% to-transparent px-2 pt-3 pb-2 text-[11px] font-semibold tracking-[0.06em] text-subtle-foreground uppercase">
               {month.label}
             </h3>
-            <ul className="grid gap-0.5">
+            <ul className="grid min-w-0 grid-cols-1 gap-0.5">
               {month.days.map((day) => (
-                <DayRailRow
+                <DayListRow
                   key={day.date}
                   day={day}
                   selected={selectedDate === day.date}
+                  expanded={expandedDates.has(day.date)}
                   today={todayDate === day.date}
                   readOnly={readOnly}
+                  selectedLevelGroupId={selectedLevelGroupId}
+                  timeZone={timeZone}
+                  metadataFor={metadataFor}
                   registerButton={registerButton}
-                  onSelect={onSelectDate}
+                  onToggle={toggleExpanded}
+                  onSelectLevel={onSelectLevel}
                   onRequestDelete={requestDelete}
                 />
               ))}
             </ul>
           </section>
         ))}
+        {days.length === 0 ? (
+          <p className="px-3 py-6 text-xs leading-relaxed text-muted-foreground">
+            {t("sidebar.noDays")}
+          </p>
+        ) : null}
       </div>
+      {edges.below ? (
+        <button
+          type="button"
+          onClick={() =>
+            scrollRef.current?.scrollBy({
+              top: scrollRef.current.clientHeight * 0.8,
+              behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches
+                ? "auto"
+                : "smooth",
+            })
+          }
+          className="material-chrome absolute bottom-2 left-1/2 inline-flex -translate-x-1/2 items-center gap-1 rounded-full px-3 py-1 text-[11px] font-medium text-foreground/85 transition-[transform,background-color] hover:text-foreground active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring motion-reduce:active:scale-100"
+        >
+          {t("sidebar.moreDays")}
+          <HugeiconsIcon aria-hidden="true" icon={ArrowDown01Icon} size={12} strokeWidth={2.2} />
+        </button>
+      ) : null}
       <DayDeleteDialog
         day={pendingDay}
         open={dialogOpen}
@@ -100,7 +162,7 @@ export function DayRail({
           else if (selectedDate) refs.current.get(selectedDate)?.focus();
         }}
       />
-    </aside>
+    </nav>
   );
 }
 

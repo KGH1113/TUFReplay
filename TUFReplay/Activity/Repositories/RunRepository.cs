@@ -483,6 +483,41 @@ LIMIT 1";
     };
   }
 
+  /// <summary>Reads only what judgment timelines need, without the input payload.</summary>
+  public static List<StoredJudgmentTimelineSource> GetJudgmentTimelineSources(IReadOnlyList<string> runIds)
+  {
+    var result = new List<StoredJudgmentTimelineSource>();
+    if (runIds == null || runIds.Count == 0)
+      return result;
+
+    using SqliteConnection c = DatabaseStore.OpenConnection();
+    using SqliteCommand q = c.CreateCommand();
+    var names = new string[runIds.Count];
+    for (int i = 0; i < runIds.Count; i++)
+    {
+      names[i] = "@id" + i;
+      q.Parameters.AddWithValue(names[i], runIds[i]);
+    }
+    q.CommandText =
+      "SELECT r.id,r.result,r.judgment_system,a.metadata_json,a.hit_context_csv FROM runs r "
+      + "LEFT JOIN replay_artifacts a ON a.run_id=r.id WHERE r.id IN ("
+      + string.Join(",", names)
+      + ")";
+    using SqliteDataReader r = q.ExecuteReader();
+    while (r.Read())
+      result.Add(
+        new StoredJudgmentTimelineSource
+        {
+          Id = r.GetString(0),
+          Result = r.GetString(1),
+          JudgmentSystem = (RunJudgmentSystem)r.GetInt32(2),
+          MetaJson = DbValue.NullableString(r, 3),
+          HitContextCsv = r.IsDBNull(4) ? null : ReplayArtifactStorage.Decode((byte[])r.GetValue(4)),
+        }
+      );
+    return result;
+  }
+
   public static void UpdateGameplayHashIfMissing(string runId, byte[] hash, int version)
   {
     if (string.IsNullOrWhiteSpace(runId) || hash == null)

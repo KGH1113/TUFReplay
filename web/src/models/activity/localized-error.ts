@@ -16,9 +16,14 @@ export function diagnosticErrorMessage(cause: unknown) {
   if (cause instanceof Error && cause.message) {
     const nested =
       cause.cause instanceof Error && cause.cause.message ? ` (${cause.cause.message})` : "";
-    return `${cause.message}${nested}`;
+    return withoutLibraryNames(`${cause.message}${nested}`);
   }
-  return typeof cause === "string" ? cause : "";
+  return typeof cause === "string" ? withoutLibraryNames(cause) : "";
+}
+
+/** The connection library ships inside TUFReplay, so its name means nothing to players. */
+function withoutLibraryNames(text: string) {
+  return text.replace(/ADOFAI[-\s]?IPC|AdofaiIpc/gi, "TUFReplay").replace(/\bIPC\b/g, "connection");
 }
 
 function errorCode(cause: unknown) {

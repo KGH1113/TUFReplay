@@ -142,7 +142,7 @@ export function CameraSettings({
                   aria-pressed={selected}
                   disabled={captureDisabled}
                   onClick={() => onUpdate({ quality })}
-                  className={`relative h-auto min-w-0 justify-start rounded-xl border-2 px-3 py-3 active:scale-[0.98] ${selected ? "border-primary bg-primary/15 text-foreground shadow-[0_0_0_1px_var(--color-primary)] hover:bg-primary/20" : "border-transparent bg-muted/30 hover:border-border"}`}
+                  className={`relative h-auto min-w-0 justify-start rounded-xl px-3 py-3 font-normal text-foreground active:scale-[0.98] ${selected ? "border-primary/60 bg-primary/10 ring-1 ring-primary/40 hover:bg-primary/12" : "border-border bg-foreground/[0.03] hover:bg-foreground/[0.06]"}`}
                 >
                   <span className="min-w-0 space-y-2 text-left">
                     <span className="block pr-3 font-semibold">{t(`quality.${quality}`)}</span>
@@ -153,10 +153,8 @@ export function CameraSettings({
                   {selected ? (
                     <span
                       aria-hidden="true"
-                      className="absolute right-2 top-2 grid size-4 place-items-center rounded-full bg-primary text-[10px] text-primary-foreground"
-                    >
-                      ✓
-                    </span>
+                      className="absolute right-2 top-2 size-2 rounded-full bg-primary"
+                    />
                   ) : null}
                 </Button>
               );

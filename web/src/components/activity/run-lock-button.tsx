@@ -8,14 +8,16 @@ import { localizedErrorMessage } from "@/models/activity/localized-error";
 import { cn } from "@/shared/lib/cn";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/shared/ui/tooltip";
 
-/** Hidden until the card is hovered or focused, and always shown while the run is locked. */
+/** Quiet until the row is hovered, focused or selected; always shown while the run is locked. */
 export function RunLockButton({
   run,
   disabled,
+  revealed = false,
   onSetLocked,
 }: {
   run: ActivityRun;
   disabled: boolean;
+  revealed?: boolean;
   onSetLocked: (run: ActivityRun, locked: boolean) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
@@ -40,24 +42,32 @@ export function RunLockButton({
       <TooltipTrigger asChild>
         <button
           type="button"
+          data-attempt-control
           aria-pressed={locked}
           aria-label={t(locked ? "lock.toggleUnlock" : "lock.toggleLock", {
             runIndex: run.runIndex,
           })}
           disabled={disabled}
-          onClick={() => void toggle()}
+          onClick={(event) => {
+            event.stopPropagation();
+            void toggle();
+          }}
+          onDoubleClick={(event) => event.stopPropagation()}
           className={cn(
-            "grid size-6 shrink-0 place-items-center rounded-md transition-[opacity,background-color,color,transform] duration-150 active:scale-90 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed motion-reduce:active:scale-100",
+            "grid size-7 shrink-0 place-items-center rounded-md transition-[opacity,background-color,color,transform] duration-150 active:scale-90 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed motion-reduce:active:scale-100",
             locked
-              ? "bg-foreground/10 text-foreground hover:bg-foreground/15"
-              : "text-muted-foreground opacity-0 hover:bg-foreground/8 hover:text-foreground group-hover/run:opacity-100 group-focus-within/run:opacity-100 [@media(hover:none)]:opacity-100",
+              ? "text-primary hover:bg-primary/10"
+              : cn(
+                  "text-subtle-foreground hover:bg-foreground/8 hover:text-foreground group-hover/attempt:opacity-100 group-focus-within/attempt:opacity-100 [@media(hover:none)]:opacity-100",
+                  revealed ? "opacity-100" : "opacity-0",
+                ),
           )}
         >
           <HugeiconsIcon
             aria-hidden="true"
             icon={locked ? SquareLock02Icon : SquareUnlock02Icon}
-            size={15}
-            strokeWidth={2}
+            size={16}
+            strokeWidth={locked ? 2.2 : 1.8}
           />
         </button>
       </TooltipTrigger>

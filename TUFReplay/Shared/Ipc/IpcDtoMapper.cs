@@ -273,6 +273,15 @@ internal static class IpcDtoMapper
   public static Api.WebcamDevice Map(TUFReplay.Webcam.Models.WebcamDevice value) =>
     new Api.WebcamDevice { Id = value.Id, Name = value.Name };
 
+  internal static Api.RunJudgmentTimeline Map(TUFReplay.Replay.Timeline.RunJudgmentTimelineData value) =>
+    new Api.RunJudgmentTimeline
+    {
+      RunId = value.RunId,
+      DurationMs = value.DurationMs,
+      TimesMs = value.TimesMs,
+      Kinds = value.Kinds,
+    };
+
   public static Api.Chart Map(TUFReplay.Activity.Ipc.ActivityChartDto value) =>
     new Api.Chart
     {
