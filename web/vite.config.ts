@@ -17,6 +17,11 @@ export default defineConfig({
   build: {
     chunkSizeWarningLimit: 1024,
   },
+  optimizeDeps: {
+    // The generated contract package changes with every `ipc-generate`; pre-bundling would keep
+    // serving the previous contract hash, which the mod rejects as a contract mismatch.
+    exclude: ["@tuf-replay/ipc"],
+  },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),

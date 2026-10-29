@@ -72,14 +72,14 @@ describe("activity mock", () => {
       code: "run_not_found",
     });
   });
-  test("serves the three downloaded TUF levels with charts and runs", async () => {
+  test("serves the downloaded TUF levels, including a long practice day, with charts and runs", async () => {
     const api = createMockApi();
     expect(await api.activity.getLegacyReplayStatus()).toEqual({ hasLegacyReplays: true });
     const sessions = await api.activity.listAllAppSessions();
     const levels = sessions.flatMap((session) => session.levelSessions);
 
     expect(levels.map((level) => level.tufLevelId).sort((a, b) => Number(a) - Number(b))).toEqual([
-      5, 303, 871,
+      5, 303, 871, 871,
     ]);
 
     let noFailRuns = 0;
@@ -94,7 +94,7 @@ describe("activity mock", () => {
       expect(runs.some((run) => run.startTile > 0)).toBe(true);
       noFailRuns += runs.filter((run) => run.noFailMode).length;
     }
-    expect(noFailRuns).toBe(1);
+    expect(noFailRuns).toBe(2);
   });
 
   test("deletes microphone recordings without removing their runs", async () => {

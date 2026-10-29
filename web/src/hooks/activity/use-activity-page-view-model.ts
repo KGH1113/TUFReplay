@@ -10,6 +10,7 @@ import {
   dateKeyInTimeZone,
   groupSessionsByDay,
   isClearRun,
+  summarizeLevelRuns,
 } from "@/models/activity/activity-data";
 import type { ActivityDay, ActivityRun, RunMarker } from "@/models/activity/activity-model";
 
@@ -24,7 +25,6 @@ export function useActivityPageViewModel() {
   const [selectedLevelGroupId, setSelectedLevelGroupId] = useState<string | null>(null);
   const [selectedMarkerId, setSelectedMarkerId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [firstMarkerLevelSessionId, setFirstMarkerLevelSessionId] = useState<string | null>(null);
   const [replayChoiceRun, setReplayChoiceRun] = useState<ActivityRun | null>(null);
   // The day to select when a delete removes the selected day: the one that slides into its place.
   const deletedDayFallback = useRef<string | null>(null);
@@ -53,12 +53,15 @@ export function useActivityPageViewModel() {
     selectedDay?.date ?? null,
   );
   const markers = useMemo(() => aggregateRunMarkers(levelData.runs), [levelData.runs]);
+  // The selected marker filters attempts by start tile; no marker shows every attempt.
   const selectedMarker = markers.find((marker) => marker.id === selectedMarkerId) ?? null;
-  const selectedRun = selectedMarker
-    ? (levelData.runs.find(
-        (run) => run.id === selectedRunId && run.startTile === selectedMarker.floorIndex,
-      ) ?? null)
-    : null;
+  const selectedRun =
+    levelData.runs.find(
+      (run) =>
+        run.id === selectedRunId &&
+        (selectedMarker === null || run.startTile === selectedMarker.floorIndex),
+    ) ?? null;
+  const levelSummary = useMemo(() => summarizeLevelRuns(levelData.runs), [levelData.runs]);
   const metadataFor = useLevelMetadata(levelSessions);
   const selectionScope = `${selectedDay?.date ?? ""}:${selectedLevel?.id ?? ""}`;
   const previousSelectionScope = useRef(selectionScope);
@@ -68,10 +71,9 @@ export function useActivityPageViewModel() {
     previousSelectionScope.current = selectionScope;
     setSelectedMarkerId(null);
     setSelectedRunId(null);
-    setFirstMarkerLevelSessionId(selectedLevel?.id ?? null);
     clearLevelFilePicker();
     setReplayChoiceRun(null);
-  }, [clearLevelFilePicker, selectedLevel?.id, selectionScope]);
+  }, [clearLevelFilePicker, selectionScope]);
 
   useEffect(() => {
     if (!days.length) {
@@ -98,7 +100,6 @@ export function useActivityPageViewModel() {
     ) {
       const firstLevel = levelSessions.find((session) => session.canOpen) ?? null;
       setSelectedLevelGroupId(firstLevel?.levelGroupId ?? null);
-      setFirstMarkerLevelSessionId(firstLevel?.id ?? null);
     }
   }, [levelSessions, selectedLevelGroupId]);
 
@@ -109,25 +110,6 @@ export function useActivityPageViewModel() {
       setSelectedRunId(null);
     }
   }, [levelData.runsSettled, markers, selectedMarkerId]);
-
-  useEffect(() => {
-    if (!firstMarkerLevelSessionId || selectedLevel?.id !== firstMarkerLevelSessionId) return;
-    if (!levelData.runsSettled) return;
-    if (levelData.overview?.id === firstMarkerLevelSessionId) {
-      setSelectedMarkerId(markers[0]?.id ?? null);
-      setSelectedRunId(null);
-      setFirstMarkerLevelSessionId(null);
-      return;
-    }
-    if (levelData.error) setFirstMarkerLevelSessionId(null);
-  }, [
-    firstMarkerLevelSessionId,
-    levelData.error,
-    levelData.runsSettled,
-    levelData.overview?.id,
-    markers,
-    selectedLevel?.id,
-  ]);
 
   useEffect(() => {
     if (!levelData.runsSettled) return;
@@ -143,30 +125,28 @@ export function useActivityPageViewModel() {
   }, [clearLevelFilePicker, levelData.runs, levelData.runsSettled, replayChoiceRun]);
 
   const selectMarker = (marker: RunMarker | null) => {
-    setFirstMarkerLevelSessionId(null);
     setSelectedMarkerId(marker?.id ?? null);
-    setSelectedRunId(null);
+    // Keep the open run when it still belongs to the new filter.
+    setSelectedRunId((current) => {
+      const run = current ? levelData.runs.find((candidate) => candidate.id === current) : null;
+      return run && (marker === null || run.startTile === marker.floorIndex) ? current : null;
+    });
   };
-  const selectRun = (run: ActivityRun) =>
+  const toggleRun = (run: ActivityRun) =>
     setSelectedRunId((current) => (current === run.id ? null : run.id));
-  const selectDate = (date: string) => {
-    deletedDayFallback.current = null;
-    const firstLevel =
-      days.find((day) => day.date === date)?.levelSessions.find((level) => level.canOpen) ?? null;
-    setSelectedDate(date);
-    setSelectedLevelGroupId(firstLevel?.levelGroupId ?? null);
-    setSelectedMarkerId(null);
-    setSelectedRunId(null);
-    setFirstMarkerLevelSessionId(firstLevel?.id ?? null);
-  };
-  const selectLevel = (levelGroupId: string) => {
+  const focusRun = (run: ActivityRun | null) => setSelectedRunId(run?.id ?? null);
+  /** Days only expand in the sidebar; picking one of their levels is what changes the selection. */
+  const selectLevel = (date: string, levelGroupId: string) => {
     const level =
-      levelSessions.find((item) => item.levelGroupId === levelGroupId && item.canOpen) ?? null;
+      days
+        .find((day) => day.date === date)
+        ?.levelSessions.find((item) => item.levelGroupId === levelGroupId && item.canOpen) ?? null;
     if (!level) return;
+    deletedDayFallback.current = null;
+    setSelectedDate(date);
     setSelectedLevelGroupId(levelGroupId);
     setSelectedMarkerId(null);
     setSelectedRunId(null);
-    setFirstMarkerLevelSessionId(level.id);
   };
   const deleteMicrophoneRecording = async (run: ActivityRun) => {
     await runActions.deleteMicrophoneRecording(run.id);
@@ -279,6 +259,7 @@ export function useActivityPageViewModel() {
     markers,
     selectedMarker,
     selectedRun,
+    levelSummary,
     metadataFor,
     timeZone,
     todayDate: dateKeyInTimeZone(new Date().toISOString(), timeZone),
@@ -286,13 +267,26 @@ export function useActivityPageViewModel() {
       unavailableTitle: t("levels.unavailableTitle"),
       unavailableBody: t("levels.unavailableBody"),
       empty: t("empty"),
+      emptyBody: t("emptyBody"),
+    },
+    recordingActions: {
+      microphone: {
+        download: downloadMicrophoneRecording,
+        keep: keepMicrophoneRecording,
+        delete: deleteMicrophoneRecording,
+      },
+      camera: {
+        download: downloadCameraRecording,
+        keep: keepCameraRecording,
+        delete: deleteCameraRecording,
+      },
     },
     actions: {
       retry: activity.retry,
-      selectDate,
       selectLevel,
       selectMarker,
-      selectRun,
+      toggleRun,
+      focusRun,
       openReplayChoice: setReplayChoiceRun,
       closeReplayChoice: () => setReplayChoiceRun(null),
       deleteRun,

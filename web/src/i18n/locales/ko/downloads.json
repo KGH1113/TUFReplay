@@ -53,5 +53,12 @@
     "renderer_release_invalid": "배포된 Renderer 설치 파일이나 검증 파일이 올바르지 않아요. 배포 파일이 수정되면 다시 시도해 주세요.",
     "renderer_checksum_mismatch": "받은 Renderer 파일이 공식 배포 파일과 일치하지 않아요. 다시 다운로드해 주세요.",
     "renderer_directory_exists": "Renderer 폴더가 이미 있어요. 게임을 재시작하고 설치된 모드를 확인해 주세요. 설치가 불완전하다면 기존 폴더를 다른 곳으로 옮긴 뒤 다시 시도해 주세요."
+  },
+  "summary": {
+    "downloading": "다운로드 중…",
+    "downloadingPercent": "다운로드 중 · {{percent}}%",
+    "approval": "승인이 필요해요",
+    "failed": "설치하지 못했어요",
+    "restart": "얼불춤을 다시 시작하면 끝나요"
   }
 }

@@ -24,7 +24,7 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
     ]);
 
     return (
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl bg-black/30 shadow-2xl ring-1 ring-foreground/10">
+      <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl bg-black ring-1 ring-border">
         {viewModel.showFrame ? (
           <iframe
             ref={viewModel.frameRef}
@@ -41,7 +41,7 @@ export const EmbeddedChart = forwardRef<EmbeddedChartHandle, EmbeddedChartProps>
 
 function ChartOverlay({ children }: { children: React.ReactNode }) {
   return (
-    <div className="pointer-events-none absolute inset-0 grid place-items-center bg-background/80 text-sm text-muted-foreground backdrop-blur-sm">
+    <div className="pointer-events-none absolute inset-0 grid place-items-center bg-surface/90 p-6 text-center text-sm text-muted-foreground backdrop-blur-sm">
       {children}
     </div>
   );

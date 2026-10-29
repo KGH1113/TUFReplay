@@ -200,3 +200,33 @@ function maxNullable(left: number | null, right: number | null) {
   if (right === null) return left;
   return Math.max(left, right);
 }
+
+export interface LevelRunSummary {
+  /** Furthest percent reached by an attempt that started at tile zero, or null without one. */
+  bestFromStartPercent: number | null;
+  clearCount: number;
+  lockedCount: number;
+}
+
+export function summarizeLevelRuns(runs: ActivityRun[]): LevelRunSummary {
+  let bestTile: number | null = null;
+  let floorCount = 1;
+  let clearCount = 0;
+  let lockedCount = 0;
+  for (const run of runs) {
+    if (isClearRun(run)) clearCount += 1;
+    if (run.locked) lockedCount += 1;
+    if (run.startTile !== 0) continue;
+    const reached = Math.max(run.startTile, run.lastTile ?? run.startTile);
+    if (bestTile === null || reached / Math.max(1, run.floorCount) > bestTile / floorCount) {
+      bestTile = reached;
+      floorCount = Math.max(1, run.floorCount);
+    }
+  }
+  return {
+    bestFromStartPercent:
+      bestTile === null ? null : Math.round(Math.min(1, bestTile / floorCount) * 100),
+    clearCount,
+    lockedCount,
+  };
+}

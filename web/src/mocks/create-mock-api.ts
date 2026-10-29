@@ -80,6 +80,9 @@ export function createMockApi(): AppApi {
       },
     },
     run: {
+      async loadJudgmentTimeline(runId) {
+        return fixture.judgmentTimelines([runId])[0] ?? null;
+      },
       async prepareCameraRecordingDownload(runId) {
         fixture.assertCameraRecording(runId);
         return mockRecordingDownload(mockCameraRecording(), `tufreplay-${runId}-camera.mp4`);
