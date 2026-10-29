@@ -48,7 +48,11 @@
       "downloadFailed": "영상을 추출하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
       "keepFailed": "영상을 영구 보관하지 못했어요. 게임 연결을 확인한 뒤 다시 시도해 주세요.",
       "deleteFailed": "영상을 삭제하지 못했어요. 리플레이를 종료한 뒤 다시 시도해 주세요."
-    }
+    },
+    "mono": "모노",
+    "channels_one": "{{count}}채널",
+    "channels_other": "{{count}}채널",
+    "subtitle": "플레이 #{{runIndex}} · {{time}} ({{offset}})"
   },
   "days": "날짜",
   "counts": {
@@ -77,17 +81,8 @@
     "retryAfterRestarting": "재시작 후 다시 연결",
     "retry": "다시 연결",
     "reload": "페이지 새로고침",
-    "downloadIpc": "AdofaiIPC 다운로드",
-    "ipcUpdateTitle": "AdofaiIPC 업데이트 필요",
-    "ipcUpdateDescription": "게임의 AdofaiIPC가 이 웹사이트보다 오래됐거나 버전 정보를 제공하지 않습니다.",
-    "ipcUpdateGuide": "AdofaiIPC 업데이트 방법",
-    "ipcUpdateSteps": [
-      "최신 안정 버전 AdofaiIPC를 다운로드하세요.",
-      "얼불춤을 종료한 상태에서 설치된 AdofaiIPC 파일을 교체하세요.",
-      "얼불춤을 다시 실행한 뒤 연결을 재시도하세요."
-    ],
     "clientUpdateTitle": "웹사이트 업데이트 필요",
-    "clientUpdateDescription": "AdofaiIPC보다 브라우저에 캐시된 웹 클라이언트가 오래됐습니다.",
+    "clientUpdateDescription": "게임의 TUFReplay가 이 페이지보다 최신이에요.",
     "clientUpdateGuide": "새로고침 방법",
     "clientUpdateSteps": [
       "페이지를 새로고침해 최신 웹사이트를 불러오세요.",
@@ -97,8 +92,8 @@
     "updateGuide": "업데이트 방법",
     "connectSteps": [
       "얼불춤을 실행하세요.",
-      "UnityModManager에서 TUFReplay를 활성화하세요.",
-      "AdofaiIpc가 실행 중인지 확인하세요."
+      "UnityModManager에서 TUFReplay를 켜세요.",
+      "이 페이지를 열어 두면 자동으로 연결돼요."
     ],
     "updateSteps": [
       "얼불춤을 완전히 종료하세요.",
@@ -120,17 +115,17 @@
   "errors": {
     "camera_recording_not_found": "이 플레이의 카메라 영상을 찾을 수 없어요. 활동 목록을 새로고침해 주세요.",
     "load": "플레이 기록을 불러오지 못했어요. 얼불춤이 실행 중인지 확인한 뒤 새로고침해 주세요.",
-    "connect": "TUFReplay에 연결하지 못했어요. 얼불춤과 AdofaiIPC가 실행 중인지 확인해 주세요.",
+    "connect": "TUFReplay에 연결하지 못했어요. 얼불춤이 TUFReplay를 켠 채로 실행 중인지 확인해 주세요.",
     "loadSession": "레벨 정보를 불러오지 못했어요. 다시 시도해 주세요.",
     "loadLevel": "레벨 정보를 불러오지 못했어요. 다시 시도해 주세요.",
     "loadRuns": "이 레벨의 플레이 기록을 불러오지 못했어요. 다시 시도해 주세요.",
     "loadChart": "차트만 불러오지 못했어요. 플레이 기록은 계속 확인할 수 있어요.",
-    "ipcUnavailable": "얼불춤과 연결이 끊겼어요. 게임과 AdofaiIPC가 실행 중인지 확인한 뒤 다시 연결해 주세요.",
+    "ipcUnavailable": "얼불춤과 연결이 끊겼어요. 게임에서 TUFReplay가 켜져 있는지 확인한 뒤 다시 연결해 주세요.",
     "ipcTimeout": "얼불춤이 30초 안에 응답하지 않았어요. 게임이 멈춰 있지 않은지 확인한 뒤 다시 시도해 주세요.",
     "ipcRequestFailed": "얼불춤에서 요청을 처리하지 못했어요. 잠시 후 다시 시도해 주세요.",
-    "ipcVersionMismatch": "AdofaiIPC 모드와 웹 클라이언트 버전이 일치하지 않습니다.",
-    "ipcUpdateRequired": "설치된 AdofaiIPC가 현재 TUFReplay 버전과 호환되지 않습니다.",
-    "namespaceNotFound": "TUFReplay IPC가 아직 등록되지 않았습니다.",
+    "ipcVersionMismatch": "게임의 TUFReplay와 이 페이지의 버전이 달라요. 얼불춤을 다시 시작해 TUFReplay를 업데이트한 뒤 이 페이지를 새로고침해 주세요.",
+    "ipcUpdateRequired": "게임의 TUFReplay가 이 페이지보다 오래됐어요. 얼불춤을 완전히 종료한 뒤 다시 실행해 TUFReplay를 업데이트해 주세요.",
+    "namespaceNotFound": "게임에서 TUFReplay가 아직 시작되지 않았어요. 모드가 켜져 있는지 확인해 주세요.",
     "namespaceInitializing": "TUFReplay가 시작 중이에요. 준비되면 자동으로 다시 연결할게요.",
     "namespaceError": "TUFReplay를 시작하지 못했어요. UnityModManager에서 모드 로그를 확인한 뒤 게임을 다시 실행해 주세요.",
     "level_session_not_found": "선택한 레벨 기록을 찾을 수 없어요. 활동 목록을 새로고침해 주세요.",
@@ -186,7 +181,8 @@
     "loadingViewer": "차트 불러오는 중…",
     "viewerLoadFailed": "내장 차트를 불러오지 못했습니다.",
     "missingEmbedUrl": "얼불춤 차트 뷰어를 불러오려면 VITE_WEB_ADOFAI_EMBED_URL을 설정하세요.",
-    "invalidEmbedUrl": "VITE_WEB_ADOFAI_EMBED_URL은 올바른 절대 URL이어야 합니다."
+    "invalidEmbedUrl": "VITE_WEB_ADOFAI_EMBED_URL은 올바른 절대 URL이어야 합니다.",
+    "markerHint": "마커를 누르면 그 타일에서 시작한 플레이만 볼 수 있어요"
   },
   "run": {
     "select": "플레이 {{runIndex}} 선택",
@@ -217,7 +213,17 @@
     },
     "sortBy": "정렬 기준",
     "ascending": "오름차순 정렬",
-    "descending": "내림차순 정렬"
+    "descending": "내림차순 정렬",
+    "replayUnavailableGeneric": "이 플레이는 리플레이할 수 없어요.",
+    "difficultyName": {
+      "Lenient": "느슨함",
+      "Normal": "보통",
+      "Strict": "엄격함"
+    },
+    "cameraAvailable": "카메라 영상 있음",
+    "comingSoon": "준비 중이에요",
+    "deleteWhileReplaying": "리플레이를 종료하면 삭제할 수 있어요",
+    "xAccuracyShort": "정확도"
   },
   "judgments": {
     "Overload": "과부하",
@@ -240,25 +246,24 @@
     "locked_other": "잠긴 플레이 {{count}}개"
   },
   "dayDelete": {
+    "heading": "{{date}} 플레이를 삭제할까요?",
+    "deletesFact_one": "<strong>플레이 {{count}}개</strong>와 리플레이, 녹음·영상이 삭제돼요",
+    "deletesFact_other": "<strong>플레이 {{count}}개</strong>와 리플레이, 녹음·영상이 삭제돼요",
+    "keepsFact_one": "잠긴 플레이 <strong>{{count}}개</strong>는 남아요",
+    "keepsFact_other": "잠긴 플레이 <strong>{{count}}개</strong>는 남아요",
+    "irreversible": "되돌릴 수 없어요.",
     "action": "이 날짜 삭제…",
     "blocked": {
       "all_locked": "이 날짜의 플레이가 모두 잠겨 있어요",
       "empty": "삭제할 플레이가 없어요"
     },
-    "title_one": "{{date}}의 플레이 {{count}}개를 삭제할까요?",
-    "title_other": "{{date}}의 플레이 {{count}}개를 삭제할까요?",
-    "deletes_one": "<strong>플레이 {{count}}개</strong>와 리플레이, 마이크 녹음, 카메라 영상이 삭제돼요.",
-    "deletes_other": "<strong>플레이 {{count}}개</strong>와 리플레이, 마이크 녹음, 카메라 영상이 삭제돼요.",
-    "keeps_one": "<strong>잠긴 플레이 {{count}}개</strong>는 남고, 날짜도 함께 남아요.",
-    "keeps_other": "<strong>잠긴 플레이 {{count}}개</strong>는 남고, 날짜도 함께 남아요.",
-    "hidden_one": "레벨 목록에 보이지 않는 이전 버전 레벨의 플레이 {{count}}개도 포함돼요.",
-    "hidden_other": "레벨 목록에 보이지 않는 이전 버전 레벨의 플레이 {{count}}개도 포함돼요.",
+    "hidden_one": "레벨을 수정하기 전의 플레이 {{count}}개도 포함돼요.",
+    "hidden_other": "레벨을 수정하기 전의 플레이 {{count}}개도 포함돼요.",
     "keepClears_one": "클리어 {{count}}개 남기기",
     "keepClears_other": "클리어 {{count}}개 남기기",
     "keepClearsOn": "클리어를 잠가서 이후 삭제에서도 지켜요.",
     "keepClearsOff_one": "클리어 {{count}}개도 함께 삭제돼요.",
     "keepClearsOff_other": "클리어 {{count}}개도 함께 삭제돼요.",
-    "irreversible": "삭제하면 되돌릴 수 없어요.",
     "slow": "삭제하는 중이에요. 플레이 중이라면 그 시도가 끝난 뒤에 마무리돼요.",
     "confirm_one": "플레이 {{count}}개 삭제",
     "confirm_other": "플레이 {{count}}개 삭제",
@@ -285,5 +290,73 @@
     "deleteBlocked": "잠금을 해제하면 삭제할 수 있어요",
     "recordingDeleteBlocked": "잠긴 플레이예요. 잠금을 해제하면 녹음과 영상을 삭제할 수 있어요.",
     "failed": "잠금을 바꾸지 못했어요. 얼불춤이 실행 중인지 확인한 뒤 다시 시도해 주세요."
+  },
+  "emptyBody": "TUFReplay를 켠 채로 얼불춤에서 커스텀 레벨을 플레이하면 여기에 자동으로 기록돼요.",
+  "outcome": {
+    "clear": "클리어",
+    "finished": "끝까지 도달",
+    "failed": "실패",
+    "quit": "중단",
+    "unknown": "결과 알 수 없음"
+  },
+  "attempts": {
+    "title": "플레이",
+    "listLabel": "이 레벨의 플레이 목록",
+    "progressLabel": "{{start}}%에서 {{end}}%까지",
+    "startedTooltip": "{{time}} ({{offset}}) 시작",
+    "durationTooltip": "{{duration}} 동안 플레이",
+    "filterLabel": "시작 타일로 플레이 거르기",
+    "markerTooltip_one": "{{tile}}번 타일({{percent}}%)부터 · 최고 {{best}}% · 플레이 {{count}}개",
+    "markerTooltip_other": "{{tile}}번 타일({{percent}}%)부터 · 최고 {{best}}% · 플레이 {{count}}개",
+    "markerClears_one": "클리어 {{count}}개",
+    "markerClears_other": "클리어 {{count}}개",
+    "judgments": "판정",
+    "started": "시작",
+    "empty": "이 타일에서 시작한 플레이가 없어요.",
+    "timelineStart": "시작",
+    "timelineEnd": "끝",
+    "markerLabel_one": "{{tile}}번 타일({{percent}}%)에서 시작한 플레이 {{count}}개",
+    "markerLabel_other": "{{tile}}번 타일({{percent}}%)에서 시작한 플레이 {{count}}개",
+    "timeline": "타임라인",
+    "timelineLabel_one": "퍼펙트가 아닌 판정 {{count}}개가 표시된 판정 타임라인",
+    "timelineLabel_other": "퍼펙트가 아닌 판정 {{count}}개가 표시된 판정 타임라인",
+    "timelineUnavailable": "판정 타임라인을 표시할 수 없어요",
+    "timelineWaiting": "플레이가 끝나면 표시돼요"
+  },
+  "runDelete": {
+    "title": "이 플레이(#{{runIndex}})를 삭제할까요?",
+    "media": "녹음·영상 {{size}}도 함께 정리돼요."
+  },
+  "header": {
+    "attempts": "플레이",
+    "clears": "클리어",
+    "best": "최고 기록",
+    "lastPlayed": "마지막 플레이"
+  },
+  "sidebar": {
+    "levelsOf": "{{date}}에 플레이한 레벨",
+    "noDays": "플레이 기록이 있는 날짜가 여기에 표시돼요.",
+    "open": "날짜와 설정 보기",
+    "moreDays": "이전 날짜"
+  },
+  "workspace": {
+    "resize": "차트와 플레이 목록 크기 조절"
+  },
+  "offline": {
+    "title": "얼불춤에 연결되어 있지 않아요.",
+    "reconnectingTitle": "얼불춤에 다시 연결하는 중…",
+    "body": "저장된 기록은 읽기 전용으로 보여요. 게임이 다시 연결되면 리플레이와 변경 기능을 쓸 수 있어요."
+  },
+  "filter": {
+    "button": "필터",
+    "clearsOnly": "클리어만",
+    "lockedOnly": "잠긴 플레이만",
+    "withRecordings": "마이크·카메라 녹화가 있는 플레이",
+    "hideNoFail": "무적모드 플레이 숨기기",
+    "difficulty": "판정 난이도",
+    "clear": "필터 지우기",
+    "noMatches": "필터에 맞는 플레이가 없어요.",
+    "activeCount_one": "필터 {{count}}개 적용",
+    "activeCount_other": "필터 {{count}}개 적용"
   }
 }

@@ -1,44 +1,46 @@
-import { ArrowDown02Icon, ArrowUp02Icon } from "@hugeicons/core-free-icons";
+import { Alert02Icon, Menu01Icon, RefreshIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { EmbeddedChart, type EmbeddedChartHandle } from "@/components/activity/embedded-chart";
-import { RunCard } from "@/components/activity/run-card";
-import { useStableCallback } from "@/hooks/shared/use-stable-callback";
-import type { ActivityChart, ActivityRun, RunMarker } from "@/models/activity/activity-model";
 import {
-  anchoredRunScrollTop,
-  calculateVirtualRunRange,
-  type VirtualRunRange,
-} from "@/models/activity/run-list-virtualization";
+  type ReactNode,
+  type RefObject,
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
+import { AttemptsTable } from "@/components/activity/attempts-table";
+import { EmbeddedChart, type EmbeddedChartHandle } from "@/components/activity/embedded-chart";
+import { LevelHeader } from "@/components/activity/level-header";
+import { RunDeleteDialog } from "@/components/activity/run-delete-dialog";
+import type { RunMenuHandlers } from "@/components/activity/run-menu";
+import { RunRecordingsDialog } from "@/components/activity/run-recordings-dialog";
+import { useRunDeleteRequest } from "@/hooks/activity/use-run-delete-request";
+import { usePersistedLayout } from "@/hooks/shared/use-persisted-layout";
+import { useStableCallback } from "@/hooks/shared/use-stable-callback";
+import type { LevelRunSummary } from "@/models/activity/activity-data";
+import type {
+  ActivityChart,
+  ActivityRun,
+  LevelCard,
+  LevelMetadata,
+  RunMarker,
+} from "@/models/activity/activity-model";
+import { localizedErrorMessage } from "@/models/activity/localized-error";
+import type { RunRecordingActions } from "@/models/activity/run-recordings";
 import type { ReplayStatus } from "@/models/replay/replay-model";
-import { cn } from "@/shared/lib/cn";
+import { type RunReplayContext, runReplayActive } from "@/models/replay/run-replay-presentation";
 import { Button } from "@/shared/ui/button";
-import { Card, CardContent } from "@/shared/ui/card";
-import { TooltipProvider } from "@/shared/ui/tooltip";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/shared/ui/empty";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/shared/ui/resizable";
 
-type RunSortKey = "progress" | "time" | "pitch" | "accuracy";
-type SortDirection = "asc" | "desc";
-type PendingRunSortLayout = {
-  positions: Map<string, DOMRect>;
-  scrollTop: number;
-};
-type RunListLayout = {
-  runs: ActivityRun[];
-  markerId: string | null;
-  sort: RunSortKey;
-  direction: SortDirection;
-  stride: number;
-  scrollTop: number;
-};
-
-const runSortOptions: RunSortKey[] = ["progress", "time", "pitch", "accuracy"];
-const runRowGap = 8;
-const estimatedRunRowStride = 188;
-const runRowOverscan = 4;
-
+/** The selected level: chart and run details on top, every attempt underneath. */
 export function ActivityWorkspace({
-  chartAvailable,
+  level,
+  metadata,
+  summary,
   chart,
   runs,
   markers,
@@ -47,27 +49,26 @@ export function ActivityWorkspace({
   loading,
   error,
   chartError,
-  onRetry,
   readOnly,
   timeZone,
   replayStatus,
   replayPendingRunId,
   replayError,
   replayErrorRunId,
+  recordingActions,
+  onRetry,
+  onOpenSidebar,
   onSelectMarker,
-  onSelectRun,
+  onToggleRun,
+  onFocusRun,
   onPlayReplay,
   onRender,
   onDeleteRun,
   onSetRunLocked,
-  onDeleteMicrophoneRecording,
-  onKeepMicrophoneRecording,
-  onDownloadMicrophoneRecording,
-  onDeleteCameraRecording,
-  onKeepCameraRecording,
-  onDownloadCameraRecording,
 }: {
-  chartAvailable: boolean;
+  level: LevelCard;
+  metadata: LevelMetadata;
+  summary: LevelRunSummary;
   chart: ActivityChart | null;
   runs: ActivityRun[];
   markers: RunMarker[];
@@ -76,466 +77,307 @@ export function ActivityWorkspace({
   loading: boolean;
   error: string;
   chartError: string;
-  onRetry: () => Promise<void>;
   readOnly: boolean;
   timeZone: string;
   replayStatus: ReplayStatus;
   replayPendingRunId: string | null;
   replayError: string;
   replayErrorRunId: string | null;
+  recordingActions: RunRecordingActions;
+  onRetry: () => Promise<void>;
+  onOpenSidebar: () => void;
   onSelectMarker: (marker: RunMarker | null) => void;
-  onSelectRun: (run: ActivityRun) => void;
+  onToggleRun: (run: ActivityRun) => void;
+  onFocusRun: (run: ActivityRun | null) => void;
   onPlayReplay: (run: ActivityRun) => void;
-  onRender?: (run: ActivityRun) => void;
+  onRender?: (run: ActivityRun, trigger?: HTMLElement) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
   onSetRunLocked: (run: ActivityRun, locked: boolean) => Promise<void>;
-  onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
-  onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
-  onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
-  onDeleteCameraRecording: (run: ActivityRun) => Promise<void>;
-  onKeepCameraRecording: (run: ActivityRun) => Promise<void>;
-  onDownloadCameraRecording: (run: ActivityRun) => Promise<void>;
 }) {
   const { t } = useTranslation("activity");
+  const { t: replayT } = useTranslation("replay");
   const chartRef = useRef<EmbeddedChartHandle>(null);
-  const runScrollRef = useRef<HTMLDivElement>(null);
-  const runListRef = useRef<HTMLDivElement>(null);
-  const runRowResizeObserverRef = useRef<ResizeObserver | null>(null);
-  const pendingRunSortLayoutRef = useRef<PendingRunSortLayout>(null);
-  const runListLayoutRef = useRef<RunListLayout | null>(null);
-  const [runSort, setRunSort] = useState<RunSortKey>("time");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [runRowStride, setRunRowStride] = useState(estimatedRunRowStride);
-  const [visibleRunRange, setVisibleRunRange] = useState<VirtualRunRange>({ start: 0, end: 0 });
-  const selectRun = useStableCallback(onSelectRun);
-  const playReplay = useStableCallback(onPlayReplay);
-  const deleteRun = useStableCallback(onDeleteRun);
-  const setRunLocked = useStableCallback(onSetRunLocked);
-  const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
-  const downloadMicrophoneRecording = useStableCallback(onDownloadMicrophoneRecording);
-  const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
-  const keepCameraRecording = useStableCallback(onKeepCameraRecording);
-  const downloadCameraRecording = useStableCallback(onDownloadCameraRecording);
-  const deleteCameraRecording = useStableCallback(onDeleteCameraRecording);
-  const captureRunSortLayout = useCallback(() => {
-    const runList = runListRef.current;
-    const scroller = runScrollRef.current;
-    if (!runList || !scroller) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  const [recordingsRunId, setRecordingsRunId] = useState<string | null>(null);
+  const recordingsRun = runs.find((run) => run.id === recordingsRunId) ?? null;
+  const layout = usePersistedLayout("tufreplay.workspace.split");
+  const deleteRequest = useRunDeleteRequest(onDeleteRun, replayT("run.deleteFailed"));
+  const selectedMarkerId = selectedMarker?.id ?? null;
 
-    const positions = new Map<string, DOMRect>();
-    for (const element of visibleRunElements(runList, scroller, runRowStride)) {
-      const runId = element.dataset.runId;
-      if (!runId) continue;
-      for (const animation of element.getAnimations()) {
-        if (animation.id === "run-sort") animation.cancel();
-      }
-      positions.set(runId, element.getBoundingClientRect());
-    }
+  const replayContext = useMemo<RunReplayContext>(
+    () => ({
+      status: replayStatus,
+      pendingRunId: replayPendingRunId,
+      error: replayError,
+      errorRunId: replayErrorRunId,
+      readOnly,
+    }),
+    [readOnly, replayError, replayErrorRunId, replayPendingRunId, replayStatus],
+  );
 
-    pendingRunSortLayoutRef.current = {
-      positions,
-      scrollTop: scroller.scrollTop,
-    };
-  }, [runRowStride]);
-  const changeRunSort = useCallback(
-    (nextSort: RunSortKey) => {
-      if (nextSort === runSort) return;
-      captureRunSortLayout();
-      setRunSort(nextSort);
-    },
-    [captureRunSortLayout, runSort],
+  const play = useStableCallback(onPlayReplay);
+  const render = useStableCallback((run: ActivityRun) =>
+    onRender?.(
+      run,
+      document.activeElement instanceof HTMLElement ? document.activeElement : undefined,
+    ),
   );
-  const changeSortDirection = useCallback(
-    (nextDirection: SortDirection) => {
-      if (nextDirection === sortDirection) return;
-      captureRunSortLayout();
-      setSortDirection(nextDirection);
+  const requestDelete = useStableCallback(deleteRequest.request);
+  const setLocked = useStableCallback(onSetRunLocked);
+  const hasRender = Boolean(onRender);
+  const showRecordings = useCallback((run: ActivityRun) => setRecordingsRunId(run.id), []);
+  const toggleLock = useCallback(
+    (run: ActivityRun) => {
+      void setLocked(run, !run.locked).catch((cause: unknown) => {
+        toast.error(localizedErrorMessage(cause, t("lock.failed")));
+      });
     },
-    [captureRunSortLayout, sortDirection],
+    [setLocked, t],
   );
-  const selectId = useCallback(
+  const menuHandlers = useMemo(
+    (): RunMenuHandlers => ({
+      onPlay: play,
+      onRender: hasRender ? render : undefined,
+      onShowRecordings: showRecordings,
+      onToggleLock: toggleLock,
+      onDelete: requestDelete,
+    }),
+    [hasRender, play, render, requestDelete, showRecordings, toggleLock],
+  );
+  const selectFloor = useCallback(
+    (floor: number) => {
+      const marker = markers.find((candidate) => candidate.floorIndex === floor);
+      // Floors without attempts keep the current filter; only markers change it.
+      if (marker) onSelectMarker(marker);
+    },
+    [markers, onSelectMarker],
+  );
+  const selectMarkerById = useCallback(
     (id: string) => onSelectMarker(markers.find((marker) => marker.id === id) ?? null),
     [markers, onSelectMarker],
   );
-  const selectFloor = useCallback(
-    (floor: number) =>
-      onSelectMarker(markers.find((marker) => marker.floorIndex === floor) ?? null),
-    [markers, onSelectMarker],
-  );
-  const selectedFloor = selectedMarker?.floorIndex ?? null;
-  const selectedMarkerId = selectedMarker?.id ?? null;
-  const hasSelectedMarker = selectedMarker !== null;
-  const selectedRuns = useMemo(
-    () => (selectedFloor === null ? [] : runs.filter((run) => run.startTile === selectedFloor)),
-    [runs, selectedFloor],
-  );
-  const sortedRuns = useMemo(
-    () => sortRuns(selectedRuns, runSort, sortDirection),
-    [selectedRuns, runSort, sortDirection],
-  );
-  const renderedRunRange =
-    visibleRunRange.end > visibleRunRange.start && visibleRunRange.start < sortedRuns.length
-      ? {
-          start: visibleRunRange.start,
-          end: Math.min(visibleRunRange.end, sortedRuns.length),
-        }
-      : calculateVirtualRunRange(sortedRuns.length, 0, 0, runRowStride, runRowOverscan);
-  const measureRunRow = useCallback((element: HTMLDivElement | null) => {
-    runRowResizeObserverRef.current?.disconnect();
-    runRowResizeObserverRef.current = null;
-    if (!element) return;
 
-    const updateStride = () => {
-      const nextStride = element.getBoundingClientRect().height + runRowGap;
-      if (nextStride > runRowGap) {
-        setRunRowStride((current) => (Math.abs(current - nextStride) < 0.5 ? current : nextStride));
-      }
-    };
-    updateStride();
-
-    const observer = new ResizeObserver(updateStride);
-    observer.observe(element);
-    runRowResizeObserverRef.current = observer;
-  }, []);
-  useEffect(() => () => runRowResizeObserverRef.current?.disconnect(), []);
-  useLayoutEffect(() => {
-    const scroller = runScrollRef.current;
-    const previous = runListLayoutRef.current;
-    if (
-      scroller &&
-      previous?.markerId === selectedMarkerId &&
-      previous.sort === runSort &&
-      previous.direction === sortDirection
-    ) {
-      scroller.scrollTop = anchoredRunScrollTop(
-        previous.runs,
-        sortedRuns,
-        previous.scrollTop,
-        previous.stride,
-        runRowStride,
-      );
-      setVisibleRunRange(
-        calculateVirtualRunRange(
-          sortedRuns.length,
-          scroller.scrollTop,
-          scroller.clientHeight,
-          runRowStride,
-          runRowOverscan,
-        ),
-      );
-    }
-    runListLayoutRef.current = {
-      runs: sortedRuns,
-      markerId: selectedMarkerId,
-      sort: runSort,
-      direction: sortDirection,
-      stride: runRowStride,
-      scrollTop: scroller?.scrollTop ?? 0,
-    };
-  }, [runRowStride, runSort, selectedMarkerId, sortDirection, sortedRuns]);
-  useLayoutEffect(() => {
-    if (!hasSelectedMarker) return;
-    const scroller = runScrollRef.current;
-    if (!scroller) return;
-
-    let frame = 0;
-    const updateRange = () => {
-      if (runListLayoutRef.current) runListLayoutRef.current.scrollTop = scroller.scrollTop;
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const next = calculateVirtualRunRange(
-          sortedRuns.length,
-          scroller.scrollTop,
-          scroller.clientHeight,
-          runRowStride,
-          runRowOverscan,
-        );
-        setVisibleRunRange((current) =>
-          current.start === next.start && current.end === next.end ? current : next,
-        );
-      });
-    };
-
-    updateRange();
-    scroller.addEventListener("scroll", updateRange, { passive: true });
-    const resizeObserver = new ResizeObserver(updateRange);
-    resizeObserver.observe(scroller);
-    return () => {
-      cancelAnimationFrame(frame);
-      scroller.removeEventListener("scroll", updateRange);
-      resizeObserver.disconnect();
-    };
-  }, [hasSelectedMarker, runRowStride, sortedRuns.length]);
-  useLayoutEffect(() => {
-    void runSort;
-    void sortDirection;
-
-    const pendingLayout = pendingRunSortLayoutRef.current;
-    pendingRunSortLayoutRef.current = null;
-    const runList = runListRef.current;
-    const scroller = runScrollRef.current;
-    if (!pendingLayout || !runList || !scroller) return;
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-
-    const scrollDelta = scroller.scrollTop - pendingLayout.scrollTop;
-    for (const element of visibleRunElements(runList, scroller, runRowStride)) {
-      const runId = element.dataset.runId;
-      if (!runId) continue;
-      const previousPosition = pendingLayout.positions.get(runId);
-      if (!previousPosition) continue;
-
-      const nextPosition = element.getBoundingClientRect();
-      const x = previousPosition.left - nextPosition.left;
-      const y = previousPosition.top - scrollDelta - nextPosition.top;
-      if (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) continue;
-
-      const animation = element.animate(
-        [{ transform: `translate(${x}px, ${y}px)` }, { transform: "translate(0, 0)" }],
-        { duration: 360, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-      );
-      animation.id = "run-sort";
-    }
-  }, [runRowStride, runSort, sortDirection]);
   useLayoutEffect(() => {
     if (!selectedMarkerId) return;
     const frame = requestAnimationFrame(() => chartRef.current?.refocusSelection());
     return () => cancelAnimationFrame(frame);
   }, [selectedMarkerId]);
-  if (error && !chart) return <StatePanel title={t("chart.loadError")} body={error} />;
+
+  const refreshBanner =
+    error && runs.length > 0 ? (
+      <div
+        role="alert"
+        className="mx-4 mb-2 flex items-center gap-3 rounded-xl border border-warning/25 bg-warning/8 px-3 py-2 text-xs"
+      >
+        <HugeiconsIcon
+          aria-hidden="true"
+          icon={Alert02Icon}
+          size={15}
+          strokeWidth={2}
+          className="shrink-0 text-warning"
+        />
+        <p className="min-w-0 flex-1 leading-relaxed">
+          <span className="font-semibold">{t("chart.refreshError")}</span>{" "}
+          <span className="text-muted-foreground">
+            {error} {t("chart.showingPreviousRuns")}
+          </span>
+        </p>
+        <Button size="xs" variant="secondary" onClick={() => void onRetry()}>
+          {t("chart.retry")}
+        </Button>
+      </div>
+    ) : null;
+
+  return (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+      <LevelHeader
+        level={level}
+        metadata={metadata}
+        summary={summary}
+        timeZone={timeZone}
+        leading={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="-ml-1.5 shrink-0 lg:hidden"
+            aria-label={t("sidebar.open")}
+            onClick={onOpenSidebar}
+          >
+            <HugeiconsIcon aria-hidden="true" icon={Menu01Icon} className="size-5" />
+          </Button>
+        }
+      />
+      {error && runs.length === 0 && !loading ? (
+        <WorkspaceState
+          title={t("chart.loadError")}
+          body={error}
+          action={
+            <Button size="sm" variant="secondary" onClick={() => void onRetry()}>
+              <HugeiconsIcon aria-hidden="true" icon={RefreshIcon} className="size-4" />
+              {t("chart.retry")}
+            </Button>
+          }
+        />
+      ) : (
+        <ResizablePanelGroup
+          orientation="vertical"
+          defaultLayout={layout.defaultLayout}
+          onLayoutChanged={layout.onLayoutChanged}
+          className="min-h-0 flex-1"
+        >
+          <ResizablePanel id="chart" defaultSize="50" minSize="22">
+            <div className="relative flex h-full min-h-0 px-4 pb-2">
+              <ChartArea
+                chartRef={chartRef}
+                chart={chart}
+                chartAvailable={level.chartAvailable}
+                loading={loading}
+                chartError={chartError}
+                markers={markers}
+                selectedMarker={selectedMarker}
+                selectedRun={selectedRun}
+                onMarkerSelect={selectMarkerById}
+                onFloorSelect={selectFloor}
+              />
+            </div>
+          </ResizablePanel>
+          <ResizableHandle
+            withHandle
+            aria-label={t("workspace.resize")}
+            className="mx-4 bg-transparent transition-colors hover:bg-border focus-visible:bg-primary/50 [&>div]:h-1 [&>div]:w-10 [&>div]:rotate-0! [&>div]:bg-foreground/15 [&>div]:transition-colors hover:[&>div]:bg-foreground/35"
+          />
+          <ResizablePanel id="attempts" defaultSize="50" minSize="22">
+            <AttemptsTable
+              runs={runs}
+              scopeKey={level.id}
+              loading={loading}
+              markers={markers}
+              floorCount={chart?.floorCount ?? level.floorCount}
+              selectedMarker={selectedMarker}
+              selectedRun={selectedRun}
+              timeZone={timeZone}
+              replayContext={replayContext}
+              menuHandlers={menuHandlers}
+              banner={refreshBanner}
+              onSelectMarker={onSelectMarker}
+              onToggleRun={onToggleRun}
+              onFocusRun={onFocusRun}
+              onSetLocked={onSetRunLocked}
+            />
+          </ResizablePanel>
+        </ResizablePanelGroup>
+      )}
+      <RunDeleteDialog request={deleteRequest} />
+      <RunRecordingsDialog
+        run={recordingsRun}
+        open={recordingsRun !== null}
+        readOnly={readOnly}
+        replayActive={recordingsRun ? runReplayActive(recordingsRun, replayContext) : false}
+        timeZone={timeZone}
+        actions={recordingActions}
+        onOpenChange={(open) => {
+          if (!open) setRecordingsRunId(null);
+        }}
+      />
+    </div>
+  );
+}
+
+function ChartArea({
+  chartRef,
+  chart,
+  chartAvailable,
+  loading,
+  chartError,
+  markers,
+  selectedMarker,
+  selectedRun,
+  onMarkerSelect,
+  onFloorSelect,
+}: {
+  chartRef: RefObject<EmbeddedChartHandle | null>;
+  chart: ActivityChart | null;
+  chartAvailable: boolean;
+  loading: boolean;
+  chartError: string;
+  markers: RunMarker[];
+  selectedMarker: RunMarker | null;
+  selectedRun: ActivityRun | null;
+  onMarkerSelect: (id: string) => void;
+  onFloorSelect: (floor: number) => void;
+}) {
+  const { t } = useTranslation("activity");
   if (!chartAvailable)
-    return <StatePanel title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
+    return <ChartState title={t("chart.unavailable")} body={t("chart.missingStoredChart")} />;
   if (!chart)
     return (
-      <StatePanel
+      <ChartState
         title={loading ? t("chart.loading") : t("chart.unavailable")}
         body={loading ? t("chart.loadingIncrementally") : chartError || t("chart.noData")}
+        pending={loading}
       />
     );
   return (
-    <section className={cn("relative flex min-h-0 flex-1", selectedMarker && "gap-3")}>
-      {error ? (
-        <Card role="alert" className="absolute inset-x-3 top-3 z-20 border-destructive/25 py-3">
-          <CardContent className="flex items-center gap-3 px-4">
-            <div className="min-w-0 flex-1 text-sm">
-              <p className="font-semibold">{t("chart.refreshError")}</p>
-              <p className="mt-1 text-muted-foreground">{error}</p>
-              <p className="text-muted-foreground">{t("chart.showingPreviousRuns")}</p>
-            </div>
-            <Button variant="outline" size="sm" onClick={() => void onRetry()}>
-              {t("chart.retry")}
-            </Button>
-          </CardContent>
-        </Card>
-      ) : null}
+    <div className="relative flex min-w-0 flex-1">
       <EmbeddedChart
         ref={chartRef}
         chart={chart}
         markers={markers}
         selectedMarker={selectedMarker}
         selectedRun={selectedRun}
-        onMarkerSelect={selectId}
-        onFloorSelect={selectFloor}
+        onMarkerSelect={onMarkerSelect}
+        onFloorSelect={onFloorSelect}
       />
-      <aside
-        aria-hidden={!selectedMarker}
-        className={cn(
-          "flex min-h-0 shrink-0 flex-col overflow-hidden rounded-2xl",
-          selectedMarker ? "glass-structural w-96 p-3" : "pointer-events-none w-0 p-0",
-        )}
-      >
-        {selectedMarker ? (
-          <div className="flex min-h-0 min-w-[22.5rem] flex-1 flex-col motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-right-2 motion-safe:duration-200">
-            <div className="mb-3 shrink-0">
-              <div className="mb-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                {t("run.sortBy")}
-              </div>
-              <fieldset className="flex min-w-0 items-center gap-2" aria-label={t("sort.label")}>
-                <div className="grid min-w-0 flex-1 grid-cols-4 rounded-lg bg-background/55 p-1 ring-1 ring-foreground/8">
-                  {runSortOptions.map((option) => (
-                    <button
-                      key={option}
-                      type="button"
-                      aria-pressed={runSort === option}
-                      onClick={() => changeRunSort(option)}
-                      className={cn(
-                        "h-8 rounded-sm px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                        runSort === option && "bg-muted text-foreground shadow-sm",
-                      )}
-                    >
-                      {t(`sort.${option}`)}
-                    </button>
-                  ))}
-                </div>
-                <div className="grid grid-cols-2 rounded-lg bg-background/55 p-1 ring-1 ring-foreground/8">
-                  <SortDirectionButton
-                    direction="asc"
-                    selected={sortDirection === "asc"}
-                    onSelect={changeSortDirection}
-                  />
-                  <SortDirectionButton
-                    direction="desc"
-                    selected={sortDirection === "desc"}
-                    onSelect={changeSortDirection}
-                  />
-                </div>
-              </fieldset>
-            </div>
-            <div
-              ref={runScrollRef}
-              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain p-1 [overflow-anchor:none]"
-            >
-              <TooltipProvider>
-                <div
-                  ref={runListRef}
-                  data-run-count={sortedRuns.length}
-                  className="relative"
-                  style={{ height: Math.max(0, sortedRuns.length * runRowStride - runRowGap) }}
-                >
-                  {sortedRuns
-                    .slice(renderedRunRange.start, renderedRunRange.end)
-                    .map((run, offset) => {
-                      const index = renderedRunRange.start + offset;
-                      const active = selectedRun?.id === run.id;
-                      return (
-                        <div
-                          key={run.id}
-                          ref={offset === 0 ? measureRunRow : undefined}
-                          data-run-index={index}
-                          className="absolute inset-x-0"
-                          style={{ transform: `translateY(${index * runRowStride}px)` }}
-                        >
-                          <RunCard
-                            run={run}
-                            active={active}
-                            readOnly={readOnly}
-                            timeZone={timeZone}
-                            replayStatus={replayStatus}
-                            replayPendingRunId={replayPendingRunId}
-                            replayError={replayError}
-                            replayErrorRunId={replayErrorRunId}
-                            onSelect={selectRun}
-                            onPlayReplay={playReplay}
-                            onRender={onRender}
-                            onDeleteRun={deleteRun}
-                            onSetRunLocked={setRunLocked}
-                            onKeepMicrophoneRecording={keepMicrophoneRecording}
-                            onDownloadMicrophoneRecording={downloadMicrophoneRecording}
-                            onKeepCameraRecording={keepCameraRecording}
-                            onDownloadCameraRecording={downloadCameraRecording}
-                            onDeleteCameraRecording={deleteCameraRecording}
-                            onDeleteMicrophoneRecording={deleteMicrophoneRecording}
-                          />
-                        </div>
-                      );
-                    })}
-                </div>
-              </TooltipProvider>
-            </div>
-          </div>
-        ) : null}
-      </aside>
-    </section>
+      {markers.length > 1 && !selectedMarker && !selectedRun ? (
+        <p className="material-chrome pointer-events-none absolute bottom-3 left-3 rounded-full px-3 py-1.5 text-[11px] font-medium text-foreground/80">
+          {t("chart.markerHint")}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
-function StatePanel({ title, body }: { title: string; body: string }) {
-  return (
-    <section className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 p-8 text-center shadow-2xl ring-1 ring-foreground/10">
-      <div>
-        <h2 className="font-heading text-xl font-semibold">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{body}</p>
-      </div>
-    </section>
-  );
-}
-
-function SortDirectionButton({
-  direction,
-  selected,
-  onSelect,
+function ChartState({
+  title,
+  body,
+  pending = false,
 }: {
-  direction: SortDirection;
-  selected: boolean;
-  onSelect: (direction: SortDirection) => void;
+  title: string;
+  body: string;
+  pending?: boolean;
 }) {
-  const { t } = useTranslation("activity");
-  const label = t(direction === "asc" ? "run.ascending" : "run.descending");
   return (
-    <button
-      type="button"
-      aria-label={label}
-      aria-pressed={selected}
-      title={label}
-      onClick={() => onSelect(direction)}
-      className={cn(
-        "grid size-8 place-items-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        selected && "bg-primary/15 text-primary shadow-sm",
-      )}
-    >
-      <HugeiconsIcon
-        aria-hidden="true"
-        icon={direction === "asc" ? ArrowUp02Icon : ArrowDown02Icon}
-        size={15}
-        strokeWidth={2}
-      />
-    </button>
+    <div className="panel grid min-w-0 flex-1 place-items-center">
+      <Empty className="p-8">
+        <EmptyHeader>
+          <EmptyTitle className={pending ? "animate-pulse motion-reduce:animate-none" : undefined}>
+            {title}
+          </EmptyTitle>
+          <EmptyDescription>{body}</EmptyDescription>
+        </EmptyHeader>
+      </Empty>
+    </div>
   );
 }
 
-function sortRuns(runs: ActivityRun[], sort: RunSortKey, direction: SortDirection) {
-  return [...runs].sort((left, right) => {
-    const leftValue = runSortValue(left, sort);
-    const rightValue = runSortValue(right, sort);
-    if (leftValue === null && rightValue === null) return right.runIndex - left.runIndex;
-    if (leftValue === null) return 1;
-    if (rightValue === null) return -1;
-    const difference = leftValue - rightValue;
-    return (
-      (direction === "asc" ? difference : -difference) ||
-      (direction === "asc" ? left.runIndex - right.runIndex : right.runIndex - left.runIndex)
-    );
-  });
-}
-
-function visibleRunElements(
-  runList: HTMLDivElement,
-  scroller: HTMLDivElement,
-  runRowStride: number,
-): HTMLElement[] {
-  const itemCount = Number(runList.dataset.runCount) || 0;
-  const range = calculateVirtualRunRange(
-    itemCount,
-    scroller.scrollTop,
-    scroller.clientHeight,
-    runRowStride,
-    0,
+function WorkspaceState({
+  title,
+  body,
+  action,
+}: {
+  title: string;
+  body: string;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="grid min-h-0 flex-1 place-items-center px-4 pb-4">
+      <Empty>
+        <EmptyHeader>
+          <EmptyTitle>{title}</EmptyTitle>
+          <EmptyDescription>{body}</EmptyDescription>
+        </EmptyHeader>
+        {action}
+      </Empty>
+    </div>
   );
-  const elements: HTMLElement[] = [];
-
-  for (const row of runList.querySelectorAll<HTMLElement>("[data-run-index]")) {
-    const index = Number(row.dataset.runIndex);
-    if (!Number.isInteger(index) || index < range.start || index >= range.end) continue;
-    const element = row.querySelector<HTMLElement>("[data-run-id]");
-    if (element) elements.push(element);
-  }
-
-  return elements;
-}
-
-function runSortValue(run: ActivityRun, sort: RunSortKey) {
-  if (sort === "progress") return runProgressPercent(run);
-  if (sort === "pitch") return run.levelPitchPercent;
-  if (sort === "accuracy") return Number.isFinite(run.xAccuracy) ? run.xAccuracy : null;
-  const timestamp = Date.parse(run.startedAtUtc);
-  return Number.isNaN(timestamp) ? null : timestamp;
-}
-
-function runProgressPercent(run: ActivityRun) {
-  const lastTile = Math.max(run.startTile, run.lastTile ?? run.startTile);
-  return tileProgressPercent(lastTile, run.floorCount);
-}
-
-function tileProgressPercent(tile: number, floorCount: number) {
-  return Math.round(Math.min(1, Math.max(0, tile) / Math.max(1, floorCount)) * 100);
 }

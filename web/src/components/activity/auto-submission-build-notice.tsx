@@ -22,7 +22,7 @@ export function AutoSubmissionBuildNotice({ health }: { health: Health | null })
     <aside
       role="status"
       aria-live="polite"
-      className="rounded-xl border border-amber-400/25 bg-amber-400/8 px-3 py-2 text-xs leading-relaxed text-muted-foreground"
+      className="shrink-0 border-b border-warning/20 bg-warning/8 px-5 py-2 text-xs leading-relaxed text-foreground/85"
     >
       {t(copyKey)}
     </aside>

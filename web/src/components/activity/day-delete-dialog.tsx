@@ -7,9 +7,14 @@ import type { ActivityDay } from "@/models/activity/activity-model";
 import { summarizeDayDeletion } from "@/models/activity/day-deletion";
 import { localizedErrorMessage } from "@/models/activity/localized-error";
 import { cn } from "@/shared/lib/cn";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import { Button } from "@/shared/ui/button";
-import { Checkbox } from "@/shared/ui/checkbox";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/shared/ui/dialog";
+import { Switch } from "@/shared/ui/switch";
 
 export interface DayDeleteOutcome {
   deletedRunCount: number;
@@ -20,6 +25,7 @@ export interface DayDeleteOutcome {
 // Long enough that a normal delete finishes first; past it the player is likely mid-attempt.
 const SLOW_DELETE_HINT_MS = 2_500;
 
+/** Confirms a day delete with the two numbers that matter: what goes and what stays. */
 export function DayDeleteDialog({
   day,
   open,
@@ -61,7 +67,7 @@ export function DayDeleteDialog({
 
   if (!day) return null;
   const summary = summarizeDayDeletion(day, keepClears);
-  const label = dayStampParts(day.date, locale).fullLabel;
+  const shortDate = dayStampParts(day.date, locale).shortLabel;
   const count = summary.deleteRunCount;
 
   const confirm = async () => {
@@ -85,12 +91,10 @@ export function DayDeleteDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={(next) => !deleting && onOpenChange(next)}>
-      <DialogContent
-        role="alertdialog"
-        className="min-h-0 w-[min(27rem,calc(100vw-2rem))]"
+    <AlertDialog open={open} onOpenChange={(next) => !deleting && onOpenChange(next)}>
+      <AlertDialogContent
+        className="max-w-[26rem] gap-0 overflow-hidden p-0"
         onEscapeKeyDown={(event) => deleting && event.preventDefault()}
-        onPointerDownOutside={(event) => deleting && event.preventDefault()}
         onOpenAutoFocus={(event) => {
           // Destructive dialogs focus the safe choice first.
           event.preventDefault();
@@ -101,82 +105,85 @@ export function DayDeleteDialog({
           restoreFocus();
         }}
       >
-        <DialogTitle className="text-balance leading-snug">
-          {t("dayDelete.title", { count, date: label })}
-        </DialogTitle>
-        <DialogDescription asChild>
-          <ul className="mt-3 grid gap-2 text-sm leading-relaxed text-muted-foreground">
-            <Fact icon={Delete02Icon} tone="destructive">
-              <Trans
-                t={t}
-                i18nKey="dayDelete.deletes"
-                count={count}
-                components={{ strong: <strong className="font-semibold text-foreground" /> }}
-              />
-            </Fact>
-            {summary.keepRunCount > 0 ? (
-              <Fact icon={SquareLock02Icon} tone="foreground">
+        <div className="px-6 pt-6">
+          <AlertDialogTitle className="text-xl">
+            {t("dayDelete.heading", { date: shortDate })}
+          </AlertDialogTitle>
+          <AlertDialogDescription asChild>
+            <ul className="mt-4 grid gap-3 text-sm leading-relaxed text-foreground">
+              <Fact icon={Delete02Icon} tone="destructive">
                 <Trans
                   t={t}
-                  i18nKey="dayDelete.keeps"
-                  count={summary.keepRunCount}
-                  components={{ strong: <strong className="font-semibold text-foreground" /> }}
+                  i18nKey="dayDelete.deletesFact"
+                  count={count}
+                  components={{ strong: <strong className="font-semibold" /> }}
                 />
+                {summary.hiddenRunCount > 0 ? (
+                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                    {t("dayDelete.hidden", { count: summary.hiddenRunCount })}
+                  </span>
+                ) : null}
               </Fact>
-            ) : null}
-            {summary.hiddenRunCount > 0 ? (
-              <li className="pl-7 text-xs">
-                {t("dayDelete.hidden", { count: summary.hiddenRunCount })}
-              </li>
-            ) : null}
-          </ul>
-        </DialogDescription>
+              {summary.keepRunCount > 0 ? (
+                <Fact icon={SquareLock02Icon}>
+                  <Trans
+                    t={t}
+                    i18nKey="dayDelete.keepsFact"
+                    count={summary.keepRunCount}
+                    components={{ strong: <strong className="font-semibold" /> }}
+                  />
+                </Fact>
+              ) : null}
+            </ul>
+          </AlertDialogDescription>
+        </div>
+
         {summary.unlockedClearRunCount > 0 ? (
           <label
             htmlFor={keepClearsId}
-            className={cn(
-              "mt-4 grid cursor-pointer grid-cols-[auto_minmax(0,1fr)] items-start gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors",
-              keepClears ? "border-primary/25 bg-primary/8" : "border-amber-500/30 bg-amber-500/8",
-            )}
+            className="mx-6 mt-4 flex cursor-pointer items-center gap-3 rounded-xl border border-border px-3.5 py-3"
           >
-            <Checkbox
-              id={keepClearsId}
-              checked={keepClears}
-              disabled={deleting}
-              onCheckedChange={(checked) => setKeepClears(checked === true)}
-              className="mt-0.5"
-            />
-            <span className="grid gap-0.5">
-              <span className="font-medium">
+            <span className="min-w-0 flex-1">
+              <span className="block text-sm font-medium">
                 {t("dayDelete.keepClears", { count: summary.unlockedClearRunCount })}
               </span>
               <span
-                className={cn("text-xs", keepClears ? "text-muted-foreground" : "text-amber-500")}
+                className={cn(
+                  "mt-0.5 block text-xs leading-relaxed",
+                  keepClears ? "text-muted-foreground" : "text-warning",
+                )}
               >
                 {keepClears
                   ? t("dayDelete.keepClearsOn")
                   : t("dayDelete.keepClearsOff", { count: summary.unlockedClearRunCount })}
               </span>
             </span>
+            <Switch
+              id={keepClearsId}
+              checked={keepClears}
+              disabled={deleting}
+              onCheckedChange={setKeepClears}
+            />
           </label>
         ) : null}
-        <p className="mt-4 text-xs text-muted-foreground">{t("dayDelete.irreversible")}</p>
+
+        <p className="mx-6 mt-4 text-xs text-muted-foreground">{t("dayDelete.irreversible")}</p>
         {slow && !error ? (
-          <p role="status" className="mt-2 text-xs text-muted-foreground">
+          <p role="status" className="mx-6 mt-3 text-xs leading-relaxed text-muted-foreground">
             {t("dayDelete.slow")}
           </p>
         ) : null}
         {error ? (
-          <p role="alert" className="mt-3 text-sm text-destructive">
+          <p role="alert" className="mx-6 mt-3 text-sm leading-relaxed text-destructive">
             {error}
           </p>
         ) : null}
-        <div className="mt-6 flex justify-end gap-2">
+
+        <div className="mt-6 flex justify-end gap-2 border-t border-border px-6 py-4">
           <Button
-            type="button"
-            variant="outline"
-            size="sm"
             ref={cancelRef}
+            type="button"
+            variant="ghost"
             disabled={deleting}
             onClick={() => onOpenChange(false)}
           >
@@ -185,7 +192,6 @@ export function DayDeleteDialog({
           <Button
             type="button"
             variant="destructive"
-            size="sm"
             disabled={deleting || count === 0}
             onClick={() => void confirm()}
           >
@@ -203,28 +209,30 @@ export function DayDeleteDialog({
                 : t("dayDelete.confirm", { count })}
           </Button>
         </div>
-      </DialogContent>
-    </Dialog>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
 function Fact({
   icon,
-  tone,
+  tone = "neutral",
   children,
 }: {
   icon: typeof Delete02Icon;
-  tone: "destructive" | "foreground";
+  tone?: "destructive" | "neutral";
   children: ReactNode;
 }) {
   return (
-    <li className="grid grid-cols-[1rem_minmax(0,1fr)] gap-3">
+    <li className="grid grid-cols-[1.25rem_minmax(0,1fr)] gap-3">
       <HugeiconsIcon
         aria-hidden="true"
         icon={icon}
+        size={18}
+        strokeWidth={1.8}
         className={cn(
-          "mt-0.5 size-4",
-          tone === "destructive" ? "text-destructive" : "text-foreground",
+          "mt-px",
+          tone === "destructive" ? "text-destructive" : "text-muted-foreground",
         )}
       />
       <span>{children}</span>
