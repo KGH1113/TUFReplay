@@ -1,6 +1,10 @@
 import { callRecorder } from "@/api/recorder-call";
 import type { LocalAppChannels } from "@/ports/local-message-peer";
 import type { RunApi } from "./run-api";
+
+// The mod waits until the player leaves an attempt before a bulk delete, so allow longer than a call.
+const DAY_DELETE_TIMEOUT_MS = 180_000;
+
 export function createRunApi(clients: LocalAppChannels): RunApi {
   return {
     prepareMicrophoneRecordingDownload: (runId) =>
@@ -26,6 +30,22 @@ export function createRunApi(clients: LocalAppChannels): RunApi {
     async keepCameraRecording(runId) {
       const result = await callRecorder(clients, (mod) => mod.retainCameraRecording({ runId }));
       return { runId: result.runId, changed: result.permanent };
+    },
+    async setRunLocked(runId, locked) {
+      const result = await callRecorder(clients, (mod) => mod.changeRunLock({ runId, locked }));
+      return { runId: result.runId, locked: result.locked };
+    },
+    async deleteAppSessionRuns(appSessionIds, keepClears) {
+      const result = await callRecorder(
+        clients,
+        (mod) => mod.removeAppSessionRuns({ appSessionIds, keepClears }),
+        { timeoutMs: DAY_DELETE_TIMEOUT_MS },
+      );
+      return {
+        deletedRunCount: result.deletedRunCount,
+        keptLockedRunCount: result.keptLockedRunCount,
+        keptInUseRunCount: result.keptInUseRunCount,
+      };
     },
   };
 }

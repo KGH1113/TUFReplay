@@ -59,6 +59,7 @@ export function ActivityWorkspace({
   onPlayReplay,
   onRender,
   onDeleteRun,
+  onSetRunLocked,
   onDeleteMicrophoneRecording,
   onKeepMicrophoneRecording,
   onDownloadMicrophoneRecording,
@@ -87,6 +88,7 @@ export function ActivityWorkspace({
   onPlayReplay: (run: ActivityRun) => void;
   onRender?: (run: ActivityRun) => void;
   onDeleteRun: (run: ActivityRun) => Promise<void>;
+  onSetRunLocked: (run: ActivityRun, locked: boolean) => Promise<void>;
   onDeleteMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onKeepMicrophoneRecording: (run: ActivityRun) => Promise<void>;
   onDownloadMicrophoneRecording: (run: ActivityRun) => Promise<void>;
@@ -108,6 +110,7 @@ export function ActivityWorkspace({
   const selectRun = useStableCallback(onSelectRun);
   const playReplay = useStableCallback(onPlayReplay);
   const deleteRun = useStableCallback(onDeleteRun);
+  const setRunLocked = useStableCallback(onSetRunLocked);
   const keepMicrophoneRecording = useStableCallback(onKeepMicrophoneRecording);
   const downloadMicrophoneRecording = useStableCallback(onDownloadMicrophoneRecording);
   const deleteMicrophoneRecording = useStableCallback(onDeleteMicrophoneRecording);
@@ -415,6 +418,7 @@ export function ActivityWorkspace({
                             onPlayReplay={playReplay}
                             onRender={onRender}
                             onDeleteRun={deleteRun}
+                            onSetRunLocked={setRunLocked}
                             onKeepMicrophoneRecording={keepMicrophoneRecording}
                             onDownloadMicrophoneRecording={downloadMicrophoneRecording}
                             onKeepCameraRecording={keepCameraRecording}

@@ -140,7 +140,10 @@
     "chart_permission_denied": "TUFReplay does not have permission to read the level file. Check its file permissions, then try again.",
     "activity_busy": "Play history is being updated. Please try again shortly.",
     "run_in_use": "This replay is playing, so its run cannot be deleted. Stop playback and try again.",
-    "run_delete_failed": "Could not delete the run. Please try again shortly."
+    "run_delete_failed": "Could not delete the run. Please try again shortly.",
+    "run_locked": "This run is locked. Unlock it to delete it.",
+    "run_lock_failed": "The lock could not be changed. Please try again shortly.",
+    "day_delete_failed": "The runs could not be deleted. Please try again shortly."
   },
   "time": {
     "open": "Open",
@@ -229,5 +232,58 @@
     "Late": "Late",
     "TooLate": "Too Late",
     "Miss": "Miss"
+  },
+  "dayRail": {
+    "openActions": "Actions for {{date}}",
+    "today": "Today",
+    "locked_one": "{{count}} locked run",
+    "locked_other": "{{count}} locked runs"
+  },
+  "dayDelete": {
+    "action": "Delete day…",
+    "blocked": {
+      "all_locked": "Every run on this day is locked",
+      "empty": "There are no runs to delete"
+    },
+    "title_one": "Delete {{count}} run from {{date}}?",
+    "title_other": "Delete {{count}} runs from {{date}}?",
+    "deletes_one": "<strong>{{count}} run</strong> and its replay, microphone audio, and camera video are deleted.",
+    "deletes_other": "<strong>{{count}} runs</strong> and their replays, microphone audio, and camera videos are deleted.",
+    "keeps_one": "<strong>{{count}} locked run</strong> stays, and the day stays with it.",
+    "keeps_other": "<strong>{{count}} locked runs</strong> stay, and the day stays with them.",
+    "hidden_one": "Includes {{count}} run from an older version of a level, which the level list hides.",
+    "hidden_other": "Includes {{count}} runs from older versions of levels, which the level list hides.",
+    "keepClears_one": "Keep {{count}} clear",
+    "keepClears_other": "Keep {{count}} clears",
+    "keepClearsOn": "They’ll be locked, so later deletes skip them too.",
+    "keepClearsOff_one": "{{count}} clear will be deleted with the rest.",
+    "keepClearsOff_other": "{{count}} clears will be deleted with the rest.",
+    "irreversible": "You can’t undo this.",
+    "slow": "Still deleting. If you’re in the middle of an attempt, this finishes when it ends.",
+    "confirm_one": "Delete {{count}} run",
+    "confirm_other": "Delete {{count}} runs",
+    "deleting_one": "Deleting {{count}} run…",
+    "deleting_other": "Deleting {{count}} runs…",
+    "nothing": "Nothing to delete",
+    "done_one": "Deleted {{count}} run",
+    "done_other": "Deleted {{count}} runs",
+    "doneKept_one": "{{date}} · {{count}} locked run kept",
+    "doneKept_other": "{{date}} · {{count}} locked runs kept",
+    "doneEmpty": "{{date}} has no runs left",
+    "doneInUse": "The run playing as a replay was kept.",
+    "failed": "Couldn’t delete the runs. Check that ADOFAI is running, then try again.",
+    "timeout": "ADOFAI hasn’t finished yet. If you’re mid-attempt, the day is deleted when the attempt ends, and this list updates on its own."
+  },
+  "lock": {
+    "lock": "Lock run",
+    "unlock": "Unlock run",
+    "lockHint": "Keeps the run and its recordings",
+    "toggleLock": "Lock run {{runIndex}}",
+    "toggleUnlock": "Unlock run {{runIndex}}",
+    "lockedTooltip": "Locked. It can’t be deleted, and its recordings are kept forever.",
+    "unlockedTooltip": "Lock to keep this run and its recordings",
+    "deleteBlocked": "Unlock this run to delete it",
+    "recordingDeleteBlocked": "This run is locked. Unlock it to delete its recordings.",
+    "failed": "Couldn’t change the lock. Check that ADOFAI is running, then try again."
   }
 }

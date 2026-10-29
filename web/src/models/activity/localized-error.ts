@@ -70,7 +70,10 @@ function domainErrorNamespace(
     code.startsWith("activity_") ||
     code.startsWith("camera_recording_") ||
     code === "run_in_use" ||
-    code === "run_delete_failed"
+    code === "run_delete_failed" ||
+    code === "run_locked" ||
+    code === "run_lock_failed" ||
+    code === "day_delete_failed"
   )
     return "activity";
   return code ? "replay" : null;

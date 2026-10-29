@@ -5,8 +5,13 @@ import { useLevelMetadata } from "@/hooks/activity/use-level-metadata";
 import { useLevelSessionData } from "@/hooks/activity/use-level-session-data";
 import { useRunActions } from "@/hooks/activity/use-run-actions";
 import { useReplayControl } from "@/hooks/replay/use-replay-control";
-import { aggregateRunMarkers, groupSessionsByDay } from "@/models/activity/activity-data";
-import type { ActivityRun, RunMarker } from "@/models/activity/activity-model";
+import {
+  aggregateRunMarkers,
+  dateKeyInTimeZone,
+  groupSessionsByDay,
+  isClearRun,
+} from "@/models/activity/activity-data";
+import type { ActivityDay, ActivityRun, RunMarker } from "@/models/activity/activity-model";
 
 export function useActivityPageViewModel() {
   const { t } = useTranslation("activity");
@@ -21,6 +26,8 @@ export function useActivityPageViewModel() {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [firstMarkerLevelSessionId, setFirstMarkerLevelSessionId] = useState<string | null>(null);
   const [replayChoiceRun, setReplayChoiceRun] = useState<ActivityRun | null>(null);
+  // The day to select when a delete removes the selected day: the one that slides into its place.
+  const deletedDayFallback = useRef<string | null>(null);
 
   const days = useMemo(
     () => groupSessionsByDay(activity.sessions, timeZone),
@@ -71,7 +78,12 @@ export function useActivityPageViewModel() {
       setSelectedDate(null);
       return;
     }
-    if (!days.some((day) => day.date === selectedDate)) setSelectedDate(days[0].date);
+    if (days.some((day) => day.date === selectedDate)) return;
+    const fallback = deletedDayFallback.current;
+    deletedDayFallback.current = null;
+    setSelectedDate(
+      fallback && days.some((day) => day.date === fallback) ? fallback : days[0].date,
+    );
   }, [days, selectedDate]);
 
   useEffect(() => {
@@ -138,6 +150,7 @@ export function useActivityPageViewModel() {
   const selectRun = (run: ActivityRun) =>
     setSelectedRunId((current) => (current === run.id ? null : run.id));
   const selectDate = (date: string) => {
+    deletedDayFallback.current = null;
     const firstLevel =
       days.find((day) => day.date === date)?.levelSessions.find((level) => level.canOpen) ?? null;
     setSelectedDate(date);
@@ -198,6 +211,51 @@ export function useActivityPageViewModel() {
     const file = await runActions.prepareCameraRecordingDownload(run.id);
     await file.download();
   };
+  const setRunLocked = async (run: ActivityRun, locked: boolean) => {
+    if (run.locked === locked) return;
+    // Patch the day's lock count before the request: the refresh that follows replaces recent
+    // sessions with the recorder's counts, so patching after it would count the lock twice.
+    const delta = locked ? 1 : -1;
+    const clearDelta = isClearRun(run) ? delta : 0;
+    activity.adjustLockedRuns(run.levelSessionId, delta, clearDelta);
+    try {
+      await runActions.setRunLocked(run.id, locked);
+    } catch (cause) {
+      activity.adjustLockedRuns(run.levelSessionId, -delta, -clearDelta);
+      throw cause;
+    }
+    // Locking also keeps the run's recordings; mirror that until the refresh lands.
+    await levelData.updateRun(
+      run.id,
+      locked
+        ? {
+            locked,
+            ...(run.hasMicrophoneRecording
+              ? { microphoneRecordingPermanent: true, microphoneRecordingExpiresAtUtc: null }
+              : {}),
+            ...(run.hasCameraRecording
+              ? { cameraRecordingPermanent: true, cameraRecordingExpiresAtUtc: null }
+              : {}),
+          }
+        : { locked },
+    );
+  };
+  const deleteDay = async (day: ActivityDay, keepClears: boolean) => {
+    const index = days.findIndex((candidate) => candidate.date === day.date);
+    deletedDayFallback.current = (days[index + 1] ?? days[index - 1])?.date ?? null;
+    let result: Awaited<ReturnType<typeof runActions.deleteAppSessionRuns>>;
+    try {
+      result = await runActions.deleteAppSessionRuns(
+        day.appSessions.map((session) => session.id),
+        keepClears,
+      );
+    } catch (cause) {
+      deletedDayFallback.current = null;
+      throw cause;
+    }
+    await activity.reloadAllSessions();
+    return result;
+  };
   const deleteRun = async (run: ActivityRun) => {
     await runActions.deleteRun(run.id);
     await levelData.removeRun(run.id);
@@ -223,6 +281,7 @@ export function useActivityPageViewModel() {
     selectedRun,
     metadataFor,
     timeZone,
+    todayDate: dateKeyInTimeZone(new Date().toISOString(), timeZone),
     copy: {
       unavailableTitle: t("levels.unavailableTitle"),
       unavailableBody: t("levels.unavailableBody"),
@@ -237,6 +296,8 @@ export function useActivityPageViewModel() {
       openReplayChoice: setReplayChoiceRun,
       closeReplayChoice: () => setReplayChoiceRun(null),
       deleteRun,
+      setRunLocked,
+      deleteDay,
       deleteMicrophoneRecording,
       keepMicrophoneRecording,
       downloadMicrophoneRecording,

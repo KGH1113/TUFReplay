@@ -31,6 +31,11 @@ export function groupSessionsByDay(sessions: AppSession[], timeZone: string): Ac
         hasOpenableLevels: levelSessions.some((level) => level.canOpen),
         runCount: levelSessions.reduce((sum, level) => sum + level.runCount, 0),
         clearRunCount: levelSessions.reduce((sum, level) => sum + level.clearRunCount, 0),
+        lockedRunCount: appSessions.reduce(
+          (sum, session) =>
+            sum + session.levelSessions.reduce((count, visit) => count + visit.lockedRunCount, 0),
+          0,
+        ),
       };
     });
 }
@@ -166,7 +171,8 @@ function isLaterVisit(left: LevelSession, right: LevelSession) {
   );
 }
 
-function dateKeyInTimeZone(value: string, timeZone: string) {
+/** The `YYYY-MM-DD` day an instant falls on in a time zone; days group by this key. */
+export function dateKeyInTimeZone(value: string, timeZone: string) {
   let formatter = dateKeyFormatters.get(timeZone);
   if (!formatter) {
     formatter = new Intl.DateTimeFormat("en-CA", {

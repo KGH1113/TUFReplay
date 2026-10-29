@@ -267,9 +267,11 @@ export function RunRecordingsDialog({
                   <RecordingActionRow
                     title={t(`recordings.${control.kind}.delete`)}
                     description={t(
-                      deletionDisabled
-                        ? "recordings.replayLocked"
-                        : `recordings.${control.kind}.deleteHint`,
+                      run.locked
+                        ? "lock.recordingDeleteBlocked"
+                        : deletionDisabled
+                          ? "recordings.replayLocked"
+                          : `recordings.${control.kind}.deleteHint`,
                     )}
                   >
                     <Button

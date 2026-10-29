@@ -5,7 +5,9 @@ import type {
   ActivityLevelSessionOverview,
   ActivityLogicalLevelOverview,
   ActivityRun,
+  ActivityRunBatchDeleteResult,
   ActivityRunDeleteResult,
+  ActivityRunLockResult,
   MicrophoneCalibrationResult,
   MicrophoneCalibrationStatus,
   MicrophoneDevicesState,
@@ -52,6 +54,11 @@ interface ActivityWireFixture {
   keepMicrophoneRecording(runId: string): Promise<MicrophoneRecordingKeepResult>;
   deleteCameraRecording(runId: string): Promise<ActivityRunDeleteResult>;
   keepCameraRecording(runId: string): Promise<{ RunId: string; Permanent: boolean }>;
+  changeRunLock(runId: string, locked: boolean): Promise<ActivityRunLockResult>;
+  deleteAppSessionRuns(
+    appSessionIds: string[],
+    keepClears: boolean,
+  ): Promise<ActivityRunBatchDeleteResult>;
   setCameraRetentionDays(days: number): boolean;
   assertCameraRecording(runId: string): void;
   playReplay(runId: string, levelPath?: string): Promise<ReplayStatus>;
@@ -115,7 +122,7 @@ const levels = [
 
 const appSessions: ActivityAppSession[] = [
   createAppSession("app-2026-07-13", "2026-07-13T01:18:00.000Z"),
-  createAppSession("app-2026-07-12", "2026-07-12T09:08:00.000Z"),
+  createAppSession("app-2026-07-12", "2026-07-12T09:08:00.000Z", "2026-07-12T11:40:00.000Z"),
 ];
 
 class MockActivityDomainError extends Error {
@@ -139,6 +146,30 @@ export function createActivityWireFixture(): ActivityWireFixture {
   };
   let cameraRetentionDays = 7;
   const keptCameraRuns = new Set<string>();
+  const removeLevel = (index: number) => {
+    const [level] = levels.splice(index, 1);
+    const appIndex = appSessions.findIndex((session) => session.Id === level.session.AppSessionId);
+    if (appIndex < 0) return;
+    const appSession = appSessions[appIndex];
+    appSession.LevelSessions = appSession.LevelSessions.filter(
+      (session) => session.Id !== level.session.Id,
+    );
+    if (appSession.LevelSessions.length === 0 && appSession.EndedAtUtc)
+      appSessions.splice(appIndex, 1);
+  };
+  const keepRecordings = (run: ActivityRun) => {
+    if (run.HasMicrophoneRecording) {
+      run.MicrophoneRecordingPermanent = true;
+      run.MicrophoneRecordingExpiresAtUtc = null;
+    }
+    if (run.HasCameraRecording) {
+      run.CameraRecordingPermanent = true;
+      run.CameraRecordingExpiresAtUtc = null;
+      keptCameraRuns.add(run.Id);
+    }
+  };
+  const runLocked = () =>
+    new MockActivityDomainError("run_locked", "Unlock this run to delete it.");
   const cameraRecordedAt = new Map(
     levels.flatMap((level) =>
       level.runs.map(
@@ -281,32 +312,56 @@ export function createActivityWireFixture(): ActivityWireFixture {
         const level = levels[index];
         const runIndex = level.runs.findIndex((candidate) => candidate.Id === runId);
         if (runIndex < 0) continue;
+        if (level.runs[runIndex].Locked) throw runLocked();
         level.runs.splice(runIndex, 1);
-        level.session.RunCount = level.runs.length;
-        level.session.ClearRunCount = level.runs.filter((run) => run.Result === "clear").length;
-        level.session.NoFailRunCount = level.runs.filter((run) => run.NoFailMode).length;
-        if (level.runs.length === 0) {
-          levels.splice(index, 1);
-          const appIndex = appSessions.findIndex(
-            (session) => session.Id === level.session.AppSessionId,
-          );
-          if (appIndex >= 0) {
-            const appSession = appSessions[appIndex];
-            appSession.LevelSessions = appSession.LevelSessions.filter(
-              (session) => session.Id !== level.session.Id,
-            );
-            if (appSession.LevelSessions.length === 0 && appSession.EndedAtUtc)
-              appSessions.splice(appIndex, 1);
-          }
-        }
+        recountLevel(level);
+        if (level.runs.length === 0) removeLevel(index);
         return { RunId: runId, Deleted: true };
       }
       throw new MockActivityDomainError("run_not_found", "Run was not found");
+    },
+    changeRunLock: async (runId, locked) => {
+      for (const level of levels) {
+        const run = level.runs.find((candidate) => candidate.Id === runId);
+        if (!run) continue;
+        run.Locked = locked;
+        if (locked) keepRecordings(run);
+        recountLevel(level);
+        return { RunId: runId, Locked: locked };
+      }
+      throw new MockActivityDomainError("run_not_found", "Run was not found");
+    },
+    deleteAppSessionRuns: async (appSessionIds, keepClears) => {
+      let deleted = 0;
+      for (let index = levels.length - 1; index >= 0; index -= 1) {
+        const level = levels[index];
+        if (!appSessionIds.includes(level.session.AppSessionId)) continue;
+        if (keepClears)
+          for (const run of level.runs)
+            if (isClearRun(run) && !run.Locked) {
+              run.Locked = true;
+              keepRecordings(run);
+            }
+        const kept = level.runs.filter((run) => run.Locked);
+        deleted += level.runs.length - kept.length;
+        level.runs = kept;
+        recountLevel(level);
+        if (kept.length === 0) removeLevel(index);
+      }
+      const keptLocked = levels
+        .filter((level) => appSessionIds.includes(level.session.AppSessionId))
+        .reduce((sum, level) => sum + level.session.LockedRunCount, 0);
+      return {
+        DeletedRunCount: deleted,
+        KeptLockedRunCount: keptLocked,
+        KeptInUseRunCount: 0,
+      };
     },
     deleteMicrophoneRecording: async (runId) => {
       for (const level of levels) {
         const run = level.runs.find((candidate) => candidate.Id === runId);
         if (!run) continue;
+        if (run.Locked) throw runLocked();
         const deleted = run.HasMicrophoneRecording;
         run.HasMicrophoneRecording = false;
         run.MicrophoneRecordingBytes = 0;
@@ -336,6 +391,7 @@ export function createActivityWireFixture(): ActivityWireFixture {
       for (const level of levels) {
         const run = level.runs.find((candidate) => candidate.Id === runId);
         if (!run) continue;
+        if (run.Locked) throw runLocked();
         const deleted = run.HasCameraRecording;
         run.HasCameraRecording = false;
         run.CameraRecordingBytes = 0;
@@ -470,14 +526,18 @@ export function createActivityWireFixture(): ActivityWireFixture {
   };
 }
 
-function createAppSession(id: string, startedAtUtc: string): ActivityAppSession {
+function createAppSession(
+  id: string,
+  startedAtUtc: string,
+  endedAtUtc: string | null = null,
+): ActivityAppSession {
   const levelSessions = levels
     .filter((level) => level.session.AppSessionId === id)
     .map((level) => level.session);
   return {
     Id: id,
     StartedAtUtc: startedAtUtc,
-    EndedAtUtc: null,
+    EndedAtUtc: endedAtUtc,
     RecorderTimeZoneId: "Asia/Seoul",
     RecorderUtcOffsetMinutes: 540,
     LevelSessions: levelSessions,
@@ -517,6 +577,8 @@ function createLevel(
       FirstStartTile: Math.min(...starts),
       LastStartTile: Math.max(...starts),
       ChartAvailable: true,
+      LockedRunCount: 0,
+      LockedClearRunCount: 0,
     },
     chart: { LevelSessionId: id, LevelText: levelText, FloorCount: floorCount },
     runs,
@@ -588,8 +650,18 @@ function createRun(
     CameraRecordingPermanent: false,
     CameraRecordingExpiresAtUtc: hasCameraRecording ? expiresAt : null,
     ReplayPlayable: true,
+    Locked: false,
     ReplayUnavailableReason: null,
   };
+}
+
+function recountLevel(level: MockLevel) {
+  const runs = level.runs;
+  level.session.RunCount = runs.length;
+  level.session.ClearRunCount = runs.filter(isClearRun).length;
+  level.session.NoFailRunCount = runs.filter((run) => run.NoFailMode).length;
+  level.session.LockedRunCount = runs.filter((run) => run.Locked).length;
+  level.session.LockedClearRunCount = runs.filter((run) => run.Locked && isClearRun(run)).length;
 }
 
 function readFloorCount(levelText: string): number {

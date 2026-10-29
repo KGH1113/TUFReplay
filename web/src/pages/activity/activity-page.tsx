@@ -11,6 +11,7 @@ import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { DayRail } from "@/sections/activity/day-rail";
 import { LevelStrip } from "@/sections/activity/level-strip";
 import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
+import { Toaster } from "@/shared/ui/sonner";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
@@ -27,11 +28,14 @@ export function ActivityPage() {
         data-tufreplay-build-sha={TUFREPLAY_WEB_BUILD.buildSha ?? undefined}
         className="h-screen overflow-hidden bg-muted/20 p-3 text-foreground"
       >
-        <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)] gap-3">
+        <div className="grid h-full grid-cols-[10rem_minmax(0,1fr)] gap-3">
           <DayRail
             days={viewModel.days}
             selectedDate={viewModel.selectedDay?.date ?? null}
+            todayDate={viewModel.todayDate}
+            readOnly={activity.status !== "online"}
             onSelectDate={actions.selectDate}
+            onDeleteDay={actions.deleteDay}
           />
           <section className="flex min-h-0 min-w-0 flex-col gap-3">
             <DashboardHeader
@@ -107,6 +111,7 @@ export function ActivityPage() {
                 onPlayReplay={actions.openReplayChoice}
                 onRender={renderNotice.show}
                 onDeleteRun={actions.deleteRun}
+                onSetRunLocked={actions.setRunLocked}
                 onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
                 onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
                 onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
@@ -135,6 +140,7 @@ export function ActivityPage() {
         onConfirm={legacyReplayNotice.confirm}
       />
       <RenderComingSoonDialog notice={renderNotice} />
+      <Toaster position="bottom-center" />
     </>
   );
 }
