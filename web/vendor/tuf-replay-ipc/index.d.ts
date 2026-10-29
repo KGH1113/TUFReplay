@@ -243,6 +243,12 @@ export interface RunBatchDeleteResult {
     keptInUseRunCount: number;
     keptLockedRunCount: number;
 }
+export interface RunJudgmentTimeline {
+    durationMs: number;
+    kinds: Array<"Early" | "EarlyPerfect" | "Late" | "LatePerfect" | "Miss" | "Overload" | "TooEarly" | "TooLate">;
+    runId: string;
+    timesMs: Array<number>;
+}
 export interface WebcamCrop {
     height: number;
     width: number;
@@ -395,6 +401,9 @@ export interface ReplayApiMod {
         jobId: string;
     }): Promise<RenderBundleState>;
     "readReplayState"(): Promise<ReplayState>;
+    "readRunJudgmentTimelines"(request: {
+        runIds: Array<string>;
+    }): Promise<Array<RunJudgmentTimeline>>;
     "readWebcamPreview"(request: {
         deviceId: string | null;
     }): Promise<WebcamPreview | null>;
