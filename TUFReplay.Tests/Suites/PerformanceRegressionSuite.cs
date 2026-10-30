@@ -33,7 +33,54 @@ internal static class PerformanceRegressionSuite
     TestHarmonyPatchesDoNotRequestBoxedArguments();
     TestGameplayIdleGateDefersWork();
     TestWindowsNativeInputContract();
+    TestWindowsPerformanceCounterConversion();
   }
+
+  // Unity's Mono counts Stopwatch in 100 ns ticks from its first clock read, but the
+  // native hook stamps raw QueryPerformanceCounter values. 1.0.4 passed them through
+  // unchanged, which put every Windows keystroke days after its run. On .NET the two
+  // clocks match, so this simulates Mono's origin and frequency explicitly.
+  private static void TestWindowsPerformanceCounterConversion()
+  {
+    const long monoFrequency = 10_000_000L;
+    foreach (long counterFrequency in new[] { 10_000_000L, 3_579_545L, 24_000_000L })
+    {
+      long launch = counterFrequency * 8L * 24 * 3600 + 12_345; // eight days of uptime at game launch
+      long origin = launch + counterFrequency * 90; // capture starts 90 s later
+      var converter = new WindowsPerformanceCounterConverter(
+        origin,
+        MonoStopwatchTicks(origin, launch, counterFrequency),
+        counterFrequency,
+        monoFrequency
+      );
+      foreach (
+        long offset in new[]
+        {
+          -counterFrequency,
+          0L,
+          counterFrequency / 3,
+          counterFrequency * 125 + 7,
+          counterFrequency * 40L * 24 * 3600,
+        }
+      )
+      {
+        long counter = origin + offset;
+        Assert(
+          Math.Abs(converter.ToStopwatchTicks(counter) - MonoStopwatchTicks(counter, launch, counterFrequency)) <= 2,
+          "A performance counter value did not map to Mono's Stopwatch clock. frequency=" + counterFrequency
+        );
+      }
+      Assert(
+        Math.Abs(converter.ToStopwatchTicks(origin) - origin) > monoFrequency * 3600,
+        "The raw performance counter was used as Stopwatch ticks."
+      );
+    }
+    Console.WriteLine("PASS Windows performance counter maps to Mono's Stopwatch clock");
+  }
+
+  // Mono on Windows: (QPC - QPC at first read) * 10 MHz / QueryPerformanceFrequency.
+  private static long MonoStopwatchTicks(long counter, long launch, long counterFrequency) =>
+    (long)((decimal)(counter - launch) * 10_000_000m / counterFrequency);
 
   // TUFReplayNative.dll hands raw WH_KEYBOARD_LL data to managed code. The struct must
   // match tufreplay_win_key_event, and normalization must match the managed hook.
