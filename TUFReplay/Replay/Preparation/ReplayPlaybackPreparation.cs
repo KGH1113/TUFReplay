@@ -13,6 +13,7 @@ using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Playback;
 using TUFReplay.Microphone.Processing;
 using TUFReplay.Microphone.Repositories;
+using TUFReplay.Replay.Compatibility;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
@@ -436,6 +437,8 @@ public static partial class ReplayPlaybackCoordinator
       Meta = operation.Meta,
     };
 
+    // ImplResourcePack checks its rule when editor.Play() below starts the level.
+    ImplResourcePackAttempts.EnsureRegistered();
     ReplaySessionService.InstallActiveContext(context);
     ReplaySessionService.ApplyReplayNoFailNow();
     ReplaySessionService.ApplyReplayGameInputOffsetNow();
