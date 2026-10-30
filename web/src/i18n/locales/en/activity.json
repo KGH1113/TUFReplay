@@ -48,7 +48,11 @@
       "downloadFailed": "The video could not be exported. Check your game connection and try again.",
       "keepFailed": "The video could not be kept forever. Check your game connection and try again.",
       "deleteFailed": "The video could not be deleted. Stop the replay and try again."
-    }
+    },
+    "mono": "Mono",
+    "channels_one": "{{count}} channel",
+    "channels_other": "{{count}} channels",
+    "subtitle": "Run #{{runIndex}} · {{time}} ({{offset}})"
   },
   "days": "Days",
   "counts": {
@@ -77,17 +81,8 @@
     "retryAfterRestarting": "Retry after restarting",
     "retry": "Retry connection",
     "reload": "Refresh this page",
-    "downloadIpc": "Download AdofaiIPC",
-    "ipcUpdateTitle": "AdofaiIPC update required",
-    "ipcUpdateDescription": "The game is running an older or legacy AdofaiIPC than this website requires.",
-    "ipcUpdateGuide": "How to update AdofaiIPC",
-    "ipcUpdateSteps": [
-      "Download the latest stable AdofaiIPC release.",
-      "Replace the installed AdofaiIPC files while ADOFAI is closed.",
-      "Restart ADOFAI, then retry the connection."
-    ],
     "clientUpdateTitle": "Website update required",
-    "clientUpdateDescription": "AdofaiIPC is newer than the cached website client.",
+    "clientUpdateDescription": "TUFReplay in the game is newer than this page.",
     "clientUpdateGuide": "How to refresh",
     "clientUpdateSteps": [
       "Refresh this page to load the latest website bundle.",
@@ -98,7 +93,7 @@
     "connectSteps": [
       "Start ADOFAI.",
       "Enable TUFReplay in UnityModManager.",
-      "Make sure AdofaiIpc is running."
+      "Keep this page open. It connects on its own."
     ],
     "updateSteps": [
       "Fully quit ADOFAI.",
@@ -120,17 +115,17 @@
   "errors": {
     "camera_recording_not_found": "The camera recording for this run could not be found. Refresh the activity list and try again.",
     "load": "Could not load play history. Make sure ADOFAI is running, then refresh the page.",
-    "connect": "Could not connect to TUFReplay. Make sure ADOFAI and AdofaiIPC are running.",
+    "connect": "Could not connect to TUFReplay. Make sure ADOFAI is running with TUFReplay enabled.",
     "loadSession": "Could not load the level. Please try again.",
     "loadLevel": "Could not load the level. Please try again.",
     "loadRuns": "Could not load plays for this level. Please try again.",
     "loadChart": "Only the chart could not be loaded. You can still view the play history.",
-    "ipcUnavailable": "Lost connection to ADOFAI. Make sure the game and AdofaiIPC are running, then reconnect.",
+    "ipcUnavailable": "Lost connection to ADOFAI. Make sure the game is running with TUFReplay enabled, then reconnect.",
     "ipcTimeout": "ADOFAI did not respond within 30 seconds. Check that the game is responsive, then try again.",
     "ipcRequestFailed": "ADOFAI could not process the request. Please try again shortly.",
-    "ipcVersionMismatch": "The AdofaiIPC mod and website client versions do not match.",
-    "ipcUpdateRequired": "The installed AdofaiIPC is too old for this TUFReplay version.",
-    "namespaceNotFound": "TUFReplay IPC is not registered yet.",
+    "ipcVersionMismatch": "TUFReplay in the game and this page are different versions. Restart ADOFAI to update TUFReplay, then refresh this page.",
+    "ipcUpdateRequired": "TUFReplay in the game is too old for this page. Fully quit ADOFAI and start it again to update TUFReplay.",
+    "namespaceNotFound": "TUFReplay hasn't started in the game yet. Make sure the mod is enabled.",
     "namespaceInitializing": "TUFReplay is starting. We’ll reconnect when it is ready.",
     "namespaceError": "TUFReplay could not start. Check the mod log in UnityModManager, then restart the game.",
     "level_session_not_found": "The selected level record could not be found. Refresh the activity list.",
@@ -140,7 +135,10 @@
     "chart_permission_denied": "TUFReplay does not have permission to read the level file. Check its file permissions, then try again.",
     "activity_busy": "Play history is being updated. Please try again shortly.",
     "run_in_use": "This replay is playing, so its run cannot be deleted. Stop playback and try again.",
-    "run_delete_failed": "Could not delete the run. Please try again shortly."
+    "run_delete_failed": "Could not delete the run. Please try again shortly.",
+    "run_locked": "This run is locked. Unlock it to delete it.",
+    "run_lock_failed": "The lock could not be changed. Please try again shortly.",
+    "day_delete_failed": "The runs could not be deleted. Please try again shortly."
   },
   "time": {
     "open": "Open",
@@ -183,7 +181,8 @@
     "loadingViewer": "Loading chart…",
     "viewerLoadFailed": "The embedded chart could not be loaded.",
     "missingEmbedUrl": "Set VITE_WEB_ADOFAI_EMBED_URL to load the ADOFAI chart viewer.",
-    "invalidEmbedUrl": "VITE_WEB_ADOFAI_EMBED_URL must be a valid absolute URL."
+    "invalidEmbedUrl": "VITE_WEB_ADOFAI_EMBED_URL must be a valid absolute URL.",
+    "markerHint": "Click a marker to see attempts from that tile"
   },
   "run": {
     "select": "Select run {{runIndex}}",
@@ -214,7 +213,17 @@
     },
     "sortBy": "Sort by",
     "ascending": "Sort ascending",
-    "descending": "Sort descending"
+    "descending": "Sort descending",
+    "replayUnavailableGeneric": "This run can’t be replayed.",
+    "difficultyName": {
+      "Lenient": "Lenient",
+      "Normal": "Normal",
+      "Strict": "Strict"
+    },
+    "cameraAvailable": "Camera recording available",
+    "comingSoon": "Coming soon",
+    "deleteWhileReplaying": "Stop the replay to delete this run",
+    "xAccuracyShort": "X-Acc"
   },
   "judgments": {
     "Overload": "Overload",
@@ -229,5 +238,125 @@
     "Late": "Late",
     "TooLate": "Too Late",
     "Miss": "Miss"
+  },
+  "dayRail": {
+    "openActions": "Actions for {{date}}",
+    "today": "Today",
+    "locked_one": "{{count}} locked run",
+    "locked_other": "{{count}} locked runs"
+  },
+  "dayDelete": {
+    "heading": "Delete runs from {{date}}?",
+    "deletesFact_one": "<strong>{{count}} run</strong>, with its replay and recordings, is deleted",
+    "deletesFact_other": "<strong>{{count}} runs</strong>, with their replays and recordings, are deleted",
+    "keepsFact_one": "<strong>{{count}} locked run</strong> stays",
+    "keepsFact_other": "<strong>{{count}} locked runs</strong> stay",
+    "irreversible": "This can’t be undone.",
+    "action": "Delete day…",
+    "blocked": {
+      "all_locked": "Every run on this day is locked",
+      "empty": "There are no runs to delete"
+    },
+    "hidden_one": "Includes {{count}} run from before a level was edited.",
+    "hidden_other": "Includes {{count}} runs from before a level was edited.",
+    "keepClears_one": "Keep {{count}} clear",
+    "keepClears_other": "Keep {{count}} clears",
+    "keepClearsOn": "They’ll be locked, so later deletes skip them too.",
+    "keepClearsOff_one": "{{count}} clear will be deleted with the rest.",
+    "keepClearsOff_other": "{{count}} clears will be deleted with the rest.",
+    "slow": "Still deleting. If you’re in the middle of an attempt, this finishes when it ends.",
+    "confirm_one": "Delete {{count}} run",
+    "confirm_other": "Delete {{count}} runs",
+    "deleting_one": "Deleting {{count}} run…",
+    "deleting_other": "Deleting {{count}} runs…",
+    "nothing": "Nothing to delete",
+    "done_one": "Deleted {{count}} run",
+    "done_other": "Deleted {{count}} runs",
+    "doneKept_one": "{{date}} · {{count}} locked run kept",
+    "doneKept_other": "{{date}} · {{count}} locked runs kept",
+    "doneEmpty": "{{date}} has no runs left",
+    "doneInUse": "The run playing as a replay was kept.",
+    "failed": "Couldn’t delete the runs. Check that ADOFAI is running, then try again.",
+    "timeout": "ADOFAI hasn’t finished yet. If you’re mid-attempt, the day is deleted when the attempt ends, and this list updates on its own."
+  },
+  "lock": {
+    "lock": "Lock run",
+    "unlock": "Unlock run",
+    "lockHint": "Keeps the run and its recordings",
+    "toggleLock": "Lock run {{runIndex}}",
+    "toggleUnlock": "Unlock run {{runIndex}}",
+    "lockedTooltip": "Locked. It can’t be deleted, and its recordings are kept forever.",
+    "unlockedTooltip": "Lock to keep this run and its recordings",
+    "deleteBlocked": "Unlock this run to delete it",
+    "recordingDeleteBlocked": "This run is locked. Unlock it to delete its recordings.",
+    "failed": "Couldn’t change the lock. Check that ADOFAI is running, then try again."
+  },
+  "emptyBody": "Play a custom level in ADOFAI with TUFReplay enabled. Each attempt shows up here on its own.",
+  "outcome": {
+    "clear": "Clear",
+    "finished": "Reached the end",
+    "failed": "Failed",
+    "quit": "Quit",
+    "unknown": "Unknown result"
+  },
+  "attempts": {
+    "title": "Attempts",
+    "listLabel": "Attempts for this level",
+    "progressLabel": "From {{start}}% to {{end}}%",
+    "startedTooltip": "Started {{time}} ({{offset}})",
+    "durationTooltip": "lasted {{duration}}",
+    "filterLabel": "Filter attempts by start tile",
+    "markerTooltip_one": "From tile {{tile}} ({{percent}}%) · best {{best}}% · {{count}} attempt",
+    "markerTooltip_other": "From tile {{tile}} ({{percent}}%) · best {{best}}% · {{count}} attempts",
+    "markerClears_one": "{{count}} clear",
+    "markerClears_other": "{{count}} clears",
+    "judgments": "Judgments",
+    "started": "Started",
+    "empty": "No attempts start from this tile.",
+    "timelineStart": "Start",
+    "timelineEnd": "End",
+    "markerLabel_one": "Attempts from tile {{tile}} ({{percent}}%), {{count}} attempt",
+    "markerLabel_other": "Attempts from tile {{tile}} ({{percent}}%), {{count}} attempts",
+    "timeline": "Timeline",
+    "timelineLabel_one": "Judgment timeline with {{count}} non-perfect hit",
+    "timelineLabel_other": "Judgment timeline with {{count}} non-perfect hits",
+    "timelineUnavailable": "Judgment timeline unavailable",
+    "timelineWaiting": "loads after this attempt"
+  },
+  "runDelete": {
+    "title": "Delete run #{{runIndex}}?",
+    "media": "This frees {{size}} of recordings."
+  },
+  "header": {
+    "attempts": "Attempts",
+    "clears": "Clears",
+    "best": "Best",
+    "lastPlayed": "Last played"
+  },
+  "sidebar": {
+    "levelsOf": "Levels played on {{date}}",
+    "noDays": "Days with recorded attempts appear here.",
+    "open": "Show days and settings",
+    "moreDays": "Earlier days"
+  },
+  "workspace": {
+    "resize": "Resize chart and attempts"
+  },
+  "offline": {
+    "title": "Not connected to ADOFAI.",
+    "reconnectingTitle": "Reconnecting to ADOFAI…",
+    "body": "Your saved history is shown read-only; replays and changes return when the game reconnects."
+  },
+  "filter": {
+    "button": "Filter",
+    "clearsOnly": "Clears only",
+    "lockedOnly": "Locked only",
+    "withRecordings": "With mic or camera recording",
+    "hideNoFail": "Hide No-Fail runs",
+    "difficulty": "Judgment difficulty",
+    "clear": "Clear filters",
+    "noMatches": "No attempts match these filters.",
+    "activeCount_one": "{{count}} filter on",
+    "activeCount_other": "{{count}} filters on"
   }
 }

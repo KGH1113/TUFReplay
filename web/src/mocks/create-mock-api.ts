@@ -80,6 +80,9 @@ export function createMockApi(): AppApi {
       },
     },
     run: {
+      async loadJudgmentTimeline(runId) {
+        return fixture.judgmentTimelines([runId])[0] ?? null;
+      },
       async prepareCameraRecordingDownload(runId) {
         fixture.assertCameraRecording(runId);
         return mockRecordingDownload(mockCameraRecording(), `tufreplay-${runId}-camera.mp4`);
@@ -126,6 +129,20 @@ export function createMockApi(): AppApi {
       async keepMicrophoneRecording(runId) {
         const result = await fixture.keepMicrophoneRecording(runId);
         return { runId: result.RunId, changed: result.Permanent };
+      },
+      async setRunLocked(runId, locked) {
+        const result = await fixture.changeRunLock(runId, locked);
+        source.emit("activity.changed", { revision: ++activityRevision, runId });
+        return { runId: result.RunId, locked: result.Locked };
+      },
+      async deleteAppSessionRuns(appSessionIds, keepClears) {
+        const result = await fixture.deleteAppSessionRuns(appSessionIds, keepClears);
+        source.emit("activity.changed", { revision: ++activityRevision, runId: null });
+        return {
+          deletedRunCount: result.DeletedRunCount,
+          keptLockedRunCount: result.KeptLockedRunCount,
+          keptInUseRunCount: result.KeptInUseRunCount,
+        };
       },
     },
     replay: createReplayApiMock((status) => source.emit("replay.changed", status)),

@@ -38,6 +38,8 @@ export const levelSessionDtoSchema = z
     FirstStartTile: z.number().int().nullable(),
     LastStartTile: z.number().int().nullable(),
     ChartAvailable: z.boolean(),
+    LockedRunCount: z.number().int().nonnegative().default(0),
+    LockedClearRunCount: z.number().int().nonnegative().default(0),
   })
   .passthrough();
 
@@ -111,6 +113,7 @@ export const activityRunDtoSchema = z
     CameraRecordingPermanent: z.boolean().default(false),
     CameraRecordingExpiresAtUtc: z.string().nullable().default(null),
     ReplayPlayable: z.boolean(),
+    Locked: z.boolean().default(false),
     ReplayUnavailableReason: z
       .enum([
         "legacy_engine",

@@ -212,7 +212,7 @@ internal static class Program
       Ok = true,
       Mod = "TUFReplay",
       ModVersion = "fixture",
-      ProtocolVersion = 11,
+      ProtocolVersion = 12,
       ServerVersion = Volatile.Read(ref _cancelled),
       BuildFlavor = "standard",
       AutoSubmissionProtocolVersion = 0,

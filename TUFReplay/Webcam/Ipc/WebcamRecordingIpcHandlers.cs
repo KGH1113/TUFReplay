@@ -37,6 +37,8 @@ public static class WebcamRecordingIpcHandlers
       throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
       throw IpcDomainError.Create("run_not_found", "Run was not found.");
+    if (RunRepository.IsLocked(runId))
+      throw IpcDomainError.Create("run_locked", "Unlock this run to delete its camera video.");
     if (ReplayPlaybackCoordinator.IsBusy && ReplayPlaybackCoordinator.GetStatus().RunId == runId)
       throw IpcDomainError.Create("run_in_use", "Stop this replay before deleting its camera video.");
     bool deleted = FeatureRegistry.WebcamRecording?.Store?.DeleteRun(runId) == true;

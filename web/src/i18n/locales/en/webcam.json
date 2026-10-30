@@ -24,7 +24,8 @@
     "ready": "Camera on",
     "recording": "Recording camera",
     "saving": "Saving camera video…",
-    "error": "Camera needs attention"
+    "error": "Camera needs attention",
+    "warming": "Camera starting…"
   },
   "qualityLabel": "Recording quality",
   "quality": {
@@ -101,5 +102,6 @@
   "liveVisibleDescription": "Show the live camera in the game while you play.",
   "playbackVisibleDescription": "Show the saved camera video alongside its replay.",
   "offsetDescription": "Positive values show the image earlier; negative values show it later.",
-  "settingInfo": "Help for {{setting}}"
+  "settingInfo": "Help for {{setting}}",
+  "recordingSwitch": "Camera recording"
 }

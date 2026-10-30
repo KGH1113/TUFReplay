@@ -33,5 +33,14 @@ export function useRunActions() {
       async (runId: string) => (await apiPromise).run.keepMicrophoneRecording(runId),
       [apiPromise],
     ),
+    setRunLocked: useCallback(
+      async (runId: string, locked: boolean) => (await apiPromise).run.setRunLocked(runId, locked),
+      [apiPromise],
+    ),
+    deleteAppSessionRuns: useCallback(
+      async (appSessionIds: string[], keepClears: boolean) =>
+        (await apiPromise).run.deleteAppSessionRuns(appSessionIds, keepClears),
+      [apiPromise],
+    ),
   };
 }

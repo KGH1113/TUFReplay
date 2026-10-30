@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Ipc;
+using TUFReplay.Activity.Management;
 using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Queries;
 using TUFReplay.Activity.Repositories;
@@ -170,6 +171,8 @@ public static class ActivityIpcHandlers
       throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!RunRepository.Exists(runId))
       throw IpcDomainError.Create("run_not_found", "Run was not found.");
+    if (RunRepository.IsLocked(runId))
+      throw RunLocked();
     ReplayPlaybackStatus replayStatus = ReplayPlaybackCoordinator.GetStatus();
     if (ReplayPlaybackCoordinator.IsBusy && replayStatus.RunId == runId)
       throw IpcDomainError.Create("run_in_use", "Stop this replay before deleting its run.");
@@ -180,7 +183,9 @@ public static class ActivityIpcHandlers
       if (!RunRepository.Delete(runId))
       {
         FeatureRegistry.MicrophoneRecording?.CancelRunDeletion(runId);
-        throw IpcDomainError.Create("run_not_found", "Run was not found.");
+        throw RunRepository.IsLocked(runId)
+          ? RunLocked()
+          : IpcDomainError.Create("run_not_found", "Run was not found.");
       }
 
       FeatureRegistry.MicrophoneRecording?.CompleteRunDeletion(runId);
@@ -202,6 +207,65 @@ public static class ActivityIpcHandlers
       throw IpcDomainError.Create("run_delete_failed", "The run could not be deleted. Try again shortly.");
     }
   }
+
+  public static ActivityRunLockResultDto ChangeRunLock(string runId, bool locked)
+  {
+    if (string.IsNullOrWhiteSpace(runId))
+      throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
+    try
+    {
+      if (!RunLocks.Change(runId, locked))
+        throw IpcDomainError.Create("run_not_found", "Run was not found.");
+    }
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
+    {
+      Main.Instance?.Log("[IPC] Run lock change failed: " + exception.GetType().Name);
+      if (exception is SqliteException sqliteException && Database.IsTransientLock(sqliteException))
+        throw IpcDomainError.Create("activity_busy", "Play history is being updated. Try again in a moment.");
+      throw IpcDomainError.Create("run_lock_failed", "The lock could not be changed. Try again shortly.");
+    }
+    ActivityChanges.Notify(runId);
+    return new ActivityRunLockResultDto { RunId = runId, Locked = locked };
+  }
+
+  // Runs on a worker thread after gameplay is idle (see TUFReplayIpcFeature).
+  public static ActivityRunBatchDeleteResultDto DeleteAppSessionRuns(string[] appSessionIds, bool keepClears)
+  {
+    if (
+      appSessionIds == null
+      || appSessionIds.Length == 0
+      || System.Array.Exists(appSessionIds, string.IsNullOrWhiteSpace)
+    )
+      throw IpcDomainError.Create("invalid_app_session_ids", "appSessionIds must be a non-empty string array.");
+    try
+    {
+      string replayRunId = ReplayPlaybackCoordinator.IsBusy ? ReplayPlaybackCoordinator.GetStatus().RunId : null;
+      RunBatchDeletion result = AppSessionRunDeletion.Delete(appSessionIds, keepClears, replayRunId);
+      if (result.DeletedRunCount > 0 || result.NewlyLockedRunCount > 0)
+        ActivityChanges.Notify();
+      return new ActivityRunBatchDeleteResultDto
+      {
+        DeletedRunCount = result.DeletedRunCount,
+        KeptLockedRunCount = result.KeptLockedRunCount,
+        KeptInUseRunCount = result.KeptInUseRunCount,
+      };
+    }
+    catch (Exception exception) when (!(exception is AdofaiIpc.IpcCallException))
+    {
+      Main.Instance?.Log("[IPC] Day run deletion failed: " + exception.GetType().Name);
+      if (exception is SqliteException sqliteException && Database.IsTransientLock(sqliteException))
+      {
+        throw IpcDomainError.Create(
+          "activity_busy",
+          "Play history is being updated. Wait a moment and try deleting the day again."
+        );
+      }
+      throw IpcDomainError.Create("day_delete_failed", "The runs could not be deleted. Try again shortly.");
+    }
+  }
+
+  private static AdofaiIpc.IpcCallException RunLocked() =>
+    IpcDomainError.Create("run_locked", "Unlock this run to delete it.");
 
   private static AdofaiIpc.IpcCallException InvalidLevelSessionId() =>
     IpcDomainError.Create("invalid_level_session_id", "id must be a non-empty string.");

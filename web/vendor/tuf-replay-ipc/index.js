@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "2ef495ce267cba121a98b1fc10306b6445138354034088ec24e341a833352efc",
+    "hash": "e968328bd044754fe7c09283d90683c6f96b433f5707c67ad4937cb41a23313f",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -230,6 +230,8 @@ export const ReplayApiContract = defineContract({
                     "nullable": "int32"
                 },
                 "levelGroupId": "string",
+                "lockedClearRunCount": "int32",
+                "lockedRunCount": "int32",
                 "logicalLevelId": "string",
                 "noFailRunCount": "int32",
                 "openedAtUtc": "string",
@@ -243,6 +245,12 @@ export const ReplayApiContract = defineContract({
                 "tufLevelId": {
                     "nullable": "int32"
                 }
+            }
+        },
+        "LockResult": {
+            "object": {
+                "locked": "boolean",
+                "runId": "string"
             }
         },
         "LogicalLevel": {
@@ -463,6 +471,7 @@ export const ReplayApiContract = defineContract({
                     "nullable": "int32"
                 },
                 "levelSessionId": "string",
+                "locked": "boolean",
                 "microphoneChannels": {
                     "nullable": "int32"
                 },
@@ -491,6 +500,36 @@ export const ReplayApiContract = defineContract({
                 },
                 "xAccuracy": {
                     "nullable": "float64"
+                }
+            }
+        },
+        "RunBatchDeleteResult": {
+            "object": {
+                "deletedRunCount": "int32",
+                "keptInUseRunCount": "int32",
+                "keptLockedRunCount": "int32"
+            }
+        },
+        "RunJudgmentTimeline": {
+            "object": {
+                "durationMs": "int32",
+                "kinds": {
+                    "array": {
+                        "enum": [
+                            "Early",
+                            "EarlyPerfect",
+                            "Late",
+                            "LatePerfect",
+                            "Miss",
+                            "Overload",
+                            "TooEarly",
+                            "TooLate"
+                        ]
+                    }
+                },
+                "runId": "string",
+                "timesMs": {
+                    "array": "int32"
                 }
             }
         },
@@ -721,6 +760,18 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "MicrophoneTiming"
+            }
+        },
+        "changeRunLock": {
+            "wireName": "rpc.mod.changerunlock",
+            "input": {
+                "object": {
+                    "locked": "boolean",
+                    "runId": "string"
+                }
+            },
+            "output": {
+                "model": "LockResult"
             }
         },
         "changeWebcamSettings": {
@@ -1039,6 +1090,21 @@ export const ReplayApiContract = defineContract({
                 "model": "ReplayState"
             }
         },
+        "readRunJudgmentTimelines": {
+            "wireName": "rpc.mod.readrunjudgmenttimelines",
+            "input": {
+                "object": {
+                    "runIds": {
+                        "array": "string"
+                    }
+                }
+            },
+            "output": {
+                "array": {
+                    "model": "RunJudgmentTimeline"
+                }
+            }
+        },
         "readWebcamPreview": {
             "wireName": "rpc.mod.readwebcampreview",
             "input": {
@@ -1083,6 +1149,20 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "FfmpegState"
+            }
+        },
+        "removeAppSessionRuns": {
+            "wireName": "rpc.mod.removeappsessionruns",
+            "input": {
+                "object": {
+                    "appSessionIds": {
+                        "array": "string"
+                    },
+                    "keepClears": "boolean"
+                }
+            },
+            "output": {
+                "model": "RunBatchDeleteResult"
             }
         },
         "removeCameraRecording": {

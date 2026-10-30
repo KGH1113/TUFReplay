@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useApiPromise, useMockEnabled } from "@/api/app-api-provider";
 import type { AppSession, ConnectionStatus } from "@/models/activity/activity-model";
 import { diagnosticErrorMessage } from "@/models/activity/localized-error";
@@ -8,6 +8,7 @@ import { ApiError } from "@/shared/errors/api-error";
 import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
 import {
   activityQueryKeys,
+  adjustLockedRunCounts,
   mergeRecentAppSessions,
   RECENT_ACTIVITY_SESSION_LIMIT,
   refreshesOnActivityChange,
@@ -81,6 +82,38 @@ export function useActivityData() {
     },
   });
 
+  // A day delete can remove sessions older than the recent page the refresh rereads.
+  const reloadAllSessions = useCallback(async () => {
+    const api = await apiPromise;
+    const [health, sessions] = await Promise.all([
+      api.health.get(),
+      api.activity.listAllAppSessions(),
+    ]);
+    await queryClient.cancelQueries({ queryKey: activityQueryKeys.sessions, exact: true });
+    queryClient.setQueryData<ActivityDataSnapshot>(activityQueryKeys.sessions, {
+      sessions,
+      health,
+    });
+  }, [apiPromise, queryClient]);
+  const adjustLockedRuns = useCallback(
+    (levelSessionId: string, lockedDelta: number, lockedClearDelta: number) => {
+      queryClient.setQueryData<ActivityDataSnapshot>(activityQueryKeys.sessions, (current) =>
+        current
+          ? {
+              ...current,
+              sessions: adjustLockedRunCounts(
+                current.sessions,
+                levelSessionId,
+                lockedDelta,
+                lockedClearDelta,
+              ),
+            }
+          : current,
+      );
+    },
+    [queryClient],
+  );
+
   const status =
     connectionState.session === "incompatible"
       ? "incompatible"
@@ -100,6 +133,8 @@ export function useActivityData() {
     error: diagnosticErrorMessage(query.error),
     versionMismatch: query.error instanceof IpcProtocolMismatchError ? query.error.direction : null,
     retry: query.refetch,
+    reloadAllSessions,
+    adjustLockedRuns,
     mockEnabled,
   };
 }

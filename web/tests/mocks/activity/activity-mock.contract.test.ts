@@ -72,14 +72,14 @@ describe("activity mock", () => {
       code: "run_not_found",
     });
   });
-  test("serves the three downloaded TUF levels with charts and runs", async () => {
+  test("serves the downloaded TUF levels, including a long practice day, with charts and runs", async () => {
     const api = createMockApi();
     expect(await api.activity.getLegacyReplayStatus()).toEqual({ hasLegacyReplays: true });
     const sessions = await api.activity.listAllAppSessions();
     const levels = sessions.flatMap((session) => session.levelSessions);
 
     expect(levels.map((level) => level.tufLevelId).sort((a, b) => Number(a) - Number(b))).toEqual([
-      5, 303, 871,
+      5, 303, 871, 871,
     ]);
 
     let noFailRuns = 0;
@@ -94,7 +94,7 @@ describe("activity mock", () => {
       expect(runs.some((run) => run.startTile > 0)).toBe(true);
       noFailRuns += runs.filter((run) => run.noFailMode).length;
     }
-    expect(noFailRuns).toBe(1);
+    expect(noFailRuns).toBe(2);
   });
 
   test("deletes microphone recordings without removing their runs", async () => {
@@ -129,4 +129,51 @@ describe("activity mock", () => {
       microphoneDurationSeconds: null,
     });
   });
+
+  test("locked runs survive single and day deletes and keep their recordings", async () => {
+    const api = createMockApi();
+    const sessions = await api.activity.listAllAppSessions();
+    const app = sessions.find((item) => item.endedAtUtc !== null);
+    const level = app?.levelSessions[0];
+    if (!app || !level) throw new Error("mock closed session is missing");
+    const list = () => api.activity.listLogicalLevelRuns(level.logicalLevelId, [app.id]);
+    const [locked, clear] = [
+      (await list()).find((item) => !isClear(item)),
+      (await list()).find(isClear),
+    ];
+    if (!locked || !clear) throw new Error("mock runs are missing");
+
+    await api.run.setRunLocked(locked.id, true);
+    expect((await list()).find((item) => item.id === locked.id)).toMatchObject({ locked: true });
+    await expect(api.run.deleteRun(locked.id)).rejects.toMatchObject({ code: "run_locked" });
+
+    const result = await api.run.deleteAppSessionRuns([app.id], true);
+    expect(result.keptLockedRunCount).toBe(
+      app.levelSessions.reduce((sum, visit) => sum + visit.clearRunCount, 0) + 1,
+    );
+    const remaining = await list();
+    expect(remaining.map((item) => item.id).sort()).toEqual([clear.id, locked.id].sort());
+    expect(remaining.every((item) => item.locked)).toBe(true);
+
+    for (const visit of app.levelSessions)
+      for (const item of await api.activity.listLogicalLevelRuns(visit.logicalLevelId, [app.id]))
+        await api.run.setRunLocked(item.id, false);
+    await api.run.deleteAppSessionRuns([app.id], false);
+    const after = await api.activity.listAllAppSessions();
+    expect(after.some((item) => item.id === app.id)).toBe(false);
+  });
 });
+
+function isClear(run: {
+  result: string;
+  startTile: number;
+  noFailMode: boolean;
+  judgmentCounts: { Miss: number; Overload: number };
+}) {
+  const result = run.result.toLowerCase();
+  return (
+    (result === "cleared" || result === "completed") &&
+    run.startTile === 0 &&
+    (!run.noFailMode || (run.judgmentCounts.Miss === 0 && run.judgmentCounts.Overload === 0))
+  );
+}

@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using TUFReplay.Activity.Management;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Shared.Threading;
@@ -120,6 +121,7 @@ public sealed partial class MicrophoneRecordingFeature
       Delete(recording.TempPath);
       Delete(MetadataPath(recording.TempPath));
       Main.Instance?.Log("[Microphone] Recording saved. runId=" + recording.RunId);
+      RunLocks.KeepMicrophoneRecordingIfLocked(recording.RunId);
     }
     catch (Exception exception)
     {
@@ -164,6 +166,31 @@ public sealed partial class MicrophoneRecordingFeature
     string pending = PendingPath(runId);
     Delete(pending);
     Delete(MetadataPath(pending));
+  }
+
+  public void CompleteRunDeletions(IReadOnlyList<string> runIds)
+  {
+    if (runIds == null || runIds.Count == 0)
+      return;
+    lock (_gate)
+      foreach (string runId in runIds)
+        _persistedRuns.Remove(runId);
+    try
+    {
+      MicrophoneRecordingRepository.DeleteMany(runIds);
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log(
+        "[Microphone] Orphan cleanup deferred. count=" + runIds.Count + ", error=" + exception.Message
+      );
+    }
+    foreach (string runId in runIds)
+    {
+      string pending = PendingPath(runId);
+      Delete(pending);
+      Delete(MetadataPath(pending));
+    }
   }
 
   public void CancelRunDeletion(string runId)
