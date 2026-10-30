@@ -19,6 +19,7 @@ internal sealed class WindowsNativeKeyboardEventSource : INativeInputEventSource
   private readonly WindowsNativeLibrary _library;
   private IntPtr _context;
   private Action<NativeInputTransition> _onTransition;
+  private WindowsPerformanceCounterConverter _clock;
   private Thread _worker;
   private GCHandle _eventPin;
   private volatile bool _running,
@@ -74,6 +75,9 @@ internal sealed class WindowsNativeKeyboardEventSource : INativeInputEventSource
       _eventPin = GCHandle.Alloc(_events, GCHandleType.Pinned);
       try
       {
+        // The hook stamps raw QueryPerformanceCounter values; recording compares
+        // them with Stopwatch ticks, which Mono counts from a different origin.
+        _clock = WindowsPerformanceCounterConverter.CaptureSystemClock();
         WindowsNativeInputError error = _library.StartInput(_context);
         if (error != WindowsNativeInputError.None || !_library.IsInputRunning(_context))
           throw new InvalidOperationException(
@@ -146,6 +150,7 @@ internal sealed class WindowsNativeKeyboardEventSource : INativeInputEventSource
     try
     {
       IntPtr destination = _eventPin.AddrOfPinnedObject();
+      WindowsPerformanceCounterConverter clock = _clock;
       while (!_stopping)
       {
         int count = _library.WaitDequeue(_context, destination, _events.Length, 100);
@@ -154,7 +159,7 @@ internal sealed class WindowsNativeKeyboardEventSource : INativeInputEventSource
           WindowsNativeKeyEvent input = _events[i];
           if (
             !WindowsLowLevelKeyboardEventSource.TryCreateTransition(
-              input.QpcTicks,
+              clock.ToStopwatchTicks(input.QpcTicks),
               input.TimeMs,
               input.VirtualKey,
               input.ScanCode,
