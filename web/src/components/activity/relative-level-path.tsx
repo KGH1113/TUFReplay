@@ -57,7 +57,7 @@ export function RelativeLevelPath({ path }: { path: string }) {
       onMouseLeave={() => move(false)}
       onFocus={() => move(true)}
       onBlur={() => move(false)}
-      className={`pointer-events-auto relative z-20 block w-full min-w-0 overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-xs text-muted-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${overflows ? "[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]" : ""}`}
+      className={`pointer-events-auto relative z-20 block w-full min-w-0 overflow-hidden whitespace-nowrap border-0 bg-transparent p-0 text-left text-[inherit] text-muted-foreground focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${overflows ? "[mask-image:linear-gradient(to_right,transparent,black_0.75rem,black_calc(100%-0.75rem),transparent)]" : ""}`}
       aria-label={path}
     >
       <span ref={textRef} className="inline-block whitespace-nowrap will-change-transform">

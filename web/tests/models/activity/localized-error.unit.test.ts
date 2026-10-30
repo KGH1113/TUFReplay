@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 
 import i18n, { initializeI18n } from "@/i18n/i18n";
-import { localizedErrorMessage } from "@/models/activity/localized-error";
+import { diagnosticErrorMessage, localizedErrorMessage } from "@/models/activity/localized-error";
 import { ApiError } from "@/shared/errors/api-error";
 
 describe("localized errors", () => {
@@ -43,6 +43,23 @@ describe("localized errors", () => {
     );
     expect(localizedErrorMessage({ code: "TIMEOUT" }, "fallback")).toContain(
       "30초 안에 응답하지 않았어요",
+    );
+  });
+});
+
+describe("diagnostic error messages", () => {
+  test("never name the bundled connection library", () => {
+    expect(
+      diagnosticErrorMessage(
+        new Error("The game and application use different ADOFAI-IPC protocols.", {
+          cause: new Error("AdofaiIpc handshake failed"),
+        }),
+      ),
+    ).toBe(
+      "The game and application use different TUFReplay protocols. (TUFReplay handshake failed)",
+    );
+    expect(diagnosticErrorMessage("The IPC send buffer is full.")).toBe(
+      "The connection send buffer is full.",
     );
   });
 });

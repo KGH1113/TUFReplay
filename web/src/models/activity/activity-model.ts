@@ -49,6 +49,8 @@ export interface ActivityDay {
   hasOpenableLevels: boolean;
   runCount: number;
   clearRunCount: number;
+  /** Locked runs across every visit of the day, including hidden older level versions. */
+  lockedRunCount: number;
 }
 
 export function mapLevelSession(dto: LevelSessionDto) {
@@ -71,6 +73,8 @@ export function mapLevelSession(dto: LevelSessionDto) {
     firstStartTile: dto.FirstStartTile,
     lastStartTile: dto.LastStartTile,
     chartAvailable: dto.ChartAvailable,
+    lockedRunCount: dto.LockedRunCount,
+    lockedClearRunCount: dto.LockedClearRunCount,
   };
 }
 
@@ -143,6 +147,7 @@ export function mapActivityRun(dto: ActivityRunDto) {
     cameraRecordingExpiresAtUtc: dto.CameraRecordingExpiresAtUtc,
     replayPlayable: dto.ReplayPlayable,
     replayUnavailableReason: dto.ReplayUnavailableReason,
+    locked: dto.Locked,
   };
 }
 

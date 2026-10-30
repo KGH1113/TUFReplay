@@ -71,6 +71,7 @@ CREATE TABLE runs (
   input_count INTEGER NOT NULL DEFAULT 0,
   hit_context_count INTEGER NOT NULL DEFAULT 0,
   replay_unavailable_reason TEXT,
+  locked INTEGER NOT NULL DEFAULT 0,
   UNIQUE(level_session_id, run_index),
   CHECK(replay_unavailable_reason IS NULL OR replay_unavailable_reason IN (
     'legacy_engine','capture_incomplete','unsupported_engine','unsupported_format','payload_missing'

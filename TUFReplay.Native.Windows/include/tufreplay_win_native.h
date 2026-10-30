@@ -25,7 +25,7 @@ typedef enum tufreplay_win_input_error {
 // One WH_KEYBOARD_LL transition, exactly as the hook received it. Normalization
 // stays in managed code so recordings keep their existing key semantics.
 typedef struct tufreplay_win_key_event {
-  int64_t qpc_ticks;    // QueryPerformanceCounter at hook entry (Stopwatch ticks).
+  int64_t qpc_ticks;    // Raw QueryPerformanceCounter at hook entry. Not Stopwatch ticks under Unity's Mono.
   uint32_t time_ms;     // KBDLLHOOKSTRUCT.time
   uint32_t virtual_key; // KBDLLHOOKSTRUCT.vkCode
   uint32_t scan_code;   // KBDLLHOOKSTRUCT.scanCode

@@ -86,6 +86,8 @@ public sealed class ActivityLevelSessionOverviewDto
   public int? FirstStartTile;
   public int? LastStartTile;
   public bool ChartAvailable;
+  public int LockedRunCount;
+  public int LockedClearRunCount;
 
   public static ActivityLevelSessionOverviewDto From(LevelSessionOverview s) =>
     new ActivityLevelSessionOverviewDto
@@ -108,6 +110,8 @@ public sealed class ActivityLevelSessionOverviewDto
       FirstStartTile = s.FirstStartTile,
       LastStartTile = s.LastStartTile,
       ChartAvailable = s.ChartAvailable,
+      LockedRunCount = s.LockedRunCount,
+      LockedClearRunCount = s.LockedClearRunCount,
     };
 }
 
@@ -148,6 +152,7 @@ public sealed class ActivityRunDto
   public string CameraRecordingExpiresAtUtc;
   public bool ReplayPlayable;
   public string ReplayUnavailableReason;
+  public bool Locked;
 
   public static ActivityRunDto From(RunRecord r) =>
     new ActivityRunDto
@@ -190,6 +195,7 @@ public sealed class ActivityRunDto
       CameraRecordingExpiresAtUtc = r.CameraRecordingExpiresAtUtc,
       ReplayPlayable = r.ReplayPlayable,
       ReplayUnavailableReason = r.ReplayUnavailableReason,
+      Locked = r.Locked,
     };
 }
 
@@ -233,6 +239,19 @@ public sealed class ActivityRunDeleteResultDto
 {
   public string RunId;
   public bool Deleted;
+}
+
+public sealed class ActivityRunLockResultDto
+{
+  public string RunId;
+  public bool Locked;
+}
+
+public sealed class ActivityRunBatchDeleteResultDto
+{
+  public int DeletedRunCount;
+  public int KeptLockedRunCount;
+  public int KeptInUseRunCount;
 }
 
 public sealed class ActivityLegacyReplayStatusDto

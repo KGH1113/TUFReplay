@@ -1,123 +1,114 @@
+import { ActivityEmptyState, MainAreaState } from "@/components/activity/activity-empty-state";
 import { AutoSubmissionBuildNotice } from "@/components/activity/auto-submission-build-notice";
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
-import { DashboardHeader } from "@/components/activity/dashboard-header";
 import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
+import { OfflineBanner } from "@/components/activity/offline-banner";
 import { RenderComingSoonDialog } from "@/components/render/render-coming-soon-dialog";
 import { ReplayLevelChoiceDialog } from "@/components/replay/replay-level-choice-dialog";
 import { useActivityPageViewModel } from "@/hooks/activity/use-activity-page-view-model";
 import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice";
 import { useRenderComingSoon } from "@/hooks/render/use-render-coming-soon";
+import { useSidebarDrawer } from "@/hooks/shared/use-sidebar-drawer";
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
-import { DayRail } from "@/sections/activity/day-rail";
-import { LevelStrip } from "@/sections/activity/level-strip";
+import { AppSidebar } from "@/sections/activity/app-sidebar";
 import { TUFREPLAY_WEB_BUILD } from "@/shared/config/tufreplay-build-info";
+import { Toaster } from "@/shared/ui/sonner";
+import { TooltipProvider } from "@/shared/ui/tooltip";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
   const renderNotice = useRenderComingSoon();
+  const drawer = useSidebarDrawer();
   const { activity, replay, actions } = viewModel;
   const legacyReplayNotice = useLegacyReplayNotice(activity.status);
+  const retry = () => void actions.retry();
+  const readOnly = activity.status !== "online";
+  const selectedLevel = viewModel.selectedLevel;
 
   return (
-    <>
-      <main
+    <TooltipProvider>
+      <div
         data-tufreplay-environment={TUFREPLAY_WEB_BUILD.environment}
         data-tufreplay-build-flavor={TUFREPLAY_WEB_BUILD.flavor}
         data-tufreplay-build-origin={TUFREPLAY_WEB_BUILD.expectedOrigin}
         data-tufreplay-build-sha={TUFREPLAY_WEB_BUILD.buildSha ?? undefined}
-        className="h-screen overflow-hidden bg-muted/20 p-3 text-foreground"
+        className="flex h-dvh overflow-hidden bg-background text-foreground"
       >
-        <div className="grid h-full grid-cols-[9rem_minmax(0,1fr)] gap-3">
-          <DayRail
-            days={viewModel.days}
-            selectedDate={viewModel.selectedDay?.date ?? null}
-            onSelectDate={actions.selectDate}
-          />
-          <section className="flex min-h-0 min-w-0 flex-col gap-3">
-            <DashboardHeader
-              status={activity.status}
-              onRetry={() => void actions.retry()}
-              mockEnabled={activity.mockEnabled}
-            />
-            <AutoSubmissionBuildNotice health={activity.health} />
-            <LevelStrip
-              levelSessions={viewModel.levelSessions}
-              selectedLevelGroupId={viewModel.selectedLevel?.levelGroupId ?? null}
-              timeZone={viewModel.timeZone}
-              metadataFor={viewModel.metadataFor}
-              onSelectLevelGroup={actions.selectLevel}
-            />
-            {activity.status === "incompatible" ? (
-              <div className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 shadow-2xl ring-1 ring-foreground/10">
-                <ConnectionStatePanel
-                  status={activity.status}
-                  error={activity.error}
-                  versionMismatch={activity.versionMismatch}
-                  onRetry={() => void actions.retry()}
-                />
-              </div>
-            ) : !viewModel.selectedLevel ? (
-              activity.status !== "online" ? (
-                <div className="grid min-h-0 flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 shadow-2xl ring-1 ring-foreground/10">
-                  <ConnectionStatePanel
-                    status={activity.status}
-                    error={activity.error}
-                    versionMismatch={activity.versionMismatch}
-                    onRetry={() => void actions.retry()}
-                  />
-                </div>
-              ) : viewModel.selectedDay &&
-                !viewModel.selectedDay.hasOpenableLevels &&
-                viewModel.levelSessions.length > 0 ? (
-                <div className="grid flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 px-6 text-center shadow-2xl ring-1 ring-foreground/10">
-                  <div className="max-w-md">
-                    <h2 className="font-heading text-lg font-semibold">
-                      {viewModel.copy.unavailableTitle}
-                    </h2>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      {viewModel.copy.unavailableBody}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="grid flex-1 place-items-center overflow-hidden rounded-2xl bg-black/30 text-sm text-muted-foreground shadow-2xl ring-1 ring-foreground/10">
-                  {viewModel.copy.empty}
-                </div>
-              )
-            ) : (
-              <ActivityWorkspace
-                chartAvailable={viewModel.selectedLevel.chartAvailable}
-                chart={viewModel.levelData.chart}
-                runs={viewModel.levelData.runs}
-                markers={viewModel.markers}
-                selectedMarker={viewModel.selectedMarker}
-                selectedRun={viewModel.selectedRun}
-                loading={viewModel.levelData.loading}
-                error={viewModel.levelData.error}
-                chartError={viewModel.levelData.chartError}
-                onRetry={viewModel.levelData.retry}
-                readOnly={activity.status !== "online"}
-                timeZone={viewModel.timeZone}
-                replayStatus={replay.status}
-                replayPendingRunId={replay.pendingRunId}
-                replayError={replay.error}
-                replayErrorRunId={replay.errorRunId}
-                onSelectMarker={actions.selectMarker}
-                onSelectRun={actions.selectRun}
-                onPlayReplay={actions.openReplayChoice}
-                onRender={renderNotice.show}
-                onDeleteRun={actions.deleteRun}
-                onDeleteMicrophoneRecording={actions.deleteMicrophoneRecording}
-                onKeepMicrophoneRecording={actions.keepMicrophoneRecording}
-                onDownloadMicrophoneRecording={actions.downloadMicrophoneRecording}
-                onDeleteCameraRecording={actions.deleteCameraRecording}
-                onKeepCameraRecording={actions.keepCameraRecording}
-                onDownloadCameraRecording={actions.downloadCameraRecording}
+        <AppSidebar
+          status={activity.status}
+          mockEnabled={activity.mockEnabled}
+          days={viewModel.days}
+          selectedDate={viewModel.selectedDay?.date ?? null}
+          selectedLevelGroupId={selectedLevel?.levelGroupId ?? null}
+          todayDate={viewModel.todayDate}
+          timeZone={viewModel.timeZone}
+          metadataFor={viewModel.metadataFor}
+          mobileOpen={drawer.open}
+          onMobileOpenChange={drawer.setOpen}
+          onRetry={retry}
+          onSelectLevel={actions.selectLevel}
+          onDeleteDay={actions.deleteDay}
+        />
+        <main className="flex min-w-0 flex-1 flex-col">
+          {activity.status !== "incompatible" && viewModel.days.length > 0 ? (
+            <OfflineBanner status={activity.status} onRetry={retry} />
+          ) : null}
+          <AutoSubmissionBuildNotice health={activity.health} />
+          {activity.status === "incompatible" || (!selectedLevel && readOnly) ? (
+            <MainAreaState onOpenSidebar={drawer.show}>
+              <ConnectionStatePanel
+                status={activity.status}
+                error={activity.error}
+                versionMismatch={activity.versionMismatch}
+                onRetry={retry}
               />
-            )}
-          </section>
-        </div>
-      </main>
+            </MainAreaState>
+          ) : !selectedLevel ? (
+            <MainAreaState onOpenSidebar={drawer.show}>
+              {viewModel.selectedDay &&
+              !viewModel.selectedDay.hasOpenableLevels &&
+              viewModel.levelSessions.length > 0 ? (
+                <ActivityEmptyState
+                  title={viewModel.copy.unavailableTitle}
+                  body={viewModel.copy.unavailableBody}
+                />
+              ) : (
+                <ActivityEmptyState title={viewModel.copy.empty} body={viewModel.copy.emptyBody} />
+              )}
+            </MainAreaState>
+          ) : (
+            <ActivityWorkspace
+              level={selectedLevel}
+              metadata={viewModel.metadataFor(selectedLevel)}
+              summary={viewModel.levelSummary}
+              chart={viewModel.levelData.chart}
+              runs={viewModel.levelData.runs}
+              markers={viewModel.markers}
+              selectedMarker={viewModel.selectedMarker}
+              selectedRun={viewModel.selectedRun}
+              loading={viewModel.levelData.loading}
+              error={viewModel.levelData.error}
+              chartError={viewModel.levelData.chartError}
+              readOnly={readOnly}
+              timeZone={viewModel.timeZone}
+              replayStatus={replay.status}
+              replayPendingRunId={replay.pendingRunId}
+              replayError={replay.error}
+              replayErrorRunId={replay.errorRunId}
+              recordingActions={viewModel.recordingActions}
+              onRetry={viewModel.levelData.retry}
+              onOpenSidebar={drawer.show}
+              onSelectMarker={actions.selectMarker}
+              onToggleRun={actions.toggleRun}
+              onFocusRun={actions.focusRun}
+              onPlayReplay={actions.openReplayChoice}
+              onRender={renderNotice.show}
+              onDeleteRun={actions.deleteRun}
+              onSetRunLocked={actions.setRunLocked}
+            />
+          )}
+        </main>
+      </div>
       <ReplayLevelChoiceDialog
         run={viewModel.replayChoiceRun}
         pickerResult={replay.pickerResult}
@@ -135,6 +126,7 @@ export function ActivityPage() {
         onConfirm={legacyReplayNotice.confirm}
       />
       <RenderComingSoonDialog notice={renderNotice} />
-    </>
+      <Toaster position="bottom-center" />
+    </TooltipProvider>
   );
 }

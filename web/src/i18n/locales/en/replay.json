@@ -53,7 +53,7 @@
     "submit": "Submit run",
     "delete": "Delete run",
     "deleteTitle": "Delete run?",
-    "deleteDescription": "This permanently deletes run #{{runIndex}}, its replay data, and its microphone recording. This cannot be undone.",
+    "deleteDescription": "This permanently deletes run #{{runIndex}}, its replay data, and its microphone and camera recordings. This cannot be undone.",
     "deleteFailed": "Could not delete run",
     "deleting": "Deleting…"
   },

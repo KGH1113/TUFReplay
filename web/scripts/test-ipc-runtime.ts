@@ -97,7 +97,7 @@ try {
     "Initial snapshots missing.",
   );
   assert.equal(first.snapshots[0]?.modVersion, "fixture");
-  assert.equal((await first.channel.readHealth()).protocolVersion, 11);
+  assert.equal((await first.channel.readHealth()).protocolVersion, 12);
   const firstSession = first.channel.sessionId;
   await first.channel.startReplay({ runId: second.app.appId });
   assert.equal(first.states.length, 1, "A selected-app event leaked to its requester.");

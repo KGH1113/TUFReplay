@@ -53,6 +53,13 @@ public sealed class TUFReplayIpcFeature
         "http://guhyeons-macbook-pro.tail234c02.ts.net",
         "http://localhost",
         "http://127.0.0.1",
+        // The IPC loader matches origins exactly, port included: Vite dev (5173/5174) and preview (4173).
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
       }
     );
     try
@@ -133,7 +140,35 @@ public sealed class TUFReplayIpcFeature
       ReplayApiMethods.ReadLogicalLevelChart,
       (r, _) => Map(ActivityIpcHandlers.GetLogicalLevelChart(Required(r.Id, "invalid_logical_level_id")))
     );
+    // Payload decoding allocates, so it waits until ADOFAI stops judging input.
+    RegisterWhenGameplayIdle(
+      ReplayApiMethods.ReadRunJudgmentTimelines,
+      (r, _) =>
+        RunJudgmentTimelineIpcHandlers
+          .Read(
+            (r.RunIds ?? Array.Empty<string>()).Select(id => Required(id)).Distinct(StringComparer.Ordinal).ToArray()
+          )
+          .Select(Map)
+          .ToArray()
+    );
     Register(ReplayApiMethods.RemoveRun, (r, _) => Map(ActivityIpcHandlers.DeleteRun(Required(r.RunId))));
+    RegisterWhenGameplayIdle(
+      ReplayApiMethods.RemoveAppSessionRuns,
+      (r, _) =>
+        Map(
+          ActivityIpcHandlers.DeleteAppSessionRuns(
+            (r.AppSessionIds ?? Array.Empty<string>())
+              .Select(id => Required(id, "invalid_app_session_ids"))
+              .Distinct(StringComparer.Ordinal)
+              .ToArray(),
+            r.KeepClears
+          )
+        )
+    );
+    Register(
+      ReplayApiMethods.ChangeRunLock,
+      (r, _) => Map(ActivityIpcHandlers.ChangeRunLock(Required(r.RunId), r.Locked))
+    );
     Register(
       ReplayApiMethods.RemoveMicrophoneRecording,
       (r, _) => Map(MicrophoneRecordingIpcHandlers.Delete(Required(r.RunId)))
@@ -323,6 +358,41 @@ public sealed class TUFReplayIpcFeature
           ? OnGameThread(() => handler(request, context), context.CancellationToken)
           : Task.FromResult(handler(request, context))
     );
+
+  // Bulk disk work waits until ADOFAI stops judging input, then runs on the thread pool.
+  private void RegisterWhenGameplayIdle<TRequest, TResult>(
+    IpcMethod<TRequest, TResult> method,
+    Func<TRequest, ModCallContext<ReplayApiApp>, TResult> handler
+  ) =>
+    _namespace.Handle(
+      method,
+      (request, context) => WhenGameplayIdle(() => handler(request, context), context.CancellationToken)
+    );
+
+  private static async Task<T> WhenGameplayIdle<T>(Func<T> action, CancellationToken cancellationToken)
+  {
+    var completion = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+    using (cancellationToken.Register(() => completion.TrySetCanceled()))
+    {
+      GameplayIdleGate.Run(() =>
+      {
+        if (cancellationToken.IsCancellationRequested)
+        {
+          completion.TrySetCanceled();
+          return;
+        }
+        try
+        {
+          completion.TrySetResult(action());
+        }
+        catch (Exception error)
+        {
+          completion.TrySetException(error);
+        }
+      });
+      return await completion.Task.ConfigureAwait(false);
+    }
+  }
 
   private static async Task<T> OnGameThread<T>(Func<T> action, CancellationToken cancellationToken)
   {

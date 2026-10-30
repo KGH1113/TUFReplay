@@ -3,9 +3,9 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import type { TFunction } from "i18next";
 import { DropdownMenu as DropdownMenuPrimitive } from "radix-ui";
 import { useTranslation } from "react-i18next";
+import { SidebarSettingButton } from "@/components/shell/sidebar-setting-button";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
 import { type MicrophoneDevice, recordsFromBluetooth } from "@/models/microphone/microphone-model";
-import { Button } from "@/shared/ui/button";
 import { Switch } from "@/shared/ui/switch";
 
 const SYSTEM_DEFAULT_VALUE = "__tufreplay_system_default__";
@@ -61,28 +61,28 @@ export function MicrophoneDeviceMenu({
   return (
     <DropdownMenuPrimitive.Root onOpenChange={(open) => open && onRefresh()}>
       <DropdownMenuPrimitive.Trigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
+        <SidebarSettingButton
+          icon={Mic01Icon}
+          label={commonT("settings.microphone")}
+          value={
+            connected ? (enabled ? selectedName : t("off")) : commonT("settings.needsConnection")
+          }
+          attention={connected && (bluetoothInUse || Boolean(error))}
           disabled={!connected}
-          aria-label={enabled ? t("selectCurrent", { name: selectedName }) : t("inputOff")}
-          title={
+          aria-label={
             connected
               ? enabled
-                ? t("current", { name: selectedName })
+                ? t("selectCurrent", { name: selectedName })
                 : t("inputOff")
               : t("connectToSelect")
           }
-          className="rounded-full text-muted-foreground hover:text-foreground data-[state=open]:bg-muted/60 data-[state=open]:text-foreground"
-        >
-          <HugeiconsIcon aria-hidden="true" icon={Mic01Icon} size={17} strokeWidth={2} />
-        </Button>
+        />
       </DropdownMenuPrimitive.Trigger>
       <DropdownMenuPrimitive.Portal>
         <DropdownMenuPrimitive.Content
+          side="right"
           align="end"
-          sideOffset={8}
+          sideOffset={12}
           collisionPadding={12}
           className="z-50 w-[min(20rem,calc(100vw-1.5rem))] origin-[var(--radix-dropdown-menu-content-transform-origin)] rounded-xl border border-border bg-popover p-1.5 text-popover-foreground shadow-xl outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 motion-reduce:duration-150 motion-reduce:data-[state=closed]:zoom-out-100 motion-reduce:data-[state=open]:zoom-in-100"
         >

@@ -3,6 +3,7 @@ using System.IO;
 using System.Text;
 using System.Threading;
 using AdofaiIpc;
+using TUFReplay.Activity.Repositories;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Microphone.Ipc;
 using TUFReplay.Microphone.Repositories;
@@ -41,6 +42,8 @@ public static class MicrophoneRecordingIpcHandlers
       throw IpcDomainError.Create("invalid_run_id", "runId must be a non-empty string.");
     if (!MicrophoneRecordingRepository.RunExists(runId))
       throw IpcDomainError.Create("run_not_found", "Run was not found.");
+    if (RunRepository.IsLocked(runId))
+      throw IpcDomainError.Create("run_locked", "Unlock this run to delete its microphone recording.");
     bool deleted = MicrophoneRecordingRepository.Delete(runId);
     ActivityChanges.Notify(runId);
     return new MicrophoneRecordingDeleteResultDto { RunId = runId, Deleted = deleted };

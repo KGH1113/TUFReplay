@@ -7,7 +7,7 @@ namespace TUFReplay.Shared.Native;
 [StructLayout(LayoutKind.Sequential, Size = 32)]
 internal struct WindowsNativeKeyEvent
 {
-  public long QpcTicks;
+  public long QpcTicks; // Raw QueryPerformanceCounter; see WindowsPerformanceCounterConverter.
   public uint TimeMs;
   public uint VirtualKey;
   public uint ScanCode;

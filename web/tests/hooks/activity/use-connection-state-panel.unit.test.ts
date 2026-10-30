@@ -19,4 +19,17 @@ describe("connection state panel copy", () => {
     expect(copy.title).toBe("Waiting for TUFReplay");
     expect(copy.retryLabel).toBe("Retry connection");
   });
+
+  test("asks for a TUFReplay update when the game side is older, without naming its library", () => {
+    for (const direction of ["server_outdated", "legacy_server"] as const) {
+      const copy = getConnectionStatePanelCopy(
+        "incompatible",
+        i18n.getFixedT("en", "activity"),
+        direction,
+      );
+      expect(copy.title).toBe("TUFReplay update required");
+      expect(copy.action).toBe("retry");
+      expect(JSON.stringify(copy)).not.toMatch(/ipc/i);
+    }
+  });
 });

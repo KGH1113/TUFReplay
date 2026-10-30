@@ -464,6 +464,8 @@ public sealed class WebcamRecordingFeature
         try
         {
           bool saved = Store.Save(recording, recordingLimit, retention);
+          if (saved)
+            TUFReplay.Activity.Management.RunLocks.KeepCameraRecordingIfLocked(recording.RunId);
           TUFReplay.Activity.Tracking.ActivityChanges.Notify(recording.RunId);
 
           if (!saved || recording.SizeLimited)

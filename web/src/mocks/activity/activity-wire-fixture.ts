@@ -17,6 +17,8 @@ export interface ActivityLevelSessionOverview {
   FirstStartTile: number | null;
   LastStartTile: number | null;
   ChartAvailable: boolean;
+  LockedRunCount: number;
+  LockedClearRunCount: number;
 }
 
 export interface ActivityLogicalLevelOverview {
@@ -86,6 +88,7 @@ export interface ActivityRun {
   CameraRecordingPermanent: boolean;
   CameraRecordingExpiresAtUtc: string | null;
   ReplayPlayable: boolean;
+  Locked: boolean;
   ReplayUnavailableReason:
     | "legacy_engine"
     | "capture_incomplete"
@@ -111,6 +114,17 @@ export interface MicrophoneRecordingDeleteResult {
 export interface ActivityRunDeleteResult {
   RunId: string;
   Deleted: boolean;
+}
+
+export interface ActivityRunLockResult {
+  RunId: string;
+  Locked: boolean;
+}
+
+export interface ActivityRunBatchDeleteResult {
+  DeletedRunCount: number;
+  KeptLockedRunCount: number;
+  KeptInUseRunCount: number;
 }
 
 export interface MicrophoneRecordingKeepResult {

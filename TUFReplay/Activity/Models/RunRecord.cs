@@ -44,5 +44,6 @@ public class RunRecord
   public string CameraRecordingExpiresAtUtc;
   public bool ReplayPlayable;
   public string ReplayUnavailableReason;
+  public bool Locked;
   public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;
 }

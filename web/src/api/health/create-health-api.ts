@@ -5,7 +5,7 @@ import { mapHealth } from "@/models/health/health-model";
 import type { LocalAppChannels } from "@/ports/local-message-peer";
 import { healthDtoSchema } from "@/schemas/health/health-schema";
 import { ApiError } from "@/shared/errors/api-error";
-export const SUPPORTED_PROTOCOL_VERSION = 11;
+export const SUPPORTED_PROTOCOL_VERSION = 13;
 export function createHealthApi(clients: LocalAppChannels): HealthApi {
   return {
     async get() {
@@ -17,7 +17,7 @@ export function createHealthApi(clients: LocalAppChannels): HealthApi {
       );
       if (health.protocolVersion !== SUPPORTED_PROTOCOL_VERSION)
         throw new ApiError(
-          `TUFReplay IPC protocol mismatch (expected ${SUPPORTED_PROTOCOL_VERSION}, detected ${health.protocolVersion}, mod ${health.modVersion}).`,
+          `TUFReplay version mismatch (expected protocol ${SUPPORTED_PROTOCOL_VERSION}, detected ${health.protocolVersion}, mod ${health.modVersion}).`,
           { kind: "protocol", code: "protocol_mismatch" },
         );
       return health;

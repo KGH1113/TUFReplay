@@ -21,6 +21,29 @@ public static partial class ActivitySchema
       throw new InvalidOperationException(
         "Unsupported TUFReplay activity database. applicationId=" + applicationId + ", version=" + version
       );
+    EnsureAdditiveColumns(connection);
+  }
+
+  // Columns added after version 1 shipped. They are optional with defaults, so the
+  // version stays 1 and older builds can still open the file (they ignore the column).
+  private static void EnsureAdditiveColumns(SqliteConnection connection)
+  {
+    if (HasColumn(connection, "runs", "locked"))
+      return;
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "ALTER TABLE runs ADD COLUMN locked INTEGER NOT NULL DEFAULT 0;";
+    command.ExecuteNonQuery();
+  }
+
+  private static bool HasColumn(SqliteConnection connection, string table, string column)
+  {
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText = "PRAGMA table_info(" + table + ");";
+    using SqliteDataReader reader = command.ExecuteReader();
+    while (reader.Read())
+      if (string.Equals(reader.GetString(1), column, StringComparison.Ordinal))
+        return true;
+    return false;
   }
 
   public static bool IsCurrent(SqliteConnection connection)

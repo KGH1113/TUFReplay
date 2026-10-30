@@ -9,6 +9,7 @@ export const activityQueryKeys = {
   logicalLevelRuns: (id: string, date: string | null) =>
     ["activity", "logical-level", id, "runs", date] as const,
   logicalLevelChart: (id: string) => ["activity", "logical-level", id, "chart"] as const,
+  judgmentTimeline: (runId: string) => ["activity", "run", runId, "judgment-timeline"] as const,
 };
 
 /**
@@ -39,6 +40,34 @@ export function mergeRecentAppSessions(
         (session.startedAtUtc === boundary.startedAtUtc && session.id < boundary.id)),
   );
   return [...recent, ...older];
+}
+
+/**
+ * Applies a lock change to the cached level session. The activity refresh only rereads the
+ * most recent sessions, so older days would otherwise keep a stale lock count.
+ */
+export function adjustLockedRunCounts(
+  sessions: AppSession[],
+  levelSessionId: string,
+  lockedDelta: number,
+  lockedClearDelta: number,
+) {
+  return sessions.map((session) =>
+    session.levelSessions.some((visit) => visit.id === levelSessionId)
+      ? {
+          ...session,
+          levelSessions: session.levelSessions.map((visit) =>
+            visit.id === levelSessionId
+              ? {
+                  ...visit,
+                  lockedRunCount: Math.max(0, visit.lockedRunCount + lockedDelta),
+                  lockedClearRunCount: Math.max(0, visit.lockedClearRunCount + lockedClearDelta),
+                }
+              : visit,
+          ),
+        }
+      : session,
+  );
 }
 
 export function removeRunById(runs: ActivityRun[], runId: string) {
