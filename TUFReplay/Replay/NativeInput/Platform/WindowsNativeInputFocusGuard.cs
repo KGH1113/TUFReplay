@@ -22,6 +22,8 @@ internal sealed class WindowsNativeInputFocusGuard : StableNativeInputFocusGuard
       Main.Instance?.Log("[Replay/Focus] Could not find the game window.");
       return;
     }
+    if (GetForegroundWindow() == window && !IsIconic(window))
+      return;
     if (IsIconic(window))
       ShowWindowAsync(window, 9);
     bool requested = SetForegroundWindow(window);
