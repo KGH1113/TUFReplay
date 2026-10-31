@@ -16,7 +16,7 @@
   },
   "consent": {
     "renderer": "동의하면 TUFReplay가 GitHub의 공식 Renderer 배포 파일을 받아 게임의 Mods 폴더에 설치해요. Renderer는 별도의 GPL 라이선스를 따르는 확장 모드예요.",
-    "ffmpeg": "동의하면 운영체제에 맞는 배포처에서 FFmpeg를 받아 검증한 뒤 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있어요. TUFReplay 폴더에 저장하고 카메라 녹화와 렌더링에 함께 사용해요. 게임 폴더에 쓸 수 없으면 사용자 폴더에 설치해요."
+    "ffmpeg": "동의하면 운영체제에 맞는 배포처에서 FFmpeg를 받아 검증한 뒤 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있어요. TUFReplay 폴더에 저장하고 카메라 녹화와 렌더링에 함께 사용해요."
   },
   "status": {
     "checking": "설치 상태 확인 중…",

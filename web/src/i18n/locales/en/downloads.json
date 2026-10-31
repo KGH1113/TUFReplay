@@ -16,7 +16,7 @@
   },
   "consent": {
     "renderer": "With your consent, TUFReplay downloads the official Renderer release from GitHub and installs this separately licensed GPL mod into the game's Mods folder.",
-    "ffmpeg": "With your consent, TUFReplay downloads FFmpeg from the platform provider and verifies it before installation. The build may include GPL components. It is stored in TUFReplay's folder and reused for camera recording and rendering. If the game folder is not writable, it installs it in your user folder."
+    "ffmpeg": "With your consent, TUFReplay downloads FFmpeg from the platform provider and verifies it before installation. The build may include GPL components. It is stored in TUFReplay's folder and reused for camera recording and rendering."
   },
   "status": {
     "checking": "Checking installation…",
