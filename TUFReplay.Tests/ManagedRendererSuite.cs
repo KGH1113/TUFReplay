@@ -8,11 +8,22 @@ using TUFReplay.Shared.Downloads;
 
 internal static class ManagedRendererSuite
 {
+  private static string _assetUrl;
   public static void RunAll(string root) => RunAsync(root).GetAwaiter().GetResult();
 
   private static async Task RunAsync(string root)
   {
-    byte[] package = Zip();
+    using var client = new HttpClient();
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TUFReplay-Renderer-Tests/1.0");
+    var release = JObject.Parse(await client.GetStringAsync("https://api.github.com/repos/imnyang/OrbitRender/releases/latest"));
+    var asset = (release["assets"] as JArray)?.OfType<JObject>()
+      .SingleOrDefault(item => (string)item["name"] == "OrbitRender.zip");
+    _assetUrl = (string)asset?["browser_download_url"];
+    Check(_assetUrl != null, "latest release contains OrbitRender.zip");
+    byte[] package = await client.GetByteArrayAsync(_assetUrl);
+    string actualHash = Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant();
+    Check((string)asset["digest"] == "sha256:" + actualHash && (long)asset["size"] == package.Length,
+      "downloaded release matches published size and checksum");
     int requests = 0;
     Func<HttpMessageHandler> fixture = () =>
       new Handler(
@@ -72,8 +83,8 @@ internal static class ManagedRendererSuite
         ),
       code: "renderer_checksum_mismatch"
     );
-    await Rejected(root, "traversal", Zip("../../outside.txt"));
-    await Rejected(root, "userdata", Zip("Settings.json"));
+    await Rejected(root, "traversal", AddEntry(package, "../../outside.txt"));
+    await Rejected(root, "userdata", AddEntry(package, "Settings.json"));
     await Rejected(
       root,
       "unpublished",
@@ -180,27 +191,21 @@ internal static class ManagedRendererSuite
       ["assets"] = new JArray(new JObject
       {
         ["name"] = "OrbitRender.zip",
-        ["browser_download_url"] = "https://github.com/imnyang/OrbitRender/releases/download/2.5.0/OrbitRender.zip",
+        ["browser_download_url"] = _assetUrl,
         ["size"] = package.Length,
         ["digest"] = "sha256:" + (hash ?? Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant()),
       }),
     }.ToString();
 
-  private static byte[] Zip(string additional = null)
+  private static byte[] AddEntry(byte[] package, string additional)
   {
     using var bytes = new MemoryStream();
-    using (var zip = new ZipArchive(bytes, ZipArchiveMode.Create, true))
+    bytes.Write(package, 0, package.Length);
+    bytes.Position = 0;
+    using (var zip = new ZipArchive(bytes, ZipArchiveMode.Update, true))
     {
-      void Add(string path, string content)
-      {
-        using var writer = new StreamWriter(zip.CreateEntry(path).Open());
-        writer.Write(content);
-      }
-      Add("Info.json", "{\"Id\":\"OrbitRender\",\"Version\":\"0.2.0\"}");
-      Add("OrbitRender.dll", "fixture");
-      Add("LICENSE.md", "fixture license");
-      if (additional != null)
-        Add(additional, "blocked");
+      using var writer = new StreamWriter(zip.CreateEntry(additional).Open());
+      writer.Write("blocked");
     }
     return bytes.ToArray();
   }
