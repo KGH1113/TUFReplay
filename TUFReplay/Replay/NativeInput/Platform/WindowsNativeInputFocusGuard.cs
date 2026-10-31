@@ -18,10 +18,37 @@ internal sealed class WindowsNativeInputFocusGuard : StableNativeInputFocusGuard
   {
     IntPtr window = ResolveTargetWindow();
     if (window == IntPtr.Zero)
+    {
+      Main.Instance?.Log("[Replay/Focus] Could not find the game window.");
       return;
+    }
     if (IsIconic(window))
       ShowWindowAsync(window, 9);
-    SetForegroundWindow(window);
+    bool requested = SetForegroundWindow(window);
+    if (!requested)
+    {
+      IntPtr foreground = GetForegroundWindow();
+      uint foregroundThread = GetWindowThreadProcessId(foreground, out _);
+      uint currentThread = GetCurrentThreadId();
+      bool attached = foregroundThread != 0 && foregroundThread != currentThread
+        && AttachThreadInput(currentThread, foregroundThread, true);
+      try
+      {
+        if (attached)
+          requested = SetForegroundWindow(window);
+      }
+      finally
+      {
+        if (attached)
+          AttachThreadInput(currentThread, foregroundThread, false);
+      }
+    }
+    Main.Instance?.Log(
+      "[Replay/Focus] Foreground request "
+        + (requested ? "accepted" : "denied")
+        + "; target=0x"
+        + window.ToInt64().ToString("X")
+    );
   }
 
   protected override bool EvaluateForegroundTarget(out string reason)
@@ -150,6 +177,13 @@ internal sealed class WindowsNativeInputFocusGuard : StableNativeInputFocusGuard
   [DllImport("user32.dll")]
   [return: MarshalAs(UnmanagedType.Bool)]
   private static extern bool ShowWindowAsync(IntPtr window, int command);
+
+  [DllImport("kernel32.dll")]
+  private static extern uint GetCurrentThreadId();
+
+  [DllImport("user32.dll", SetLastError = true)]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool AttachThreadInput(uint thread, uint otherThread, bool attach);
 
   [DllImport("user32.dll")]
   [return: MarshalAs(UnmanagedType.Bool)]
