@@ -71,6 +71,7 @@ public sealed class ManagedRendererInstaller : IDisposable
           _state.Status = installed ? "restart-required" : "missing";
           _state.Version = installed ? version : null;
         }
+        NotifyChanged();
       }
       catch
       {
@@ -79,13 +80,16 @@ public sealed class ManagedRendererInstaller : IDisposable
     });
   }
 
-  public RendererInstallState Snapshot(bool loaded = false)
+  public RendererInstallState Snapshot(bool loaded = false, string loadedVersion = null)
   {
     lock (_gate)
     {
       var state = _state.Clone();
       if (loaded)
+      {
         state.Status = "ready";
+        state.Version = loadedVersion;
+      }
       return state;
     }
   }

@@ -203,7 +203,9 @@
     "render_media_file_unreadable": "A recorded media file cannot be read. Check its permissions and drive connection, or turn off the affected recording.",
     "render_capture_failed": "Game frames could not be captured. Check ADOFAI and the render resolution, then try again.",
     "render_audio_capture_failed": "Game audio could not be captured. Check ADOFAI audio settings or turn off Game audio and try again.",
-    "render_cleanup_failed": "The original game settings could not be restored after rendering. Restart ADOFAI before playing or rendering again."
+    "render_cleanup_failed": "The original game settings could not be restored after rendering. Restart ADOFAI before playing or rendering again.",
+    "orbit_version_unsupported": "Please update OrbitRender.",
+    "orbit_version_unknown": "Could not verify the active OrbitRender version. Install OrbitRender 2.6.0 or later and restart ADOFAI."
   },
   "completedDescription": "OrbitRender finished the video. The output path is shown below.",
   "sections": {

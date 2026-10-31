@@ -60,5 +60,7 @@
     "approval": "Approval needed",
     "failed": "Install failed",
     "restart": "Restart ADOFAI to finish"
-  }
+  },
+  "rendererUpdateRequired": "OrbitRender update required",
+  "rendererUpdateHelp": "Please update OrbitRender."
 }

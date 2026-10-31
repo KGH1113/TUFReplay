@@ -6,6 +6,7 @@ import { type InstallState, installationBusy } from "@/api/downloads/downloads-a
 import { SidebarSettingButton } from "@/components/shell/sidebar-setting-button";
 import { useDownloadCenter } from "@/hooks/downloads/use-download-center";
 import type { ConnectionStatus } from "@/models/activity/activity-model";
+import { orbitVersionCompatibility } from "@/models/render/orbit-version";
 import { Button } from "@/shared/ui/button";
 import { Popover, PopoverContent } from "@/shared/ui/popover";
 import { DownloadDialog } from "./download-dialog";
@@ -15,6 +16,8 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
   const { t: commonT } = useTranslation("common");
   const center = useDownloadCenter(connectionStatus === "online");
   const renderer = center.state?.Renderer;
+  const rendererOutdated =
+    renderer?.Status === "ready" && orbitVersionCompatibility(renderer.Version) === "unsupported";
   const ffmpeg = center.state?.Ffmpeg;
   const busy = ffmpeg ? installationBusy(ffmpeg) : false;
   const installed = ffmpeg?.Status === "ready" || ffmpeg?.Status === "restart-required";
@@ -31,9 +34,11 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
                 ? commonT("settings.needsConnection")
                 : center.error
                   ? t("connectionIssue")
-                  : ffmpeg
-                    ? downloadsSummary(ffmpeg, busy, t)
-                    : undefined
+                  : rendererOutdated
+                    ? t("rendererUpdateRequired")
+                    : ffmpeg
+                      ? downloadsSummary(ffmpeg, busy, t)
+                      : undefined
             }
             attention={
               connectionStatus === "online" &&
@@ -43,6 +48,7 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
                 ffmpeg?.Status === "restart-required" ||
                 renderer?.Status === "failed" ||
                 renderer?.Status === "awaiting-consent" ||
+                rendererOutdated ||
                 renderer?.Status === "restart-required")
             }
             aria-label={t("title")}
@@ -81,6 +87,11 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
                     {t(`status.${renderer.Status}`)}
                     {renderer.Version ? ` · ${renderer.Version}` : ""}
                   </p>
+                  {rendererOutdated ? (
+                    <p className="text-xs leading-relaxed text-destructive">
+                      {t("rendererUpdateHelp")}
+                    </p>
+                  ) : null}
                 </div>
                 <Button
                   size="sm"

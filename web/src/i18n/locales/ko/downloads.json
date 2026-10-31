@@ -60,5 +60,7 @@
     "approval": "승인이 필요해요",
     "failed": "설치하지 못했어요",
     "restart": "얼불춤을 다시 시작하면 끝나요"
-  }
+  },
+  "rendererUpdateRequired": "OrbitRender 업데이트 필요",
+  "rendererUpdateHelp": "OrbitRender를 업데이트해 주세요."
 }
