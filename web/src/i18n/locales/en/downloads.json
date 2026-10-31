@@ -16,7 +16,7 @@
   },
   "consent": {
     "renderer": "With your consent, TUFReplay downloads the official OrbitRender release from GitHub and installs this separately licensed GPL mod into the game's Mods folder.",
-    "ffmpeg": "With your consent, TUFReplay downloads and verifies FFmpeg for camera recording. If the game folder is not writable, it installs it in your user folder. The build may include GPL components."
+    "ffmpeg": "With your consent, TUFReplay downloads and verifies FFmpeg for camera recording. The build may include GPL components. It is stored in TUFReplay’s folder."
   },
   "status": {
     "checking": "Checking installation…",

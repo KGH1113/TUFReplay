@@ -37,8 +37,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
   }
 
   private readonly object _gate = new object();
-  private string _directory;
-  private readonly string _fallbackDirectory;
+  private readonly string _directory;
   private readonly FfmpegPlatform _platform;
   private readonly Func<HttpMessageHandler> _transport;
   private CancellationTokenSource _cancel;
@@ -51,13 +50,6 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     _platform = platform;
     _transport = transport;
     _directory = Path.Combine(modDirectory, "FFmpeg", platform.Name);
-    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-      _fallbackDirectory = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "TUFReplay",
-        "FFmpeg",
-        platform.Name
-      );
     _state = new FfmpegInstallState
     {
       Status = "checking",
@@ -69,35 +61,18 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     {
       try
       {
-        foreach (string directory in new[] { _directory, _fallbackDirectory })
+        string path = Path.Combine(_directory, platform.Executable);
+        string receipt = Path.Combine(_directory, "installation.json");
+        bool valid = File.Exists(receipt) && new FileInfo(receipt).Length < 65536 && File.Exists(path);
+        if (valid)
         {
-          if (string.IsNullOrEmpty(directory))
-            continue;
-          try
-          {
-            string path = Path.Combine(directory, platform.Executable);
-            string receipt = Path.Combine(directory, "installation.json");
-            bool valid = File.Exists(receipt) && new FileInfo(receipt).Length < 65536 && File.Exists(path);
-            if (!valid)
-              continue;
-            var installed = JsonConvert.DeserializeObject<FfmpegInstallReceipt>(File.ReadAllText(receipt));
-            valid =
-              installed?.SchemaVersion == 1 && installed.Platform == platform.Name && installed.Sha256 == Hash(path);
-            if (valid)
-            {
-              VerifyExecutable(path, CancellationToken.None);
-              lock (_gate)
-              {
-                _directory = directory;
-                _state.InstallationDirectory = directory;
-              }
-              Publish("ready", path);
-              return;
-            }
-          }
-          catch (Exception) { }
+          var installed = JsonConvert.DeserializeObject<FfmpegInstallReceipt>(File.ReadAllText(receipt));
+          valid =
+            installed?.SchemaVersion == 1 && installed.Platform == platform.Name && installed.Sha256 == Hash(path);
+          if (valid)
+            VerifyExecutable(path, CancellationToken.None);
         }
-        Publish("missing");
+        Publish(valid ? "ready" : "missing", valid ? path : null);
       }
       catch
       {
@@ -170,7 +145,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     NotifyChanged();
   }
 
-  private async Task InstallAsync(CancellationToken token, bool allowFallback = true)
+  private async Task InstallAsync(CancellationToken token)
   {
     string temporary = null;
     try
@@ -264,10 +239,10 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       // Publish a complete installation with its receipt, never a partial exe.
       string old = _directory + ".previous-" + Guid.NewGuid().ToString("N");
       if (Directory.Exists(_directory))
-        await MoveDirectoryAsync(_directory, old, token).ConfigureAwait(false);
+        Directory.Move(_directory, old);
       try
       {
-        await MoveDirectoryAsync(temporary, _directory, token).ConfigureAwait(false);
+        Directory.Move(temporary, _directory);
         temporary = null;
       }
       catch
@@ -282,26 +257,11 @@ public sealed class ManagedFfmpegInstaller : IDisposable
           Directory.Delete(old, true);
       }
       catch (IOException) { }
-      catch (UnauthorizedAccessException) { }
       Publish("ready", Path.Combine(_directory, _platform.Executable));
     }
     catch (OperationCanceledException) when (token.IsCancellationRequested)
     {
       Publish("cancelled");
-    }
-    catch (UnauthorizedAccessException) when (
-      allowFallback && !string.IsNullOrEmpty(_fallbackDirectory)
-      && !string.Equals(_directory, _fallbackDirectory, StringComparison.OrdinalIgnoreCase)
-    )
-    {
-      lock (_gate)
-      {
-        _directory = _fallbackDirectory;
-        _state.InstallationDirectory = _directory;
-        _state.DownloadedBytes = 0;
-        _state.TotalBytes = null;
-      }
-      await InstallAsync(token, false).ConfigureAwait(false);
     }
     catch (Exception error)
     {
@@ -321,28 +281,6 @@ public sealed class ManagedFfmpegInstaller : IDisposable
           Directory.Delete(temporary, true);
         }
         catch (Exception) { }
-    }
-  }
-
-  internal static async Task MoveDirectoryAsync(
-    string source, string destination, CancellationToken token, Action<string, string> move = null
-  )
-  {
-    move = move ?? Directory.Move;
-    for (int attempt = 0; ; attempt++)
-    {
-      token.ThrowIfCancellationRequested();
-      try
-      {
-        move(source, destination);
-        return;
-      }
-      catch (Exception error) when (
-        (error is IOException || error is UnauthorizedAccessException) && attempt < 5
-      )
-      {
-        await Task.Delay(200 * (attempt + 1), token).ConfigureAwait(false);
-      }
     }
   }
 
