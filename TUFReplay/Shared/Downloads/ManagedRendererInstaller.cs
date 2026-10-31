@@ -154,16 +154,27 @@ public sealed class ManagedRendererInstaller : IDisposable
         );
       releaseResponse.EnsureSuccessStatusCode();
       JObject release = JObject.Parse(await ReadTextAsync(releaseResponse, token).ConfigureAwait(false));
-      var asset = (release["assets"] as JArray)?.OfType<JObject>()
+      var asset = (release["assets"] as JArray)
+        ?.OfType<JObject>()
         .FirstOrDefault(candidate => (string)candidate["name"] == ModId + ".zip");
       string package = (string)asset?["browser_download_url"];
       string digestValue = (string)asset?["digest"];
-      string sha = digestValue != null && digestValue.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
-        ? digestValue.Substring(7) : null;
+      string sha =
+        digestValue != null && digestValue.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+          ? digestValue.Substring(7)
+          : null;
       long expectedBytes = (long?)asset?["size"] ?? 0;
-      if (!IsReleaseAsset(package) || sha?.Length != 64 || !sha.All(Uri.IsHexDigit)
-          || expectedBytes <= 0 || expectedBytes > MaximumBytes)
-        throw new InstallError("renderer_release_invalid", "The OrbitRender release has no valid package checksum or size.");
+      if (
+        !IsReleaseAsset(package)
+        || sha?.Length != 64
+        || !sha.All(Uri.IsHexDigit)
+        || expectedBytes <= 0
+        || expectedBytes > MaximumBytes
+      )
+        throw new InstallError(
+          "renderer_release_invalid",
+          "The OrbitRender release has no valid package checksum or size."
+        );
 
       Directory.CreateDirectory(Path.GetDirectoryName(_directory));
       staging = Path.Combine(

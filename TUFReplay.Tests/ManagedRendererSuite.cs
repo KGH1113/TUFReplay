@@ -9,21 +9,27 @@ using TUFReplay.Shared.Downloads;
 internal static class ManagedRendererSuite
 {
   private static string _assetUrl;
+
   public static void RunAll(string root) => RunAsync(root).GetAwaiter().GetResult();
 
   private static async Task RunAsync(string root)
   {
     using var client = new HttpClient();
     client.DefaultRequestHeaders.UserAgent.ParseAdd("TUFReplay-Renderer-Tests/1.0");
-    var release = JObject.Parse(await client.GetStringAsync("https://api.github.com/repos/imnyang/OrbitRender/releases/latest"));
-    var asset = (release["assets"] as JArray)?.OfType<JObject>()
+    var release = JObject.Parse(
+      await client.GetStringAsync("https://api.github.com/repos/imnyang/OrbitRender/releases/latest")
+    );
+    var asset = (release["assets"] as JArray)
+      ?.OfType<JObject>()
       .SingleOrDefault(item => (string)item["name"] == "OrbitRender.zip");
     _assetUrl = (string)asset?["browser_download_url"];
     Check(_assetUrl != null, "latest release contains OrbitRender.zip");
     byte[] package = await client.GetByteArrayAsync(_assetUrl);
     string actualHash = Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant();
-    Check((string)asset["digest"] == "sha256:" + actualHash && (long)asset["size"] == package.Length,
-      "downloaded release matches published size and checksum");
+    Check(
+      (string)asset["digest"] == "sha256:" + actualHash && (long)asset["size"] == package.Length,
+      "downloaded release matches published size and checksum"
+    );
     int requests = 0;
     Func<HttpMessageHandler> fixture = () =>
       new Handler(
@@ -189,13 +195,15 @@ internal static class ManagedRendererSuite
   private static string Release(byte[] package, string hash = null) =>
     new JObject
     {
-      ["assets"] = new JArray(new JObject
-      {
-        ["name"] = "OrbitRender.zip",
-        ["browser_download_url"] = _assetUrl,
-        ["size"] = package.Length,
-        ["digest"] = "sha256:" + (hash ?? Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant()),
-      }),
+      ["assets"] = new JArray(
+        new JObject
+        {
+          ["name"] = "OrbitRender.zip",
+          ["browser_download_url"] = _assetUrl,
+          ["size"] = package.Length,
+          ["digest"] = "sha256:" + (hash ?? Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant()),
+        }
+      ),
     }.ToString();
 
   private static byte[] AddEntry(byte[] package, string additional)
