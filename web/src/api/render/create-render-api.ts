@@ -1,4 +1,3 @@
-import type { AdofaiIpcClients } from "@/api/domain-messages";
 import { callRecorder, decodeRecorder } from "@/api/recorder-call";
 import type { RenderApi } from "@/api/render/render-api";
 import { orbitVersionCompatibility } from "@/models/render/orbit-version";
@@ -7,74 +6,22 @@ import {
   type RenderJob,
   type RenderOptions,
   type RenderSettings,
+  renderJobFinished,
 } from "@/models/render/render-model";
-import type { OrbitRenderClient } from "@/ports/orbit-render-client";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
 import {
-  renderExportStatusSchema,
+  renderJobSchema,
   renderOptionsSchema,
   renderSettingsSchema,
 } from "@/schemas/render/render-schema";
 import { ApiError } from "@/shared/errors/api-error";
 
-const orbitStates = new Set([
-  "queued",
-  "loading",
-  "preparing",
-  "awaitingconfirmation",
-  "rendering",
-  "finishing",
-  "completed",
-  "failed",
-  "cancelled",
-]);
-
-type OrbitJob = Awaited<ReturnType<NonNullable<AdofaiIpcClients["orbit"]>["renderStatus"]>>;
-
-function mapState(state: string): RenderJob["state"] {
-  switch (state.toLowerCase()) {
-    case "completed":
-      return "completed";
-    case "failed":
-      return "failed";
-    case "cancelled":
-      return "cancelled";
-    case "finishing":
-      return "compositing";
-    case "rendering":
-    case "awaitingconfirmation":
-      return "rendering";
-    default:
-      return "preparing";
-  }
-}
-
-function mapJob(job: OrbitJob): RenderJob {
+function toRenderRequest(options: RenderOptions) {
   return {
-    warnings: [],
-    waitingForGameFocus: false,
-    waitingForFfmpeg: false,
-    jobId: job.id,
-    state: mapState(job.state),
-    progress: Math.min(1, Math.max(0, job.progress)),
-    errorMessage: job.error,
-    errorCode: null,
-    errorDetails: null,
-    outputFile: job.outputPath,
-    outputDirectory: null,
-    localOutputPath: job.outputPath,
-    // OrbitRender owns its output folder and there is no folder-open IPC yet.
-    canOpenOutput: false,
-    canDownload: false,
-  };
-}
-
-function toOrbitOptions(manifestPath: string, options: RenderOptions) {
-  return {
-    replayManifestPath: manifestPath,
     width: options.width,
     height: options.height,
-    targetFps: options.simulationFps,
     videoFps: options.videoFps,
+    targetFps: options.simulationFps,
     bitrateMbps: options.bitrateMbps,
     videoCodec: options.videoCodec,
     bitDepth: options.bitDepth,
@@ -87,7 +34,8 @@ function toOrbitOptions(manifestPath: string, options: RenderOptions) {
     showCountdown: options.showCountdown,
     showResultText: options.showResultText,
     showHitJudgments: options.showHitJudgments,
-    showModOverlay: true,
+    includeWebcam: options.includeWebcam,
+    includeMicrophone: options.includeMicrophone,
   };
 }
 
@@ -116,54 +64,30 @@ function unavailableHealth() {
   };
 }
 
-export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
-  const orbit = () => {
-    if (!clients.orbit)
-      throw new ApiError("Install and enable OrbitRender, then restart ADOFAI.", {
-        kind: "domain",
-        code: "orbit_missing",
-      });
-    return clients.orbit;
-  };
-  const requireSupportedVersion = async () => {
-    const state = await callRecorder(clients, (mod) => mod.readDownloadsState());
-    const version = state?.renderer?.version;
-    const compatibility = orbitVersionCompatibility(version);
-    if (
-      compatibility === "unknown" ||
-      typeof version !== "string" ||
-      state.renderer.status !== "ready"
-    )
-      throw new ApiError("Could not verify the active OrbitRender version.", {
-        kind: "domain",
-        code: "orbit_version_unknown",
-      });
-    if (compatibility === "unsupported")
-      throw new ApiError("OrbitRender 2.6.0 or later is required.", {
-        kind: "domain",
-        code: "orbit_version_unsupported",
-      });
-    return version;
+export function createRenderApi(clients: LocalAppChannels): RenderApi {
+  const readRendererState = async () =>
+    (await callRecorder(clients, (mod) => mod.readDownloadsState())).renderer;
+  const readJob = async (): Promise<RenderJob | null> => {
+    const value = await callRecorder(clients, (mod) => mod.readRenderState());
+    return value ? decodeRecorder(renderJobSchema, value) : null;
   };
   return {
     async getHealth() {
-      if (!clients.orbit) return unavailableHealth();
-      let health: Awaited<ReturnType<OrbitRenderClient["health"]>>;
+      let renderer: Awaited<ReturnType<typeof readRendererState>>;
       try {
-        health = await clients.orbit.health();
+        renderer = await readRendererState();
       } catch {
         return unavailableHealth();
       }
-      const version = await requireSupportedVersion();
-      const state = health.renderer.toLowerCase();
+      const job = await readJob().catch(() => null);
+      const compatibility = orbitVersionCompatibility(renderer.version);
       return {
         available: true,
-        version,
+        version: renderer.version ?? "",
         schemaVersion: 1 as const,
-        busy:
-          orbitStates.has(state) && !["idle", "completed", "failed", "cancelled"].includes(state),
+        busy: job ? !renderJobFinished(job) : false,
         dmNoteConfigured: false,
-        orbitAvailable: true,
+        orbitAvailable: renderer.status === "ready" && compatibility === "supported",
       };
     },
     getSettings: async () => renderSettingsSchema.parse(synthSettings()),
@@ -176,43 +100,25 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
     },
     cancelOutputDirectorySelection: async () => ({ cancelled: true }),
     openOutputDirectory: async () => ({ opened: false }),
-    async exportBundle(runId, options, levelPath) {
+    async startRender(runId, options, levelPath) {
       const validated = renderOptionsSchema.parse(options);
       return decodeRecorder(
-        renderExportStatusSchema,
+        renderJobSchema,
         await callRecorder(clients, (mod) =>
-          mod.prepareRenderBundle({
+          mod.startRender({
             runId,
             ...(levelPath ? { levelPath } : {}),
-            includeWebcam: validated.includeWebcam,
-            includeMicrophone: validated.includeMicrophone,
+            options: toRenderRequest(validated),
           }),
         ),
       );
     },
-    getExportStatus: async (jobId) =>
-      decodeRecorder(
-        renderExportStatusSchema,
-        await callRecorder(clients, (mod) => mod.readRenderBundleState({ jobId })),
-      ),
-    cancelExport: async (jobId) =>
-      decodeRecorder(
-        renderExportStatusSchema,
-        await callRecorder(clients, (mod) => mod.cancelRenderBundle({ jobId })),
-      ),
-    async start(manifestPath, options) {
-      await requireSupportedVersion();
-      const accepted = await orbit().createRender({
-        options: toOrbitOptions(manifestPath, renderOptionsSchema.parse(options)),
-      });
-      return mapJob(await orbit().renderStatus({ id: accepted.id }));
-    },
-    async getStatus(jobId) {
-      return mapJob(await orbit().renderStatus({ id: jobId }));
-    },
-    async cancel(jobId) {
-      await orbit().cancelRender({ id: jobId });
-      return mapJob(await orbit().renderStatus({ id: jobId }));
+    readRenderState: readJob,
+    async cancelRender(jobId) {
+      return decodeRecorder(
+        renderJobSchema,
+        await callRecorder(clients, (mod) => mod.cancelRender({ jobId })),
+      );
     },
     async prepareDownload() {
       throw new ApiError("Downloads are not used by the OrbitRender integration.", {

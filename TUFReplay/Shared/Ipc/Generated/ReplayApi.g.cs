@@ -209,18 +209,6 @@ public sealed class MicrophoneTiming
   [JsonProperty("microphoneVolumeDb")] public int MicrophoneVolumeDb { get; set; } = default!;
 }
 
-public sealed class RenderBundleState
-{
-  [JsonProperty("errorCode")] public string? ErrorCode { get; set; } = default!;
-  [JsonProperty("errorDetails")] public RenderErrorDetails? ErrorDetails { get; set; } = default!;
-  [JsonProperty("errorMessage")] public string? ErrorMessage { get; set; } = default!;
-  [JsonProperty("jobId")] public string JobId { get; set; } = default!;
-  [JsonProperty("manifestPath")] public string? ManifestPath { get; set; } = default!;
-  [JsonProperty("progress")] public double Progress { get; set; } = default!;
-  [JsonProperty("runId")] public string RunId { get; set; } = default!;
-  [JsonProperty("state")] public string State { get; set; } = default!;
-}
-
 public sealed class RenderErrorDetails
 {
   [JsonProperty("field")] public string? Field { get; set; } = default!;
@@ -238,6 +226,43 @@ public sealed class RendererState
   [JsonProperty("status")] public string Status { get; set; } = default!;
   [JsonProperty("totalBytes")] public long? TotalBytes { get; set; } = default!;
   [JsonProperty("version")] public string? Version { get; set; } = default!;
+}
+
+public sealed class RenderJobState
+{
+  [JsonProperty("errorCode")] public string? ErrorCode { get; set; } = default!;
+  [JsonProperty("errorDetails")] public RenderErrorDetails? ErrorDetails { get; set; } = default!;
+  [JsonProperty("errorMessage")] public string? ErrorMessage { get; set; } = default!;
+  [JsonProperty("jobId")] public string JobId { get; set; } = default!;
+  [JsonProperty("outputFile")] public string? OutputFile { get; set; } = default!;
+  [JsonProperty("progress")] public double Progress { get; set; } = default!;
+  [JsonProperty("runId")] public string RunId { get; set; } = default!;
+  [JsonProperty("stage")] public string? Stage { get; set; } = default!;
+  [JsonProperty("state")] public string State { get; set; } = default!;
+  [JsonProperty("waitingForGameFocus")] public bool WaitingForGameFocus { get; set; } = default!;
+  [JsonProperty("warnings")] public string[] Warnings { get; set; } = default!;
+}
+
+public sealed class RenderRequest
+{
+  [JsonProperty("audioGainDb")] public double AudioGainDb { get; set; } = default!;
+  [JsonProperty("bgaMode")] public bool BgaMode { get; set; } = default!;
+  [JsonProperty("bitDepth")] public int BitDepth { get; set; } = default!;
+  [JsonProperty("bitrateMbps")] public int BitrateMbps { get; set; } = default!;
+  [JsonProperty("captureAudio")] public bool CaptureAudio { get; set; } = default!;
+  [JsonProperty("endDelaySeconds")] public double EndDelaySeconds { get; set; } = default!;
+  [JsonProperty("height")] public int Height { get; set; } = default!;
+  [JsonProperty("includeMicrophone")] public bool IncludeMicrophone { get; set; } = default!;
+  [JsonProperty("includeWebcam")] public bool IncludeWebcam { get; set; } = default!;
+  [JsonProperty("showCountdown")] public bool ShowCountdown { get; set; } = default!;
+  [JsonProperty("showHitJudgments")] public bool ShowHitJudgments { get; set; } = default!;
+  [JsonProperty("showPlanetRings")] public bool ShowPlanetRings { get; set; } = default!;
+  [JsonProperty("showResultText")] public bool ShowResultText { get; set; } = default!;
+  [JsonProperty("showSongTitle")] public bool ShowSongTitle { get; set; } = default!;
+  [JsonProperty("targetFps")] public int TargetFps { get; set; } = default!;
+  [JsonProperty("videoCodec")] public string VideoCodec { get; set; } = default!;
+  [JsonProperty("videoFps")] public int VideoFps { get; set; } = default!;
+  [JsonProperty("width")] public int Width { get; set; } = default!;
 }
 
 public sealed class ReplayState
@@ -373,7 +398,7 @@ public sealed class WebcamState
   [JsonProperty("supported")] public bool Supported { get; set; } = default!;
 }
 
-public sealed class CancelRenderBundleRequest
+public sealed class CancelRenderRequest
 {
   [JsonProperty("jobId")] public string JobId { get; set; } = default!;
 }
@@ -463,14 +488,6 @@ public sealed class ListLogicalLevelRunsRequest
   [JsonProperty("offset")] public IpcOptional<int> Offset { get; set; } = default!;
 }
 
-public sealed class PrepareRenderBundleRequest
-{
-  [JsonProperty("includeMicrophone")] public IpcOptional<bool> IncludeMicrophone { get; set; } = default!;
-  [JsonProperty("includeWebcam")] public IpcOptional<bool> IncludeWebcam { get; set; } = default!;
-  [JsonProperty("levelPath")] public IpcOptional<string?> LevelPath { get; set; } = default!;
-  [JsonProperty("runId")] public string RunId { get; set; } = default!;
-}
-
 public sealed class ReadCalibrationResultRequest
 {
   [JsonProperty("operationId")] public string OperationId { get; set; } = default!;
@@ -500,11 +517,6 @@ public sealed class ReadLogicalLevelRequest
 public sealed class ReadLogicalLevelChartRequest
 {
   [JsonProperty("id")] public string Id { get; set; } = default!;
-}
-
-public sealed class ReadRenderBundleStateRequest
-{
-  [JsonProperty("jobId")] public string JobId { get; set; } = default!;
 }
 
 public sealed class ReadRunJudgmentTimelinesRequest
@@ -558,6 +570,13 @@ public sealed class StartCalibrationPreviewRequest
   [JsonProperty("operationId")] public string OperationId { get; set; } = default!;
 }
 
+public sealed class StartRenderRequest
+{
+  [JsonProperty("levelPath")] public IpcOptional<string?> LevelPath { get; set; } = default!;
+  [JsonProperty("options")] public RenderRequest Options { get; set; } = default!;
+  [JsonProperty("runId")] public string RunId { get; set; } = default!;
+}
+
 public sealed class StartReplayRequest
 {
   [JsonProperty("levelPath")] public IpcOptional<string?> LevelPath { get; set; } = default!;
@@ -604,9 +623,9 @@ public sealed class MicrophoneTimingChangedRequest
   [JsonProperty("value")] public MicrophoneTiming Value { get; set; } = default!;
 }
 
-public sealed class RenderBundleStateChangedRequest
+public sealed class RenderStateChangedRequest
 {
-  [JsonProperty("value")] public RenderBundleState Value { get; set; } = default!;
+  [JsonProperty("value")] public RenderJobState Value { get; set; } = default!;
 }
 
 public sealed class ReplayStateChangedRequest
@@ -640,9 +659,10 @@ internal static class ReplayApiSchemas
   internal static IpcSchema MicrophoneDevice() => IpcSchema.Object(IpcSchema.Field("bluetooth", IpcSchema.Boolean), IpcSchema.Field("id", IpcSchema.String), IpcSchema.Field("maxFrequency", IpcSchema.Int32), IpcSchema.Field("minFrequency", IpcSchema.Int32), IpcSchema.Field("name", IpcSchema.String));
   internal static IpcSchema MicrophoneDevices() => IpcSchema.Object(IpcSchema.Field("defaultDeviceBluetooth", IpcSchema.Boolean), IpcSchema.Field("devices", IpcSchema.Array(ReplayApiSchemas.MicrophoneDevice())), IpcSchema.Field("enabled", IpcSchema.Boolean), IpcSchema.Field("microphoneOffsetMs", IpcSchema.Int32), IpcSchema.Field("microphoneVolumeDb", IpcSchema.Int32), IpcSchema.Field("selectedDeviceId", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("toggleLocked", IpcSchema.Boolean));
   internal static IpcSchema MicrophoneTiming() => IpcSchema.Object(IpcSchema.Field("microphoneOffsetMs", IpcSchema.Int32), IpcSchema.Field("microphoneVolumeDb", IpcSchema.Int32));
-  internal static IpcSchema RenderBundleState() => IpcSchema.Object(IpcSchema.Field("errorCode", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("errorDetails", IpcSchema.Nullable(ReplayApiSchemas.RenderErrorDetails())), IpcSchema.Field("errorMessage", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("jobId", IpcSchema.String), IpcSchema.Field("manifestPath", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("progress", IpcSchema.Float64), IpcSchema.Field("runId", IpcSchema.String), IpcSchema.Field("state", IpcSchema.StringEnum("cancelled", "completed", "failed", "preparing")));
   internal static IpcSchema RenderErrorDetails() => IpcSchema.Object(IpcSchema.Field("field", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("file", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("line", IpcSchema.Nullable(IpcSchema.Int32)));
   internal static IpcSchema RendererState() => IpcSchema.Object(IpcSchema.Field("downloadedBytes", IpcSchema.SafeInt), IpcSchema.Field("error", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("errorCode", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("installationDirectory", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("source", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("status", IpcSchema.String), IpcSchema.Field("totalBytes", IpcSchema.Nullable(IpcSchema.SafeInt)), IpcSchema.Field("version", IpcSchema.Nullable(IpcSchema.String)));
+  internal static IpcSchema RenderJobState() => IpcSchema.Object(IpcSchema.Field("errorCode", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("errorDetails", IpcSchema.Nullable(ReplayApiSchemas.RenderErrorDetails())), IpcSchema.Field("errorMessage", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("jobId", IpcSchema.String), IpcSchema.Field("outputFile", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("progress", IpcSchema.Float64), IpcSchema.Field("runId", IpcSchema.String), IpcSchema.Field("stage", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("state", IpcSchema.StringEnum("cancelled", "completed", "compositing", "exporting", "failed", "preparing", "rendering")), IpcSchema.Field("waitingForGameFocus", IpcSchema.Boolean), IpcSchema.Field("warnings", IpcSchema.Array(IpcSchema.String)));
+  internal static IpcSchema RenderRequest() => IpcSchema.Object(IpcSchema.Field("audioGainDb", IpcSchema.Float64), IpcSchema.Field("bgaMode", IpcSchema.Boolean), IpcSchema.Field("bitDepth", IpcSchema.Int32), IpcSchema.Field("bitrateMbps", IpcSchema.Int32), IpcSchema.Field("captureAudio", IpcSchema.Boolean), IpcSchema.Field("endDelaySeconds", IpcSchema.Float64), IpcSchema.Field("height", IpcSchema.Int32), IpcSchema.Field("includeMicrophone", IpcSchema.Boolean), IpcSchema.Field("includeWebcam", IpcSchema.Boolean), IpcSchema.Field("showCountdown", IpcSchema.Boolean), IpcSchema.Field("showHitJudgments", IpcSchema.Boolean), IpcSchema.Field("showPlanetRings", IpcSchema.Boolean), IpcSchema.Field("showResultText", IpcSchema.Boolean), IpcSchema.Field("showSongTitle", IpcSchema.Boolean), IpcSchema.Field("targetFps", IpcSchema.Int32), IpcSchema.Field("videoCodec", IpcSchema.String), IpcSchema.Field("videoFps", IpcSchema.Int32), IpcSchema.Field("width", IpcSchema.Int32));
   internal static IpcSchema ReplayState() => IpcSchema.Object(IpcSchema.Field("errorCode", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("message", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("operationId", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("runId", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("state", IpcSchema.StringEnum("cancelled", "completed", "error", "idle", "opening_level", "playing", "preparing", "returning_to_editor", "starting", "waiting_for_focus")));
   internal static IpcSchema RetainResult() => IpcSchema.Object(IpcSchema.Field("permanent", IpcSchema.Boolean), IpcSchema.Field("runId", IpcSchema.String));
   internal static IpcSchema Run() => IpcSchema.Object(IpcSchema.Field("cameraRecordingBytes", IpcSchema.SafeInt), IpcSchema.Field("cameraRecordingExpiresAtUtc", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("cameraRecordingPermanent", IpcSchema.Boolean), IpcSchema.Field("effectivePitch", IpcSchema.Nullable(IpcSchema.Float64)), IpcSchema.Field("endedAtUtc", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("floorCount", IpcSchema.Int32), IpcSchema.Field("gameplayStartSongPosition", IpcSchema.Nullable(IpcSchema.Float64)), IpcSchema.Field("hasCameraRecording", IpcSchema.Boolean), IpcSchema.Field("hasMicrophoneRecording", IpcSchema.Boolean), IpcSchema.Field("hitContextBytes", IpcSchema.SafeInt), IpcSchema.Field("hitContextCount", IpcSchema.Int32), IpcSchema.Field("id", IpcSchema.String), IpcSchema.Field("inputBytes", IpcSchema.SafeInt), IpcSchema.Field("inputCount", IpcSchema.Int32), IpcSchema.Field("judgmentCounts", ReplayApiSchemas.JudgmentCounts()), IpcSchema.Field("judgmentDifficulty", IpcSchema.Nullable(IpcSchema.StringEnum("Lenient", "Normal", "Strict"))), IpcSchema.Field("judgmentSystem", IpcSchema.StringEnum("Legacy", "ModernClassic", "ModernCompetitive")), IpcSchema.Field("lastTile", IpcSchema.Nullable(IpcSchema.Int32)), IpcSchema.Field("levelPitchPercent", IpcSchema.Nullable(IpcSchema.Int32)), IpcSchema.Field("levelSessionId", IpcSchema.String), IpcSchema.Field("locked", IpcSchema.Boolean), IpcSchema.Field("microphoneChannels", IpcSchema.Nullable(IpcSchema.Int32)), IpcSchema.Field("microphoneDurationSeconds", IpcSchema.Nullable(IpcSchema.Float64)), IpcSchema.Field("microphoneRecordingBytes", IpcSchema.SafeInt), IpcSchema.Field("microphoneRecordingExpiresAtUtc", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("microphoneRecordingPermanent", IpcSchema.Boolean), IpcSchema.Field("microphoneSampleRate", IpcSchema.Nullable(IpcSchema.Int32)), IpcSchema.Field("noFailMode", IpcSchema.Boolean), IpcSchema.Field("replayPlayable", IpcSchema.Boolean), IpcSchema.Field("replayUnavailableReason", IpcSchema.Nullable(IpcSchema.String)), IpcSchema.Field("result", IpcSchema.String), IpcSchema.Field("runIndex", IpcSchema.Int32), IpcSchema.Field("startedAtUtc", IpcSchema.String), IpcSchema.Field("startTile", IpcSchema.Int32), IpcSchema.Field("tufLevelId", IpcSchema.Nullable(IpcSchema.Int32)), IpcSchema.Field("xAccuracy", IpcSchema.Nullable(IpcSchema.Float64)));
@@ -659,7 +679,7 @@ public static class ReplayApiMethods
 {
   public static readonly IpcMethod<IpcUnit, FfmpegState> CancelFfmpeg = new IpcMethod<IpcUnit, FfmpegState>("cancelFfmpeg", "rpc.mod.cancelffmpeg", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<FfmpegState>(ReplayApiSchemas.FfmpegState()));
   public static readonly IpcMethod<IpcUnit, DownloadsState> CancelFfmpegDownload = new IpcMethod<IpcUnit, DownloadsState>("cancelFfmpegDownload", "rpc.mod.cancelffmpegdownload", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<DownloadsState>(ReplayApiSchemas.DownloadsState()));
-  public static readonly IpcMethod<CancelRenderBundleRequest, RenderBundleState> CancelRenderBundle = new IpcMethod<CancelRenderBundleRequest, RenderBundleState>("cancelRenderBundle", "rpc.mod.cancelrenderbundle", new IpcCodec<CancelRenderBundleRequest>(IpcSchema.Object(IpcSchema.Field("jobId", IpcSchema.String))), new IpcCodec<RenderBundleState>(ReplayApiSchemas.RenderBundleState()));
+  public static readonly IpcMethod<CancelRenderRequest, RenderJobState> CancelRender = new IpcMethod<CancelRenderRequest, RenderJobState>("cancelRender", "rpc.mod.cancelrender", new IpcCodec<CancelRenderRequest>(IpcSchema.Object(IpcSchema.Field("jobId", IpcSchema.String))), new IpcCodec<RenderJobState>(ReplayApiSchemas.RenderJobState()));
   public static readonly IpcMethod<IpcUnit, DownloadsState> CancelRendererDownload = new IpcMethod<IpcUnit, DownloadsState>("cancelRendererDownload", "rpc.mod.cancelrendererdownload", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<DownloadsState>(ReplayApiSchemas.DownloadsState()));
   public static readonly IpcMethod<ChangeCalibrationOffsetRequest, CalibrationState> ChangeCalibrationOffset = new IpcMethod<ChangeCalibrationOffsetRequest, CalibrationState>("changeCalibrationOffset", "rpc.mod.changecalibrationoffset", new IpcCodec<ChangeCalibrationOffsetRequest>(IpcSchema.Object(IpcSchema.Field("offsetMs", IpcSchema.Int32), IpcSchema.Field("operationId", IpcSchema.String))), new IpcCodec<CalibrationState>(ReplayApiSchemas.CalibrationState()));
   public static readonly IpcMethod<ChangeCalibrationVolumeRequest, CalibrationState> ChangeCalibrationVolume = new IpcMethod<ChangeCalibrationVolumeRequest, CalibrationState>("changeCalibrationVolume", "rpc.mod.changecalibrationvolume", new IpcCodec<ChangeCalibrationVolumeRequest>(IpcSchema.Object(IpcSchema.Field("operationId", IpcSchema.String), IpcSchema.Field("volumeDb", IpcSchema.Int32))), new IpcCodec<CalibrationState>(ReplayApiSchemas.CalibrationState()));
@@ -680,7 +700,6 @@ public static class ReplayApiMethods
   public static readonly IpcMethod<ListAppSessionsRequest, AppSession[]> ListAppSessions = new IpcMethod<ListAppSessionsRequest, AppSession[]>("listAppSessions", "rpc.mod.listappsessions", new IpcCodec<ListAppSessionsRequest>(IpcSchema.Object(IpcSchema.Field("limit", IpcSchema.Optional(IpcSchema.Int32)), IpcSchema.Field("offset", IpcSchema.Optional(IpcSchema.Int32)))), new IpcCodec<AppSession[]>(IpcSchema.Array(ReplayApiSchemas.AppSession())));
   public static readonly IpcMethod<ListLevelSessionRunsRequest, Run[]> ListLevelSessionRuns = new IpcMethod<ListLevelSessionRunsRequest, Run[]>("listLevelSessionRuns", "rpc.mod.listlevelsessionruns", new IpcCodec<ListLevelSessionRunsRequest>(IpcSchema.Object(IpcSchema.Field("id", IpcSchema.String), IpcSchema.Field("limit", IpcSchema.Optional(IpcSchema.Int32)), IpcSchema.Field("offset", IpcSchema.Optional(IpcSchema.Int32)))), new IpcCodec<Run[]>(IpcSchema.Array(ReplayApiSchemas.Run())));
   public static readonly IpcMethod<ListLogicalLevelRunsRequest, Run[]> ListLogicalLevelRuns = new IpcMethod<ListLogicalLevelRunsRequest, Run[]>("listLogicalLevelRuns", "rpc.mod.listlogicallevelruns", new IpcCodec<ListLogicalLevelRunsRequest>(IpcSchema.Object(IpcSchema.Field("appSessionIds", IpcSchema.Array(IpcSchema.String)), IpcSchema.Field("id", IpcSchema.String), IpcSchema.Field("limit", IpcSchema.Optional(IpcSchema.Int32)), IpcSchema.Field("offset", IpcSchema.Optional(IpcSchema.Int32)))), new IpcCodec<Run[]>(IpcSchema.Array(ReplayApiSchemas.Run())));
-  public static readonly IpcMethod<PrepareRenderBundleRequest, RenderBundleState> PrepareRenderBundle = new IpcMethod<PrepareRenderBundleRequest, RenderBundleState>("prepareRenderBundle", "rpc.mod.preparerenderbundle", new IpcCodec<PrepareRenderBundleRequest>(IpcSchema.Object(IpcSchema.Field("includeMicrophone", IpcSchema.Optional(IpcSchema.Boolean)), IpcSchema.Field("includeWebcam", IpcSchema.Optional(IpcSchema.Boolean)), IpcSchema.Field("levelPath", IpcSchema.Optional(IpcSchema.Nullable(IpcSchema.String))), IpcSchema.Field("runId", IpcSchema.String))), new IpcCodec<RenderBundleState>(ReplayApiSchemas.RenderBundleState()));
   public static readonly IpcMethod<ReadCalibrationResultRequest, CalibrationResult> ReadCalibrationResult = new IpcMethod<ReadCalibrationResultRequest, CalibrationResult>("readCalibrationResult", "rpc.mod.readcalibrationresult", new IpcCodec<ReadCalibrationResultRequest>(IpcSchema.Object(IpcSchema.Field("operationId", IpcSchema.String), IpcSchema.Field("revision", IpcSchema.Optional(IpcSchema.Int32)))), new IpcCodec<CalibrationResult>(ReplayApiSchemas.CalibrationResult()));
   public static readonly IpcMethod<ReadCalibrationStateRequest, CalibrationState> ReadCalibrationState = new IpcMethod<ReadCalibrationStateRequest, CalibrationState>("readCalibrationState", "rpc.mod.readcalibrationstate", new IpcCodec<ReadCalibrationStateRequest>(IpcSchema.Object(IpcSchema.Field("operationId", IpcSchema.String))), new IpcCodec<CalibrationState>(ReplayApiSchemas.CalibrationState()));
   public static readonly IpcMethod<IpcUnit, DownloadsState> ReadDownloadsState = new IpcMethod<IpcUnit, DownloadsState>("readDownloadsState", "rpc.mod.readdownloadsstate", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<DownloadsState>(ReplayApiSchemas.DownloadsState()));
@@ -691,7 +710,7 @@ public static class ReplayApiMethods
   public static readonly IpcMethod<ReadLevelSessionChartRequest, Chart> ReadLevelSessionChart = new IpcMethod<ReadLevelSessionChartRequest, Chart>("readLevelSessionChart", "rpc.mod.readlevelsessionchart", new IpcCodec<ReadLevelSessionChartRequest>(IpcSchema.Object(IpcSchema.Field("id", IpcSchema.String))), new IpcCodec<Chart>(ReplayApiSchemas.Chart()));
   public static readonly IpcMethod<ReadLogicalLevelRequest, LogicalLevel> ReadLogicalLevel = new IpcMethod<ReadLogicalLevelRequest, LogicalLevel>("readLogicalLevel", "rpc.mod.readlogicallevel", new IpcCodec<ReadLogicalLevelRequest>(IpcSchema.Object(IpcSchema.Field("id", IpcSchema.String))), new IpcCodec<LogicalLevel>(ReplayApiSchemas.LogicalLevel()));
   public static readonly IpcMethod<ReadLogicalLevelChartRequest, Chart> ReadLogicalLevelChart = new IpcMethod<ReadLogicalLevelChartRequest, Chart>("readLogicalLevelChart", "rpc.mod.readlogicallevelchart", new IpcCodec<ReadLogicalLevelChartRequest>(IpcSchema.Object(IpcSchema.Field("id", IpcSchema.String))), new IpcCodec<Chart>(ReplayApiSchemas.Chart()));
-  public static readonly IpcMethod<ReadRenderBundleStateRequest, RenderBundleState> ReadRenderBundleState = new IpcMethod<ReadRenderBundleStateRequest, RenderBundleState>("readRenderBundleState", "rpc.mod.readrenderbundlestate", new IpcCodec<ReadRenderBundleStateRequest>(IpcSchema.Object(IpcSchema.Field("jobId", IpcSchema.String))), new IpcCodec<RenderBundleState>(ReplayApiSchemas.RenderBundleState()));
+  public static readonly IpcMethod<IpcUnit, RenderJobState?> ReadRenderState = new IpcMethod<IpcUnit, RenderJobState?>("readRenderState", "rpc.mod.readrenderstate", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<RenderJobState?>(IpcSchema.Nullable(ReplayApiSchemas.RenderJobState())));
   public static readonly IpcMethod<IpcUnit, ReplayState> ReadReplayState = new IpcMethod<IpcUnit, ReplayState>("readReplayState", "rpc.mod.readreplaystate", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<ReplayState>(ReplayApiSchemas.ReplayState()));
   public static readonly IpcMethod<ReadRunJudgmentTimelinesRequest, RunJudgmentTimeline[]> ReadRunJudgmentTimelines = new IpcMethod<ReadRunJudgmentTimelinesRequest, RunJudgmentTimeline[]>("readRunJudgmentTimelines", "rpc.mod.readrunjudgmenttimelines", new IpcCodec<ReadRunJudgmentTimelinesRequest>(IpcSchema.Object(IpcSchema.Field("runIds", IpcSchema.Array(IpcSchema.String)))), new IpcCodec<RunJudgmentTimeline[]>(IpcSchema.Array(ReplayApiSchemas.RunJudgmentTimeline())));
   public static readonly IpcMethod<ReadWebcamPreviewRequest, WebcamPreview?> ReadWebcamPreview = new IpcMethod<ReadWebcamPreviewRequest, WebcamPreview?>("readWebcamPreview", "rpc.mod.readwebcampreview", new IpcCodec<ReadWebcamPreviewRequest>(IpcSchema.Object(IpcSchema.Field("deviceId", IpcSchema.Nullable(IpcSchema.String)))), new IpcCodec<WebcamPreview?>(IpcSchema.Nullable(ReplayApiSchemas.WebcamPreview())));
@@ -709,6 +728,7 @@ public static class ReplayApiMethods
   public static readonly IpcMethod<RetainMicrophoneRecordingRequest, RetainResult> RetainMicrophoneRecording = new IpcMethod<RetainMicrophoneRecordingRequest, RetainResult>("retainMicrophoneRecording", "rpc.mod.retainmicrophonerecording", new IpcCodec<RetainMicrophoneRecordingRequest>(IpcSchema.Object(IpcSchema.Field("runId", IpcSchema.String))), new IpcCodec<RetainResult>(ReplayApiSchemas.RetainResult()));
   public static readonly IpcMethod<IpcUnit, CalibrationState> StartCalibration = new IpcMethod<IpcUnit, CalibrationState>("startCalibration", "rpc.mod.startcalibration", new IpcCodec<IpcUnit>(IpcSchema.Object()), new IpcCodec<CalibrationState>(ReplayApiSchemas.CalibrationState()));
   public static readonly IpcMethod<StartCalibrationPreviewRequest, CalibrationState> StartCalibrationPreview = new IpcMethod<StartCalibrationPreviewRequest, CalibrationState>("startCalibrationPreview", "rpc.mod.startcalibrationpreview", new IpcCodec<StartCalibrationPreviewRequest>(IpcSchema.Object(IpcSchema.Field("operationId", IpcSchema.String))), new IpcCodec<CalibrationState>(ReplayApiSchemas.CalibrationState()));
+  public static readonly IpcMethod<StartRenderRequest, RenderJobState> StartRender = new IpcMethod<StartRenderRequest, RenderJobState>("startRender", "rpc.mod.startrender", new IpcCodec<StartRenderRequest>(IpcSchema.Object(IpcSchema.Field("levelPath", IpcSchema.Optional(IpcSchema.Nullable(IpcSchema.String))), IpcSchema.Field("options", ReplayApiSchemas.RenderRequest()), IpcSchema.Field("runId", IpcSchema.String))), new IpcCodec<RenderJobState>(ReplayApiSchemas.RenderJobState()));
   public static readonly IpcMethod<StartReplayRequest, ReplayState> StartReplay = new IpcMethod<StartReplayRequest, ReplayState>("startReplay", "rpc.mod.startreplay", new IpcCodec<StartReplayRequest>(IpcSchema.Object(IpcSchema.Field("levelPath", IpcSchema.Optional(IpcSchema.Nullable(IpcSchema.String))), IpcSchema.Field("runId", IpcSchema.String))), new IpcCodec<ReplayState>(ReplayApiSchemas.ReplayState()));
   public static readonly IpcMethod<StopCalibrationPreviewRequest, CalibrationState> StopCalibrationPreview = new IpcMethod<StopCalibrationPreviewRequest, CalibrationState>("stopCalibrationPreview", "rpc.mod.stopcalibrationpreview", new IpcCodec<StopCalibrationPreviewRequest>(IpcSchema.Object(IpcSchema.Field("operationId", IpcSchema.String))), new IpcCodec<CalibrationState>(ReplayApiSchemas.CalibrationState()));
 }
@@ -722,7 +742,7 @@ internal static class ReplayApiAppMethods
   public static readonly IpcMethod<HealthSnapshotRequest, IpcUnit> HealthSnapshot = new IpcMethod<HealthSnapshotRequest, IpcUnit>("healthSnapshot", "rpc.app.healthsnapshot", new IpcCodec<HealthSnapshotRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.Health()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
   public static readonly IpcMethod<MicrophoneDevicesChangedRequest, IpcUnit> MicrophoneDevicesChanged = new IpcMethod<MicrophoneDevicesChangedRequest, IpcUnit>("microphoneDevicesChanged", "rpc.app.microphonedeviceschanged", new IpcCodec<MicrophoneDevicesChangedRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.MicrophoneDevices()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
   public static readonly IpcMethod<MicrophoneTimingChangedRequest, IpcUnit> MicrophoneTimingChanged = new IpcMethod<MicrophoneTimingChangedRequest, IpcUnit>("microphoneTimingChanged", "rpc.app.microphonetimingchanged", new IpcCodec<MicrophoneTimingChangedRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.MicrophoneTiming()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
-  public static readonly IpcMethod<RenderBundleStateChangedRequest, IpcUnit> RenderBundleStateChanged = new IpcMethod<RenderBundleStateChangedRequest, IpcUnit>("renderBundleStateChanged", "rpc.app.renderbundlestatechanged", new IpcCodec<RenderBundleStateChangedRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.RenderBundleState()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
+  public static readonly IpcMethod<RenderStateChangedRequest, IpcUnit> RenderStateChanged = new IpcMethod<RenderStateChangedRequest, IpcUnit>("renderStateChanged", "rpc.app.renderstatechanged", new IpcCodec<RenderStateChangedRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.RenderJobState()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
   public static readonly IpcMethod<ReplayStateChangedRequest, IpcUnit> ReplayStateChanged = new IpcMethod<ReplayStateChangedRequest, IpcUnit>("replayStateChanged", "rpc.app.replaystatechanged", new IpcCodec<ReplayStateChangedRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.ReplayState()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
   public static readonly IpcMethod<WebcamStateChangedRequest, IpcUnit> WebcamStateChanged = new IpcMethod<WebcamStateChangedRequest, IpcUnit>("webcamStateChanged", "rpc.app.webcamstatechanged", new IpcCodec<WebcamStateChangedRequest>(IpcSchema.Object(IpcSchema.Field("value", ReplayApiSchemas.WebcamState()))), new IpcCodec<IpcUnit>(IpcSchema.Null));
 }
@@ -737,7 +757,7 @@ public sealed class ReplayApiApp : IpcApp
   public Task HealthSnapshotAsync(HealthSnapshotRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.HealthSnapshot, request, cancellationToken);
   public Task MicrophoneDevicesChangedAsync(MicrophoneDevicesChangedRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.MicrophoneDevicesChanged, request, cancellationToken);
   public Task MicrophoneTimingChangedAsync(MicrophoneTimingChangedRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.MicrophoneTimingChanged, request, cancellationToken);
-  public Task RenderBundleStateChangedAsync(RenderBundleStateChangedRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.RenderBundleStateChanged, request, cancellationToken);
+  public Task RenderStateChangedAsync(RenderStateChangedRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.RenderStateChanged, request, cancellationToken);
   public Task ReplayStateChangedAsync(ReplayStateChangedRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.ReplayStateChanged, request, cancellationToken);
   public Task WebcamStateChangedAsync(WebcamStateChangedRequest request, CancellationToken cancellationToken = default) => InvokeVoidAsync(ReplayApiAppMethods.WebcamStateChanged, request, cancellationToken);
 }
@@ -745,5 +765,5 @@ public sealed class ReplayApiApp : IpcApp
 public sealed class ReplayApiContract : ModContract<ReplayApiApp>
 {
   public static readonly ReplayApiContract Instance = new ReplayApiContract();
-  private ReplayApiContract() : base("tuf-replay", "e968328bd044754fe7c09283d90683c6f96b433f5707c67ad4937cb41a23313f", new IpcMethod[] { ReplayApiMethods.CancelFfmpeg, ReplayApiMethods.CancelFfmpegDownload, ReplayApiMethods.CancelRenderBundle, ReplayApiMethods.CancelRendererDownload, ReplayApiMethods.ChangeCalibrationOffset, ReplayApiMethods.ChangeCalibrationVolume, ReplayApiMethods.ChangeMicrophoneAccess, ReplayApiMethods.ChangeMicrophoneOffset, ReplayApiMethods.ChangeMicrophoneVolume, ReplayApiMethods.ChangeRunLock, ReplayApiMethods.ChangeWebcamSettings, ReplayApiMethods.ChooseLevelFile, ReplayApiMethods.ChooseMicrophoneDevice, ReplayApiMethods.CloseCalibration, ReplayApiMethods.ConfirmFfmpeg, ReplayApiMethods.ConfirmFfmpegDownload, ReplayApiMethods.ConfirmRendererDownload, ReplayApiMethods.DeclineFfmpeg, ReplayApiMethods.ExportCameraRecording, ReplayApiMethods.ExportMicrophoneRecording, ReplayApiMethods.ListAppSessions, ReplayApiMethods.ListLevelSessionRuns, ReplayApiMethods.ListLogicalLevelRuns, ReplayApiMethods.PrepareRenderBundle, ReplayApiMethods.ReadCalibrationResult, ReplayApiMethods.ReadCalibrationState, ReplayApiMethods.ReadDownloadsState, ReplayApiMethods.ReadFfmpegState, ReplayApiMethods.ReadHealth, ReplayApiMethods.ReadLegacyReplayStatus, ReplayApiMethods.ReadLevelSession, ReplayApiMethods.ReadLevelSessionChart, ReplayApiMethods.ReadLogicalLevel, ReplayApiMethods.ReadLogicalLevelChart, ReplayApiMethods.ReadRenderBundleState, ReplayApiMethods.ReadReplayState, ReplayApiMethods.ReadRunJudgmentTimelines, ReplayApiMethods.ReadWebcamPreview, ReplayApiMethods.RefreshMicrophoneDevices, ReplayApiMethods.RefreshWebcamState, ReplayApiMethods.ReleaseFfmpeg, ReplayApiMethods.RemoveAppSessionRuns, ReplayApiMethods.RemoveCameraRecording, ReplayApiMethods.RemoveMicrophoneRecording, ReplayApiMethods.RemoveRun, ReplayApiMethods.RequestFfmpeg, ReplayApiMethods.RequestFfmpegDownload, ReplayApiMethods.RequestRendererDownload, ReplayApiMethods.RetainCameraRecording, ReplayApiMethods.RetainMicrophoneRecording, ReplayApiMethods.StartCalibration, ReplayApiMethods.StartCalibrationPreview, ReplayApiMethods.StartReplay, ReplayApiMethods.StopCalibrationPreview }, invoker => new ReplayApiApp(invoker)) { }
+  private ReplayApiContract() : base("tuf-replay", "0fe8a457e5b21f2a6ce030ef2b5b7374c317da9ad5e7e243967ea3b6a5eba54d", new IpcMethod[] { ReplayApiMethods.CancelFfmpeg, ReplayApiMethods.CancelFfmpegDownload, ReplayApiMethods.CancelRender, ReplayApiMethods.CancelRendererDownload, ReplayApiMethods.ChangeCalibrationOffset, ReplayApiMethods.ChangeCalibrationVolume, ReplayApiMethods.ChangeMicrophoneAccess, ReplayApiMethods.ChangeMicrophoneOffset, ReplayApiMethods.ChangeMicrophoneVolume, ReplayApiMethods.ChangeRunLock, ReplayApiMethods.ChangeWebcamSettings, ReplayApiMethods.ChooseLevelFile, ReplayApiMethods.ChooseMicrophoneDevice, ReplayApiMethods.CloseCalibration, ReplayApiMethods.ConfirmFfmpeg, ReplayApiMethods.ConfirmFfmpegDownload, ReplayApiMethods.ConfirmRendererDownload, ReplayApiMethods.DeclineFfmpeg, ReplayApiMethods.ExportCameraRecording, ReplayApiMethods.ExportMicrophoneRecording, ReplayApiMethods.ListAppSessions, ReplayApiMethods.ListLevelSessionRuns, ReplayApiMethods.ListLogicalLevelRuns, ReplayApiMethods.ReadCalibrationResult, ReplayApiMethods.ReadCalibrationState, ReplayApiMethods.ReadDownloadsState, ReplayApiMethods.ReadFfmpegState, ReplayApiMethods.ReadHealth, ReplayApiMethods.ReadLegacyReplayStatus, ReplayApiMethods.ReadLevelSession, ReplayApiMethods.ReadLevelSessionChart, ReplayApiMethods.ReadLogicalLevel, ReplayApiMethods.ReadLogicalLevelChart, ReplayApiMethods.ReadRenderState, ReplayApiMethods.ReadReplayState, ReplayApiMethods.ReadRunJudgmentTimelines, ReplayApiMethods.ReadWebcamPreview, ReplayApiMethods.RefreshMicrophoneDevices, ReplayApiMethods.RefreshWebcamState, ReplayApiMethods.ReleaseFfmpeg, ReplayApiMethods.RemoveAppSessionRuns, ReplayApiMethods.RemoveCameraRecording, ReplayApiMethods.RemoveMicrophoneRecording, ReplayApiMethods.RemoveRun, ReplayApiMethods.RequestFfmpeg, ReplayApiMethods.RequestFfmpegDownload, ReplayApiMethods.RequestRendererDownload, ReplayApiMethods.RetainCameraRecording, ReplayApiMethods.RetainMicrophoneRecording, ReplayApiMethods.StartCalibration, ReplayApiMethods.StartCalibrationPreview, ReplayApiMethods.StartRender, ReplayApiMethods.StartReplay, ReplayApiMethods.StopCalibrationPreview }, invoker => new ReplayApiApp(invoker)) { }
 }

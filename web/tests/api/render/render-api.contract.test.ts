@@ -2,83 +2,70 @@ import { describe, expect, test } from "bun:test";
 import { createRenderApi } from "@/api/render/create-render-api";
 import { defaultRenderOptions } from "@/models/render/render-model";
 import type { LocalAppChannels } from "@/ports/local-message-peer";
-import type { OrbitRenderClient, OrbitRenderJob } from "@/ports/orbit-render-client";
 import { scriptedChannels } from "../../fixtures/local-message-peer";
 
-const bundle = {
-  jobId: "export-1",
+const job = {
+  jobId: "job-1",
   runId: "run-1",
-  state: "completed" as const,
-  progress: 1,
-  manifestPath: "/tmp/bundle/manifest.json",
+  state: "rendering" as const,
+  stage: "rendering",
+  progress: 0.5,
+  outputFile: null,
+  warnings: [],
+  waitingForGameFocus: false,
   errorCode: null,
   errorMessage: null,
-};
-
-const orbitJob: OrbitRenderJob = {
-  id: "render-1",
-  state: "Rendering",
-  progress: 0.5,
-  outputPath: null,
-  error: null,
+  errorDetails: null,
 };
 
 function clients(
   tuf: (method: string, params: unknown) => unknown,
-  orbit?: Partial<OrbitRenderClient>,
-  version: string | null = "2.6.0",
+  options: { version?: string | null; status?: string; currentJob?: unknown } = {},
 ): LocalAppChannels {
-  return {
-    ...scriptedChannels((method, params) =>
-      method === "readDownloadsState"
-        ? { renderer: { status: "ready", version } }
-        : tuf(method, params),
-    ),
-    orbit: {
-      ready: async () => {},
-      health: async () => ({ ok: true, renderer: "Idle" }),
-      createRender: async () => ({ id: orbitJob.id }),
-      renderStatus: async () => orbitJob,
-      cancelRender: async () => ({}),
-      ...orbit,
-    },
-  };
+  const version = options.version === undefined ? "2.7.0" : options.version;
+  const status = options.status ?? "ready";
+  const currentJob = options.currentJob ?? null;
+  return scriptedChannels((method, params) => {
+    if (method === "readDownloadsState")
+      return { renderer: { status, version }, ffmpeg: {}, cameraNeedsFfmpeg: false };
+    if (method === "readRenderState") return currentJob;
+    return tuf(method, params);
+  });
 }
 
-describe("OrbitRender render IPC contract", () => {
-  test("requires a verifiable active OrbitRender version of at least 2.6.0", async () => {
-    for (const version of ["2.5.9", "1.99.99"]) {
-      const api = createRenderApi(clients(() => bundle, undefined, version));
-      await expect(api.getHealth()).rejects.toMatchObject({ code: "orbit_version_unsupported" });
-      await expect(api.start("/tmp/manifest.json", defaultRenderOptions)).rejects.toMatchObject({
-        code: "orbit_version_unsupported",
+describe("TUFReplay render IPC contract", () => {
+  test("reports OrbitRender availability from the installed version", async () => {
+    for (const version of ["2.6.9", "1.99.99", null]) {
+      const api = createRenderApi(clients(() => job, { version }));
+      expect(await api.getHealth()).toMatchObject({
+        available: true,
+        orbitAvailable: false,
       });
     }
-    for (const version of [null, "unknown", "2.6.0-beta"]) {
-      const api = createRenderApi(clients(() => bundle, undefined, version));
-      await expect(api.getHealth()).rejects.toMatchObject({ code: "orbit_version_unknown" });
+    for (const version of ["2.7.0", "2.8.1", "3.0.0"]) {
+      const health = await createRenderApi(clients(() => job, { version })).getHealth();
+      expect(health).toMatchObject({ available: true, orbitAvailable: true, version });
     }
-    for (const version of ["2.6.0", "2.7.0", "3.0.0"]) {
-      expect(
-        (await createRenderApi(clients(() => bundle, undefined, version)).getHealth()).version,
-      ).toBe(version);
-    }
+    const notReady = createRenderApi(clients(() => job, { status: "missing" }));
+    expect((await notReady.getHealth()).orbitAvailable).toBe(false);
   });
-  test("maps OrbitRender health to the render dialog state", async () => {
-    const idle = createRenderApi(clients(() => bundle));
-    expect(await idle.getHealth()).toMatchObject({
-      available: true,
-      orbitAvailable: true,
-      busy: false,
-    });
 
-    const busy = createRenderApi(
-      clients(() => bundle, { health: async () => ({ ok: true, renderer: "Rendering" }) }),
+  test("marks a running job as busy and a finished job as idle", async () => {
+    const running = createRenderApi(clients(() => job, { currentJob: job }));
+    expect((await running.getHealth()).busy).toBe(true);
+    const finished = createRenderApi(
+      clients(() => job, { currentJob: { ...job, state: "completed", progress: 1 } }),
     );
-    expect((await busy.getHealth()).busy).toBe(true);
+    expect((await finished.getHealth()).busy).toBe(false);
+  });
 
-    const missing = createRenderApi({ ...scriptedChannels(() => bundle) });
-    expect(await missing.getHealth()).toEqual({
+  test("returns an unavailable health snapshot when the recorder is not connected", async () => {
+    const api = createRenderApi(
+      scriptedChannels(() => {
+        throw new Error("The game is not running.");
+      }),
+    );
+    expect(await api.getHealth()).toEqual({
       available: false,
       version: "",
       schemaVersion: 1,
@@ -89,7 +76,7 @@ describe("OrbitRender render IPC contract", () => {
   });
 
   test("always returns settings shaped for the existing options form", async () => {
-    const api = createRenderApi(clients(() => bundle));
+    const api = createRenderApi(clients(() => job));
     const settings = await api.getSettings();
     expect(settings.defaults.width).toBe(defaultRenderOptions.width);
     expect(settings.capabilities.codecs).toContain("H264");
@@ -97,48 +84,28 @@ describe("OrbitRender render IPC contract", () => {
     expect(settings.outputDirectory).toBe("");
   });
 
-  test("exports the bundle through TUF and starts OrbitRender for that manifest", async () => {
+  test("starts one TUF render job and forwards the level and render options", async () => {
     const calls: unknown[] = [];
     const api = createRenderApi(
-      clients(
-        (method, params) => {
-          calls.push({ target: "tuf", method, params });
-          return bundle;
-        },
-        {
-          createRender: async (request) => {
-            calls.push({ target: "orbit", method: "createRender", params: request });
-            return { id: "render-1" };
-          },
-        },
-      ),
+      clients((method, params) => {
+        calls.push({ method, params });
+        return { ...job, state: "exporting", stage: "exporting_recording", progress: 0 };
+      }),
     );
-    const exported = await api.exportBundle("run-1", defaultRenderOptions);
-    const started = await api.start(exported.manifestPath!, {
+    const started = await api.startRender("run-1", {
       ...defaultRenderOptions,
       width: 2560,
       height: 1440,
       simulationFps: 480,
     });
 
-    expect(started).toMatchObject({
-      jobId: "render-1",
-      state: "rendering",
-      progress: 0.5,
-      canOpenOutput: false,
-    });
+    expect(started).toMatchObject({ jobId: "job-1", state: "exporting", progress: 0 });
     expect(calls).toEqual([
       {
-        target: "tuf",
-        method: "prepareRenderBundle",
-        params: { runId: "run-1", includeWebcam: true, includeMicrophone: true },
-      },
-      {
-        target: "orbit",
-        method: "createRender",
+        method: "startRender",
         params: {
+          runId: "run-1",
           options: {
-            replayManifestPath: bundle.manifestPath,
             width: 2560,
             height: 1440,
             targetFps: 480,
@@ -155,49 +122,53 @@ describe("OrbitRender render IPC contract", () => {
             showCountdown: defaultRenderOptions.showCountdown,
             showResultText: defaultRenderOptions.showResultText,
             showHitJudgments: defaultRenderOptions.showHitJudgments,
-            showModOverlay: true,
+            includeWebcam: defaultRenderOptions.includeWebcam,
+            includeMicrophone: defaultRenderOptions.includeMicrophone,
           },
         },
       },
     ]);
   });
 
-  test("maps OrbitRender job states and forwards cancellation", async () => {
+  test("forwards the chosen level override only when present", async () => {
     const calls: unknown[] = [];
-    const states: OrbitRenderJob[] = [
-      { ...orbitJob, state: "Preparing" },
-      { ...orbitJob, state: "Finishing" },
-      { ...orbitJob, state: "Completed", outputPath: "/videos/out.mp4", progress: 1 },
-    ];
     const api = createRenderApi(
-      clients(() => bundle, {
-        cancelRender: async (request) => {
-          calls.push({ method: "cancelRender", request });
-          return {};
-        },
-        renderStatus: async () => states.shift() ?? orbitJob,
+      clients((method, params) => {
+        calls.push({ method, params });
+        return job;
       }),
     );
-    expect((await api.getStatus("render-1")).state).toBe("preparing");
-    expect((await api.getStatus("render-1")).state).toBe("compositing");
-    const completed = await api.getStatus("render-1");
-    expect(completed).toMatchObject({
-      state: "completed",
-      progress: 1,
-      outputFile: "/videos/out.mp4",
+    await api.startRender("run-1", defaultRenderOptions, "/levels/other.adofai");
+    expect(calls[0]).toMatchObject({
+      method: "startRender",
+      params: { runId: "run-1", levelPath: "/levels/other.adofai" },
     });
-    await api.cancel("render-1");
-    expect(calls).toEqual([{ method: "cancelRender", request: { id: "render-1" } }]);
   });
 
-  test("rejects invalid options before contacting OrbitRender", async () => {
+  test("reads and cancels the single active render job", async () => {
+    const calls: unknown[] = [];
+    const api = createRenderApi(
+      clients((method, params) => {
+        calls.push({ method, params });
+        return { ...job, state: "cancelled" };
+      }),
+    );
+    const cancelled = await api.cancelRender("job-1");
+    expect(cancelled.state).toBe("cancelled");
+    expect(calls).toEqual([{ method: "cancelRender", params: { jobId: "job-1" } }]);
+  });
+
+  test("returns null when no render job exists", async () => {
+    const api = createRenderApi(clients(() => job));
+    expect(await api.readRenderState()).toBeNull();
+  });
+
+  test("rejects invalid options before contacting the game", async () => {
     let called = false;
     const api = createRenderApi(
-      clients(() => bundle, {
-        createRender: async () => {
-          called = true;
-          return { id: "render-1" };
-        },
+      clients(() => {
+        called = true;
+        return job;
       }),
     );
     for (const options of [
@@ -205,28 +176,20 @@ describe("OrbitRender render IPC contract", () => {
       { ...defaultRenderOptions, videoFps: 0 },
       { ...defaultRenderOptions, simulationFps: 30 },
     ]) {
-      await expect(api.start(bundle.manifestPath, options as never)).rejects.toBeDefined();
+      await expect(api.startRender("run-1", options as never)).rejects.toBeDefined();
     }
     expect(called).toBe(false);
   });
 
-  test("preserves export capability errors and reports missing OrbitRender", async () => {
+  test("preserves TUFReplay domain errors", async () => {
     const api = createRenderApi(
-      clients(
-        () => ({
-          error: { code: "render_recording_incompatible", message: "Missing accepted judgments" },
-        }),
-        {
-          createRender: async () => {
-            throw new Error("OrbitRender is not connected.");
-          },
-        },
-      ),
+      clients(() => ({
+        error: { code: "renderer_missing", message: "Install and enable OrbitRender." },
+      })),
     );
-    await expect(api.exportBundle("run-1", defaultRenderOptions)).rejects.toMatchObject({
+    await expect(api.startRender("run-1", defaultRenderOptions)).rejects.toMatchObject({
       kind: "domain",
-      code: "render_recording_incompatible",
+      code: "renderer_missing",
     });
-    await expect(api.start(bundle.manifestPath, defaultRenderOptions)).rejects.toBeDefined();
   });
 });

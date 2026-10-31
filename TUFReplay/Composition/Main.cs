@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
 using TUFReplay.Recording.Input;
+using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Sessions;
@@ -128,6 +129,7 @@ public sealed class Main
     MicrophonePermissionWarningCoordinator.Tick();
     ReplayLevelOpenService.Tick();
     ReplayPlaybackCoordinator.Tick();
+    RenderJobCoordinator.Tick();
     ReplaySessionService.TickStartup();
     ReplaySessionService.TickWebcamPlayback();
     CameraFirstRunCoordinator.Tick();

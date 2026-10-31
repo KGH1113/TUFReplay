@@ -19,7 +19,6 @@ export function getProductionApi(): Promise<AppApi> {
   if (!apiPromise) {
     const clients = createLazyAppChannels();
     apiPromise = Promise.resolve({
-      orbit: clients.orbit,
       events: createAppEvents(clients),
       health: createHealthApi(clients),
       activity: createActivityApi(clients, createLocalTextDownloads()),

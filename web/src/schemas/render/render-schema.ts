@@ -47,22 +47,20 @@ export const renderHealthSchema = z.object({
   dmNoteConfigured: z.boolean(),
   orbitAvailable: z.boolean(),
 });
-export const renderExportStatusSchema = z.object({
-  jobId: z.string(),
-  runId: z.string(),
-  state: z.enum(["preparing", "completed", "failed", "cancelled"]),
-  progress: z.number().min(0).max(1),
-  manifestPath: z.string().nullable(),
-  errorCode: z.string().nullable(),
-  errorMessage: z.string().nullable(),
-  errorDetails: renderErrorDetailsSchema,
-});
 export const renderJobSchema = z.object({
+  stage: z.string().nullable().optional().default(null),
   warnings: z.array(z.string()).optional().default([]),
   waitingForGameFocus: z.boolean().optional().default(false),
-  waitingForFfmpeg: z.boolean().optional().default(false),
   jobId: z.string(),
-  state: z.enum(["preparing", "rendering", "compositing", "completed", "failed", "cancelled"]),
+  state: z.enum([
+    "exporting",
+    "preparing",
+    "rendering",
+    "compositing",
+    "completed",
+    "failed",
+    "cancelled",
+  ]),
   progress: z.number().min(0).max(1),
   errorMessage: z.string().nullable(),
   errorCode: z.string().nullable().optional().default(null),

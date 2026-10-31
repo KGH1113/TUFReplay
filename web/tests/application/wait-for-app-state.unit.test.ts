@@ -4,18 +4,24 @@ import { createAppEventSource } from "@/application/event-source";
 import { waitForAppState } from "@/application/wait-for-app-state";
 import { createRenderApiMock } from "@/mocks/render/create-render-api-mock";
 
-const bundle = (
+const renderState = (
   jobId: string,
-  state: "preparing" | "completed",
-): AppEventMap["render-bundle.changed"] => ({
+  state: "exporting" | "completed",
+): AppEventMap["render-state.changed"] => ({
   jobId,
-  runId: "run",
   state,
+  stage: state === "completed" ? null : "exporting_recording",
   progress: state === "completed" ? 1 : 0,
-  manifestPath: state === "completed" ? "/tmp/manifest.json" : null,
+  outputFile: null,
+  warnings: [],
+  waitingForGameFocus: false,
   errorCode: null,
   errorMessage: null,
   errorDetails: null,
+  outputDirectory: null,
+  localOutputPath: null,
+  canOpenOutput: false,
+  canDownload: false,
 });
 describe("authoritative render state subscriptions", () => {
   test("replays a completed snapshot and ignores other jobs without issuing status queries", async () => {
@@ -23,20 +29,20 @@ describe("authoritative render state subscriptions", () => {
     const states: string[] = [];
     const wait = waitForAppState(
       source.events,
-      "render-bundle.changed",
+      "render-state.changed",
       (state) => state.jobId === "owned" && state.state === "completed",
       { onState: (state) => states.push(state.jobId) },
     );
-    source.emit("render-bundle.changed", bundle("other", "completed"));
-    source.emit("render-bundle.changed", bundle("owned", "completed"));
+    source.emit("render-state.changed", renderState("other", "completed"));
+    source.emit("render-state.changed", renderState("owned", "completed"));
     expect((await wait).jobId).toBe("owned");
-    source.emit("render-bundle.changed", bundle("later", "completed"));
+    source.emit("render-state.changed", renderState("later", "completed"));
     expect(states).toEqual(["other", "owned"]);
     expect(
       (
         await waitForAppState(
           source.events,
-          "render-bundle.changed",
+          "render-state.changed",
           (state) => state.jobId === "later",
         )
       ).state,
@@ -45,19 +51,19 @@ describe("authoritative render state subscriptions", () => {
   test("disconnect ends a wait immediately and removes the listener", async () => {
     const source = createAppEventSource();
     let updates = 0;
-    const wait = waitForAppState(source.events, "render-bundle.changed", () => false, {
+    const wait = waitForAppState(source.events, "render-state.changed", () => false, {
       onState: () => updates++,
     });
     source.emit("connection.changed", "reconnecting");
     await expect(wait).rejects.toMatchObject({ kind: "connection", code: "ipc_unavailable" });
-    source.emit("render-bundle.changed", bundle("owned", "completed"));
+    source.emit("render-state.changed", renderState("owned", "completed"));
     expect(updates).toBe(0);
   });
   test("a renderer unload ends only its own waits while the gateway stays connected", async () => {
     const source = createAppEventSource();
     source.emit("connection.changed", "connected");
     const abort = new AbortController();
-    const recorderWait = waitForAppState(source.events, "render-bundle.changed", () => false, {
+    const recorderWait = waitForAppState(source.events, "render-state.changed", () => false, {
       namespace: "recorder",
       signal: abort.signal,
     });

@@ -204,8 +204,21 @@
     "render_capture_failed": "게임 화면을 캡처하지 못했어요. ADOFAI와 렌더 해상도를 확인한 뒤 다시 시도해 주세요.",
     "render_audio_capture_failed": "게임 소리를 캡처하지 못했어요. ADOFAI 소리 설정을 확인하거나 ‘게임 소리’를 끄고 다시 시도해 주세요.",
     "render_cleanup_failed": "렌더링 후 원래 게임 설정을 복원하지 못했어요. 플레이하거나 다시 렌더링하기 전에 ADOFAI를 다시 실행해 주세요.",
-    "orbit_version_unsupported": "OrbitRender를 업데이트해 주세요.",
-    "orbit_version_unknown": "실행 중인 OrbitRender의 버전을 확인하지 못했어요. OrbitRender 2.6.0 이상을 설치하고 얼불춤을 다시 실행해 주세요."
+    "orbit_version_unsupported": "OrbitRender 2.7.0 이상이 필요해요. 다운로드 센터에서 업데이트한 뒤 얼불춤을 다시 실행해 주세요.",
+    "orbit_version_unknown": "실행 중인 OrbitRender의 버전을 확인하지 못했어요. OrbitRender 2.7.0 이상을 설치하고 얼불춤을 다시 실행해 주세요.",
+    "renderer_unavailable": "OrbitRender가 꺼져 있어요. UnityModManager에서 OrbitRender를 켜고 다시 시도해 주세요.",
+    "renderer_version_unsupported": "OrbitRender 2.7.0 이상이 필요해요. 다운로드 센터에서 업데이트한 뒤 얼불춤을 다시 실행해 주세요.",
+    "renderer_invalid_response": "OrbitRender가 알 수 없는 응답을 보냈어요. TUFReplay와 OrbitRender를 함께 업데이트하고 얼불춤을 다시 실행해 주세요.",
+    "render_job_not_found": "이 렌더링 작업을 더 이상 찾을 수 없어요. 다시 렌더링을 시작해 주세요.",
+    "render_job_finished": "이미 끝난 렌더링 작업이에요.",
+    "render_level_path_missing": "렌더링할 레벨 파일 경로가 없어요. 다시 렌더링을 시작해 주세요.",
+    "render_level_path_invalid": "레벨 파일 경로가 올바르지 않아요. 다시 렌더링을 시작해 주세요.",
+    "render_level_missing": "레벨 파일을 찾을 수 없어요. 원본 레벨 파일을 복원한 뒤 다시 시도해 주세요.",
+    "render_level_mismatch": "선택한 레벨이 이 플레이 기록과 맞지 않아요. 원본 레벨 파일을 선택해 주세요.",
+    "render_options_invalid": "영상 설정에 올바르지 않은 값이 있어요. 설정을 확인하고 다시 시도해 주세요.",
+    "render_export_lost": "기록 준비 작업이 만료되었어요. 다시 렌더링을 시작해 주세요.",
+    "render_preparation_timeout": "레벨을 여는 데 시간이 너무 오래 걸렸어요. 얼불춤 상태를 확인하고 다시 시도해 주세요.",
+    "render_cancelled": "렌더링을 취소했어요."
   },
   "completedDescription": "OrbitRender가 영상 렌더링을 완료했어요. 아래에서 저장 경로를 확인할 수 있어요.",
   "sections": {

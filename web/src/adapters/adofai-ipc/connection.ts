@@ -10,18 +10,14 @@ import type {
   RecorderEventName,
   SessionState,
 } from "@/ports/local-message-peer";
-import type { OrbitRenderClient } from "@/ports/orbit-render-client";
 import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
-import { OrbitRenderIpcContract } from "../../../vendor/orbitrender-ipc/index";
 
 export function createRecorderSnapshots() {
   const latest = new Map<string, { name: RecorderEventName; value: unknown }>();
   const listeners = new Map<RecorderEventName, Set<(value: never) => void>>();
   const publish = <K extends RecorderEventName>(name: K, value: RecorderEvent<K>) => {
     const identity =
-      name === "renderBundleStateChanged"
-        ? (value as RecorderEvent<"renderBundleStateChanged">).jobId
-        : "";
+      name === "renderStateChanged" ? (value as RecorderEvent<"renderStateChanged">).jobId : "";
     const key = `${name}:${identity}`;
     latest.delete(key);
     latest.set(key, { name, value });
@@ -38,7 +34,7 @@ export function createRecorderSnapshots() {
     webcamStateChanged: ({ value }) => publish("webcamStateChanged", value),
     ffmpegStateChanged: ({ value }) => publish("ffmpegStateChanged", value),
     downloadsStateChanged: ({ value }) => publish("downloadsStateChanged", value),
-    renderBundleStateChanged: ({ value }) => publish("renderBundleStateChanged", value),
+    renderStateChanged: ({ value }) => publish("renderStateChanged", value),
   };
   const on: RecorderClient["on"] = (name, listener) => {
     const set = listeners.get(name) ?? new Set();
@@ -69,7 +65,6 @@ export async function getAdofaiIpcClients(): Promise<LocalAppChannels> {
   }).registerApp({ displayName: "TUFReplay Companion" });
   // The generated handlers exist before use() starts discovery and snapshot delivery.
   const channel = app.use(ReplayApiContract, snapshots.handlers);
-  const orbit = app.use(OrbitRenderIpcContract, {});
   let state: SessionState = "reconnecting";
   let closed = false;
   const states = new Set<(value: SessionState) => void>();
@@ -98,7 +93,6 @@ export async function getAdofaiIpcClients(): Promise<LocalAppChannels> {
     });
   }
   return {
-    orbit,
     recorder: {
       mod: channel,
       async whenReady(options) {
@@ -184,21 +178,7 @@ export function createLazyAppChannels(
       };
     },
   });
-  const orbit = new Proxy({} as OrbitRenderClient, {
-    get(_target, name) {
-      if (name === "then") return undefined;
-      return async (...args: unknown[]) => {
-        const clients = await get();
-        if (!clients.orbit) throw new Error("OrbitRender is not available.");
-        const method = clients.orbit[name as keyof OrbitRenderClient] as (
-          ...args: unknown[]
-        ) => unknown;
-        return method(...args);
-      };
-    },
-  });
   return {
-    orbit,
     recorder: {
       mod,
       async whenReady(options) {
