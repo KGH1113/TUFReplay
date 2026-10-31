@@ -10,7 +10,9 @@ import type {
   RecorderEventName,
   SessionState,
 } from "@/ports/local-message-peer";
+import type { OrbitRenderClient } from "@/ports/orbit-render-client";
 import { IpcProtocolMismatchError } from "@/shared/errors/ipc-protocol-mismatch-error";
+import { OrbitRenderIpcContract } from "../../../vendor/orbitrender-ipc/index";
 
 export function createRecorderSnapshots() {
   const latest = new Map<string, { name: RecorderEventName; value: unknown }>();
@@ -67,6 +69,7 @@ export async function getAdofaiIpcClients(): Promise<LocalAppChannels> {
   }).registerApp({ displayName: "TUFReplay Companion" });
   // The generated handlers exist before use() starts discovery and snapshot delivery.
   const channel = app.use(ReplayApiContract, snapshots.handlers);
+  const orbit = app.use(OrbitRenderIpcContract, {});
   let state: SessionState = "reconnecting";
   let closed = false;
   const states = new Set<(value: SessionState) => void>();
@@ -95,6 +98,7 @@ export async function getAdofaiIpcClients(): Promise<LocalAppChannels> {
     });
   }
   return {
+    orbit,
     recorder: {
       mod: channel,
       async whenReady(options) {
@@ -180,7 +184,21 @@ export function createLazyAppChannels(
       };
     },
   });
+  const orbit = new Proxy({} as OrbitRenderClient, {
+    get(_target, name) {
+      if (name === "then") return undefined;
+      return async (...args: unknown[]) => {
+        const clients = await get();
+        if (!clients.orbit) throw new Error("OrbitRender is not available.");
+        const method = clients.orbit[name as keyof OrbitRenderClient] as (
+          ...args: unknown[]
+        ) => unknown;
+        return method(...args);
+      };
+    },
+  });
   return {
+    orbit,
     recorder: {
       mod,
       async whenReady(options) {

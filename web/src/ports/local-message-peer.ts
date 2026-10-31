@@ -1,3 +1,4 @@
+import type { OrbitRenderClient } from "@/ports/orbit-render-client";
 export interface DomainMessage {
   id: string;
   correlationId?: string;
@@ -30,6 +31,7 @@ export interface LocalMessageSession {
 
 export interface LocalAppChannels {
   recorder: RecorderClient;
+  orbit?: OrbitRenderClient;
   rendererNamespace?: LocalMessagePeer;
   session?: LocalMessageSession;
 }

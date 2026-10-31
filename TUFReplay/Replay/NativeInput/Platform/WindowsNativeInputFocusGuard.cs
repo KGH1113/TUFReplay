@@ -14,6 +14,16 @@ internal sealed class WindowsNativeInputFocusGuard : StableNativeInputFocusGuard
   private IntPtr _foregroundWindow;
   private bool _targetMinimized;
 
+  internal void RequestForeground()
+  {
+    IntPtr window = ResolveTargetWindow();
+    if (window == IntPtr.Zero)
+      return;
+    if (IsIconic(window))
+      ShowWindowAsync(window, 9);
+    SetForegroundWindow(window);
+  }
+
   protected override bool EvaluateForegroundTarget(out string reason)
   {
     IntPtr targetWindow = ResolveTargetWindow();
@@ -132,6 +142,14 @@ internal sealed class WindowsNativeInputFocusGuard : StableNativeInputFocusGuard
 
   [DllImport("user32.dll")]
   private static extern IntPtr GetForegroundWindow();
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool SetForegroundWindow(IntPtr window);
+
+  [DllImport("user32.dll")]
+  [return: MarshalAs(UnmanagedType.Bool)]
+  private static extern bool ShowWindowAsync(IntPtr window, int command);
 
   [DllImport("user32.dll")]
   [return: MarshalAs(UnmanagedType.Bool)]

@@ -40,11 +40,11 @@ internal static class ManagedRendererSuite
       installer.Confirm();
       await installer.Work;
       Check(
-        requests == 3 && installer.Snapshot().Status == "restart-required",
+        requests == 2 && installer.Snapshot().Status == "restart-required",
         "one verified installation for duplicate approval"
       );
       Check(installer.Snapshot(true).Status == "ready", "loaded mod state");
-      Check(File.Exists(Path.Combine(mods, "TUFReplay-Renderer", "TUFReplay-Renderer.dll")), "published mod payload");
+      Check(File.Exists(Path.Combine(mods, "OrbitRender", "OrbitRender.dll")), "published mod payload");
       Check(!Directory.EnumerateDirectories(mods, ".tuf-renderer-install-*").Any(), "staging cleanup after success");
     }
     using (var reused = new ManagedRendererInstaller(mods, fixture))
@@ -53,7 +53,7 @@ internal static class ManagedRendererSuite
       reused.Request();
       reused.Confirm();
       Check(
-        reused.Snapshot().Status == "restart-required" && requests == 3,
+        reused.Snapshot().Status == "restart-required" && requests == 2,
         "existing mod is reused without a download"
       );
     }
@@ -65,21 +65,21 @@ internal static class ManagedRendererSuite
         Task.FromResult(
           Response(
             request,
-            request.RequestUri.AbsolutePath.EndsWith(".download.json")
-              ? Encoding.UTF8.GetBytes(Manifest(package, new string('0', 64)))
+            !request.RequestUri.AbsolutePath.EndsWith(".zip")
+              ? Encoding.UTF8.GetBytes(Release(package, new string('0', 64)))
               : Content(request, package)
           )
         ),
       code: "renderer_checksum_mismatch"
     );
-    await Rejected(root, "traversal", Zip("TUFReplay-Renderer/../../outside.txt"));
-    await Rejected(root, "userdata", Zip("TUFReplay-Renderer/Settings.json"));
+    await Rejected(root, "traversal", Zip("../../outside.txt"));
+    await Rejected(root, "userdata", Zip("Settings.json"));
     await Rejected(
       root,
       "unpublished",
       package,
-      fixture: (request, token) => Task.FromResult(Response(request, Encoding.UTF8.GetBytes("[]"))),
-      code: "renderer_release_unavailable"
+      fixture: (request, token) => Task.FromResult(Response(request, Encoding.UTF8.GetBytes("{}"))),
+      code: "renderer_release_invalid"
     );
     await Rejected(
       root,
@@ -91,8 +91,8 @@ internal static class ManagedRendererSuite
     );
 
     string occupied = Path.Combine(root, "renderer occupied mods");
-    Directory.CreateDirectory(Path.Combine(occupied, "TUFReplay-Renderer"));
-    File.WriteAllText(Path.Combine(occupied, "TUFReplay-Renderer", "Settings.json"), "preserve");
+    Directory.CreateDirectory(Path.Combine(occupied, "OrbitRender"));
+    File.WriteAllText(Path.Combine(occupied, "OrbitRender", "Settings.json"), "preserve");
     using (var installer = new ManagedRendererInstaller(occupied, fixture))
     {
       await installer.Work;
@@ -104,7 +104,7 @@ internal static class ManagedRendererSuite
         "incomplete existing directory cannot be overwritten"
       );
       Check(
-        File.ReadAllText(Path.Combine(occupied, "TUFReplay-Renderer", "Settings.json")) == "preserve",
+        File.ReadAllText(Path.Combine(occupied, "OrbitRender", "Settings.json")) == "preserve",
         "existing user data retained"
       );
     }
@@ -163,7 +163,7 @@ internal static class ManagedRendererSuite
       installer.Snapshot().Status == "failed" && (code == null || installer.Snapshot().ErrorCode == code),
       name + " rejected"
     );
-    Check(!Directory.Exists(Path.Combine(mods, "TUFReplay-Renderer")), name + " does not publish partial payload");
+    Check(!Directory.Exists(Path.Combine(mods, "OrbitRender")), name + " does not publish partial payload");
     Check(!Directory.Exists(mods) || !Directory.EnumerateDirectories(mods).Any(), name + " cleans staging");
   }
 
@@ -171,43 +171,19 @@ internal static class ManagedRendererSuite
   {
     if (request.RequestUri.AbsolutePath.EndsWith(".zip"))
       return package;
-    if (request.RequestUri.AbsolutePath.EndsWith(".download.json"))
-      return Encoding.UTF8.GetBytes(Manifest(package));
-    string prefix = "https://github.com/KGH1113/TUFReplay-Renderer/releases/download/v0.2.0/";
-    return Encoding.UTF8.GetBytes(
-      new JArray(
-        new JObject { ["draft"] = true, ["published_at"] = "2030-01-01T00:00:00Z" },
-        new JObject
-        {
-          ["draft"] = false,
-          ["prerelease"] = true,
-          ["published_at"] = "2026-10-05T00:00:00Z",
-          ["assets"] = new JArray(
-            new JObject
-            {
-              ["name"] = "TUFReplay-Renderer.zip",
-              ["browser_download_url"] = prefix + "TUFReplay-Renderer.zip",
-            },
-            new JObject
-            {
-              ["name"] = "TUFReplay-Renderer.download.json",
-              ["browser_download_url"] = prefix + "TUFReplay-Renderer.download.json",
-            }
-          ),
-        }
-      ).ToString()
-    );
+    return Encoding.UTF8.GetBytes(Release(package));
   }
 
-  private static string Manifest(byte[] package, string hash = null) =>
+  private static string Release(byte[] package, string hash = null) =>
     new JObject
     {
-      ["schemaVersion"] = 1,
-      ["modId"] = "TUFReplay-Renderer",
-      ["version"] = "0.2.0",
-      ["packageAsset"] = "TUFReplay-Renderer.zip",
-      ["bytes"] = package.Length,
-      ["sha256"] = hash ?? Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant(),
+      ["assets"] = new JArray(new JObject
+      {
+        ["name"] = "OrbitRender.zip",
+        ["browser_download_url"] = "https://github.com/imnyang/OrbitRender/releases/download/2.5.0/OrbitRender.zip",
+        ["size"] = package.Length,
+        ["digest"] = "sha256:" + (hash ?? Convert.ToHexString(SHA256.HashData(package)).ToLowerInvariant()),
+      }),
     }.ToString();
 
   private static byte[] Zip(string additional = null)
@@ -220,9 +196,9 @@ internal static class ManagedRendererSuite
         using var writer = new StreamWriter(zip.CreateEntry(path).Open());
         writer.Write(content);
       }
-      Add("TUFReplay-Renderer/Info.json", "{\"Id\":\"TUFReplay-Renderer\",\"Version\":\"0.2.0\"}");
-      Add("TUFReplay-Renderer/TUFReplay-Renderer.dll", "fixture");
-      Add("TUFReplay-Renderer/LICENSE.md", "fixture license");
+      Add("Info.json", "{\"Id\":\"OrbitRender\",\"Version\":\"0.2.0\"}");
+      Add("OrbitRender.dll", "fixture");
+      Add("LICENSE.md", "fixture license");
       if (additional != null)
         Add(additional, "blocked");
     }

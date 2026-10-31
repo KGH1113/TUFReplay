@@ -1,81 +1,157 @@
-import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
+import { type AdofaiIpcClients } from "@/api/domain-messages";
 import { callRecorder, decodeRecorder } from "@/api/recorder-call";
 import type { RenderApi } from "@/api/render/render-api";
 import {
-  outputDirectoryCancelSchema,
-  outputDirectoryChoiceSchema,
-  outputDirectoryOpenSchema,
-  renderDownloadSchema,
+  defaultRenderOptions,
+  type RenderJob,
+  type RenderOptions,
+  type RenderSettings,
+} from "@/models/render/render-model";
+import {
   renderExportStatusSchema,
-  renderHealthSchema,
-  renderJobSchema,
   renderOptionsSchema,
-  renderPreferencesSchema,
   renderSettingsSchema,
 } from "@/schemas/render/render-schema";
 import { ApiError } from "@/shared/errors/api-error";
 
+const orbitStates = new Set([
+  "queued",
+  "loading",
+  "preparing",
+  "awaitingconfirmation",
+  "rendering",
+  "finishing",
+  "completed",
+  "failed",
+  "cancelled",
+]);
+
+type OrbitJob = Awaited<ReturnType<NonNullable<AdofaiIpcClients["orbit"]>["renderStatus"]>>;
+
+function mapState(state: string): RenderJob["state"] {
+  switch (state.toLowerCase()) {
+    case "completed":
+      return "completed";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return "cancelled";
+    case "finishing":
+      return "compositing";
+    case "rendering":
+    case "awaitingconfirmation":
+      return "rendering";
+    default:
+      return "preparing";
+  }
+}
+
+function mapJob(job: OrbitJob): RenderJob {
+  return {
+    warnings: [],
+    waitingForGameFocus: false,
+    waitingForFfmpeg: false,
+    jobId: job.id,
+    state: mapState(job.state),
+    progress: Math.min(1, Math.max(0, job.progress)),
+    errorMessage: job.error,
+    errorCode: null,
+    errorDetails: null,
+    outputFile: job.outputPath,
+    outputDirectory: null,
+    localOutputPath: job.outputPath,
+    // OrbitRender owns its output folder and there is no folder-open IPC yet.
+    canOpenOutput: false,
+    canDownload: false,
+  };
+}
+
+function toOrbitOptions(manifestPath: string, options: RenderOptions) {
+  return {
+    replayManifestPath: manifestPath,
+    width: options.width,
+    height: options.height,
+    targetFps: options.simulationFps,
+    videoFps: options.videoFps,
+    bitrateMbps: options.bitrateMbps,
+    videoCodec: options.videoCodec,
+    bitDepth: options.bitDepth,
+    captureAudio: options.captureAudio,
+    audioGainDb: options.audioGainDb,
+    endDelaySeconds: options.endDelaySeconds,
+    bgaMode: options.bgaMode,
+    showPlanetRings: options.showPlanetRings,
+    showSongTitle: options.showSongTitle,
+    showCountdown: options.showCountdown,
+    showResultText: options.showResultText,
+    showHitJudgments: options.showHitJudgments,
+    showModOverlay: true,
+  };
+}
+
+function synthSettings(): RenderSettings {
+  return {
+    defaults: defaultRenderOptions,
+    outputDirectory: "",
+    capabilities: {
+      codecs: ["H264", "H265", "VP9", "AV1", "ProRes"],
+      encoders: ["Auto", "Software", "NvidiaNvenc", "IntelQsv", "AmdAmf"],
+      bitDepths: [8, 10],
+      proResProfiles: ["HQ"],
+      pixelFormats: ["auto"],
+    },
+  };
+}
+
+function unavailableHealth() {
+  return {
+    available: false,
+    version: "",
+    schemaVersion: 1 as const,
+    busy: false,
+    dmNoteConfigured: false,
+    orbitAvailable: false,
+  };
+}
+
 export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
-  const renderer = () => {
-    if (!clients.rendererNamespace)
-      throw new ApiError("Install TUFReplay-Renderer and restart ADOFAI.", {
+  const orbit = () => {
+    if (!clients.orbit)
+      throw new ApiError("Install and enable OrbitRender, then restart ADOFAI.", {
         kind: "domain",
-        code: "renderer_missing",
+        code: "orbit_missing",
       });
-    return clients.rendererNamespace;
+    return clients.orbit;
   };
   return {
-    getHealth: () =>
-      sendDomainCommand(
-        renderer(),
-        "health.read",
-        "renderer.health.snapshot",
-        {},
-        renderHealthSchema,
-      ),
-    getSettings: () =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.settings.read",
-        "renderer.settings.changed",
-        {},
-        renderSettingsSchema,
-      ),
-    updateSettings: (options, preferences) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.settings.change",
-        "renderer.settings.changed",
-        {
-          ...options,
-          ...(preferences ? { preferences: renderPreferencesSchema.parse(preferences) } : {}),
-        },
-        renderSettingsSchema,
-      ),
-    chooseOutputDirectory: (initialPath) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.folder.choose",
-        "renderer.folder-selection.changed",
-        initialPath ? { initialPath } : {},
-        outputDirectoryChoiceSchema,
-      ),
-    cancelOutputDirectorySelection: (selectionId) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.folder.cancel",
-        "renderer.folder-selection.cancelled",
-        { selectionId },
-        outputDirectoryCancelSchema,
-      ),
-    openOutputDirectory: (jobId) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.folder.open",
-        "renderer.folder.opened",
-        jobId ? { jobId } : {},
-        outputDirectoryOpenSchema,
-      ),
+    async getHealth() {
+      if (!clients.orbit) return unavailableHealth();
+      try {
+        const health = await clients.orbit.health();
+        const state = health.renderer.toLowerCase();
+        return {
+          available: true,
+          version: health.renderer,
+          schemaVersion: 1 as const,
+          busy:
+            orbitStates.has(state) && !["idle", "completed", "failed", "cancelled"].includes(state),
+          dmNoteConfigured: false,
+          orbitAvailable: true,
+        };
+      } catch {
+        return unavailableHealth();
+      }
+    },
+    getSettings: async () => renderSettingsSchema.parse(synthSettings()),
+    updateSettings: async () => renderSettingsSchema.parse(synthSettings()),
+    chooseOutputDirectory: async () => {
+      throw new ApiError("The output folder is controlled by OrbitRender settings.", {
+        kind: "domain",
+        code: "output_directory_unavailable",
+      });
+    },
+    cancelOutputDirectorySelection: async () => ({ cancelled: true }),
+    openOutputDirectory: async () => ({ opened: false }),
     async exportBundle(runId, options, levelPath) {
       const validated = renderOptionsSchema.parse(options);
       return decodeRecorder(
@@ -100,56 +176,24 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
         renderExportStatusSchema,
         await callRecorder(clients, (mod) => mod.cancelRenderBundle({ jobId })),
       ),
-    start(manifestPath, options) {
-      return sendDomainCommand(
-        renderer(),
-        "render.start",
-        "renderer.job.changed",
-        { manifestPath, ...renderOptionsSchema.parse(options) },
-        renderJobSchema,
-      );
+    async start(manifestPath, options) {
+      const accepted = await orbit().createRender({
+        options: toOrbitOptions(manifestPath, renderOptionsSchema.parse(options)),
+      });
+      return mapJob(await orbit().renderStatus({ id: accepted.id }));
     },
-    getStatus: (jobId) =>
-      sendDomainCommand(
-        renderer(),
-        "render.state.read",
-        "renderer.job.changed",
-        { jobId },
-        renderJobSchema,
-      ),
-    cancel: (jobId) =>
-      sendDomainCommand(
-        renderer(),
-        "render.cancel",
-        "renderer.job.changed",
-        { jobId },
-        renderJobSchema,
-      ),
-    async prepareDownload(jobId) {
-      const ticket = await sendDomainCommand(
-        renderer(),
-        "render.download",
-        "download.ready",
-        { jobId },
-        renderDownloadSchema,
-      );
-      const url = new URL(ticket.url);
-      if (
-        url.protocol !== "http:" ||
-        url.hostname !== "127.0.0.1" ||
-        Number(url.port) < 32145 ||
-        Number(url.port) > 32155 ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !/^\/ipc\/download\/[A-Za-z0-9_-]+$/.test(url.pathname)
-      )
-        throw new ApiError("Invalid local render download URL.", {
-          kind: "validation",
-          code: "invalid_response",
-        });
-      return ticket.url;
+    async getStatus(jobId) {
+      return mapJob(await orbit().renderStatus({ id: jobId }));
+    },
+    async cancel(jobId) {
+      await orbit().cancelRender({ id: jobId });
+      return mapJob(await orbit().renderStatus({ id: jobId }));
+    },
+    async prepareDownload() {
+      throw new ApiError("Downloads are not used by the OrbitRender integration.", {
+        kind: "domain",
+        code: "download_unavailable",
+      });
     },
   };
 }

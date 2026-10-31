@@ -1,26 +1,12 @@
 # Replay rendering integration
 
-TUFReplay keeps recording and storage separate from video rendering. It has no reference to
-OrbitRender or TUFReplay-Renderer source or assemblies. The independent renderer consumes
-schema version 1 files through its own `tuf-replay-renderer` AdofaiIpc namespace.
-
-The web run card's menu contains the Render action. The dialog checks `health.get` and
-`settings.get`, exports a bundle through the `tuf-replay` namespace, starts `render.start`,
-and polls `render.status.get`. The renderer embeds the OrbitRender engine, so a separate
-OrbitRender mod is not required. Resolution, simulation/video frame rates, codec, encoder,
-quality/speed, bitrate or supported software CRF, bit depth, ProRes profile, pixel format,
-game audio, end delay, preview, and display flags are editable. Camera, microphone, and
-configured ImplDmNote overlay inclusion are optional.
-
-The video is saved in the user's selected local folder on the computer running ADOFAI.
-`output-directory.choose` returns a selection ID immediately; the web polls
-`output-directory.selection.get` while the native folder dialog runs outside the game
-thread. Closing the render dialog cancels a pending selection with
-`output-directory.selection.cancel`. The path can also be typed directly. The completed
-job exposes `localOutputPath` and `canOpenOutput`; `output-directory.open` takes the job ID
-and opens its verified save folder. Completion appears in the web dialog and does not
-start a browser download. `settings.update` optionally saves the chosen render defaults.
-
+The companion's Render action prepares a recording bundle through TUFReplay and submits
+its manifest to the installed OrbitRender mod through its `orbitrender` ADOFAI IPC
+contract. OrbitRender opens the recorded level, renders the replay, and reports job
+progress and cancellation to the companion. OrbitRender must be installed and enabled
+separately. Its current settings determine the output format and local output folder.
+Camera and microphone inclusion are chosen in the dialog. TUFReplay snapshots their
+calibration and microphone gain when the bundle is prepared.
 ## Export lifecycle
 
 `replay.render-bundle.export` takes `{runId, levelPath?, includeWebcam?, includeMicrophone?}`.
