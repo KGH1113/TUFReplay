@@ -239,10 +239,10 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       // Publish a complete installation with its receipt, never a partial exe.
       string old = _directory + ".previous-" + Guid.NewGuid().ToString("N");
       if (Directory.Exists(_directory))
-        Directory.Move(_directory, old);
+        await MoveDirectoryAsync(_directory, old, token).ConfigureAwait(false);
       try
       {
-        Directory.Move(temporary, _directory);
+        await MoveDirectoryAsync(temporary, _directory, token).ConfigureAwait(false);
         temporary = null;
       }
       catch
@@ -257,6 +257,7 @@ public sealed class ManagedFfmpegInstaller : IDisposable
           Directory.Delete(old, true);
       }
       catch (IOException) { }
+      catch (UnauthorizedAccessException) { }
       Publish("ready", Path.Combine(_directory, _platform.Executable));
     }
     catch (OperationCanceledException) when (token.IsCancellationRequested)
@@ -281,6 +282,28 @@ public sealed class ManagedFfmpegInstaller : IDisposable
           Directory.Delete(temporary, true);
         }
         catch (Exception) { }
+    }
+  }
+
+  internal static async Task MoveDirectoryAsync(
+    string source, string destination, CancellationToken token, Action<string, string> move = null
+  )
+  {
+    move = move ?? Directory.Move;
+    for (int attempt = 0; ; attempt++)
+    {
+      token.ThrowIfCancellationRequested();
+      try
+      {
+        move(source, destination);
+        return;
+      }
+      catch (Exception error) when (
+        (error is IOException || error is UnauthorizedAccessException) && attempt < 5
+      )
+      {
+        await Task.Delay(200 * (attempt + 1), token).ConfigureAwait(false);
+      }
     }
   }
 

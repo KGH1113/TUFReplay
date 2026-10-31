@@ -10,6 +10,13 @@ internal static class ManagedFfmpegSuite
 
   private static async Task RunAsync(string root)
   {
+    int moveAttempts = 0;
+    await ManagedFfmpegInstaller.MoveDirectoryAsync("source", "destination", CancellationToken.None, (_, _) =>
+    {
+      if (++moveAttempts < 3)
+        throw new UnauthorizedAccessException("temporary lock");
+    });
+    Check(moveAttempts == 3, "transient directory access failures are retried");
     if (OperatingSystem.IsWindows())
       return; // Shell fixture; Windows archive handling is exercised below.
     string directory = Path.Combine(root, "managed ffmpeg mod");
