@@ -5,7 +5,6 @@ import { readLastRenderOptions, saveLastRenderOptions } from "@/hooks/render/ren
 import type { ActivityRun } from "@/models/activity/activity-model";
 import {
   defaultRenderOptions,
-  type RenderExportStatus,
   type RenderHealth,
   type RenderJob,
   type RenderOptions,
@@ -41,11 +40,10 @@ export function useRenderControl() {
   const [job, setJob] = useState<RenderJob | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
-  const [errorDetails, setErrorDetails] = useState<RenderExportStatus["errorDetails"]>(null);
+  const [errorDetails, setErrorDetails] = useState<RenderJob["errorDetails"]>(null);
   const activeRef = useRef(true);
   const busyRef = useRef(false);
   const cancelledRef = useRef(false);
-  const exportId = useRef<string | null>(null);
   const renderId = useRef<string | null>(null);
   const generation = useRef(0);
   const trigger = useRef<HTMLElement | null>(null);
@@ -54,9 +52,9 @@ export function useRenderControl() {
   const renderer = useCallback(async (): Promise<RenderApi> => {
     const app = await apiPromise;
     if (!app.render)
-      throw new ApiError("Install and enable OrbitRender, then restart ADOFAI.", {
+      throw new ApiError("Rendering is unavailable. Reconnect and try again.", {
         kind: "domain",
-        code: "orbit_missing",
+        code: "render_unavailable",
       });
     return app.render;
   }, [apiPromise]);
@@ -66,12 +64,10 @@ export function useRenderControl() {
     return () => {
       activeRef.current = false;
       const activeRender = renderId.current;
-      const activeExport = exportId.current;
-      if (activeRender || activeExport)
+      if (activeRender)
         void apiPromise
           .then(async (app) => {
-            if (activeRender) await app.render?.cancel(activeRender);
-            else if (activeExport) await app.render?.cancelExport(activeExport);
+            if (activeRender) await app.render?.cancelRender(activeRender);
           })
           .catch(() => {});
     };
@@ -126,9 +122,8 @@ export function useRenderControl() {
     if (!run || busyRef.current) return;
     busyRef.current = true;
     cancelledRef.current = false;
-    exportId.current = null;
     renderId.current = null;
-    setPhase("checking");
+    setPhase("exporting");
     setProgress(0);
     setErrorCode(null);
     setErrorMessage("");
@@ -150,45 +145,28 @@ export function useRenderControl() {
       }
 
       saveLastRenderOptions(options);
-      setPhase("exporting");
-      let bundle = await api.exportBundle(run.id, options, levelPath);
-      exportId.current = bundle.jobId;
-      while (bundle.state === "preparing" && !cancelledRef.current) {
-        setProgress(bundle.progress);
+      let rendered = await api.startRender(run.id, options, levelPath);
+      renderId.current = rendered.jobId;
+      while (!renderJobFinished(rendered) && !cancelledRef.current) {
+        if (activeRef.current) {
+          setJob(rendered);
+          setPhase(rendered.state);
+          setProgress(rendered.progress);
+        }
         await pause();
-        bundle = await api.getExportStatus(bundle.jobId);
+        rendered = (await api.readRenderState()) ?? rendered;
       }
-      if (bundle.state === "cancelled" || cancelledRef.current) {
+      if (!activeRef.current) return;
+      if (cancelledRef.current && !renderJobFinished(rendered)) {
         setPhase("cancelled");
         return;
       }
-      if (bundle.state !== "completed" || !bundle.manifestPath) {
-        setErrorDetails(bundle.errorDetails);
-        throw new ApiError(bundle.errorMessage ?? "Export failed.", {
-          kind: "domain",
-          code: bundle.errorCode ?? "render_export_failed",
-        });
-      }
-
-      setPhase("preparing");
-      setProgress(0);
-      let rendered = await api.start(bundle.manifestPath, options);
-      renderId.current = rendered.jobId;
-      while (!renderJobFinished(rendered) && !cancelledRef.current) {
-        setJob(rendered);
-        setPhase(rendered.state);
-        setProgress(rendered.progress);
-        await pause();
-        rendered = await api.getStatus(rendered.jobId);
-      }
-      if (!activeRef.current) return;
       setJob(rendered);
       setProgress(rendered.progress);
       setPhase(rendered.state);
-      if (rendered.state === "failed") {
-        setErrorCode(rendered.errorCode ?? null);
-        setErrorMessage(rendered.errorMessage ?? "");
-      }
+      setErrorCode(rendered.errorCode ?? null);
+      setErrorMessage(rendered.errorMessage ?? "");
+      setErrorDetails(rendered.errorDetails ?? null);
     } catch (cause) {
       if (cancelledRef.current) {
         if (activeRef.current) setPhase("cancelled");
@@ -204,8 +182,7 @@ export function useRenderControl() {
     cancelledRef.current = true;
     try {
       const api = await renderer();
-      if (renderId.current) await api.cancel(renderId.current);
-      else if (exportId.current) await api.cancelExport(exportId.current);
+      if (renderId.current) await api.cancelRender(renderId.current);
     } catch (cause) {
       setErrorCode(cause instanceof ApiError ? cause.code : null);
       setErrorMessage(cause instanceof Error ? cause.message : "");

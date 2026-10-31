@@ -1,7 +1,6 @@
 import type { z } from "zod";
 import type {
   outputDirectoryChoiceSchema,
-  renderExportStatusSchema,
   renderHealthSchema,
   renderJobSchema,
   renderOptionsSchema,
@@ -10,7 +9,6 @@ import type {
 } from "@/schemas/render/render-schema";
 
 export type RenderHealth = z.infer<typeof renderHealthSchema>;
-export type RenderExportStatus = z.infer<typeof renderExportStatusSchema>;
 export type RenderJob = z.infer<typeof renderJobSchema>;
 export type RenderOptions = z.infer<typeof renderOptionsSchema>;
 export type RenderSettings = z.infer<typeof renderSettingsSchema>;

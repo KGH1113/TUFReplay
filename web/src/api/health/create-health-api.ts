@@ -5,7 +5,7 @@ import { mapHealth } from "@/models/health/health-model";
 import type { LocalAppChannels } from "@/ports/local-message-peer";
 import { healthDtoSchema } from "@/schemas/health/health-schema";
 import { ApiError } from "@/shared/errors/api-error";
-export const SUPPORTED_PROTOCOL_VERSION = 13;
+export const SUPPORTED_PROTOCOL_VERSION = 14;
 export function createHealthApi(clients: LocalAppChannels): HealthApi {
   return {
     async get() {

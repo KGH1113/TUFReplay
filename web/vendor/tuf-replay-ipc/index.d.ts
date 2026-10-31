@@ -164,16 +164,6 @@ export interface MicrophoneTiming {
     microphoneOffsetMs: number;
     microphoneVolumeDb: number;
 }
-export interface RenderBundleState {
-    errorCode: string | null;
-    errorDetails: RenderErrorDetails | null;
-    errorMessage: string | null;
-    jobId: string;
-    manifestPath: string | null;
-    progress: number;
-    runId: string;
-    state: "cancelled" | "completed" | "failed" | "preparing";
-}
 export interface RenderErrorDetails {
     field: string | null;
     file: string | null;
@@ -188,6 +178,39 @@ export interface RendererState {
     status: string;
     totalBytes: number | null;
     version: string | null;
+}
+export interface RenderJobState {
+    errorCode: string | null;
+    errorDetails: RenderErrorDetails | null;
+    errorMessage: string | null;
+    jobId: string;
+    outputFile: string | null;
+    progress: number;
+    runId: string;
+    stage: string | null;
+    state: "cancelled" | "completed" | "compositing" | "exporting" | "failed" | "preparing" | "rendering";
+    waitingForGameFocus: boolean;
+    warnings: Array<string>;
+}
+export interface RenderRequest {
+    audioGainDb: number;
+    bgaMode: boolean;
+    bitDepth: number;
+    bitrateMbps: number;
+    captureAudio: boolean;
+    endDelaySeconds: number;
+    height: number;
+    includeMicrophone: boolean;
+    includeWebcam: boolean;
+    showCountdown: boolean;
+    showHitJudgments: boolean;
+    showPlanetRings: boolean;
+    showResultText: boolean;
+    showSongTitle: boolean;
+    targetFps: number;
+    videoCodec: string;
+    videoFps: number;
+    width: number;
 }
 export interface ReplayState {
     errorCode: string | null;
@@ -305,9 +328,9 @@ export interface WebcamState {
 export interface ReplayApiMod {
     "cancelFfmpeg"(): Promise<FfmpegState>;
     "cancelFfmpegDownload"(): Promise<DownloadsState>;
-    "cancelRenderBundle"(request: {
+    "cancelRender"(request: {
         jobId: string;
-    }): Promise<RenderBundleState>;
+    }): Promise<RenderJobState>;
     "cancelRendererDownload"(): Promise<DownloadsState>;
     "changeCalibrationOffset"(request: {
         offsetMs: number;
@@ -368,12 +391,6 @@ export interface ReplayApiMod {
         limit?: number;
         offset?: number;
     }): Promise<Array<Run>>;
-    "prepareRenderBundle"(request: {
-        includeMicrophone?: boolean;
-        includeWebcam?: boolean;
-        levelPath?: string | null;
-        runId: string;
-    }): Promise<RenderBundleState>;
     "readCalibrationResult"(request: {
         operationId: string;
         revision?: number;
@@ -397,9 +414,7 @@ export interface ReplayApiMod {
     "readLogicalLevelChart"(request: {
         id: string;
     }): Promise<Chart>;
-    "readRenderBundleState"(request: {
-        jobId: string;
-    }): Promise<RenderBundleState>;
+    "readRenderState"(): Promise<RenderJobState | null>;
     "readReplayState"(): Promise<ReplayState>;
     "readRunJudgmentTimelines"(request: {
         runIds: Array<string>;
@@ -438,6 +453,11 @@ export interface ReplayApiMod {
     "startCalibrationPreview"(request: {
         operationId: string;
     }): Promise<CalibrationState>;
+    "startRender"(request: {
+        levelPath?: string | null;
+        options: RenderRequest;
+        runId: string;
+    }): Promise<RenderJobState>;
     "startReplay"(request: {
         levelPath?: string | null;
         runId: string;
@@ -468,8 +488,8 @@ export interface ReplayApiAppHandlers {
     "microphoneTimingChanged"(request: {
         value: MicrophoneTiming;
     }): void | Promise<void>;
-    "renderBundleStateChanged"(request: {
-        value: RenderBundleState;
+    "renderStateChanged"(request: {
+        value: RenderJobState;
     }): void | Promise<void>;
     "replayStateChanged"(request: {
         value: ReplayState;
