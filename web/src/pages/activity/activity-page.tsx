@@ -3,11 +3,11 @@ import { AutoSubmissionBuildNotice } from "@/components/activity/auto-submission
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
 import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
 import { OfflineBanner } from "@/components/activity/offline-banner";
-import { RenderComingSoonDialog } from "@/components/render/render-coming-soon-dialog";
+import { RenderDialog } from "@/components/render/render-dialog";
 import { ReplayLevelChoiceDialog } from "@/components/replay/replay-level-choice-dialog";
 import { useActivityPageViewModel } from "@/hooks/activity/use-activity-page-view-model";
 import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice";
-import { useRenderComingSoon } from "@/hooks/render/use-render-coming-soon";
+import { useRenderControl } from "@/hooks/render/use-render-control";
 import { useSidebarDrawer } from "@/hooks/shared/use-sidebar-drawer";
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { AppSidebar } from "@/sections/activity/app-sidebar";
@@ -17,7 +17,7 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
-  const renderNotice = useRenderComingSoon();
+  const renderControl = useRenderControl();
   const drawer = useSidebarDrawer();
   const { activity, replay, actions } = viewModel;
   const legacyReplayNotice = useLegacyReplayNotice(activity.status);
@@ -102,7 +102,7 @@ export function ActivityPage() {
               onToggleRun={actions.toggleRun}
               onFocusRun={actions.focusRun}
               onPlayReplay={actions.openReplayChoice}
-              onRender={renderNotice.show}
+              onRender={renderControl.open}
               onDeleteRun={actions.deleteRun}
               onSetRunLocked={actions.setRunLocked}
             />
@@ -125,7 +125,7 @@ export function ActivityPage() {
         open={legacyReplayNotice.open}
         onConfirm={legacyReplayNotice.confirm}
       />
-      <RenderComingSoonDialog notice={renderNotice} />
+      <RenderDialog control={renderControl} />
       <Toaster position="bottom-center" />
     </TooltipProvider>
   );

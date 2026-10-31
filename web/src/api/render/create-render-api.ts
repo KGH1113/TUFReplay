@@ -1,155 +1,130 @@
-import { type AdofaiIpcClients, sendDomainCommand } from "@/api/domain-messages";
 import { callRecorder, decodeRecorder } from "@/api/recorder-call";
 import type { RenderApi } from "@/api/render/render-api";
+import { orbitVersionCompatibility } from "@/models/render/orbit-version";
 import {
-  outputDirectoryCancelSchema,
-  outputDirectoryChoiceSchema,
-  outputDirectoryOpenSchema,
-  renderDownloadSchema,
-  renderExportStatusSchema,
-  renderHealthSchema,
+  defaultRenderOptions,
+  type RenderJob,
+  type RenderOptions,
+  type RenderSettings,
+  renderJobFinished,
+} from "@/models/render/render-model";
+import type { LocalAppChannels } from "@/ports/local-message-peer";
+import {
   renderJobSchema,
   renderOptionsSchema,
-  renderPreferencesSchema,
   renderSettingsSchema,
 } from "@/schemas/render/render-schema";
 import { ApiError } from "@/shared/errors/api-error";
 
-export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
-  const renderer = () => {
-    if (!clients.rendererNamespace)
-      throw new ApiError("Install TUFReplay-Renderer and restart ADOFAI.", {
-        kind: "domain",
-        code: "renderer_missing",
-      });
-    return clients.rendererNamespace;
+function toRenderRequest(options: RenderOptions) {
+  return {
+    width: options.width,
+    height: options.height,
+    videoFps: options.videoFps,
+    targetFps: options.simulationFps,
+    bitrateMbps: options.bitrateMbps,
+    videoCodec: options.videoCodec,
+    bitDepth: options.bitDepth,
+    captureAudio: options.captureAudio,
+    audioGainDb: options.audioGainDb,
+    endDelaySeconds: options.endDelaySeconds,
+    bgaMode: options.bgaMode,
+    showPlanetRings: options.showPlanetRings,
+    showSongTitle: options.showSongTitle,
+    showCountdown: options.showCountdown,
+    showResultText: options.showResultText,
+    showHitJudgments: options.showHitJudgments,
+    includeWebcam: options.includeWebcam,
+    includeMicrophone: options.includeMicrophone,
+  };
+}
+
+function synthSettings(): RenderSettings {
+  return {
+    defaults: defaultRenderOptions,
+    outputDirectory: "",
+    capabilities: {
+      codecs: ["H264", "H265", "VP9", "AV1", "ProRes"],
+      encoders: ["Auto", "Software", "NvidiaNvenc", "IntelQsv", "AmdAmf"],
+      bitDepths: [8, 10],
+      proResProfiles: ["HQ"],
+      pixelFormats: ["auto"],
+    },
+  };
+}
+
+function unavailableHealth() {
+  return {
+    available: false,
+    version: "",
+    schemaVersion: 1 as const,
+    busy: false,
+    dmNoteConfigured: false,
+    orbitAvailable: false,
+  };
+}
+
+export function createRenderApi(clients: LocalAppChannels): RenderApi {
+  const readRendererState = async () =>
+    (await callRecorder(clients, (mod) => mod.readDownloadsState())).renderer;
+  const readJob = async (): Promise<RenderJob | null> => {
+    const value = await callRecorder(clients, (mod) => mod.readRenderState());
+    return value ? decodeRecorder(renderJobSchema, value) : null;
   };
   return {
-    getHealth: () =>
-      sendDomainCommand(
-        renderer(),
-        "health.read",
-        "renderer.health.snapshot",
-        {},
-        renderHealthSchema,
-      ),
-    getSettings: () =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.settings.read",
-        "renderer.settings.changed",
-        {},
-        renderSettingsSchema,
-      ),
-    updateSettings: (options, preferences) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.settings.change",
-        "renderer.settings.changed",
-        {
-          ...options,
-          ...(preferences ? { preferences: renderPreferencesSchema.parse(preferences) } : {}),
-        },
-        renderSettingsSchema,
-      ),
-    chooseOutputDirectory: (initialPath) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.folder.choose",
-        "renderer.folder-selection.changed",
-        initialPath ? { initialPath } : {},
-        outputDirectoryChoiceSchema,
-      ),
-    cancelOutputDirectorySelection: (selectionId) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.folder.cancel",
-        "renderer.folder-selection.cancelled",
-        { selectionId },
-        outputDirectoryCancelSchema,
-      ),
-    openOutputDirectory: (jobId) =>
-      sendDomainCommand(
-        renderer(),
-        "renderer.folder.open",
-        "renderer.folder.opened",
-        jobId ? { jobId } : {},
-        outputDirectoryOpenSchema,
-      ),
-    async exportBundle(runId, options, levelPath) {
+    async getHealth() {
+      let renderer: Awaited<ReturnType<typeof readRendererState>>;
+      try {
+        renderer = await readRendererState();
+      } catch {
+        return unavailableHealth();
+      }
+      const job = await readJob().catch(() => null);
+      const compatibility = orbitVersionCompatibility(renderer.version);
+      return {
+        available: true,
+        version: renderer.version ?? "",
+        schemaVersion: 1 as const,
+        busy: job ? !renderJobFinished(job) : false,
+        dmNoteConfigured: false,
+        orbitAvailable: renderer.status === "ready" && compatibility === "supported",
+      };
+    },
+    getSettings: async () => renderSettingsSchema.parse(synthSettings()),
+    updateSettings: async () => renderSettingsSchema.parse(synthSettings()),
+    chooseOutputDirectory: async () => {
+      throw new ApiError("The output folder is controlled by OrbitRender settings.", {
+        kind: "domain",
+        code: "output_directory_unavailable",
+      });
+    },
+    cancelOutputDirectorySelection: async () => ({ cancelled: true }),
+    openOutputDirectory: async () => ({ opened: false }),
+    async startRender(runId, options, levelPath) {
       const validated = renderOptionsSchema.parse(options);
       return decodeRecorder(
-        renderExportStatusSchema,
+        renderJobSchema,
         await callRecorder(clients, (mod) =>
-          mod.prepareRenderBundle({
+          mod.startRender({
             runId,
             ...(levelPath ? { levelPath } : {}),
-            includeWebcam: validated.includeWebcam,
-            includeMicrophone: validated.includeMicrophone,
+            options: toRenderRequest(validated),
           }),
         ),
       );
     },
-    getExportStatus: async (jobId) =>
-      decodeRecorder(
-        renderExportStatusSchema,
-        await callRecorder(clients, (mod) => mod.readRenderBundleState({ jobId })),
-      ),
-    cancelExport: async (jobId) =>
-      decodeRecorder(
-        renderExportStatusSchema,
-        await callRecorder(clients, (mod) => mod.cancelRenderBundle({ jobId })),
-      ),
-    start(manifestPath, options) {
-      return sendDomainCommand(
-        renderer(),
-        "render.start",
-        "renderer.job.changed",
-        { manifestPath, ...renderOptionsSchema.parse(options) },
+    readRenderState: readJob,
+    async cancelRender(jobId) {
+      return decodeRecorder(
         renderJobSchema,
+        await callRecorder(clients, (mod) => mod.cancelRender({ jobId })),
       );
     },
-    getStatus: (jobId) =>
-      sendDomainCommand(
-        renderer(),
-        "render.state.read",
-        "renderer.job.changed",
-        { jobId },
-        renderJobSchema,
-      ),
-    cancel: (jobId) =>
-      sendDomainCommand(
-        renderer(),
-        "render.cancel",
-        "renderer.job.changed",
-        { jobId },
-        renderJobSchema,
-      ),
-    async prepareDownload(jobId) {
-      const ticket = await sendDomainCommand(
-        renderer(),
-        "render.download",
-        "download.ready",
-        { jobId },
-        renderDownloadSchema,
-      );
-      const url = new URL(ticket.url);
-      if (
-        url.protocol !== "http:" ||
-        url.hostname !== "127.0.0.1" ||
-        Number(url.port) < 32145 ||
-        Number(url.port) > 32155 ||
-        url.username ||
-        url.password ||
-        url.search ||
-        url.hash ||
-        !/^\/ipc\/download\/[A-Za-z0-9_-]+$/.test(url.pathname)
-      )
-        throw new ApiError("Invalid local render download URL.", {
-          kind: "validation",
-          code: "invalid_response",
-        });
-      return ticket.url;
+    async prepareDownload() {
+      throw new ApiError("Downloads are not used by the OrbitRender integration.", {
+        kind: "domain",
+        code: "download_unavailable",
+      });
     },
   };
 }

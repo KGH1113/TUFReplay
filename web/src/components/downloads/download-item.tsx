@@ -27,7 +27,7 @@ export function DownloadItem({
   const progress = state.TotalBytes ? state.DownloadedBytes / state.TotalBytes : undefined;
   const knownError =
     state.ErrorCode && i18n.exists(`errors.${state.ErrorCode}`, { ns: "downloads" });
-  const name = item === "renderer" ? "TUFReplay-Renderer" : "FFmpeg";
+  const name = item === "renderer" ? "OrbitRender" : "FFmpeg";
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between gap-3">
@@ -60,7 +60,7 @@ export function DownloadItem({
           <a
             href={
               item === "renderer"
-                ? "https://github.com/KGH1113/TUFReplay-Renderer/blob/main/LICENSE.md"
+                ? "https://github.com/imnyang/OrbitRender/blob/main/LICENSE.md"
                 : "https://ffmpeg.org/legal.html"
             }
             target="_blank"

@@ -35,11 +35,13 @@ internal static class DownloadCenterCoordinator
   }
 
   // Called on the game thread only for the inexpensive UMM state lookup.
-  public static DownloadsState Status() =>
-    new DownloadsState
+  public static DownloadsState Status()
+  {
+    var renderer = UnityModManager.FindMod(ManagedRendererInstaller.ModId);
+    return new DownloadsState
     {
       Renderer = IpcDtoMapper.Map(
-        _renderer?.Snapshot(UnityModManager.FindMod(ManagedRendererInstaller.ModId)?.Active == true)
+        _renderer?.Snapshot(renderer?.Active == true, renderer?.Version?.ToString())
           ?? new RendererInstallState
           {
             Status = "failed",
@@ -50,6 +52,7 @@ internal static class DownloadCenterCoordinator
       Ffmpeg = IpcDtoMapper.Map(FfmpegInstallCoordinator.Status()),
       CameraNeedsFfmpeg = RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
     };
+  }
 
   public static DownloadsState RequestRenderer()
   {

@@ -124,10 +124,21 @@ namespace ReplayApi {
   }
   model DownloadsState { renderer: RendererState; ffmpeg: FfmpegState; cameraNeedsFfmpeg: boolean; }
   model RenderErrorDetails { field: string | null; line: int32 | null; file: string | null; }
-  model RenderBundleState {
-    jobId: string; runId: string; state: "preparing" | "completed" | "failed" | "cancelled";
-    progress: float64; manifestPath: string | null; errorCode: string | null;
-    errorMessage: string | null; errorDetails: RenderErrorDetails | null;
+  model RenderRequest {
+    width: int32; height: int32; videoFps: int32; targetFps: int32;
+    bitrateMbps: int32; videoCodec: string; bitDepth: int32;
+    captureAudio: boolean; audioGainDb: float64; endDelaySeconds: float64;
+    bgaMode: boolean; showPlanetRings: boolean; showSongTitle: boolean;
+    showCountdown: boolean; showResultText: boolean; showHitJudgments: boolean;
+    includeWebcam: boolean; includeMicrophone: boolean;
+  }
+  model RenderJobState {
+    jobId: string; runId: string;
+    state: "exporting" | "preparing" | "rendering" | "compositing" | "completed" | "failed" | "cancelled";
+    stage: string | null; progress: float64;
+    outputFile: string | null; warnings: string[];
+    waitingForGameFocus: boolean;
+    errorCode: string | null; errorMessage: string | null; errorDetails: RenderErrorDetails | null;
   }
 
   op readHealth(): Health;
@@ -181,9 +192,9 @@ namespace ReplayApi {
   op requestRendererDownload(): DownloadsState;
   op confirmRendererDownload(): DownloadsState;
   op cancelRendererDownload(): DownloadsState;
-  op prepareRenderBundle(runId: string, levelPath?: string | null, includeWebcam?: boolean, includeMicrophone?: boolean): RenderBundleState;
-  op readRenderBundleState(jobId: string): RenderBundleState;
-  op cancelRenderBundle(jobId: string): RenderBundleState;
+  op startRender(runId: string, options: RenderRequest, levelPath?: string | null): RenderJobState;
+  op readRenderState(): RenderJobState | null;
+  op cancelRender(jobId: string): RenderJobState;
 
   @ipc.app
   interface Companion {
@@ -196,6 +207,6 @@ namespace ReplayApi {
     webcamStateChanged(value: WebcamState): void;
     ffmpegStateChanged(value: FfmpegState): void;
     downloadsStateChanged(value: DownloadsState): void;
-    renderBundleStateChanged(value: RenderBundleState): void;
+    renderStateChanged(value: RenderJobState): void;
   }
 }
