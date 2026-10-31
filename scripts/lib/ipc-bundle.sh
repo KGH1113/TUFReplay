@@ -1,8 +1,17 @@
 #!/usr/bin/env bash
 # Bundled IPC v2. No dependency installation or loaded-runtime replacement.
+verify_ipc_checksums() {
+  local directory="$1"
+  require_file "$directory/SHA256SUMS"
+  if command -v shasum >/dev/null 2>&1; then
+    (cd "$directory" && shasum -a 256 -c SHA256SUMS)
+  else
+    require_command sha256sum
+    (cd "$directory" && tr -d '\r' < SHA256SUMS | sha256sum -c -)
+  fi
+}
 verify_ipc_bundle() {
-  require_file "$ADOFAI_IPC_BUNDLE/SHA256SUMS"
-  (cd "$ADOFAI_IPC_BUNDLE" && shasum -a 256 -c SHA256SUMS)
+  verify_ipc_checksums "$ADOFAI_IPC_BUNDLE"
 }
 copy_ipc_bundle() {
   local destination="$1" name temporary

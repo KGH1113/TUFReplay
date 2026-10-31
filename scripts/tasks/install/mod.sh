@@ -59,6 +59,9 @@ if is_macos; then
 fi
 copy_windows_native "$runtime" optional
 copy_runtime_dependencies "$runtime" optional
+case "$TUFREPLAY_PLATFORM" in
+  MINGW*|MSYS*|CYGWIN*) copy_windows_sqlite "$runtime" ;;
+esac
 copy_sqlite_override "$runtime"
 copy_debug_symbols "$runtime"
 

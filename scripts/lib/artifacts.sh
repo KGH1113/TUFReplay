@@ -51,7 +51,7 @@ copy_runtime_core() {
   cp "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll" "$destination/"
   cp "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.SdkLauncher.dll" "$destination/"
   # Keep the actual deployed v1 controls for old updater validation and StageCandidate.
-  (cd "$TUFREPLAY_PROJECT_ROOT/vendor/adofai-ipc-legacy" && shasum -a 256 -c SHA256SUMS)
+  verify_ipc_checksums "$TUFREPLAY_PROJECT_ROOT/vendor/adofai-ipc-legacy"
   cp "$TUFREPLAY_PROJECT_ROOT/vendor/adofai-ipc-legacy/"*.dll "$destination/"
   cp "$TUFREPLAY_PROJECT_ROOT/vendor/adofai-ipc-legacy/AdofaiIpcBootstrap.json" "$destination/"
   copy_ipc_bundle "$destination"

@@ -1,0 +1,4 @@
+vendor/adofai-ipc-runtime/SHA256SUMS text eol=lf
+vendor/adofai-ipc-runtime/ipc/manifest.json text eol=lf
+TUFReplay/Shared/Ipc/Generated/* text eol=lf
+web/vendor/tuf-replay-ipc/* text eol=lf
