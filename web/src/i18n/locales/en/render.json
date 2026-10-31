@@ -64,7 +64,7 @@
   "button": "Render",
   "warnings": "Overlay compatibility",
   "title": "Render play #{{runIndex}}",
-  "description": "Create a video from this recorded play. Choose encoding, recordings and a save folder on the computer running ADOFAI.",
+  "description": "Create a video from this recorded play with OrbitRender. Resolution, encoding and display options are sent to OrbitRender; its settings control the output folder.",
   "resolution": "Resolution",
   "frameRate": "Frame rate",
   "includeWebcam": "Camera recording",
@@ -96,7 +96,7 @@
     "renderer_missing": "Install TUFReplay-Renderer from Downloads, fully restart ADOFAI and enable the mod, then try again.",
     "downloads_unavailable": "Update TUFReplay and fully restart ADOFAI to use the web installer.",
     "namespace_not_found": "Install and enable TUFReplay-Renderer, restart ADOFAI, then try again.",
-    "orbit_missing": "The renderer is unavailable. Enable TUFReplay-Renderer and restart ADOFAI.",
+    "orbit_missing": "OrbitRender is unavailable. Enable OrbitRender and restart ADOFAI.",
     "render_busy": "Another video is being rendered. Wait for it to finish, then try again.",
     "replay_busy": "Stop replay playback before rendering a video.",
     "render_export_busy": "Another recording is being prepared. Wait for it to finish or cancel it first.",
@@ -205,12 +205,13 @@
     "render_audio_capture_failed": "Game audio could not be captured. Check ADOFAI audio settings or turn off Game audio and try again.",
     "render_cleanup_failed": "The original game settings could not be restored after rendering. Restart ADOFAI before playing or rendering again."
   },
-  "completedDescription": "The finished video is saved on your computer. Open its save location to view or share it.",
+  "completedDescription": "OrbitRender finished the video. The output path is shown below.",
   "sections": {
     "save": "Save location",
     "video": "Video",
     "encoding": "Encoding",
-    "recordings": "Audio and recordings"
+    "recordings": "Audio and recordings",
+    "playback": "Audio and ending"
   },
   "options": {
     "width": "Width (px)",
@@ -260,7 +261,7 @@
   "audioGainHelp": "Adjusts game audio before recorded microphone audio is mixed.",
   "endDelayHelp": "Keep rendering for 0–30 seconds after the run ends. For a failed run, the wait starts after its death animation finishes, even at 0 seconds.",
   "bgaModeHelp": "Captures the level background while hiding tiles, planets and hit sounds.",
-  "advancedOptions": "Audio, ending and game display",
+  "advancedOptions": "Advanced settings",
   "saveAsDefault": "Remember these settings",
   "codecs": {
     "H264": "H.264 / AVC",

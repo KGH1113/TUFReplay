@@ -7,7 +7,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!node_modules", "!dist", "!vendor/adofai-ipc", "!vendor/tuf-replay-ipc"]
+    "includes": ["**", "!node_modules", "!dist", "!vendor/adofai-ipc", "!vendor/tuf-replay-ipc", "!vendor/orbitrender-ipc"]
   },
   "formatter": {
     "enabled": true,

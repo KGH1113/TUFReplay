@@ -14,6 +14,7 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
   const { t } = useTranslation("downloads");
   const { t: commonT } = useTranslation("common");
   const center = useDownloadCenter(connectionStatus === "online");
+  const renderer = center.state?.Renderer;
   const ffmpeg = center.state?.Ffmpeg;
   const busy = ffmpeg ? installationBusy(ffmpeg) : false;
   const installed = ffmpeg?.Status === "ready" || ffmpeg?.Status === "restart-required";
@@ -39,7 +40,10 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
               (Boolean(center.error) ||
                 ffmpeg?.Status === "failed" ||
                 ffmpeg?.Status === "awaiting-consent" ||
-                ffmpeg?.Status === "restart-required")
+                ffmpeg?.Status === "restart-required" ||
+                renderer?.Status === "failed" ||
+                renderer?.Status === "awaiting-consent" ||
+                renderer?.Status === "restart-required")
             }
             aria-label={t("title")}
             disabled={connectionStatus !== "online"}
@@ -69,17 +73,36 @@ export function DownloadCenter({ connectionStatus }: { connectionStatus: Connect
             </Button>
           ) : null}
           <div className="divide-y divide-border/50 px-4 pb-1">
-            <div className="flex min-h-18 items-center justify-between gap-4 py-3">
-              <div className="min-w-0 space-y-1">
-                <p className="text-sm font-medium">TUFReplay-Renderer</p>
-                <p className="text-xs leading-relaxed text-muted-foreground">
-                  {t("rendererComingSoon")}
-                </p>
+            {renderer ? (
+              <div className="flex min-h-18 items-center justify-between gap-4 py-3">
+                <div className="min-w-0 space-y-1">
+                  <p className="text-sm font-medium">OrbitRender</p>
+                  <p className="text-xs text-muted-foreground">
+                    {t(`status.${renderer.Status}`)}
+                    {renderer.Version ? ` · ${renderer.Version}` : ""}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={renderer.Status === "missing" ? "outline" : "ghost"}
+                  disabled={renderer.Status === "checking" || center.pending}
+                  onClick={() =>
+                    center.showDetails(
+                      "renderer",
+                      ["missing", "cancelled", "declined"].includes(renderer.Status),
+                    )
+                  }
+                >
+                  {renderer.Status === "missing" ||
+                  renderer.Status === "cancelled" ||
+                  renderer.Status === "declined"
+                    ? t("install")
+                    : renderer.Status === "awaiting-consent"
+                      ? t("continue")
+                      : t("view")}
+                </Button>
               </div>
-              <Button size="sm" variant="outline" disabled>
-                {t("comingSoon")}
-              </Button>
-            </div>
+            ) : null}
             {ffmpeg ? (
               <div className="flex min-h-18 items-center justify-between gap-4 py-3">
                 <div className="min-w-0 space-y-1">

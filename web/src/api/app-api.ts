@@ -8,8 +8,10 @@ import type { RenderApi } from "@/api/render/render-api";
 import type { ReplayApi } from "@/api/replay/replay-api";
 import type { RunApi } from "@/api/run/run-api";
 import type { WebcamApi } from "@/api/webcam/webcam-api";
+import type { OrbitRenderClient } from "@/ports/orbit-render-client";
 
 export interface AppApi {
+  orbit?: OrbitRenderClient;
   events: AppEvents;
   health: HealthApi;
   activity: ActivityApi;
