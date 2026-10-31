@@ -319,10 +319,7 @@ public static partial class ReplayPlaybackCoordinator
     {
       operation.FocusStableStartedAt = 0d;
       if (GetStatus().State != ReplayPlaybackStates.WaitingForFocus)
-      {
-        (operation.NativeInputFocusGuard as WindowsNativeInputFocusGuard)?.RequestForeground();
         SetOperationState(operation, ReplayPlaybackStates.WaitingForFocus, "Focus ADOFAI to start replay.");
-      }
       return;
     }
 
