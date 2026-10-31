@@ -26,9 +26,14 @@ const orbitJob: OrbitRenderJob = {
 function clients(
   tuf: (method: string, params: unknown) => unknown,
   orbit?: Partial<OrbitRenderClient>,
+  version: string | null = "2.6.0",
 ): LocalAppChannels {
   return {
-    ...scriptedChannels(tuf),
+    ...scriptedChannels((method, params) =>
+      method === "readDownloadsState"
+        ? { renderer: { status: "ready", version } }
+        : tuf(method, params),
+    ),
     orbit: {
       ready: async () => {},
       health: async () => ({ ok: true, renderer: "Idle" }),
@@ -41,6 +46,24 @@ function clients(
 }
 
 describe("OrbitRender render IPC contract", () => {
+  test("requires a verifiable active OrbitRender version of at least 2.6.0", async () => {
+    for (const version of ["2.5.9", "1.99.99"]) {
+      const api = createRenderApi(clients(() => bundle, undefined, version));
+      await expect(api.getHealth()).rejects.toMatchObject({ code: "orbit_version_unsupported" });
+      await expect(api.start("/tmp/manifest.json", defaultRenderOptions)).rejects.toMatchObject({
+        code: "orbit_version_unsupported",
+      });
+    }
+    for (const version of [null, "unknown", "2.6.0-beta"]) {
+      const api = createRenderApi(clients(() => bundle, undefined, version));
+      await expect(api.getHealth()).rejects.toMatchObject({ code: "orbit_version_unknown" });
+    }
+    for (const version of ["2.6.0", "2.7.0", "3.0.0"]) {
+      expect(
+        (await createRenderApi(clients(() => bundle, undefined, version)).getHealth()).version,
+      ).toBe(version);
+    }
+  });
   test("maps OrbitRender health to the render dialog state", async () => {
     const idle = createRenderApi(clients(() => bundle));
     expect(await idle.getHealth()).toMatchObject({
@@ -147,16 +170,13 @@ describe("OrbitRender render IPC contract", () => {
       { ...orbitJob, state: "Completed", outputPath: "/videos/out.mp4", progress: 1 },
     ];
     const api = createRenderApi(
-      clients(
-        () => bundle,
-        {
-          cancelRender: async (request) => {
-            calls.push({ method: "cancelRender", request });
-            return {};
-          },
-          renderStatus: async () => states.shift() ?? orbitJob,
+      clients(() => bundle, {
+        cancelRender: async (request) => {
+          calls.push({ method: "cancelRender", request });
+          return {};
         },
-      ),
+        renderStatus: async () => states.shift() ?? orbitJob,
+      }),
     );
     expect((await api.getStatus("render-1")).state).toBe("preparing");
     expect((await api.getStatus("render-1")).state).toBe("compositing");
@@ -173,15 +193,12 @@ describe("OrbitRender render IPC contract", () => {
   test("rejects invalid options before contacting OrbitRender", async () => {
     let called = false;
     const api = createRenderApi(
-      clients(
-        () => bundle,
-        {
-          createRender: async () => {
-            called = true;
-            return { id: "render-1" };
-          },
+      clients(() => bundle, {
+        createRender: async () => {
+          called = true;
+          return { id: "render-1" };
         },
-      ),
+      }),
     );
     for (const options of [
       { ...defaultRenderOptions, width: 1919 },

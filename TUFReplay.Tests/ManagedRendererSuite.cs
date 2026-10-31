@@ -54,7 +54,8 @@ internal static class ManagedRendererSuite
         requests == 2 && installer.Snapshot().Status == "restart-required",
         "one verified installation for duplicate approval"
       );
-      Check(installer.Snapshot(true).Status == "ready", "loaded mod state");
+      var loaded = installer.Snapshot(true, "2.6.0");
+      Check(loaded.Status == "ready" && loaded.Version == "2.6.0", "active mod version overrides installed metadata");
       Check(File.Exists(Path.Combine(mods, "OrbitRender", "OrbitRender.dll")), "published mod payload");
       Check(!Directory.EnumerateDirectories(mods, ".tuf-renderer-install-*").Any(), "staging cleanup after success");
     }

@@ -1,12 +1,14 @@
-import { type AdofaiIpcClients } from "@/api/domain-messages";
+import type { AdofaiIpcClients } from "@/api/domain-messages";
 import { callRecorder, decodeRecorder } from "@/api/recorder-call";
 import type { RenderApi } from "@/api/render/render-api";
+import { orbitVersionCompatibility } from "@/models/render/orbit-version";
 import {
   defaultRenderOptions,
   type RenderJob,
   type RenderOptions,
   type RenderSettings,
 } from "@/models/render/render-model";
+import type { OrbitRenderClient } from "@/ports/orbit-render-client";
 import {
   renderExportStatusSchema,
   renderOptionsSchema,
@@ -123,24 +125,46 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
       });
     return clients.orbit;
   };
+  const requireSupportedVersion = async () => {
+    const state = await callRecorder(clients, (mod) => mod.readDownloadsState());
+    const version = state?.renderer?.version;
+    const compatibility = orbitVersionCompatibility(version);
+    if (
+      compatibility === "unknown" ||
+      typeof version !== "string" ||
+      state.renderer.status !== "ready"
+    )
+      throw new ApiError("Could not verify the active OrbitRender version.", {
+        kind: "domain",
+        code: "orbit_version_unknown",
+      });
+    if (compatibility === "unsupported")
+      throw new ApiError("OrbitRender 2.6.0 or later is required.", {
+        kind: "domain",
+        code: "orbit_version_unsupported",
+      });
+    return version;
+  };
   return {
     async getHealth() {
       if (!clients.orbit) return unavailableHealth();
+      let health: Awaited<ReturnType<OrbitRenderClient["health"]>>;
       try {
-        const health = await clients.orbit.health();
-        const state = health.renderer.toLowerCase();
-        return {
-          available: true,
-          version: health.renderer,
-          schemaVersion: 1 as const,
-          busy:
-            orbitStates.has(state) && !["idle", "completed", "failed", "cancelled"].includes(state),
-          dmNoteConfigured: false,
-          orbitAvailable: true,
-        };
+        health = await clients.orbit.health();
       } catch {
         return unavailableHealth();
       }
+      const version = await requireSupportedVersion();
+      const state = health.renderer.toLowerCase();
+      return {
+        available: true,
+        version,
+        schemaVersion: 1 as const,
+        busy:
+          orbitStates.has(state) && !["idle", "completed", "failed", "cancelled"].includes(state),
+        dmNoteConfigured: false,
+        orbitAvailable: true,
+      };
     },
     getSettings: async () => renderSettingsSchema.parse(synthSettings()),
     updateSettings: async () => renderSettingsSchema.parse(synthSettings()),
@@ -177,6 +201,7 @@ export function createRenderApi(clients: AdofaiIpcClients): RenderApi {
         await callRecorder(clients, (mod) => mod.cancelRenderBundle({ jobId })),
       ),
     async start(manifestPath, options) {
+      await requireSupportedVersion();
       const accepted = await orbit().createRender({
         options: toOrbitOptions(manifestPath, renderOptionsSchema.parse(options)),
       });
