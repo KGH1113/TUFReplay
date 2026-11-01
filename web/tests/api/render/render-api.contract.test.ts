@@ -22,7 +22,7 @@ function clients(
   tuf: (method: string, params: unknown) => unknown,
   options: { version?: string | null; status?: string; currentJob?: unknown } = {},
 ): LocalAppChannels {
-  const version = options.version === undefined ? "2.7.0" : options.version;
+  const version = options.version === undefined ? "2.6.2" : options.version;
   const status = options.status ?? "ready";
   const currentJob = options.currentJob ?? null;
   return scriptedChannels((method, params) => {
@@ -35,14 +35,14 @@ function clients(
 
 describe("TUFReplay render IPC contract", () => {
   test("reports OrbitRender availability from the installed version", async () => {
-    for (const version of ["2.6.9", "1.99.99", null]) {
+    for (const version of ["2.6.1", "1.99.99", null]) {
       const api = createRenderApi(clients(() => job, { version }));
       expect(await api.getHealth()).toMatchObject({
         available: true,
         orbitAvailable: false,
       });
     }
-    for (const version of ["2.7.0", "2.8.1", "3.0.0"]) {
+    for (const version of ["2.6.2", "2.6.9", "2.7.0", "3.0.0"]) {
       const health = await createRenderApi(clients(() => job, { version })).getHealth();
       expect(health).toMatchObject({ available: true, orbitAvailable: true, version });
     }
