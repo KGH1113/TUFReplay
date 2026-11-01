@@ -63,7 +63,7 @@ public static class OrbitRenderClient
         return new OrbitRenderError
         {
           Code = "renderer_version_unsupported",
-          Message = "OrbitRender 2.7.0 or later is required. Update it in UnityModManager and restart ADOFAI.",
+          Message = "OrbitRender 2.6.2 or later is required. Update it in UnityModManager and restart ADOFAI.",
         };
       if (_isAvailable != null && !(bool)(_isAvailable.GetValue(null) ?? false))
         return new OrbitRenderError
