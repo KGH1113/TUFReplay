@@ -2,6 +2,14 @@ import { useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { useRenderControl } from "@/hooks/render/use-render-control";
 import type { RenderOptions } from "@/models/render/render-model";
+import { Button } from "@/shared/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
 import { Input } from "@/shared/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
 import { Switch } from "@/shared/ui/switch";
@@ -22,6 +30,9 @@ export function RenderOptionsForm({ control }: { control: Control }) {
   const id = useId();
   const options = control.options;
   const [customResolution, setCustomResolution] = useState(false);
+  const [choosingFolder, setChoosingFolder] = useState(false);
+  const [showFolderHandoff, setShowFolderHandoff] = useState(false);
+  const [folderError, setFolderError] = useState(false);
   const disabled = control.busy;
   const issues = control.optionValidation.success ? [] : control.optionValidation.error.issues;
   const invalid = (field: keyof RenderOptions) => issues.some((issue) => issue.path[0] === field);
@@ -93,6 +104,69 @@ export function RenderOptionsForm({ control }: { control: Control }) {
 
   return (
     <fieldset disabled={disabled} className="space-y-6 disabled:opacity-60">
+      <section className="space-y-2">
+        <h3 className="text-sm font-semibold">{t("sections.save")}</h3>
+        <label htmlFor={`${id}-outputDirectory`} className="block space-y-1.5 text-sm">
+          <span className="font-medium">{t("outputDirectory")}</span>
+          <Input
+            id={`${id}-outputDirectory`}
+            value={options.outputDirectory}
+            onChange={(event) =>
+              control.setOptions((current) => ({ ...current, outputDirectory: event.target.value }))
+            }
+            placeholder="~/Videos/A Dance of Fire and Ice/TUFReplay"
+            maxLength={4096}
+          />
+          <span className="block text-xs text-muted-foreground">
+            {t("outputDirectoryDefaultHelp")}
+          </span>
+        </label>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={choosingFolder}
+          onClick={async () => {
+            setChoosingFolder(true);
+            setShowFolderHandoff(true);
+            setFolderError(false);
+            try {
+              await control.chooseOutputDirectory();
+            } catch {
+              setFolderError(true);
+            } finally {
+              setChoosingFolder(false);
+              setShowFolderHandoff(false);
+            }
+          }}
+        >
+          {t(choosingFolder ? "choosingDirectory" : "chooseDirectory")}
+        </Button>
+        {folderError ? (
+          <p role="alert" className="text-xs text-destructive">
+            {t("outputDirectoryPickerError")}
+          </p>
+        ) : null}
+        <Dialog open={showFolderHandoff} onOpenChange={setShowFolderHandoff}>
+          <DialogContent className="w-[min(27rem,calc(100vw-2rem))]">
+            <DialogHeader>
+              <DialogTitle>{t("folderHandoff.title")}</DialogTitle>
+              <DialogDescription>{t("folderHandoff.description")}</DialogDescription>
+            </DialogHeader>
+            <div className="flex items-center justify-center gap-2 py-4 text-xs text-muted-foreground">
+              <kbd className="rounded-md bg-muted px-2 py-1 font-sans font-medium text-foreground ring-1 ring-foreground/10">
+                Alt Tab
+              </kbd>
+              <span>{t("folderHandoff.or")}</span>
+              <kbd className="rounded-md bg-muted px-2 py-1 font-sans font-medium text-foreground ring-1 ring-foreground/10">
+                ⌘ Tab
+              </kbd>
+            </div>
+            <Button type="button" variant="outline" onClick={() => setShowFolderHandoff(false)}>
+              {t("folderHandoff.dismiss")}
+            </Button>
+          </DialogContent>
+        </Dialog>
+      </section>
       <section className="space-y-3">
         <h3 className="text-sm font-semibold">{t("sections.video")}</h3>
         <div className="grid grid-cols-2 gap-x-4 gap-y-3">

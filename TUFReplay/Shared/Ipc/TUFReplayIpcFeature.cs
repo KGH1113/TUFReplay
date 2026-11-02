@@ -203,6 +203,10 @@ public sealed class TUFReplayIpcFeature
       (_, _) => Map(ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus()))
     );
     _namespace.Handle(ReplayApiMethods.ChooseLevelFile, ChooseLevelFile);
+    _namespace.Handle(
+      ReplayApiMethods.ChooseRenderOutputDirectory,
+      async (_, context) => await RenderOutputFolderPicker.Choose(context.CancellationToken).ConfigureAwait(false)
+    );
     Register(
       ReplayApiMethods.RefreshMicrophoneDevices,
       (_, _) => MicrophoneState(MicrophoneIpcHandlers.GetDevices()),
@@ -331,6 +335,18 @@ public sealed class TUFReplayIpcFeature
       true
     );
     Register(ReplayApiMethods.ReadRenderState, (_, _) => RenderJobCoordinator.Get());
+    Register(
+      ReplayApiMethods.ReadRenderVideo,
+      (r, _) => RenderJobCoordinator.ReadVideo(Required(r.JobId, "invalid_render_job_id"))
+    );
+    Register(
+      ReplayApiMethods.OpenRenderFile,
+      (r, _) => RenderJobCoordinator.OpenOutput(Required(r.JobId, "invalid_render_job_id"), false)
+    );
+    Register(
+      ReplayApiMethods.RevealRenderFile,
+      (r, _) => RenderJobCoordinator.OpenOutput(Required(r.JobId, "invalid_render_job_id"), true)
+    );
     Register(
       ReplayApiMethods.CancelRender,
       (r, _) => RenderJobCoordinator.Cancel(Required(r.JobId, "invalid_render_job_id")),

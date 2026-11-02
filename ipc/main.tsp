@@ -125,6 +125,7 @@ namespace ReplayApi {
   model DownloadsState { renderer: RendererState; ffmpeg: FfmpegState; cameraNeedsFfmpeg: boolean; }
   model RenderErrorDetails { field: string | null; line: int32 | null; file: string | null; }
   model RenderRequest {
+    outputDirectory?: string;
     width: int32; height: int32; videoFps: int32; targetFps: int32;
     bitrateMbps: int32; videoCodec: string; bitDepth: int32;
     captureAudio: boolean; audioGainDb: float64; endDelaySeconds: float64;
@@ -163,6 +164,10 @@ namespace ReplayApi {
   op startReplay(runId: string, levelPath?: string | null): ReplayState;
   op readReplayState(): ReplayState;
   op chooseLevelFile(runId: string, purpose?: "replay" | "render"): LevelFileResult;
+  op chooseRenderOutputDirectory(): string | null;
+  op readRenderVideo(jobId: string): ipc.File;
+  op openRenderFile(jobId: string): boolean;
+  op revealRenderFile(jobId: string): boolean;
   op refreshMicrophoneDevices(): MicrophoneDevices;
   op changeMicrophoneAccess(enabled: boolean): MicrophoneDevices;
   op chooseMicrophoneDevice(deviceId: string | null): MicrophoneDevices;

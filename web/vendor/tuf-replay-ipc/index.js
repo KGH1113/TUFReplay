@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "0fe8a457e5b21f2a6ce030ef2b5b7374c317da9ad5e7e243967ea3b6a5eba54d",
+    "hash": "5a80030ff7bd6d51ba94907fa5a533e2d73f0146d09913d492479156624dcf7c",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -406,6 +406,9 @@ export const ReplayApiContract = defineContract({
                 "height": "int32",
                 "includeMicrophone": "boolean",
                 "includeWebcam": "boolean",
+                "outputDirectory": {
+                    "optional": "string"
+                },
                 "showCountdown": "boolean",
                 "showHitJudgments": "boolean",
                 "showPlanetRings": "boolean",
@@ -851,6 +854,15 @@ export const ReplayApiContract = defineContract({
                 "model": "MicrophoneDevices"
             }
         },
+        "chooseRenderOutputDirectory": {
+            "wireName": "rpc.mod.chooserenderoutputdirectory",
+            "input": {
+                "object": {}
+            },
+            "output": {
+                "nullable": "string"
+            }
+        },
         "closeCalibration": {
             "wireName": "rpc.mod.closecalibration",
             "input": {
@@ -975,6 +987,15 @@ export const ReplayApiContract = defineContract({
                 }
             }
         },
+        "openRenderFile": {
+            "wireName": "rpc.mod.openrenderfile",
+            "input": {
+                "object": {
+                    "jobId": "string"
+                }
+            },
+            "output": "boolean"
+        },
         "readCalibrationResult": {
             "wireName": "rpc.mod.readcalibrationresult",
             "input": {
@@ -1090,6 +1111,15 @@ export const ReplayApiContract = defineContract({
                     "model": "RenderJobState"
                 }
             }
+        },
+        "readRenderVideo": {
+            "wireName": "rpc.mod.readrendervideo",
+            "input": {
+                "object": {
+                    "jobId": "string"
+                }
+            },
+            "output": "file"
         },
         "readReplayState": {
             "wireName": "rpc.mod.readreplaystate",
@@ -1256,6 +1286,15 @@ export const ReplayApiContract = defineContract({
             "output": {
                 "model": "RetainResult"
             }
+        },
+        "revealRenderFile": {
+            "wireName": "rpc.mod.revealrenderfile",
+            "input": {
+                "object": {
+                    "jobId": "string"
+                }
+            },
+            "output": "boolean"
         },
         "startCalibration": {
             "wireName": "rpc.mod.startcalibration",

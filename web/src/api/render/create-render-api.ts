@@ -18,6 +18,7 @@ import { ApiError } from "@/shared/errors/api-error";
 
 function toRenderRequest(options: RenderOptions) {
   return {
+    outputDirectory: options.outputDirectory,
     width: options.width,
     height: options.height,
     videoFps: options.videoFps,
@@ -72,6 +73,9 @@ export function createRenderApi(clients: LocalAppChannels): RenderApi {
     return value ? decodeRecorder(renderJobSchema, value) : null;
   };
   return {
+    readRenderVideo: (jobId) => callRecorder(clients, (mod) => mod.readRenderVideo({ jobId })),
+    openRenderFile: (jobId) => callRecorder(clients, (mod) => mod.openRenderFile({ jobId })),
+    revealRenderFile: (jobId) => callRecorder(clients, (mod) => mod.revealRenderFile({ jobId })),
     async getHealth() {
       let renderer: Awaited<ReturnType<typeof readRendererState>>;
       try {
@@ -92,12 +96,13 @@ export function createRenderApi(clients: LocalAppChannels): RenderApi {
     },
     getSettings: async () => renderSettingsSchema.parse(synthSettings()),
     updateSettings: async () => renderSettingsSchema.parse(synthSettings()),
-    chooseOutputDirectory: async () => {
-      throw new ApiError("The output folder is controlled by OrbitRender settings.", {
-        kind: "domain",
-        code: "output_directory_unavailable",
-      });
-    },
+    chooseOutputDirectory: async () => ({
+      selectionId: "",
+      pending: false,
+      outputDirectory: await callRecorder(clients, (mod) => mod.chooseRenderOutputDirectory(), {
+        timeoutMs: 300_000,
+      }),
+    }),
     cancelOutputDirectorySelection: async () => ({ cancelled: true }),
     openOutputDirectory: async () => ({ opened: false }),
     async startRender(runId, options, levelPath) {

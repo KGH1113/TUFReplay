@@ -23,10 +23,32 @@ public static class OrbitRenderClient
   private static long _nextResolve;
   private static bool _searched;
 
-  public static OrbitRenderResult StartReplay(string manifestPath, string optionsJson)
+  public static OrbitRenderResult StartReplay(string manifestPath, OrbitRenderOptions options)
   {
     var error = Resolve();
-    return error != null ? OrbitRenderResult.Failure(error) : Invoke(_startReplay, manifestPath, optionsJson ?? "{}");
+    if (error != null)
+      return OrbitRenderResult.Failure(error);
+    if (!string.IsNullOrWhiteSpace(options?.OutputDirectory) && !SupportsOutputDirectory(_apiType))
+      return OrbitRenderResult.Failure(
+        new OrbitRenderError
+        {
+          Code = "renderer_output_directory_unsupported",
+          Message =
+            "This OrbitRender version cannot use a custom output folder. Update OrbitRender and restart ADOFAI.",
+          Field = "outputDirectory",
+        }
+      );
+    var json = JsonConvert.SerializeObject(
+      options ?? new OrbitRenderOptions(),
+      new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }
+    );
+    return Invoke(_startReplay, manifestPath, json);
+  }
+
+  private static bool SupportsOutputDirectory(Type type)
+  {
+    var capability = type?.GetField("OutputDirectoryOptionVersion", BindingFlags.Public | BindingFlags.Static);
+    return capability?.GetValue(null) is int version && version >= 1;
   }
 
   public static OrbitRenderResult ReadStatus(string jobId)
@@ -234,6 +256,66 @@ public static class OrbitRenderClient
       }
     );
   }
+}
+
+public sealed class OrbitRenderOptions
+{
+  [JsonProperty("noPreview")]
+  public bool? NoPreview { get; set; }
+
+  [JsonProperty("outputDirectory")]
+  public string OutputDirectory { get; set; }
+
+  [JsonProperty("targetFps")]
+  public int? TargetFps { get; set; }
+
+  [JsonProperty("videoFps")]
+  public int? VideoFps { get; set; }
+
+  [JsonProperty("width")]
+  public int? Width { get; set; }
+
+  [JsonProperty("height")]
+  public int? Height { get; set; }
+
+  [JsonProperty("bitrateMbps")]
+  public int? BitrateMbps { get; set; }
+
+  [JsonProperty("videoCodec")]
+  public string VideoCodec { get; set; }
+
+  [JsonProperty("bitDepth")]
+  public int? BitDepth { get; set; }
+
+  [JsonProperty("captureAudio")]
+  public bool? CaptureAudio { get; set; }
+
+  [JsonProperty("audioGainDb")]
+  public double? AudioGainDb { get; set; }
+
+  [JsonProperty("endDelaySeconds")]
+  public double? EndDelaySeconds { get; set; }
+
+  [JsonProperty("bgaMode")]
+  public bool? BgaMode { get; set; }
+
+  [JsonProperty("showPlanetRings")]
+  public bool? ShowPlanetRings { get; set; }
+
+  [JsonProperty("showSongTitle")]
+  public bool? ShowSongTitle { get; set; }
+
+  [JsonProperty("showCountdown")]
+  public bool? ShowCountdown { get; set; }
+
+  [JsonProperty("showResultText")]
+  public bool? ShowResultText { get; set; }
+
+  [JsonProperty("showHitJudgments")]
+  public bool? ShowHitJudgments { get; set; }
+
+  [JsonProperty("showModOverlay")]
+  public bool? ShowModOverlay { get; set; }
 }
 
 public sealed class OrbitRenderResult

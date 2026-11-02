@@ -16,7 +16,6 @@ export function createRenderApiMock(
   let currentJob: RenderJob | null = null;
   let renderStep = 0;
   let renderTimer: ReturnType<typeof setInterval> | undefined;
-  let pickerCancelled = false;
   const settings = (): RenderSettings => ({
     defaults: { ...defaults },
     preferences: { ...preferences },
@@ -71,20 +70,13 @@ export function createRenderApiMock(
       return state;
     },
     async chooseOutputDirectory() {
-      pickerCancelled = false;
-      setTimeout(
-        () =>
-          emit("renderer.folder.changed", {
-            selectionId: "mock-folder",
-            pending: false,
-            outputDirectory: pickerCancelled ? null : "/Users/example/Videos/TUFReplay",
-          }),
-        10,
-      );
-      return { selectionId: "mock-folder", pending: true, outputDirectory: null };
+      return {
+        selectionId: "mock-folder",
+        pending: false,
+        outputDirectory: "/Users/example/Videos/TUFReplay",
+      };
     },
     async cancelOutputDirectorySelection() {
-      pickerCancelled = true;
       return { cancelled: true };
     },
     async openOutputDirectory() {
@@ -125,6 +117,15 @@ export function createRenderApiMock(
         if (currentJob.state === "completed") clearInterval(renderTimer);
       }, 250);
       return { ...currentJob };
+    },
+    async openRenderFile() {
+      return true;
+    },
+    async revealRenderFile() {
+      return true;
+    },
+    async readRenderVideo() {
+      throw new Error("No rendered video in the preview environment.");
     },
     async readRenderState() {
       return currentJob ? { ...currentJob } : null;

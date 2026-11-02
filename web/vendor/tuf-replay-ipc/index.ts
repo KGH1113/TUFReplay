@@ -47,7 +47,7 @@ export interface RendererState { downloadedBytes: number; error: string | null; 
 
 export interface RenderJobState { errorCode: string | null; errorDetails: RenderErrorDetails | null; errorMessage: string | null; jobId: string; outputFile: string | null; progress: number; runId: string; stage: string | null; state: "cancelled" | "completed" | "compositing" | "exporting" | "failed" | "preparing" | "rendering"; waitingForGameFocus: boolean; warnings: Array<string> }
 
-export interface RenderRequest { audioGainDb: number; bgaMode: boolean; bitDepth: number; bitrateMbps: number; captureAudio: boolean; endDelaySeconds: number; height: number; includeMicrophone: boolean; includeWebcam: boolean; showCountdown: boolean; showHitJudgments: boolean; showPlanetRings: boolean; showResultText: boolean; showSongTitle: boolean; targetFps: number; videoCodec: string; videoFps: number; width: number }
+export interface RenderRequest { audioGainDb: number; bgaMode: boolean; bitDepth: number; bitrateMbps: number; captureAudio: boolean; endDelaySeconds: number; height: number; includeMicrophone: boolean; includeWebcam: boolean; outputDirectory?: string; showCountdown: boolean; showHitJudgments: boolean; showPlanetRings: boolean; showResultText: boolean; showSongTitle: boolean; targetFps: number; videoCodec: string; videoFps: number; width: number }
 
 export interface ReplayState { errorCode: string | null; message: string | null; operationId: string | null; runId: string | null; state: "cancelled" | "completed" | "error" | "idle" | "opening_level" | "playing" | "preparing" | "returning_to_editor" | "starting" | "waiting_for_focus" }
 
@@ -83,6 +83,7 @@ export interface ReplayApiMod {
   "changeWebcamSettings"(request: { settings: WebcamSettings }): Promise<WebcamState>;
   "chooseLevelFile"(request: { purpose?: "render" | "replay"; runId: string }): Promise<LevelFileResult>;
   "chooseMicrophoneDevice"(request: { deviceId: string | null }): Promise<MicrophoneDevices>;
+  "chooseRenderOutputDirectory"(): Promise<string | null>;
   "closeCalibration"(request: { operationId: string }): Promise<CalibrationState>;
   "confirmFfmpeg"(): Promise<FfmpegState>;
   "confirmFfmpegDownload"(): Promise<DownloadsState>;
@@ -93,6 +94,7 @@ export interface ReplayApiMod {
   "listAppSessions"(request: { limit?: number; offset?: number }): Promise<Array<AppSession>>;
   "listLevelSessionRuns"(request: { id: string; limit?: number; offset?: number }): Promise<Array<Run>>;
   "listLogicalLevelRuns"(request: { appSessionIds: Array<string>; id: string; limit?: number; offset?: number }): Promise<Array<Run>>;
+  "openRenderFile"(request: { jobId: string }): Promise<boolean>;
   "readCalibrationResult"(request: { operationId: string; revision?: number }): Promise<CalibrationResult>;
   "readCalibrationState"(request: { operationId: string }): Promise<CalibrationState>;
   "readDownloadsState"(): Promise<DownloadsState>;
@@ -104,6 +106,7 @@ export interface ReplayApiMod {
   "readLogicalLevel"(request: { id: string }): Promise<LogicalLevel>;
   "readLogicalLevelChart"(request: { id: string }): Promise<Chart>;
   "readRenderState"(): Promise<RenderJobState | null>;
+  "readRenderVideo"(request: { jobId: string }): Promise<ReceivedFile>;
   "readReplayState"(): Promise<ReplayState>;
   "readRunJudgmentTimelines"(request: { runIds: Array<string> }): Promise<Array<RunJudgmentTimeline>>;
   "readWebcamPreview"(request: { deviceId: string | null }): Promise<WebcamPreview | null>;
@@ -119,6 +122,7 @@ export interface ReplayApiMod {
   "requestRendererDownload"(): Promise<DownloadsState>;
   "retainCameraRecording"(request: { runId: string }): Promise<RetainResult>;
   "retainMicrophoneRecording"(request: { runId: string }): Promise<RetainResult>;
+  "revealRenderFile"(request: { jobId: string }): Promise<boolean>;
   "startCalibration"(): Promise<CalibrationState>;
   "startCalibrationPreview"(request: { operationId: string }): Promise<CalibrationState>;
   "startRender"(request: { levelPath?: string | null; options: RenderRequest; runId: string }): Promise<RenderJobState>;
@@ -141,7 +145,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "0fe8a457e5b21f2a6ce030ef2b5b7374c317da9ad5e7e243967ea3b6a5eba54d",
+  "hash": "5a80030ff7bd6d51ba94907fa5a533e2d73f0146d09913d492479156624dcf7c",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -545,6 +549,9 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "height": "int32",
         "includeMicrophone": "boolean",
         "includeWebcam": "boolean",
+        "outputDirectory": {
+          "optional": "string"
+        },
         "showCountdown": "boolean",
         "showHitJudgments": "boolean",
         "showPlanetRings": "boolean",
@@ -990,6 +997,15 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "model": "MicrophoneDevices"
       }
     },
+    "chooseRenderOutputDirectory": {
+      "wireName": "rpc.mod.chooserenderoutputdirectory",
+      "input": {
+        "object": {}
+      },
+      "output": {
+        "nullable": "string"
+      }
+    },
     "closeCalibration": {
       "wireName": "rpc.mod.closecalibration",
       "input": {
@@ -1114,6 +1130,15 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         }
       }
     },
+    "openRenderFile": {
+      "wireName": "rpc.mod.openrenderfile",
+      "input": {
+        "object": {
+          "jobId": "string"
+        }
+      },
+      "output": "boolean"
+    },
     "readCalibrationResult": {
       "wireName": "rpc.mod.readcalibrationresult",
       "input": {
@@ -1229,6 +1254,15 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
           "model": "RenderJobState"
         }
       }
+    },
+    "readRenderVideo": {
+      "wireName": "rpc.mod.readrendervideo",
+      "input": {
+        "object": {
+          "jobId": "string"
+        }
+      },
+      "output": "file"
     },
     "readReplayState": {
       "wireName": "rpc.mod.readreplaystate",
@@ -1395,6 +1429,15 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       "output": {
         "model": "RetainResult"
       }
+    },
+    "revealRenderFile": {
+      "wireName": "rpc.mod.revealrenderfile",
+      "input": {
+        "object": {
+          "jobId": "string"
+        }
+      },
+      "output": "boolean"
     },
     "startCalibration": {
       "wireName": "rpc.mod.startcalibration",

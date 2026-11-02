@@ -6,8 +6,12 @@ import type {
   RenderPreferences,
   RenderSettings,
 } from "@/models/render/render-model";
+import type { TransferredFile } from "@/ports/received-file";
 
 export interface RenderApi {
+  readRenderVideo(jobId: string): Promise<TransferredFile>;
+  openRenderFile(jobId: string): Promise<boolean>;
+  revealRenderFile(jobId: string): Promise<boolean>;
   getHealth(): Promise<RenderHealth>;
   getSettings(): Promise<RenderSettings>;
   updateSettings(

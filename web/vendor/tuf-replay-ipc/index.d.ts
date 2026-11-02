@@ -202,6 +202,7 @@ export interface RenderRequest {
     height: number;
     includeMicrophone: boolean;
     includeWebcam: boolean;
+    outputDirectory?: string;
     showCountdown: boolean;
     showHitJudgments: boolean;
     showPlanetRings: boolean;
@@ -363,6 +364,7 @@ export interface ReplayApiMod {
     "chooseMicrophoneDevice"(request: {
         deviceId: string | null;
     }): Promise<MicrophoneDevices>;
+    "chooseRenderOutputDirectory"(): Promise<string | null>;
     "closeCalibration"(request: {
         operationId: string;
     }): Promise<CalibrationState>;
@@ -391,6 +393,9 @@ export interface ReplayApiMod {
         limit?: number;
         offset?: number;
     }): Promise<Array<Run>>;
+    "openRenderFile"(request: {
+        jobId: string;
+    }): Promise<boolean>;
     "readCalibrationResult"(request: {
         operationId: string;
         revision?: number;
@@ -415,6 +420,9 @@ export interface ReplayApiMod {
         id: string;
     }): Promise<Chart>;
     "readRenderState"(): Promise<RenderJobState | null>;
+    "readRenderVideo"(request: {
+        jobId: string;
+    }): Promise<ReceivedFile>;
     "readReplayState"(): Promise<ReplayState>;
     "readRunJudgmentTimelines"(request: {
         runIds: Array<string>;
@@ -449,6 +457,9 @@ export interface ReplayApiMod {
     "retainMicrophoneRecording"(request: {
         runId: string;
     }): Promise<RetainResult>;
+    "revealRenderFile"(request: {
+        jobId: string;
+    }): Promise<boolean>;
     "startCalibration"(): Promise<CalibrationState>;
     "startCalibrationPreview"(request: {
         operationId: string;

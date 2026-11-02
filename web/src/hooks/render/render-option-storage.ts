@@ -13,6 +13,7 @@ const fields = [
   "captureAudio",
   "audioGainDb",
   "endDelaySeconds",
+  "outputDirectory",
   "includeWebcam",
   "includeMicrophone",
 ] as const satisfies readonly (keyof RenderOptions)[];
