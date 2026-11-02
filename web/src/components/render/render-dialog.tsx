@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RenderOptionsForm } from "@/components/render/render-options-form";
+import { RenderVideoPreview } from "@/components/render/render-video-preview";
 import type { useRenderControl } from "@/hooks/render/use-render-control";
 import { Button } from "@/shared/ui/button";
 import {
@@ -13,6 +15,8 @@ import { Progress } from "@/shared/ui/progress";
 
 export function RenderDialog({ control }: { control: ReturnType<typeof useRenderControl> }) {
   const { t, i18n } = useTranslation("render");
+  const [openError, setOpenError] = useState(false);
+  const [opening, setOpening] = useState(false);
   const unavailable = control.health ? !control.health.orbitAvailable : false;
   const knownError =
     control.errorCode && i18n.exists(`errors.${control.errorCode}`, { ns: "render" })
@@ -59,7 +63,7 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
         <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-1">
           {!completed && !control.busy ? <RenderOptionsForm control={control} /> : null}
           <div aria-live="polite" className="space-y-2 text-sm">
-            {control.phase !== "idle" ? (
+            {control.phase !== "idle" && !completed ? (
               <p className="font-medium">{t(`status.${control.phase}`)}</p>
             ) : null}
             {control.busy ? (
@@ -104,12 +108,49 @@ export function RenderDialog({ control }: { control: ReturnType<typeof useRender
                 ) : null}
               </div>
             ) : null}
+            {completed && control.job?.jobId ? (
+              <RenderVideoPreview
+                key={control.job.jobId}
+                jobId={control.job.jobId}
+                readVideo={control.readRenderVideo}
+              />
+            ) : null}
             {completed && (control.job?.localOutputPath || control.job?.outputFile) ? (
               <div className="rounded-lg bg-muted/40 p-3">
                 <p className="mb-1 text-xs font-medium">{t("savedTo")}</p>
                 <p className="break-all text-xs leading-relaxed text-muted-foreground">
                   {control.job.localOutputPath || control.job.outputFile}
                 </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[false, true].map((reveal) => (
+                    <Button
+                      key={String(reveal)}
+                      type="button"
+                      variant="outline"
+                      disabled={opening}
+                      onClick={async () => {
+                        const jobId = control.job?.jobId;
+                        if (!jobId) return;
+                        setOpening(true);
+                        setOpenError(false);
+                        try {
+                          if (!(await control.openRenderOutput(jobId, reveal))) setOpenError(true);
+                        } catch {
+                          setOpenError(true);
+                        } finally {
+                          setOpening(false);
+                        }
+                      }}
+                    >
+                      {t(reveal ? "revealRenderFile" : "openRenderFile")}
+                    </Button>
+                  ))}
+                </div>
+                {openError ? (
+                  <p role="alert" className="mt-2 text-xs text-destructive">
+                    {t("openRenderFileError")}
+                  </p>
+                ) : null}
               </div>
             ) : null}
           </div>

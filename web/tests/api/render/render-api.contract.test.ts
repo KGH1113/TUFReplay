@@ -97,6 +97,7 @@ describe("TUFReplay render IPC contract", () => {
       width: 2560,
       height: 1440,
       simulationFps: 480,
+      outputDirectory: "~/Videos/Custom",
     });
 
     expect(started).toMatchObject({ jobId: "job-1", state: "exporting", progress: 0 });
@@ -106,6 +107,7 @@ describe("TUFReplay render IPC contract", () => {
         params: {
           runId: "run-1",
           options: {
+            outputDirectory: "~/Videos/Custom",
             width: 2560,
             height: 1440,
             targetFps: 480,
@@ -127,6 +129,58 @@ describe("TUFReplay render IPC contract", () => {
           },
         },
       },
+    ]);
+  });
+
+  test("chooses a game-side output folder and preserves cancellation", async () => {
+    let selected: string | null = "C:\\Videos\\My renders";
+    const api = createRenderApi(clients(() => selected));
+    expect(await api.chooseOutputDirectory()).toMatchObject({
+      pending: false,
+      outputDirectory: selected,
+    });
+    selected = null;
+    expect(await api.chooseOutputDirectory()).toMatchObject({
+      pending: false,
+      outputDirectory: null,
+    });
+  });
+
+  test("requests only the completed render video by job id", async () => {
+    const calls: unknown[] = [];
+    const file = {
+      name: "render.mp4",
+      type: "video/mp4",
+      size: 0,
+      stream: () => new ReadableStream(),
+    };
+    const api = createRenderApi(
+      clients((method, params) => {
+        calls.push({ method, params });
+        return file;
+      }),
+    );
+    expect(await api.readRenderVideo("job-1")).toMatchObject({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+    });
+    expect(calls).toEqual([{ method: "readRenderVideo", params: { jobId: "job-1" } }]);
+  });
+
+  test("opens or reveals the completed render on the game computer", async () => {
+    const calls: unknown[] = [];
+    const api = createRenderApi(
+      clients((method, params) => {
+        calls.push({ method, params });
+        return true;
+      }),
+    );
+    expect(await api.openRenderFile("job-1")).toBe(true);
+    expect(await api.revealRenderFile("job-1")).toBe(true);
+    expect(calls).toEqual([
+      { method: "openRenderFile", params: { jobId: "job-1" } },
+      { method: "revealRenderFile", params: { jobId: "job-1" } },
     ]);
   });
 

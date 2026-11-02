@@ -189,6 +189,30 @@ export function useRenderControl() {
     }
   }, [renderer]);
 
+  const chooseOutputDirectory = useCallback(async () => {
+    const currentGeneration = generation.current;
+    const result = await (await renderer()).chooseOutputDirectory();
+    if (
+      result.outputDirectory != null &&
+      activeRef.current &&
+      generation.current === currentGeneration
+    )
+      setOptions((current) => ({ ...current, outputDirectory: result.outputDirectory ?? "" }));
+  }, [renderer]);
+
+  const readRenderVideo = useCallback(
+    async (jobId: string) => (await renderer()).readRenderVideo(jobId),
+    [renderer],
+  );
+
+  const openRenderOutput = useCallback(
+    async (jobId: string, reveal: boolean) => {
+      const api = await renderer();
+      return reveal ? api.revealRenderFile(jobId) : api.openRenderFile(jobId);
+    },
+    [renderer],
+  );
+
   const busy =
     phase === "exporting" ||
     phase === "preparing" ||
@@ -200,6 +224,9 @@ export function useRenderControl() {
     levelPath,
     options,
     setOptions,
+    chooseOutputDirectory,
+    readRenderVideo,
+    openRenderOutput,
     health,
     settings,
     phase,

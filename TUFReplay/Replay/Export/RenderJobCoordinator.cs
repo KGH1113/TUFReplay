@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
-using Newtonsoft.Json;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
 
@@ -108,6 +108,68 @@ public static class RenderJobCoordinator
         return null;
       }
       return Status(_job);
+    }
+  }
+
+  public static bool OpenOutput(string jobId, bool reveal)
+  {
+    string path;
+    lock (Gate)
+    {
+      if (_job == null || _job.Id != jobId || _job.State != "completed" || string.IsNullOrEmpty(_job.OutputFile))
+        throw Domain("render_job_not_found", "The completed render is no longer available.");
+      path = _job.OutputFile;
+    }
+    if (!File.Exists(path))
+      throw Domain("render_output_missing", "The rendered video no longer exists.");
+    try
+    {
+      var windows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+        System.Runtime.InteropServices.OSPlatform.Windows
+      );
+      var mac = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+        System.Runtime.InteropServices.OSPlatform.OSX
+      );
+      var start = new ProcessStartInfo { UseShellExecute = true };
+      if (windows && reveal)
+      {
+        start.FileName = "explorer.exe";
+        start.Arguments = "/select,\"" + path + "\"";
+      }
+      else if (windows)
+        start.FileName = path;
+      else
+      {
+        start.FileName = mac ? "/usr/bin/open" : "xdg-open";
+        var target = reveal && !mac ? Path.GetDirectoryName(path) : path;
+        start.Arguments =
+          (mac && reveal ? "-R " : "") + "\"" + target.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+      }
+      Process.Start(start);
+      return true;
+    }
+    catch (Exception)
+    {
+      throw Domain("render_output_open_failed", "Could not open the rendered file. Check the computer running ADOFAI.");
+    }
+  }
+
+  public static AdofaiIpc.IpcFile ReadVideo(string jobId)
+  {
+    lock (Gate)
+    {
+      if (_job == null || _job.Id != jobId || _job.State != "completed" || string.IsNullOrEmpty(_job.OutputFile))
+        throw Domain("render_job_not_found", "The completed render is no longer available.");
+      var path = _job.OutputFile;
+      if (!File.Exists(path))
+        throw Domain("render_output_missing", "The rendered video no longer exists.");
+      var extension = Path.GetExtension(path).ToLowerInvariant();
+      var mime =
+        extension == ".webm" ? "video/webm"
+        : extension == ".mov" ? "video/quicktime"
+        : extension == ".mkv" ? "video/x-matroska"
+        : "video/mp4";
+      return AdofaiIpc.IpcFile.FromPath(path, mime);
     }
   }
 
@@ -221,7 +283,7 @@ public static class RenderJobCoordinator
       Fail(job, "render_manifest_missing", "The recording bundle is incomplete. Start rendering again.", null);
       return;
     }
-    var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptionsJson(job.Options));
+    var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptions(job.Options));
     if (!result.Ok)
     {
       Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
@@ -366,30 +428,38 @@ public static class RenderJobCoordinator
         File = error.File,
       };
 
-  private static string BuildOptionsJson(RenderRequest options) =>
-    JsonConvert.SerializeObject(
-      new
-      {
-        targetFps = options.TargetFps,
-        videoFps = options.VideoFps,
-        width = options.Width,
-        height = options.Height,
-        bitrateMbps = options.BitrateMbps,
-        videoCodec = options.VideoCodec,
-        bitDepth = options.BitDepth,
-        captureAudio = options.CaptureAudio,
-        audioGainDb = options.AudioGainDb,
-        endDelaySeconds = options.EndDelaySeconds,
-        bgaMode = options.BgaMode,
-        showPlanetRings = options.ShowPlanetRings,
-        showSongTitle = options.ShowSongTitle,
-        showCountdown = options.ShowCountdown,
-        showResultText = options.ShowResultText,
-        showHitJudgments = options.ShowHitJudgments,
-        // The companion render dialog always keeps OrbitRender's own overlay.
-        showModOverlay = true,
-      }
-    );
+  private static OrbitRenderOptions BuildOptions(RenderRequest options) =>
+    new OrbitRenderOptions
+    {
+      NoPreview = true,
+      OutputDirectory =
+        !options.OutputDirectory.IsSpecified || string.IsNullOrWhiteSpace(options.OutputDirectory.Value)
+          ? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+            "Videos",
+            "A Dance of Fire and Ice",
+            "TUFReplay"
+          )
+          : options.OutputDirectory.Value,
+      TargetFps = options.TargetFps,
+      VideoFps = options.VideoFps,
+      Width = options.Width,
+      Height = options.Height,
+      BitrateMbps = options.BitrateMbps,
+      VideoCodec = options.VideoCodec,
+      BitDepth = options.BitDepth,
+      CaptureAudio = options.CaptureAudio,
+      AudioGainDb = options.AudioGainDb,
+      EndDelaySeconds = options.EndDelaySeconds,
+      BgaMode = options.BgaMode,
+      ShowPlanetRings = options.ShowPlanetRings,
+      ShowSongTitle = options.ShowSongTitle,
+      ShowCountdown = options.ShowCountdown,
+      ShowResultText = options.ShowResultText,
+      ShowHitJudgments = options.ShowHitJudgments,
+      // The companion render dialog always keeps OrbitRender's own overlay.
+      ShowModOverlay = true,
+    };
 
   private static void ValidateOptions(RenderRequest options)
   {

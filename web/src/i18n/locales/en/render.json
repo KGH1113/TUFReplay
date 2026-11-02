@@ -208,6 +208,7 @@
     "orbit_version_unknown": "Could not verify the active OrbitRender version. Install OrbitRender 2.6.2 or later and restart ADOFAI.",
     "renderer_unavailable": "OrbitRender is turned off. Enable it in UnityModManager and try again.",
     "renderer_version_unsupported": "OrbitRender 2.6.2 or later is required. Update it from Downloads, then restart ADOFAI.",
+    "renderer_output_directory_unsupported": "Update OrbitRender and restart ADOFAI to use the save folder.",
     "renderer_invalid_response": "OrbitRender returned an unexpected response. Update TUFReplay and OrbitRender together, then restart ADOFAI.",
     "render_job_not_found": "This render is no longer available. Start rendering again.",
     "render_job_finished": "This render has already finished.",
@@ -221,6 +222,10 @@
     "render_cancelled": "Rendering was cancelled."
   },
   "completedDescription": "OrbitRender finished the video. The output path is shown below.",
+  "videoPreviewLoad": "Load video preview",
+  "videoPreviewLoading": "Loading video…",
+  "videoPreviewHelp": "The video is transferred from the computer running the game. Large videos may take time.",
+  "videoPreviewError": "The video could not be loaded or played. Open the saved file directly.",
   "sections": {
     "save": "Save location",
     "video": "Video",
@@ -249,6 +254,14 @@
     "showHitJudgments": "Hit judgments"
   },
   "outputDirectory": "Save folder",
+  "outputDirectoryDefaultHelp": "Leave empty to save to ~/Videos/A Dance of Fire and Ice/TUFReplay on the computer running the game.",
+  "outputDirectoryPickerError": "Could not open the folder picker. Check ADOFAI or enter a path manually.",
+  "folderHandoff": {
+    "title": "Switch to ADOFAI",
+    "description": "Use the folder picker on the computer running ADOFAI. This notice closes when you select a folder or cancel.",
+    "or": "or",
+    "dismiss": "Dismiss notice"
+  },
   "outputDirectoryPlaceholder": "Choose a folder or enter its local path",
   "outputDirectoryHelp": "The finished video is saved in this folder on the computer running ADOFAI.",
   "chooseDirectory": "Choose…",
@@ -256,6 +269,9 @@
   "openSaveLocation": "Open save location",
   "openingDirectory": "Opening…",
   "savedTo": "Saved to",
+  "openRenderFile": "Open file",
+  "revealRenderFile": "Show in folder",
+  "openRenderFileError": "Could not open the file. Check its path on the computer running ADOFAI.",
   "retry": "Try again",
   "customResolution": "Custom",
   "videoCodec": "Codec",
