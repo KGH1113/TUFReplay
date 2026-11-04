@@ -77,15 +77,15 @@ namespace ReplayApi {
   model MicrophoneDevice { id: string; name: string; minFrequency: int32; maxFrequency: int32; bluetooth: boolean; }
   model MicrophoneDevices {
     enabled: boolean; toggleLocked: boolean; devices: MicrophoneDevice[]; defaultDeviceBluetooth: boolean;
-    selectedDeviceId: string | null; microphoneOffsetMs: int32; microphoneVolumeDb: int32;
+    selectedDeviceId: string | null; microphoneOffsetMs: int32; microphoneVolumeDb: float64;
   }
-  model MicrophoneTiming { microphoneOffsetMs: int32; microphoneVolumeDb: int32; }
+  model MicrophoneTiming { microphoneOffsetMs: int32; microphoneVolumeDb: float64; }
   model CalibrationState {
     operationId: string | null;
     state: "idle" | "arming" | "opening_level" | "waiting_for_run" | "recording" | "processing" | "editing" | "preview_starting" | "preview_playing" | "error";
     errorCode: string | null; message: string | null; durationMs: float64;
     playbackPositionMs: float64; resultRevision: int32;
-    microphoneOffsetMs: int32; microphoneVolumeDb: int32;
+    microphoneOffsetMs: int32; microphoneVolumeDb: float64;
   }
   model CalibrationResult {
     operationId: string; revision: int32; durationMs: float64;
@@ -172,14 +172,14 @@ namespace ReplayApi {
   op changeMicrophoneAccess(enabled: boolean): MicrophoneDevices;
   op chooseMicrophoneDevice(deviceId: string | null): MicrophoneDevices;
   op changeMicrophoneOffset(offsetMs: int32): MicrophoneTiming;
-  op changeMicrophoneVolume(volumeDb: int32): MicrophoneTiming;
+  op changeMicrophoneVolume(volumeDb: float64): MicrophoneTiming;
   op startCalibration(): CalibrationState;
   op readCalibrationState(operationId: string): CalibrationState;
   op readCalibrationResult(operationId: string, revision?: int32): CalibrationResult;
   op startCalibrationPreview(operationId: string): CalibrationState;
   op stopCalibrationPreview(operationId: string): CalibrationState;
   op changeCalibrationOffset(operationId: string, offsetMs: int32): CalibrationState;
-  op changeCalibrationVolume(operationId: string, volumeDb: int32): CalibrationState;
+  op changeCalibrationVolume(operationId: string, volumeDb: float64): CalibrationState;
   op closeCalibration(operationId: string): CalibrationState;
   op refreshWebcamState(refreshDevices?: boolean): WebcamState;
   op changeWebcamSettings(settings: WebcamSettings): WebcamState;

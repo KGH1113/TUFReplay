@@ -38,7 +38,7 @@ public partial class RecordingFeature
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
   private bool _microphoneCaptureStarted;
-  private MicrophoneTimelineAnchor? _microphoneTimelineAnchor;
+  private MicrophoneCaptureTimeline _microphoneTimeline;
   private PendingMicrophoneDisposition _pendingEditorRecording;
   private bool _calibrationRun;
 
@@ -58,6 +58,7 @@ public partial class RecordingFeature
     _clearReached = true;
     Session.MarkWonReached();
     ObserveWebcamWon();
+    ObserveMicrophoneWon();
     if (_calibrationRun)
       return;
     Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
@@ -423,7 +424,7 @@ public partial class RecordingFeature
     _currentRun = null;
     _runPersistence = Task.FromResult(false);
     _microphoneCaptureStarted = false;
-    _microphoneTimelineAnchor = null;
+    _microphoneTimeline = null;
     _webcamCaptureStarted = false;
     _webcamTimeline = null;
     _persistFailedWebcam = false;

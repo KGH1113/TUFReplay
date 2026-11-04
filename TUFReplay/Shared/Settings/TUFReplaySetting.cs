@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using TUFReplay.Replay.Playback;
 using TUFReplay.Webcam.Models;
 
 namespace TUFReplay;
@@ -11,15 +12,15 @@ public sealed class TUFReplaySetting
   public const int CurrentMicrophoneOffsetConventionVersion = 1;
   public const int MinMicrophoneOffsetMs = -500;
   public const int MaxMicrophoneOffsetMs = 500;
-  public const int MinMicrophoneVolumeDb = -20;
-  public const int MaxMicrophoneVolumeDb = 30;
+  public const double MinMicrophoneVolumeDb = MicrophoneGain.MinDecibels;
+  public const double MaxMicrophoneVolumeDb = MicrophoneGain.MaxDecibels;
 
   public bool AutoRecord { get; set; } = true;
   public bool MicrophoneEnabled { get; set; } = true;
   public string MicrophoneDeviceId { get; set; }
   public int MicrophoneOffsetMs { get; set; }
   public int MicrophoneOffsetConventionVersion { get; set; } = CurrentMicrophoneOffsetConventionVersion;
-  public int MicrophoneVolumeDb { get; set; }
+  public double MicrophoneVolumeDb { get; set; }
 
   public bool WebcamEnabled { get; set; }
   public string WebcamDeviceId { get; set; }
@@ -71,7 +72,7 @@ public sealed class TUFReplaySetting
   public void Normalize()
   {
     MicrophoneOffsetMs = Math.Max(MinMicrophoneOffsetMs, Math.Min(MaxMicrophoneOffsetMs, MicrophoneOffsetMs));
-    MicrophoneVolumeDb = Math.Max(MinMicrophoneVolumeDb, Math.Min(MaxMicrophoneVolumeDb, MicrophoneVolumeDb));
+    MicrophoneVolumeDb = MicrophoneGain.Normalize(MicrophoneVolumeDb);
     WebcamOffsetMs = Math.Max(-1000, Math.Min(1000, WebcamOffsetMs));
     WebcamRecordingLimitMb = Math.Max(64, Math.Min(8192, WebcamRecordingLimitMb));
     WebcamRetentionDays = Math.Max(0, Math.Min(30, WebcamRetentionDays));
@@ -93,10 +94,10 @@ public sealed class TUFReplaySetting
   private static double NormalizeFraction(double value, double fallback, double min, double max) =>
     double.IsNaN(value) || double.IsInfinity(value) ? fallback : Math.Max(min, Math.Min(max, value));
 
-  private static int LegacyVolumePercentToDb(double volumePercent)
+  private static double LegacyVolumePercentToDb(double volumePercent)
   {
     if (volumePercent <= 0d)
       return MinMicrophoneVolumeDb;
-    return (int)Math.Round(20d * Math.Log10(volumePercent / 100d));
+    return MicrophoneGain.Normalize(20d * Math.Log10(volumePercent / 100d));
   }
 }

@@ -63,5 +63,23 @@ CREATE TABLE IF NOT EXISTS microphone_legacy_imports (
 );
 PRAGMA user_version = 1;";
     command.ExecuteNonQuery();
+    EnsureTimelineColumn(connection);
+  }
+
+  // Added in place so the schema stays at version 1 and older builds, which name
+  // their columns explicitly, can still read and write the file.
+  private static void EnsureTimelineColumn(SqliteConnection connection)
+  {
+    using (SqliteCommand columns = connection.CreateCommand())
+    {
+      columns.CommandText = "PRAGMA table_info(microphone_recordings);";
+      using SqliteDataReader reader = columns.ExecuteReader();
+      while (reader.Read())
+        if (string.Equals(reader.GetString(1), "timeline_json", StringComparison.Ordinal))
+          return;
+    }
+    using SqliteCommand alter = connection.CreateCommand();
+    alter.CommandText = "ALTER TABLE microphone_recordings ADD COLUMN timeline_json TEXT";
+    alter.ExecuteNonQuery();
   }
 }

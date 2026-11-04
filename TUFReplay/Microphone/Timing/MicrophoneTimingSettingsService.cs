@@ -1,5 +1,6 @@
 using System;
 using TUFReplay.Microphone.Devices;
+using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Transport;
 using TUFReplay.Shared.Settings;
@@ -9,7 +10,7 @@ namespace TUFReplay.Microphone.Timing;
 public sealed class MicrophoneTimingSettingsState
 {
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
+  public double MicrophoneVolumeDb;
 }
 
 public static class MicrophoneTimingSettingsService
@@ -40,7 +41,7 @@ public static class MicrophoneTimingSettingsService
   }
 
   public static bool TrySetVolume(
-    int volumeDb,
+    double volumeDb,
     out MicrophoneTimingSettingsState state,
     out string errorCode,
     out string errorMessage
@@ -68,15 +69,12 @@ public static class MicrophoneTimingSettingsService
     return GetState();
   }
 
-  public static MicrophoneTimingSettingsState SetVolume(int volumeDb)
+  public static MicrophoneTimingSettingsState SetVolume(double volumeDb)
   {
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
     if (settings == null)
       return GetState();
-    settings.MicrophoneVolumeDb = Math.Max(
-      TUFReplaySetting.MinMicrophoneVolumeDb,
-      Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
-    );
+    settings.MicrophoneVolumeDb = MicrophoneGain.Normalize(volumeDb);
     TUFReplaySettingStore.Save();
     ReplaySessionService.UpdateActiveMicrophoneVolume(settings.MicrophoneVolumeDb);
     return GetState();

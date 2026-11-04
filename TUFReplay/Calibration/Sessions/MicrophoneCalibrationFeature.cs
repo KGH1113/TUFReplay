@@ -189,7 +189,7 @@ public sealed class MicrophoneCalibrationFeature
     return GetStatus();
   }
 
-  public MicrophoneCalibrationStatus SetVolume(string operationId, int volumeDb)
+  public MicrophoneCalibrationStatus SetVolume(string operationId, double volumeDb)
   {
     if (!_state.IsCurrent(operationId))
       return _state.StaleOperation();

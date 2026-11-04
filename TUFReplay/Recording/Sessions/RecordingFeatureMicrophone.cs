@@ -23,41 +23,71 @@ public partial class RecordingFeature
       completed?.Invoke(null);
       return;
     }
-    MicrophoneTimelineAnchor? anchor = _microphoneTimelineAnchor;
+    MicrophoneCaptureTimeline timeline = _microphoneTimeline;
+    bool frozenStart = Session.GameplayStartedFrozen;
     _microphoneCaptureStarted = false;
-    _microphoneTimelineAnchor = null;
+    _microphoneTimeline = null;
 
     if (FeatureRegistry.MicrophoneRecording == null)
     {
       completed?.Invoke(null);
       return;
     }
+    // The detached timeline receives no more observations, so the finalization
+    // thread can read it.
     FeatureRegistry.MicrophoneRecording.EndRun(recording =>
     {
-      if (recording != null)
+      if (recording != null && !TryAlignMicrophoneRecording(recording, timeline, frozenStart))
       {
-        if (!anchor.HasValue || recording.CaptureStartTimestampTicks <= 0)
-        {
-          Main.Instance?.Log("[Recording/Microphone] Discarded recording without a capture timeline anchor.");
-          FeatureRegistry.MicrophoneRecording?.Discard(recording);
-          completed?.Invoke(null);
-          return;
-        }
-
-        recording.CaptureStartOffsetUs = anchor.Value.ToCaptureStartOffsetUs(recording.CaptureStartTimestampTicks);
-        Main.Instance?.Log(
-          "[Recording/Microphone] Capture aligned. runId="
-            + recording.RunId
-            + ", timelineUs="
-            + anchor.Value.TimelineTimeUs
-            + ", rate="
-            + anchor.Value.GameplayRate
-            + ", captureOffsetUs="
-            + recording.CaptureStartOffsetUs
-        );
+        FeatureRegistry.MicrophoneRecording?.Discard(recording);
+        completed?.Invoke(null);
+        return;
       }
       completed?.Invoke(recording);
     });
+  }
+
+  private static bool TryAlignMicrophoneRecording(
+    CapturedMicrophoneRecording recording,
+    MicrophoneCaptureTimeline timeline,
+    bool frozenStart
+  )
+  {
+    if (timeline == null || !timeline.HasAnchor || recording.CaptureStartTimestampTicks <= 0)
+    {
+      Main.Instance?.Log("[Recording/Microphone] Discarded recording without a capture timeline anchor.");
+      return false;
+    }
+
+    try
+    {
+      recording.Timeline = timeline.Build(recording.CaptureStartTimestampTicks, frozenStart);
+      recording.CaptureStartOffsetUs = MicrophoneCaptureTimeline.ToCaptureStartOffsetUs(recording.Timeline);
+    }
+    catch (Exception exception) when (exception is InvalidOperationException || exception is OverflowException)
+    {
+      Main.Instance?.Log(
+        "[Recording/Microphone] Discarded recording with an invalid timeline. error=" + exception.Message
+      );
+      return false;
+    }
+
+    MicrophoneTimelinePoint first = recording.Timeline.Points[0];
+    Main.Instance?.Log(
+      "[Recording/Microphone] Capture aligned. runId="
+        + recording.RunId
+        + ", timelineUs="
+        + first.TimelineTimeUs
+        + ", rate="
+        + first.GameplayRate
+        + ", captureOffsetUs="
+        + recording.CaptureStartOffsetUs
+        + ", points="
+        + recording.Timeline.Points.Length
+        + ", audibleFromUs="
+        + (recording.Timeline.AudibleFromUs?.ToString() ?? "start")
+    );
+    return true;
   }
 
   private void StartMicrophoneRun()
@@ -66,20 +96,26 @@ public partial class RecordingFeature
       return;
 
     _microphoneCaptureStarted = FeatureRegistry.MicrophoneRecording?.BeginRun(_currentRun.Id) == true;
+    _microphoneTimeline = _microphoneCaptureStarted ? new MicrophoneCaptureTimeline() : null;
   }
 
-  internal void TryAnchorMicrophoneTimeline()
+  // Called only after a fresh, advancing conductor update. Reuse the exact pair
+  // used to map native input; reading songposition in PlayerControl_Update can
+  // pair a stale position with a later frame, especially on frozen-start release.
+  internal void ObserveCaptureTimelines()
   {
-    ObserveWebcamTimeline();
-    if (!_microphoneCaptureStarted || _microphoneTimelineAnchor.HasValue)
+    if (!_webcamCaptureStarted && _microphoneTimeline == null)
       return;
-
-    // Called only after a fresh, advancing conductor update. Reuse the exact pair
-    // used to map native input; reading songposition in PlayerControl_Update can
-    // pair a stale position with a later frame, especially on frozen-start release.
     if (!Session.TryGetInputTimelineAnchor(out long captureTicks, out long timelineUs, out double rate))
       return;
-    _microphoneTimelineAnchor = new MicrophoneTimelineAnchor(captureTicks, timelineUs, rate);
+    ObserveWebcamTimeline(captureTicks, timelineUs, rate);
+    _microphoneTimeline?.Observe(captureTicks, timelineUs, rate);
+  }
+
+  private void ObserveMicrophoneWon()
+  {
+    if (_microphoneTimeline != null && Session.Data.WonTimeUs.HasValue)
+      _microphoneTimeline.ObserveWon(Session.Data.WonTimeUs.Value);
   }
 
   private void QueueEditorRecording()

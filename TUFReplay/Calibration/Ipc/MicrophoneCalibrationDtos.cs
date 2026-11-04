@@ -12,7 +12,7 @@ public sealed class MicrophoneCalibrationStatusDto
   public double PlaybackPositionMs;
   public int ResultRevision;
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
+  public double MicrophoneVolumeDb;
 
   public static MicrophoneCalibrationStatusDto From(MicrophoneCalibrationStatus status)
   {

@@ -52,6 +52,7 @@ internal static class MicrophoneCalibrationSuite
     TestMicrophonePlaybackDecisions();
     TestMicrophoneTimelineAnchor();
     TestReplayMicrophoneClock();
+    TestMicrophoneTimelineTrack(root);
     TestCalibrationSettings(root);
     TestMicrophoneCalibrationState();
     TestCalibrationWaveforms(root);
@@ -360,9 +361,10 @@ internal static class MicrophoneCalibrationSuite
     return total;
   }
 
+  private static long Ticks(double seconds) => (long)Math.Round(seconds * System.Diagnostics.Stopwatch.Frequency);
+
   private static void TestMicrophoneTimelineAnchor()
   {
-    long Ticks(double seconds) => (long)Math.Round(seconds * System.Diagnostics.Stopwatch.Frequency);
     foreach (double rate in new[] { 0.75d, 1d, 1.5d, 2d })
     foreach (double frozenWait in new[] { 0d, 0.1d, 3.2d, 30d })
     foreach (double firstSampleDelay in new[] { -0.04d, 0d, 0.015d, 0.15d })
@@ -372,12 +374,10 @@ internal static class MicrophoneCalibrationSuite
       double firstSample = begin + firstSampleDelay;
       double resumed = begin + frozenWait;
       // The same conductor observation is used by native input and the mic.
-      var anchor = new MicrophoneTimelineAnchor(
-        Ticks(resumed + updateDelay),
-        (long)Math.Round(updateDelay * rate * 1_000_000d),
-        rate
-      );
-      long offsetUs = anchor.ToCaptureStartOffsetUs(Ticks(firstSample));
+      var timeline = new MicrophoneCaptureTimeline();
+      timeline.Observe(Ticks(resumed + updateDelay), (long)Math.Round(updateDelay * rate * 1_000_000d), rate);
+      MicrophoneTimeline map = timeline.Build(Ticks(firstSample), frozenStart: false);
+      long offsetUs = MicrophoneCaptureTimeline.ToCaptureStartOffsetUs(map);
       long expectedOffsetUs = (long)Math.Round((firstSample - resumed) * 1_000_000d);
       Assert(Math.Abs(offsetUs - expectedOffsetUs) <= 2, "Capture origin changed with frozen wait or frame delay.");
 
@@ -385,13 +385,240 @@ internal static class MicrophoneCalibrationSuite
       // countdown. A click one real second after release must select its WAV frame.
       long replayTimeUs = (long)Math.Round(rate * 1_000_000d);
       long actualFrame = ReplayMicrophoneClock.ToFrame(replayTimeUs, rate, offsetUs, 48000, 10_000_000);
+      long mappedFrame = MicrophonePlaybackClock.ToFrame(
+        MicrophoneTimelineMap.ToAudioTimeUs(map, replayTimeUs),
+        48000,
+        10_000_000
+      );
       long expectedFrame = (long)Math.Round((resumed + 1d - firstSample) * 48000d);
       Assert(Math.Abs(actualFrame - expectedFrame) <= 1, "Normal replay countdown shifted a frozen-start click.");
+      Assert(Math.Abs(mappedFrame - expectedFrame) <= 1, "The timeline map shifted a frozen-start click.");
     }
 
-    var negativeAnchor = new MicrophoneTimelineAnchor(Ticks(10d), -500_000L, 2d);
-    Assert(negativeAnchor.ToCaptureStartOffsetUs(Ticks(9d)) == -1_250_000L, "Negative timeline anchor was clamped.");
-    Assert(negativeAnchor.ToCaptureStartOffsetUs(Ticks(10.5d)) == 250_000L, "Late capture start lost its sign.");
+    var negative = new MicrophoneCaptureTimeline();
+    negative.Observe(Ticks(10d), -500_000L, 2d);
+    Assert(
+      MicrophoneCaptureTimeline.ToCaptureStartOffsetUs(negative.Build(Ticks(9d), false)) == -1_250_000L,
+      "Negative timeline anchor was clamped."
+    );
+    Assert(
+      MicrophoneCaptureTimeline.ToCaptureStartOffsetUs(negative.Build(Ticks(10.5d), false)) == 250_000L,
+      "Late capture start lost its sign."
+    );
+
+    TestMicrophoneTimelineJitter();
+    TestMicrophoneTimelineSections();
+    TestMicrophoneTimelineCursor();
+  }
+
+  // ADOFAI's song position lags real time by a random part of one DSP buffer.
+  // Every run must land on the same mean instead of one frame's random lag.
+  private static void TestMicrophoneTimelineJitter()
+  {
+    const double bufferSeconds = 1024d / 48000d;
+    var offsets = new List<long>();
+    foreach (double phase in new[] { 0d, 0.3d, 0.61d, 0.97d })
+    foreach (double framesPerSecond in new[] { 60d, 144d })
+    {
+      var timeline = new MicrophoneCaptureTimeline();
+      for (int frame = 0; frame < framesPerSecond * 5d; frame++)
+      {
+        // The song position only advances when the DSP clock finishes a buffer.
+        double realSeconds = 30d + frame / framesPerSecond;
+        double dspSeconds =
+          Math.Floor((realSeconds - 30d) / bufferSeconds - phase) * bufferSeconds + phase * bufferSeconds;
+        long timelineUs = (long)Math.Round(dspSeconds * 1_000_000d);
+        timeline.Observe(Ticks(realSeconds), timelineUs, 1d);
+      }
+      offsets.Add(MicrophoneCaptureTimeline.ToCaptureStartOffsetUs(timeline.Build(Ticks(29d), false)));
+    }
+    long spread = offsets.Max() - offsets.Min();
+    Assert(spread <= 2_000L, "Microphone alignment still depends on one conductor update's DSP lag.");
+    double expectedUs = -1_000_000d - bufferSeconds / 2d * 1_000_000d;
+    Assert(
+      offsets.All(offset => Math.Abs(offset - expectedUs) <= 2_000d),
+      "Microphone alignment did not average the DSP buffer lag."
+    );
+  }
+
+  private static void TestMicrophoneTimelineSections()
+  {
+    // Gameplay runs 0-3 s, pauses for 5 s, resumes, then clears at 6 s.
+    var timeline = new MicrophoneCaptureTimeline();
+    for (int frame = 0; frame <= 180; frame++)
+      timeline.Observe(Ticks(100d + frame / 60d), frame * 1_000_000L / 60L, 1d);
+    for (int frame = 0; frame <= 180; frame++)
+      timeline.Observe(Ticks(108d + frame / 60d), 3_000_000L + frame * 1_000_000L / 60L, 1d);
+    timeline.ObserveWon(6_000_000L);
+    timeline.Observe(Ticks(112d), 7_000_000L, 1d);
+    MicrophoneTimeline map = timeline.Build(Ticks(99d), frozenStart: false);
+
+    Assert(map.Points.Count(point => point.StartsSection) == 3, "Pause and clear sections were not recorded.");
+    Assert(map.AudibleFromUs == null, "A normal countdown recording was muted before gameplay.");
+    Assert(
+      Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(map, 1_000_000L) - 2_000_000d) <= 2d,
+      "Gameplay before the pause lost its microphone time."
+    );
+    Assert(
+      Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(map, 4_000_000L) - 10_000_000d) <= 2d,
+      "Audio recorded during the pause was played after it."
+    );
+    Assert(
+      Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(map, 6_500_000L) - 12_500_000d) <= 2d,
+      "The clear tail was not continuous with gameplay."
+    );
+    Assert(
+      Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(map, -500_000L) - 500_000d) <= 2d,
+      "Countdown audio before the first anchor was not extrapolated."
+    );
+
+    var pitched = new MicrophoneCaptureTimeline();
+    for (int frame = 0; frame <= 120; frame++)
+      pitched.Observe(Ticks(50d + frame / 60d), frame * 1_500_000L / 60L, 1.5d);
+    pitched.ObserveWon(3_000_000L);
+    MicrophoneTimeline pitchedMap = pitched.Build(Ticks(50d), frozenStart: true);
+    Assert(
+      Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(pitchedMap, 3_000_000L) - 2_000_000d) <= 2d,
+      "A pitched clear position used the wrong real time."
+    );
+    Assert(
+      Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(pitchedMap, 3_500_000L) - 2_500_000d) <= 2d,
+      "A pitched clear tail did not follow real time."
+    );
+    Assert(pitchedMap.AudibleFromUs == 0L, "The frozen-start pre-roll was not clamped to the start of the recording.");
+
+    var frozen = new MicrophoneCaptureTimeline();
+    frozen.Observe(Ticks(20d), 0L, 1d);
+    frozen.Observe(Ticks(20.5d), 500_000L, 1d);
+    MicrophoneTimeline frozenMap = frozen.Build(Ticks(12d), frozenStart: true);
+    Assert(
+      frozenMap.AudibleFromUs == 8_000_000L - MicrophoneCaptureTimeline.FrozenStartPrerollUs,
+      "The EnhancedCountdown wait remained audible in the replay."
+    );
+  }
+
+  private static void TestMicrophoneTimelineCursor()
+  {
+    var map = new MicrophoneTimeline
+    {
+      Points = new[]
+      {
+        new MicrophoneTimelinePoint
+        {
+          TimelineTimeUs = 0L,
+          AudioTimeUs = 1_000_000L,
+          GameplayRate = 1d,
+          StartsSection = true,
+        },
+        new MicrophoneTimelinePoint
+        {
+          TimelineTimeUs = 2_000_000L,
+          AudioTimeUs = 3_000_000L,
+          GameplayRate = 1d,
+        },
+        new MicrophoneTimelinePoint
+        {
+          TimelineTimeUs = 3_000_000L,
+          AudioTimeUs = 9_000_000L,
+          GameplayRate = 1d,
+          StartsSection = true,
+        },
+      },
+    };
+    var cursor = new MicrophoneAudioTimelineCursor(map);
+    Assert(
+      cursor.TryMap(500_000d, out double countdown) && Math.Abs(countdown + 500_000d) < 1d,
+      "Pre-roll audio moved."
+    );
+    Assert(cursor.TryMap(2_500_000d, out double gameplay) && Math.Abs(gameplay - 1_500_000d) < 1d, "Audio moved.");
+    Assert(!cursor.TryMap(6_000_000d, out _), "Paused audio was drawn on the timeline.");
+    Assert(
+      cursor.TryMap(9_500_000d, out double resumed) && Math.Abs(resumed - 3_500_000d) < 1d,
+      "Resumed audio moved."
+    );
+  }
+
+  private static void TestMicrophoneTimelineTrack(string root)
+  {
+    // One second of audio per sample value: 0-2 s gameplay, 2-5 s paused, then
+    // gameplay again. The first 0.5 s is an EnhancedCountdown wait.
+    string source = Path.Combine(root, "timeline-track-source.wav");
+    string destination = Path.Combine(root, "timeline-track.wav");
+    File.Delete(destination);
+    const int frames = 48000 * 7;
+    using (var stream = new FileStream(source, FileMode.Create, FileAccess.ReadWrite))
+    {
+      Pcm16WavWriter.WriteHeader(stream, 0L);
+      var bytes = new byte[frames * 2];
+      for (int frame = 0; frame < frames; frame++)
+      {
+        short value = (short)(frame / 48000 + 1);
+        bytes[frame * 2] = (byte)value;
+        bytes[frame * 2 + 1] = (byte)(value >> 8);
+      }
+      stream.Write(bytes, 0, bytes.Length);
+      Pcm16WavWriter.WriteHeader(stream, frames);
+    }
+
+    var recording = new StoredMicrophoneRecording
+    {
+      FilePath = source,
+      Format = "wav/pcm16",
+      SampleRate = 48000,
+      Channels = 1,
+      FrameCount = frames,
+      ByteLength = new FileInfo(source).Length,
+      Timeline = new MicrophoneTimeline
+      {
+        Points = new[]
+        {
+          new MicrophoneTimelinePoint
+          {
+            TimelineTimeUs = 0L,
+            AudioTimeUs = 600_000L,
+            GameplayRate = 1d,
+            StartsSection = true,
+          },
+          new MicrophoneTimelinePoint
+          {
+            TimelineTimeUs = 1_400_000L,
+            AudioTimeUs = 5_000_000L,
+            GameplayRate = 1d,
+            StartsSection = true,
+          },
+        },
+        AudibleFromUs = 500_000L,
+      },
+    };
+    Assert(MicrophoneTimelineTrack.NeedsRewrite(recording), "A paused recording was exported unchanged.");
+    long written = MicrophoneTimelineTrack.Rewrite(recording, destination, CancellationToken.None);
+    Assert(written == frames - 48000 * 3, "The paused audio was not cut from the render track.");
+
+    byte[] output = File.ReadAllBytes(destination);
+    short At(double seconds)
+    {
+      int offset = 44 + (int)(seconds * 48000) * 2;
+      return (short)(output[offset] | (output[offset + 1] << 8));
+    }
+    Assert(At(0.25d) == 0, "The frozen-start wait was audible in the render track.");
+    Assert(At(0.75d) == 1, "Audio after the first input was silenced.");
+    Assert(At(1.5d) == 2, "Gameplay audio before the pause moved.");
+    Assert(At(2.5d) == 6, "Gameplay audio after the pause was not joined to the timeline.");
+
+    recording.Timeline = new MicrophoneTimeline
+    {
+      Points = new[]
+      {
+        new MicrophoneTimelinePoint
+        {
+          TimelineTimeUs = 0L,
+          AudioTimeUs = 600_000L,
+          GameplayRate = 1d,
+          StartsSection = true,
+        },
+      },
+    };
+    Assert(!MicrophoneTimelineTrack.NeedsRewrite(recording), "A continuous recording was rewritten.");
   }
 
   private static void TestReplayMicrophoneClock()
@@ -471,6 +698,73 @@ internal static class MicrophoneCalibrationSuite
       ReplayMicrophoneClock.ToFrame(wonSnapshot, -1_000_000L, 48000, 200000) == 120000,
       "Playback snapshot did not switch to real time after won."
     );
+
+    // ADOFAI judges input against song audio mixed one input offset earlier. A
+    // calibrated click must be mixed with that audio, not one offset later.
+    var legacyRecording = new StoredMicrophoneRecording { CaptureStartOffsetUs = -1_000_000L };
+    var offsetSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, false, true, 10d, 80_000L);
+    Assert(
+      Math.Abs(MicrophonePlaybackClock.ToAudioTimeUs(legacyRecording, offsetSnapshot, 500_000L, 20_000L) - 1_600_000d)
+        < 1d,
+      "The game input offset did not move microphone playback to the judged position."
+    );
+    var mappedRecording = new StoredMicrophoneRecording
+    {
+      CaptureStartOffsetUs = -1_000_000L,
+      Timeline = new MicrophoneTimeline
+      {
+        Points = new[]
+        {
+          new MicrophoneTimelinePoint
+          {
+            TimelineTimeUs = 0L,
+            AudioTimeUs = 1_000_000L,
+            GameplayRate = 1d,
+            StartsSection = true,
+          },
+        },
+        AudibleFromUs = 900_000L,
+      },
+    };
+    Assert(
+      Math.Abs(MicrophonePlaybackClock.ToAudioTimeUs(mappedRecording, offsetSnapshot, 500_000L, 20_000L) - 1_600_000d)
+        < 1d,
+      "Timeline-mapped playback ignored the game input offset."
+    );
+    Assert(
+      MicrophonePlaybackClock.AudibleFromFrame(mappedRecording, 48000) == 43200,
+      "The audible start frame is wrong."
+    );
+    Assert(MicrophonePlaybackClock.AudibleFromFrame(legacyRecording, 48000) == 0L, "Old recordings were muted.");
+
+    var dspSnapshot = new ReplayPlaybackSnapshot(1_000_000L, 1.5d, 1.5d, null, false, true, 20d, 0L);
+    Assert(dspSnapshot.TimelineTimeAtDspUs(20.1d) == 1_150_000L, "DSP-scheduled timeline position is wrong.");
+    Assert(
+      new ReplayPlaybackSnapshot(1_000_000L, 1d, 1d, null, paused: false).TimelineTimeAtDspUs(21d) == 1_000_000L,
+      "A snapshot without a DSP time extrapolated."
+    );
+
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldResync(48_000L, 48_500L, 0L, 1_440),
+      "A source within the resync threshold was restarted."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.ShouldResync(288_000L, 48_500L, 0L, 1_440),
+      "A source playing across a recorded pause was not rescheduled."
+    );
+    Assert(
+      !ReplayMicrophonePlaybackDecisions.ShouldResync(1_000L, 43_200L, 43_200L, 1_440),
+      "A source waiting at the frozen-start boundary was restarted."
+    );
+
+    Assert(
+      MicrophoneCaptureChunking.RefineStartTimestamp(1_000L, 2_000L, 48_000, 48_000, 1_000L) == 1_000L,
+      "A later device reading moved the first sample later."
+    );
+    Assert(
+      MicrophoneCaptureChunking.RefineStartTimestamp(1_000L, 1_900L, 48_000, 48_000, 1_000L) == 900L,
+      "A tighter device reading did not refine the first sample."
+    );
   }
 
   private static void TestCalibrationSettings(string root)
@@ -498,6 +792,16 @@ internal static class MicrophoneCalibrationSuite
     File.WriteAllText(percentPath, "{\"Setting\":{\"MicrophoneVolumePercent\":200}}");
     Assert(TUFReplaySetting.Load(percentPath).MicrophoneVolumeDb == 6, "Legacy percent volume was not migrated.");
 
+    string integerGainPath = Path.Combine(root, "integer-gain-settings.json");
+    File.WriteAllText(integerGainPath, "{\"Setting\":{\"MicrophoneVolumeDb\":7}}");
+    Assert(TUFReplaySetting.Load(integerGainPath).MicrophoneVolumeDb == 7d, "Integer gain settings did not load.");
+    string fractionalGainPath = Path.Combine(root, "fractional-gain-settings.json");
+    File.WriteAllText(fractionalGainPath, "{\"Setting\":{\"MicrophoneVolumeDb\":-12.34}}");
+    Assert(
+      TUFReplaySetting.Load(fractionalGainPath).MicrophoneVolumeDb == -12.3d,
+      "Gain was not rounded to OBS's 0.1 dB step."
+    );
+
     string disabledPath = Path.Combine(root, "disabled-microphone-settings.json");
     var disabled = new TUFReplaySetting { MicrophoneEnabled = false, MicrophoneDeviceId = "saved-device" };
     disabled.Save(disabledPath);
@@ -510,6 +814,16 @@ internal static class MicrophoneCalibrationSuite
     legacy.Normalize();
     Assert(legacy.MicrophoneOffsetMs == TUFReplaySetting.MaxMicrophoneOffsetMs, "Calibration offset was not clamped.");
     Assert(legacy.MicrophoneVolumeDb == TUFReplaySetting.MinMicrophoneVolumeDb, "Calibration volume was not clamped.");
+    Assert(TUFReplaySetting.MinMicrophoneVolumeDb == -30d, "Gain minimum does not match OBS's Gain filter.");
+    Assert(TUFReplaySetting.MaxMicrophoneVolumeDb == 30d, "Gain maximum does not match OBS's Gain filter.");
+    Assert(MicrophoneGain.Normalize(3.46d) == 3.5d, "Gain did not round to 0.1 dB.");
+    Assert(MicrophoneGain.Normalize(0.3d) == 0.3d, "Gain kept binary rounding residue.");
+    Assert(BitConverter.DoubleToInt64Bits(MicrophoneGain.Normalize(-0.04d)) == 0L, "Gain kept a negative zero.");
+    Assert(MicrophoneGain.Normalize(double.NaN) == 0d, "Invalid gain did not fall back to 0 dB.");
+    Assert(MicrophoneGain.Normalize(double.PositiveInfinity) == 30d, "Infinite gain was not clamped.");
+    Assert(MicrophoneGain.FromDecibels(double.NaN) == 0f, "A non-finite gain was not silent like OBS.");
+    Assert(Math.Abs(MicrophoneGain.FromDecibels(-30) - 0.031622775f) < 0.0000001f, "-30 dB gain is incorrect.");
+    Assert(Math.Abs(MicrophoneGain.FromDecibels(0.1) - 1.0115794f) < 0.000001f, "+0.1 dB gain is incorrect.");
     Assert(Math.Abs(MicrophoneGain.FromDecibels(-20) - 0.1f) < 0.0001f, "-20 dB gain is incorrect.");
     Assert(Math.Abs(MicrophoneGain.FromDecibels(0) - 1f) < 0.0001f, "0 dB gain is incorrect.");
     Assert(Math.Abs(MicrophoneGain.FromDecibels(20) - 10f) < 0.0001f, "+20 dB gain is incorrect.");
@@ -523,6 +837,8 @@ internal static class MicrophoneCalibrationSuite
     Assert(timing.MicrophoneVolumeDb == TUFReplaySetting.MinMicrophoneVolumeDb, "Timing gain was not clamped.");
     timing = MicrophoneTimingSettingsService.SetVolume(100);
     Assert(timing.MicrophoneVolumeDb == 30, "Timing gain was not clamped to +30 dB.");
+    timing = MicrophoneTimingSettingsService.SetVolume(-12.34d);
+    Assert(timing.MicrophoneVolumeDb == -12.3d, "Timing gain was not rounded to 0.1 dB.");
     TUFReplaySetting persistedTiming = TUFReplaySetting.Load(timingPath);
     Assert(persistedTiming.MicrophoneOffsetMs == timing.MicrophoneOffsetMs, "Timing offset was not persisted.");
     Assert(persistedTiming.MicrophoneVolumeDb == timing.MicrophoneVolumeDb, "Timing gain was not persisted.");
@@ -537,11 +853,11 @@ internal static class MicrophoneCalibrationSuite
     state.SetVolume(30);
     Assert(state.GetStatus().MicrophoneVolumeDb == 30, "Calibration did not accept +30 dB preview gain.");
 
-    state.BeginMeasurement("second", 3);
+    state.BeginMeasurement("second", 3.5d);
     MicrophoneCalibrationStatus second = state.GetStatus();
     Assert(second.OperationId == "second", "The second calibration operation was not started.");
     Assert(second.MicrophoneOffsetMs == 0, "The second calibration reused the previous correction.");
-    Assert(second.MicrophoneVolumeDb == 3, "The calibration microphone volume was not preserved.");
+    Assert(second.MicrophoneVolumeDb == 3.5d, "The calibration microphone volume was not preserved.");
   }
 
   private static void TestCalibrationWaveforms(string root)

@@ -27,6 +27,33 @@ enum CaptureBufferTiming {
     return CMClockConvertHostTimeToSystemUnits(hostTime)
   }
 
+  // A lost buffer would pull every later sample earlier, and an overlapping one
+  // would push them later. Silence fills a gap and overlapping frames are
+  // dropped, so each written frame stays at its capture time.
+  static let continuityToleranceFrames = 240
+  static let maximumGapFrames = 480_000
+
+  static func continuity(
+    presentationTime: CMTime,
+    expectedTime: CMTime,
+    sampleRate: Int,
+    sampleCount: Int
+  ) -> (silenceFrames: Int, skippedFrames: Int) {
+    guard presentationTime.isValid, !presentationTime.isIndefinite, expectedTime.isValid,
+      !expectedTime.isIndefinite, sampleRate > 0, sampleCount > 0
+    else { return (0, 0) }
+    let deltaSeconds = CMTimeGetSeconds(CMTimeSubtract(presentationTime, expectedTime))
+    guard deltaSeconds.isFinite else { return (0, 0) }
+    let deltaFrames = Int((deltaSeconds * Double(sampleRate)).rounded())
+    if deltaFrames > continuityToleranceFrames {
+      return (min(deltaFrames, maximumGapFrames), 0)
+    }
+    if deltaFrames < -continuityToleranceFrames {
+      return (0, min(sampleCount, -deltaFrames))
+    }
+    return (0, 0)
+  }
+
   static func beginAnchor(latestPresentationEndTime: CMTime) -> CMTime {
     guard latestPresentationEndTime.isValid, !latestPresentationEndTime.isIndefinite else {
       return .invalid
@@ -79,6 +106,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
   private var beginTime: CMTime = .invalid
   private var latestPresentationEndTime: CMTime = .invalid
   private var firstSampleHostTime: UInt64 = 0
+  private var nextWrittenPresentationTime: CMTime = .invalid
   private var activeDeviceId: String?
 
   // Opening a Bluetooth headset's microphone switches it to the hands-free profile,
@@ -178,6 +206,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     try finishWriterLocked()
     writer = try PcmWaveFileWriter(path: path)
     firstSampleHostTime = 0
+    nextWrittenPresentationTime = .invalid
     // Keep the run boundary on the delivered sample timeline. The first written
     // sample supplies its own host timestamp, independently of when begin arrived
     // or how long this capture session has already been armed.
@@ -267,7 +296,27 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
       if slice.skippedFrames > 0 {
         data = Data(data.dropFirst(slice.skippedFrames * bytesPerFrame))
       }
+    } else {
+      let continuity = CaptureBufferTiming.continuity(
+        presentationTime: presentationTime,
+        expectedTime: nextWrittenPresentationTime,
+        sampleRate: PcmWaveFile.sampleRate,
+        sampleCount: sampleCount
+      )
+      let bytesPerFrame = length / sampleCount
+      do {
+        if continuity.silenceFrames > 0 {
+          try writer.append(pcm16: Data(count: continuity.silenceFrames * bytesPerFrame))
+        }
+      } catch {
+        fputs("audio gap write failed: \(error)\n", stderr)
+      }
+      if continuity.skippedFrames >= sampleCount { return }
+      if continuity.skippedFrames > 0 {
+        data = Data(data.dropFirst(continuity.skippedFrames * bytesPerFrame))
+      }
     }
+    nextWrittenPresentationTime = latestPresentationEndTime
     do {
       try writer.append(pcm16: data)
     } catch {
@@ -324,6 +373,7 @@ final class MicrophoneCaptureService: NSObject, AVCaptureAudioDataOutputSampleBu
     let frameCount = try writer.finish()
     self.writer = nil
     beginTime = .invalid
+    nextWrittenPresentationTime = .invalid
     return frameCount
   }
 }

@@ -39,14 +39,19 @@ describe("microphone offset calibration reducer", () => {
     });
   });
 
-  test("clamps microphone volume to the preview range", () => {
+  test("clamps microphone volume to the OBS Gain filter range in 0.1 dB steps", () => {
     let state = createMicrophoneOffsetCalibrationState(0, 40);
     expect(state.microphoneVolumeDb).toBe(30);
     state = microphoneOffsetCalibrationReducer(state, {
       type: "commit_microphone_volume",
-      volumeDb: -30,
+      volumeDb: -40,
     });
-    expect(state.microphoneVolumeDb).toBe(-20);
+    expect(state.microphoneVolumeDb).toBe(-30);
+    state = microphoneOffsetCalibrationReducer(state, {
+      type: "commit_microphone_volume",
+      volumeDb: -12.34,
+    });
+    expect(state.microphoneVolumeDb).toBe(-12.3);
   });
 
   test("ignores out-of-order automatic transitions", () => {

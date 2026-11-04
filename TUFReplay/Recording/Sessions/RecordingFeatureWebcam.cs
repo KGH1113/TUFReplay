@@ -27,11 +27,9 @@ public partial class RecordingFeature
       _webcamTimeline = new WebcamCaptureTimeline();
   }
 
-  private void ObserveWebcamTimeline()
+  private void ObserveWebcamTimeline(long ticks, long timeUs, double rate)
   {
-    if (!_webcamCaptureStarted)
-      return;
-    if (Session.TryGetInputTimelineAnchor(out long ticks, out long timeUs, out double rate))
+    if (_webcamCaptureStarted)
       _webcamTimeline.Observe(new CaptureTimelineAnchor(ticks, timeUs, rate));
   }
 

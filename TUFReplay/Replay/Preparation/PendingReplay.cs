@@ -48,7 +48,7 @@ public static partial class ReplayPlaybackCoordinator
     public Pcm16WaveInfo MicrophoneWave;
     public string MicrophoneWarning;
     public int? MicrophoneOffsetMs;
-    public int? MicrophoneVolumeDb;
+    public double? MicrophoneVolumeDb;
     public bool AllowBackground;
     public WebcamRecordingLease WebcamLease;
     public string WebcamWarning;

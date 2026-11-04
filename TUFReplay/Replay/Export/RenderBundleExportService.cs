@@ -11,6 +11,8 @@ using Newtonsoft.Json.Linq;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Repositories;
 using TUFReplay.Composition;
+using TUFReplay.Microphone.Models;
+using TUFReplay.Microphone.Processing;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
@@ -297,9 +299,10 @@ public static class RenderBundleExportService
       {
         var microphone = MicrophoneRecordingRepository.CopyForPlayback(
           run.Id,
-          Path.Combine(job.Directory, "microphone.wav"),
+          Path.Combine(job.Directory, "microphone.source.wav"),
           token
         );
+        long microphoneFrames = microphone == null ? 0L : PrepareRenderMicrophone(microphone, job.Directory, token);
         if (microphone != null)
           media["microphone"] = JObject.FromObject(
             new
@@ -307,9 +310,11 @@ public static class RenderBundleExportService
               path = "microphone.wav",
               sampleRate = microphone.SampleRate,
               channels = microphone.Channels,
-              frameCount = microphone.FrameCount,
+              frameCount = microphoneFrames,
               captureStartOffsetUs = microphone.CaptureStartOffsetUs,
-              latencyUs = (long)job.Settings.MicrophoneOffsetMs * 1000,
+              // OrbitRender mixes the song from the recorded DSP clock, which runs
+              // the game input offset ahead of the judged timeline, as in game.
+              latencyUs = ((long)job.Settings.MicrophoneOffsetMs + (meta.gameInputOffsetMs ?? 0)) * 1000,
               volume = Math.Pow(10, job.Settings.MicrophoneVolumeDb / 20d),
             }
           );
@@ -531,6 +536,31 @@ public static class RenderBundleExportService
   {
     public ExportException(string code, string message)
       : base(code, message) { }
+  }
+
+  // OrbitRender places the microphone with one capture offset. Cut audio recorded
+  // during pauses and silence a frozen-start wait first, so that offset holds.
+  private static long PrepareRenderMicrophone(
+    StoredMicrophoneRecording microphone,
+    string directory,
+    CancellationToken token
+  )
+  {
+    string source = microphone.FilePath;
+    string destination = Path.Combine(directory, "microphone.wav");
+    if (!MicrophoneTimelineTrack.NeedsRewrite(microphone))
+    {
+      File.Move(source, destination);
+      return microphone.FrameCount;
+    }
+    try
+    {
+      return MicrophoneTimelineTrack.Rewrite(microphone, destination, token);
+    }
+    finally
+    {
+      File.Delete(source);
+    }
   }
 }
 

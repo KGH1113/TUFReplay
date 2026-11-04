@@ -122,6 +122,7 @@ internal sealed class MicrophoneCalibrationPreview
         DeviceId = source.DeviceId,
         CaptureStartOffsetUs = source.CaptureStartOffsetUs,
         ByteLength = new FileInfo(copyPath).Length,
+        Timeline = source.Timeline,
       };
       Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(stored);
       UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored, wave));

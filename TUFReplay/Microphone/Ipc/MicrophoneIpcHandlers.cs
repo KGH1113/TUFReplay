@@ -95,7 +95,7 @@ public static class MicrophoneIpcHandlers
     return MicrophoneTimingSettingsDto.From(state);
   }
 
-  public static MicrophoneTimingSettingsDto SetVolume(int volumeDb)
+  public static MicrophoneTimingSettingsDto SetVolume(double volumeDb)
   {
     if (
       !MicrophoneTimingSettingsService.TrySetVolume(

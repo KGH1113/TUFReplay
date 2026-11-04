@@ -15,11 +15,13 @@ import {
 import {
   formatMicrophoneVolumeDb,
   MAX_MICROPHONE_VOLUME_DB,
+  MICROPHONE_VOLUME_STEP_DB,
   MIN_MICROPHONE_VOLUME_DB,
 } from "@/models/calibration/microphone-volume";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { DialogTitle } from "@/shared/ui/dialog";
+import { Slider } from "@/shared/ui/slider";
 import type { MicrophoneOffsetCalibrationPhase } from "@/state/calibration/microphone-offset-reducer";
 
 export function TimingSettingsPanel({
@@ -57,6 +59,7 @@ export function TimingSettingsPanel({
           description={t("timingSettings.offsetDescription")}
           min={MIN_MICROPHONE_OFFSET_MS}
           max={MAX_MICROPHONE_OFFSET_MS}
+          step={1}
           value={offsetMs}
           valueText={formatMicrophoneOffset(offsetMs)}
           onChange={onCommitOffset}
@@ -68,6 +71,7 @@ export function TimingSettingsPanel({
           description={t("timingSettings.gainDescription")}
           min={MIN_MICROPHONE_VOLUME_DB}
           max={MAX_MICROPHONE_VOLUME_DB}
+          step={MICROPHONE_VOLUME_STEP_DB}
           value={microphoneVolumeDb}
           valueText={formatMicrophoneVolumeDb(microphoneVolumeDb)}
           onChange={onCommitMicrophoneVolume}
@@ -119,6 +123,7 @@ function TimingRangeControl({
   description,
   min,
   max,
+  step,
   value,
   valueText,
   onChange,
@@ -129,10 +134,13 @@ function TimingRangeControl({
   description: string;
   min: number;
   max: number;
+  step: number;
   value: number;
   valueText: string;
   onChange: (value: number) => void;
 }) {
+  const labelId = `${id}-label`;
+  const descriptionId = `${id}-description`;
   return (
     <div className="py-5">
       <div className="flex items-start gap-3">
@@ -141,24 +149,30 @@ function TimingRangeControl({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-4">
-            <label htmlFor={id} className="text-sm font-medium">
+            <span id={labelId} className="text-sm font-medium">
               {label}
-            </label>
-            <output htmlFor={id} className="shrink-0 text-sm font-semibold tabular-nums">
+            </span>
+            <output aria-hidden="true" className="shrink-0 text-sm font-semibold tabular-nums">
               {valueText}
             </output>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-          <input
+          <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
+            {description}
+          </p>
+          {/* Shift + arrow keys move ten steps, so gain moves 1 dB and offset 10 ms. */}
+          <Slider
             id={id}
-            type="range"
+            aria-labelledby={labelId}
+            aria-describedby={descriptionId}
+            aria-valuetext={valueText}
             min={min}
             max={max}
-            step={1}
-            value={value}
-            aria-valuetext={valueText}
-            onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-            className="mt-4 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            step={step}
+            value={[value]}
+            onValueChange={([next]) => {
+              if (next !== undefined) onChange(next);
+            }}
+            className="mt-2 cursor-pointer"
           />
         </div>
       </div>

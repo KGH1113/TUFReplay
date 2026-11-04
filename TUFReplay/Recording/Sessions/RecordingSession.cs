@@ -271,6 +271,17 @@ public class RecordingSession
     }
   }
 
+  // EnhancedCountdown enters PlayerControl with the timeline frozen and releases
+  // it on the first input; the time spent waiting is not part of the replay.
+  internal bool GameplayStartedFrozen
+  {
+    get
+    {
+      lock (_lock)
+        return _gameplayStateReached && !_gameplayTimelineWasAdvancing;
+    }
+  }
+
   internal bool TryGetInputTimelineAnchor(out long captureTicks, out long timelineUs, out double rate)
   {
     lock (_lock)
