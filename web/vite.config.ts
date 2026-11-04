@@ -2,7 +2,25 @@ import { fileURLToPath, URL } from "node:url";
 
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig, normalizePath, type Plugin } from "vite";
+
+const ipcContractDirectory = fileURLToPath(new URL("./vendor/tuf-replay-ipc/", import.meta.url));
+
+/**
+ * A new contract needs a new game connection, which only a fresh page makes.
+ * Hot-swapping the module would leave the old connection open beside a new one.
+ */
+function reloadOnIpcContractChange(): Plugin {
+  const directory = normalizePath(ipcContractDirectory);
+  return {
+    name: "tuf-replay:reload-on-ipc-contract-change",
+    handleHotUpdate({ file, server }) {
+      if (!file.startsWith(directory)) return;
+      server.ws.send({ type: "full-reload" });
+      return [];
+    },
+  };
+}
 
 const tufApiProxy = {
   "/api/tuf": {
@@ -13,18 +31,17 @@ const tufApiProxy = {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [reloadOnIpcContractChange(), react(), tailwindcss()],
   build: {
     chunkSizeWarningLimit: 1024,
-  },
-  optimizeDeps: {
-    // The generated contract package changes with every `ipc-generate`; pre-bundling would keep
-    // serving the previous contract hash, which the mod rejects as a contract mismatch.
-    exclude: ["@tuf-replay/ipc"],
   },
   resolve: {
     alias: {
       "@": fileURLToPath(new URL("./src", import.meta.url)),
+      // The generated contract changes with every `ipc-generate`. Load it from its source folder
+      // instead of node_modules, which the dev server does not watch: a stale copy keeps the old
+      // contract hash, and the mod rejects it as a contract mismatch.
+      "@tuf-replay/ipc": `${ipcContractDirectory}index.js`,
     },
   },
   server: {

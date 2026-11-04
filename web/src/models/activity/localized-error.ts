@@ -14,8 +14,9 @@ export function localizedErrorMessage(cause: unknown, fallback: string) {
 
 export function diagnosticErrorMessage(cause: unknown) {
   if (cause instanceof Error && cause.message) {
-    const nested =
-      cause.cause instanceof Error && cause.cause.message ? ` (${cause.cause.message})` : "";
+    const inner = cause.cause instanceof Error ? cause.cause.message : "";
+    // A wrapped error often carries the very same sentence; saying it twice adds nothing.
+    const nested = inner && !cause.message.includes(inner) ? ` (${inner})` : "";
     return withoutLibraryNames(`${cause.message}${nested}`);
   }
   return typeof cause === "string" ? withoutLibraryNames(cause) : "";
