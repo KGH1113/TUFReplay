@@ -13,6 +13,26 @@ internal static class RenderBundleSuite
 {
   internal static void RunAll()
   {
+    var optionsJson = JsonConvert.SerializeObject(
+      new OrbitRenderOptions { OutputDirectory = @"C:\Users\Example\Videos\한글", Width = 1920 },
+      new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }
+    );
+    var optionsObject = Newtonsoft.Json.Linq.JObject.Parse(optionsJson);
+    Assert(
+      (string)optionsObject["outputDirectory"] == @"C:\Users\Example\Videos\한글"
+        && (int)optionsObject["width"] == 1920
+        && optionsObject["height"] == null,
+      "OrbitRender options did not preserve the output path or omitted defaults."
+    );
+    var supportsOutput = typeof(OrbitRenderClient).GetMethod(
+      "SupportsOutputDirectory",
+      BindingFlags.NonPublic | BindingFlags.Static
+    );
+    Assert(
+      (bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectorySupported) })
+        && !(bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) }),
+      "OrbitRender output folder capability detection failed."
+    );
     using var windows = new StringWriter();
     RenderBundleCsv.WriteInputs(
       windows,
@@ -185,6 +205,13 @@ internal static class RenderBundleSuite
     TestRecordedTerminalFixture();
     Console.WriteLine("TUFReplay neutral render bundle tests passed.");
   }
+
+  private sealed class OutputDirectorySupported
+  {
+    public const int OutputDirectoryOptionVersion = 1;
+  }
+
+  private sealed class OutputDirectoryUnsupported { }
 
   private static void TestPrematureTerminalRecovery()
   {

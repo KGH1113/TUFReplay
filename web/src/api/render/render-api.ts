@@ -1,14 +1,17 @@
 import type {
   OutputDirectorySelection,
-  RenderExportStatus,
   RenderHealth,
   RenderJob,
   RenderOptions,
   RenderPreferences,
   RenderSettings,
 } from "@/models/render/render-model";
+import type { TransferredFile } from "@/ports/received-file";
 
 export interface RenderApi {
+  readRenderVideo(jobId: string): Promise<TransferredFile>;
+  openRenderFile(jobId: string): Promise<boolean>;
+  revealRenderFile(jobId: string): Promise<boolean>;
   getHealth(): Promise<RenderHealth>;
   getSettings(): Promise<RenderSettings>;
   updateSettings(
@@ -18,15 +21,8 @@ export interface RenderApi {
   chooseOutputDirectory(initialPath?: string): Promise<OutputDirectorySelection>;
   cancelOutputDirectorySelection(selectionId: string): Promise<{ cancelled: boolean }>;
   openOutputDirectory(jobId?: string): Promise<{ opened: boolean }>;
-  exportBundle(
-    runId: string,
-    options: RenderOptions,
-    levelPath?: string,
-  ): Promise<RenderExportStatus>;
-  getExportStatus(jobId: string): Promise<RenderExportStatus>;
-  cancelExport(jobId: string): Promise<RenderExportStatus>;
-  start(manifestPath: string, options: RenderOptions): Promise<RenderJob>;
-  getStatus(jobId: string): Promise<RenderJob>;
-  cancel(jobId: string): Promise<RenderJob>;
+  startRender(runId: string, options: RenderOptions, levelPath?: string): Promise<RenderJob>;
+  readRenderState(): Promise<RenderJob | null>;
+  cancelRender(jobId: string): Promise<RenderJob>;
   prepareDownload(jobId: string): Promise<string>;
 }

@@ -16,8 +16,6 @@ export function createRenderApiMock(
   let currentJob: RenderJob | null = null;
   let renderStep = 0;
   let renderTimer: ReturnType<typeof setInterval> | undefined;
-  let exportCancelled = false;
-  let pickerCancelled = false;
   const settings = (): RenderSettings => ({
     defaults: { ...defaults },
     preferences: { ...preferences },
@@ -48,23 +46,15 @@ export function createRenderApiMock(
       ],
     },
   });
-  const bundle = (runId = "mock-run") => ({
-    jobId: "mock-export",
-    runId,
-    state: exportCancelled ? ("cancelled" as const) : ("completed" as const),
-    progress: 1,
-    manifestPath: exportCancelled ? null : "/mock/manifest.json",
-    errorCode: null,
-    errorMessage: null,
-    errorDetails: null,
-  });
   return {
     async getHealth() {
       return {
         available: true,
         version: "mock",
         schemaVersion: 1,
-        busy: Boolean(currentJob && !["completed", "cancelled"].includes(currentJob.state)),
+        busy: Boolean(
+          currentJob && !["completed", "failed", "cancelled"].includes(currentJob.state),
+        ),
         dmNoteConfigured: true,
         orbitAvailable: true,
       };
@@ -80,48 +70,27 @@ export function createRenderApiMock(
       return state;
     },
     async chooseOutputDirectory() {
-      pickerCancelled = false;
-      setTimeout(
-        () =>
-          emit("renderer.folder.changed", {
-            selectionId: "mock-folder",
-            pending: false,
-            outputDirectory: pickerCancelled ? null : "/Users/example/Videos/TUFReplay",
-          }),
-        10,
-      );
-      return { selectionId: "mock-folder", pending: true, outputDirectory: null };
+      return {
+        selectionId: "mock-folder",
+        pending: false,
+        outputDirectory: "/Users/example/Videos/TUFReplay",
+      };
     },
     async cancelOutputDirectorySelection() {
-      pickerCancelled = true;
       return { cancelled: true };
     },
     async openOutputDirectory() {
       return { opened: true };
     },
-    async exportBundle(runId) {
-      exportCancelled = false;
-      setTimeout(() => emit("render-bundle.changed", bundle(runId)), 10);
-      return { ...bundle(runId), state: "preparing", progress: 0, manifestPath: null };
-    },
-    async getExportStatus() {
-      return bundle();
-    },
-    async cancelExport() {
-      exportCancelled = true;
-      const state = bundle();
-      emit("render-bundle.changed", state);
-      return state;
-    },
-    async start(_manifestPath: string, options: RenderOptions) {
+    async startRender(_runId: string, options: RenderOptions) {
       renderStep = 0;
       const extension =
         options.videoCodec === "ProRes" ? ".mov" : options.videoCodec === "VP9" ? ".webm" : ".mp4";
       currentJob = {
         jobId: "mock-render",
-        state: "preparing",
+        state: "exporting",
+        stage: "exporting_recording",
         waitingForGameFocus: false,
-        waitingForFfmpeg: false,
         progress: 0,
         warnings: [],
         errorCode: null,
@@ -144,20 +113,28 @@ export function createRenderApiMock(
           renderStep >= 4 ? "completed" : renderStep >= 3 ? "compositing" : "rendering";
         currentJob.progress = Math.min(1, renderStep / 4);
         currentJob.canOpenOutput = currentJob.state === "completed";
-        emit("renderer.job.changed", { ...currentJob });
+        emit("render-state.changed", { ...currentJob });
         if (currentJob.state === "completed") clearInterval(renderTimer);
       }, 250);
       return { ...currentJob };
     },
-    async getStatus() {
-      if (!currentJob) throw new Error("Start a mock render first.");
-      return { ...currentJob };
+    async openRenderFile() {
+      return true;
     },
-    async cancel() {
+    async revealRenderFile() {
+      return true;
+    },
+    async readRenderVideo() {
+      throw new Error("No rendered video in the preview environment.");
+    },
+    async readRenderState() {
+      return currentJob ? { ...currentJob } : null;
+    },
+    async cancelRender() {
       if (!currentJob) throw new Error("Start a mock render first.");
       currentJob.state = "cancelled";
       clearInterval(renderTimer);
-      emit("renderer.job.changed", { ...currentJob });
+      emit("render-state.changed", { ...currentJob });
       return { ...currentJob };
     },
     async prepareDownload() {

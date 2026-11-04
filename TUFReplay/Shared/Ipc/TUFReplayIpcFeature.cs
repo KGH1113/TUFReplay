@@ -70,7 +70,7 @@ public sealed class TUFReplayIpcFeature
       _namespace.AppEventFailed += LogNotificationFailure;
       _active = true;
       FeatureRegistry.WebcamRecording.StateChanged += OnWebcamChanged;
-      RenderBundleExportService.Changed += OnRenderBundleChanged;
+      RenderJobCoordinator.Changed += OnRenderStateChanged;
       FfmpegInstallCoordinator.Changed += OnDownloadsChanged;
       DownloadCenterCoordinator.Changed += OnDownloadsChanged;
       ActivityChanges.Changed += OnActivityChanged;
@@ -203,6 +203,10 @@ public sealed class TUFReplayIpcFeature
       (_, _) => Map(ReplayPlaybackStatusDto.From(ReplayPlaybackCoordinator.GetStatus()))
     );
     _namespace.Handle(ReplayApiMethods.ChooseLevelFile, ChooseLevelFile);
+    _namespace.Handle(
+      ReplayApiMethods.ChooseRenderOutputDirectory,
+      async (_, context) => await RenderOutputFolderPicker.Choose(context.CancellationToken).ConfigureAwait(false)
+    );
     Register(
       ReplayApiMethods.RefreshMicrophoneDevices,
       (_, _) => MicrophoneState(MicrophoneIpcHandlers.GetDevices()),
@@ -326,23 +330,27 @@ public sealed class TUFReplayIpcFeature
     Register(ReplayApiMethods.ConfirmRendererDownload, (_, _) => DownloadCenterCoordinator.ConfirmRenderer(), true);
     Register(ReplayApiMethods.CancelRendererDownload, (_, _) => DownloadCenterCoordinator.CancelRenderer(), true);
     Register(
-      ReplayApiMethods.PrepareRenderBundle,
-      (r, _) =>
-        RenderBundleExportService.Start(
-          Required(r.RunId),
-          OptionalText(r.LevelPath),
-          !r.IncludeWebcam.IsSpecified || r.IncludeWebcam.Value,
-          !r.IncludeMicrophone.IsSpecified || r.IncludeMicrophone.Value
-        ),
+      ReplayApiMethods.StartRender,
+      (r, _) => RenderJobCoordinator.Start(Required(r.RunId), r.Options, OptionalText(r.LevelPath)),
       true
     );
+    Register(ReplayApiMethods.ReadRenderState, (_, _) => RenderJobCoordinator.Get());
     Register(
-      ReplayApiMethods.ReadRenderBundleState,
-      (r, _) => RenderBundleExportService.GetStatus(Required(r.JobId, "invalid_job_id"))
+      ReplayApiMethods.ReadRenderVideo,
+      (r, _) => RenderJobCoordinator.ReadVideo(Required(r.JobId, "invalid_render_job_id"))
     );
     Register(
-      ReplayApiMethods.CancelRenderBundle,
-      (r, _) => RenderBundleExportService.Cancel(Required(r.JobId, "invalid_job_id"))
+      ReplayApiMethods.OpenRenderFile,
+      (r, _) => RenderJobCoordinator.OpenOutput(Required(r.JobId, "invalid_render_job_id"), false)
+    );
+    Register(
+      ReplayApiMethods.RevealRenderFile,
+      (r, _) => RenderJobCoordinator.OpenOutput(Required(r.JobId, "invalid_render_job_id"), true)
+    );
+    Register(
+      ReplayApiMethods.CancelRender,
+      (r, _) => RenderJobCoordinator.Cancel(Required(r.JobId, "invalid_render_job_id")),
+      true
     );
   }
 
@@ -516,12 +524,10 @@ public sealed class TUFReplayIpcFeature
           app.CancellationToken
         )
       );
-      foreach (var state in RenderBundleExportService.Snapshots())
+      var render = RenderJobCoordinator.Get();
+      if (render != null)
         Notify(() =>
-          app.RenderBundleStateChangedAsync(
-            new RenderBundleStateChangedRequest { Value = state },
-            app.CancellationToken
-          )
+          app.RenderStateChangedAsync(new RenderStateChangedRequest { Value = render }, app.CancellationToken)
         );
       Notify(() =>
         app.WebcamStateChangedAsync(
@@ -583,10 +589,8 @@ public sealed class TUFReplayIpcFeature
 
   private static void LogNotificationFailure(Exception error) => Main.Instance?.LogException("IPC/Notification", error);
 
-  private void OnRenderBundleChanged(RenderBundleState value) =>
-    Publish(app =>
-      app.RenderBundleStateChangedAsync(new RenderBundleStateChangedRequest { Value = value }, app.CancellationToken)
-    );
+  private void OnRenderStateChanged(RenderJobState value) =>
+    Publish(app => app.RenderStateChangedAsync(new RenderStateChangedRequest { Value = value }, app.CancellationToken));
 
   private void OnDownloadsChanged() =>
     UnityMainThread.Post(() =>
@@ -699,7 +703,7 @@ public sealed class TUFReplayIpcFeature
     _active = false;
     if (FeatureRegistry.WebcamRecording != null)
       FeatureRegistry.WebcamRecording.StateChanged -= OnWebcamChanged;
-    RenderBundleExportService.Changed -= OnRenderBundleChanged;
+    RenderJobCoordinator.Changed -= OnRenderStateChanged;
     FfmpegInstallCoordinator.Changed -= OnDownloadsChanged;
     DownloadCenterCoordinator.Changed -= OnDownloadsChanged;
     ActivityChanges.Changed -= OnActivityChanged;
