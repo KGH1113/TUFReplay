@@ -13,6 +13,6 @@
     }
   },
   "dependencies": {
-    "adofai-ipc": "2.1.0"
+    "adofai-ipc": "2.2.0"
   }
 }

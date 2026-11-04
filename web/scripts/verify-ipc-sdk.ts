@@ -15,7 +15,7 @@ const manifestSchema = z
     source: z.literal("https://github.com/KGH1113/adofai-ipc"),
     sourceRevision: z.string().regex(/^[a-f0-9]{40}$/),
     sourceDirty: z.literal(false),
-    version: z.literal("2.1.0"),
+    version: z.literal("2.2.0"),
     protocolVersion: z.literal(3),
     registry: z.literal("https://registry.npmjs.org/"),
     integrity: z.string().regex(/^sha512-[A-Za-z0-9+/]+=*$/),
