@@ -7,7 +7,7 @@ export function createDownloadsApiMock(
     Renderer: {
       Status: "ready",
       Version: "0.1.0-beta.1",
-      InstallationDirectory: "Mods/TUFReplay-Renderer",
+      InstallationDirectory: "Mods/OrbitRender",
       DownloadedBytes: 0,
       TotalBytes: null,
     },

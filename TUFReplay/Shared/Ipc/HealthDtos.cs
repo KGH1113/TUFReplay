@@ -5,7 +5,7 @@ using TUFReplay.Shared.Build;
 
 public sealed class HealthResponseDto
 {
-  public const int CurrentProtocolVersion = 13;
+  public const int CurrentProtocolVersion = 14;
 
   public bool Ok;
   public string Mod;

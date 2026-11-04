@@ -17,24 +17,27 @@ describe("typed ADOFAI recorder adapter", () => {
     snapshots.on("activityChanged", (value) => stale.push(value))();
     expect(stale).toEqual([{ revision: 4, runId: "new-session" }]);
   });
-  test("retains a terminal bundle snapshot independently from other jobs", () => {
+  test("retains a terminal render snapshot independently from other jobs", () => {
     const snapshots = createRecorderSnapshots();
     const base = {
       runId: "run",
       progress: 1,
-      manifestPath: null,
+      stage: null,
+      outputFile: null,
+      warnings: [],
+      waitingForGameFocus: false,
       errorCode: null,
       errorMessage: null,
       errorDetails: null,
     };
-    snapshots.handlers.renderBundleStateChanged({
+    snapshots.handlers.renderStateChanged({
       value: { ...base, jobId: "owned", state: "completed" },
     });
-    snapshots.handlers.renderBundleStateChanged({
+    snapshots.handlers.renderStateChanged({
       value: { ...base, jobId: "other", state: "preparing" },
     });
     const ids: string[] = [];
-    snapshots.on("renderBundleStateChanged", (value) => ids.push(value.jobId))();
+    snapshots.on("renderStateChanged", (value) => ids.push(value.jobId))();
     expect(ids).toEqual(["owned", "other"]);
   });
   test("a failed initial connection can be retried through the same ports", async () => {

@@ -15,9 +15,9 @@ namespace TUFReplay.Shared.Downloads;
 // Downloads the independently licensed mod; never loads it or replaces a running mod.
 public sealed class ManagedRendererInstaller : IDisposable
 {
-  public const string ModId = "TUFReplay-Renderer";
-  public const string Repository = "https://github.com/KGH1113/TUFReplay-Renderer";
-  private const string ReleaseApi = "https://api.github.com/repos/KGH1113/TUFReplay-Renderer/releases?per_page=30";
+  public const string ModId = "OrbitRender";
+  public const string Repository = "https://github.com/imnyang/OrbitRender";
+  private const string ReleaseApi = "https://api.github.com/repos/imnyang/OrbitRender/releases/latest";
   private const long MaximumBytes = 128L * 1024 * 1024;
   public event Action Changed;
   private long _nextProgressNotification;
@@ -71,6 +71,7 @@ public sealed class ManagedRendererInstaller : IDisposable
           _state.Status = installed ? "restart-required" : "missing";
           _state.Version = installed ? version : null;
         }
+        NotifyChanged();
       }
       catch
       {
@@ -79,13 +80,16 @@ public sealed class ManagedRendererInstaller : IDisposable
     });
   }
 
-  public RendererInstallState Snapshot(bool loaded = false)
+  public RendererInstallState Snapshot(bool loaded = false, string loadedVersion = null)
   {
     lock (_gate)
     {
       var state = _state.Clone();
       if (loaded)
+      {
         state.Status = "ready";
+        state.Version = loadedVersion;
+      }
       return state;
     }
   }
@@ -149,44 +153,19 @@ public sealed class ManagedRendererInstaller : IDisposable
           "Renderer releases could not be accessed. The repository may be private or unavailable. Ask for a public release, then try again."
         );
       releaseResponse.EnsureSuccessStatusCode();
-      JObject release = JArray
-        .Parse(await ReadTextAsync(releaseResponse, token).ConfigureAwait(false))
-        .OfType<JObject>()
-        .Where(candidate =>
-          (bool?)candidate["draft"] != true
-          && candidate["published_at"]?.Type != JTokenType.Null
-          && candidate["published_at"] != null
-        )
-        .OrderByDescending(candidate => (DateTimeOffset)candidate["published_at"])
-        .FirstOrDefault();
-      if (release == null)
-        throw new InstallError(
-          "renderer_release_unavailable",
-          "No official Renderer release has been published yet. Try again after a release is published."
-        );
-      var assets = release["assets"] as JArray;
-      string Asset(string name) =>
-        (string)assets?.FirstOrDefault(a => (string)a["name"] == name)?["browser_download_url"];
-      string package = Asset(ModId + ".zip"),
-        manifestUrl = Asset(ModId + ".download.json");
-      if (package == null || manifestUrl == null || !IsReleaseAsset(package) || !IsReleaseAsset(manifestUrl))
-        throw new InstallError(
-          "renderer_release_invalid",
-          "The Renderer release is missing its install package or verification file. Try again after the release is corrected."
-        );
-      using var manifestResponse = await client
-        .GetAsync(manifestUrl, HttpCompletionOption.ResponseHeadersRead, token)
-        .ConfigureAwait(false);
-      manifestResponse.EnsureSuccessStatusCode();
-      JObject manifest = JObject.Parse(await ReadTextAsync(manifestResponse, token).ConfigureAwait(false));
-      string sha = (string)manifest["sha256"],
-        version = (string)manifest["version"];
-      long expectedBytes = (long?)manifest["bytes"] ?? 0;
+      JObject release = JObject.Parse(await ReadTextAsync(releaseResponse, token).ConfigureAwait(false));
+      var asset = (release["assets"] as JArray)
+        ?.OfType<JObject>()
+        .FirstOrDefault(candidate => (string)candidate["name"] == ModId + ".zip");
+      string package = (string)asset?["browser_download_url"];
+      string digestValue = (string)asset?["digest"];
+      string sha =
+        digestValue != null && digestValue.StartsWith("sha256:", StringComparison.OrdinalIgnoreCase)
+          ? digestValue.Substring(7)
+          : null;
+      long expectedBytes = (long?)asset?["size"] ?? 0;
       if (
-        (int?)manifest["schemaVersion"] != 1
-        || (string)manifest["modId"] != ModId
-        || (string)manifest["packageAsset"] != ModId + ".zip"
-        || string.IsNullOrWhiteSpace(version)
+        !IsReleaseAsset(package)
         || sha?.Length != 64
         || !sha.All(Uri.IsHexDigit)
         || expectedBytes <= 0
@@ -194,7 +173,7 @@ public sealed class ManagedRendererInstaller : IDisposable
       )
         throw new InstallError(
           "renderer_release_invalid",
-          "The Renderer verification file is invalid. Try again after the release is corrected."
+          "The OrbitRender release has no valid package checksum or size."
         );
 
       Directory.CreateDirectory(Path.GetDirectoryName(_directory));
@@ -252,7 +231,8 @@ public sealed class ManagedRendererInstaller : IDisposable
       token.ThrowIfCancellationRequested();
       Publish("extracting");
       string extracted = Path.Combine(staging, ModId);
-      Extract(archive, staging, token);
+      Directory.CreateDirectory(extracted);
+      Extract(archive, extracted, token);
       string infoPath = Path.Combine(extracted, "Info.json");
       if (!File.Exists(infoPath) || new FileInfo(infoPath).Length > 65536)
         throw new InstallError(
@@ -260,9 +240,10 @@ public sealed class ManagedRendererInstaller : IDisposable
           "The Renderer package has no valid mod metadata. Try again after the release is corrected."
         );
       var info = JObject.Parse(File.ReadAllText(infoPath));
+      string version = (string)info["Version"];
       if (
         (string)info["Id"] != ModId
-        || (string)info["Version"] != version
+        || string.IsNullOrWhiteSpace(version)
         || !File.Exists(Path.Combine(extracted, ModId + ".dll"))
         || !File.Exists(Path.Combine(extracted, "LICENSE.md"))
       )
@@ -320,7 +301,7 @@ public sealed class ManagedRendererInstaller : IDisposable
     Uri.TryCreate(value, UriKind.Absolute, out Uri uri)
     && uri.Scheme == Uri.UriSchemeHttps
     && uri.Host == "github.com"
-    && uri.AbsolutePath.StartsWith("/KGH1113/TUFReplay-Renderer/releases/download/", StringComparison.Ordinal);
+    && uri.AbsolutePath.StartsWith("/imnyang/OrbitRender/releases/download/", StringComparison.Ordinal);
 
   private static async Task<string> ReadTextAsync(HttpResponseMessage response, CancellationToken token)
   {
@@ -342,7 +323,8 @@ public sealed class ManagedRendererInstaller : IDisposable
       token.ThrowIfCancellationRequested();
       string name = entry.FullName;
       if (
-        !name.StartsWith(ModId + "/", StringComparison.Ordinal)
+        string.IsNullOrEmpty(name)
+        || name.StartsWith("/", StringComparison.Ordinal)
         || name.Contains("\\")
         || name.Contains(":")
         || name.Split('/').Any(s => s == "." || s == "..")
@@ -352,7 +334,7 @@ public sealed class ManagedRendererInstaller : IDisposable
         throw new InvalidDataException(
           "The Renderer package contains an unsafe file path. Try again after the release is corrected."
         );
-      string relative = name.Substring(ModId.Length + 1);
+      string relative = name;
       if (
         relative.Equals("Settings.json", StringComparison.OrdinalIgnoreCase)
         || relative.StartsWith("FFmpeg/", StringComparison.OrdinalIgnoreCase)

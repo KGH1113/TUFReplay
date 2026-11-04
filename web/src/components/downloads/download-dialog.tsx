@@ -14,7 +14,7 @@ import { DownloadItem } from "./download-item";
 export function DownloadDialog({ center }: { center: ReturnType<typeof useDownloadCenter> }) {
   const { t } = useTranslation("downloads");
   const state = center.item === "renderer" ? center.state?.Renderer : center.state?.Ffmpeg;
-  const name = center.item === "renderer" ? "TUFReplay-Renderer" : "FFmpeg";
+  const name = center.item === "renderer" ? "OrbitRender" : "FFmpeg";
   const needsUpdate =
     center.error instanceof ApiError &&
     (center.error.code === "downloads_unavailable" || center.error.code === "handler_not_found");

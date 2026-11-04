@@ -18,7 +18,6 @@ import { calibrationStatusDtoSchema } from "@/schemas/calibration/calibration-sc
 import { microphoneDevicesStateDtoSchema } from "@/schemas/microphone/microphone-schema";
 import {
   outputDirectoryChoiceSchema,
-  renderExportStatusSchema,
   renderHealthSchema,
   renderJobSchema,
   renderSettingsSchema,
@@ -43,11 +42,11 @@ export function createAppEvents(channels: LocalAppChannels): AppEvents {
               decodeRecorder(downloadsStateSchema, toDownloadsStateDto(value)),
             ),
           );
-        case "render-bundle.changed":
-          return channels.recorder.on("renderBundleStateChanged", (value) =>
-            (
-              listener as (value: import("@/models/render/render-model").RenderExportStatus) => void
-            )(decodeRecorder(renderExportStatusSchema, value)),
+        case "render-state.changed":
+          return channels.recorder.on("renderStateChanged", (value) =>
+            (listener as (value: import("@/models/render/render-model").RenderJob) => void)(
+              decodeRecorder(renderJobSchema, value),
+            ),
           );
         case "renderer.job.changed":
           return channels.rendererNamespace

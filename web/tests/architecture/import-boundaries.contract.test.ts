@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 
 const layerRank: Record<string, number> = {
   ports: 0,
@@ -25,7 +26,7 @@ describe("web import boundaries", () => {
     const violations: string[] = [];
     const glob = new Bun.Glob("**/*.{ts,tsx}");
 
-    for await (const relativePath of glob.scan({ cwd: sourceRoot.pathname })) {
+    for await (const relativePath of glob.scan({ cwd: fileURLToPath(sourceRoot) })) {
       const sourceLayer = relativePath.split("/")[0];
       const sourceRank = layerRank[sourceLayer];
       if (sourceRank === undefined) continue;
@@ -48,7 +49,7 @@ describe("web import boundaries", () => {
     const violations: string[] = [];
     const glob = new Bun.Glob("shared/ui/*.{ts,tsx}");
 
-    for await (const relativePath of glob.scan({ cwd: sourceRoot.pathname })) {
+    for await (const relativePath of glob.scan({ cwd: fileURLToPath(sourceRoot) })) {
       const source = await Bun.file(new URL(relativePath, sourceRoot)).text();
       for (const match of source.matchAll(/(?:from\s+|import\s*\()["']@\/([^"']+)/g)) {
         if (!match[1].startsWith("shared/")) {
@@ -64,7 +65,7 @@ describe("web import boundaries", () => {
     const files: string[] = [];
     const glob = new Bun.Glob("components/**/*.ts");
 
-    for await (const relativePath of glob.scan({ cwd: sourceRoot.pathname })) {
+    for await (const relativePath of glob.scan({ cwd: fileURLToPath(sourceRoot) })) {
       files.push(relativePath);
     }
 
@@ -75,7 +76,7 @@ describe("web import boundaries", () => {
     const violations: string[] = [];
     const glob = new Bun.Glob("pages/**/*.tsx");
 
-    for await (const relativePath of glob.scan({ cwd: sourceRoot.pathname })) {
+    for await (const relativePath of glob.scan({ cwd: fileURLToPath(sourceRoot) })) {
       const source = await Bun.file(new URL(relativePath, sourceRoot)).text();
       if (/\buse(?:State|Effect|LayoutEffect|Reducer|Memo|Callback|Ref)\s*\(/.test(source)) {
         violations.push(relativePath);
@@ -88,8 +89,8 @@ describe("web import boundaries", () => {
   test("application and domain depend on ports rather than transport or presentation frameworks", async () => {
     const violations: string[] = [];
     const glob = new Bun.Glob("{application,models,api}/**/*.{ts,tsx}");
-    for await (const path of glob.scan({ cwd: sourceRoot.pathname })) {
-      if (path === "api/app-api-provider.tsx") continue;
+    for await (const path of glob.scan({ cwd: fileURLToPath(sourceRoot) })) {
+      if (path.replaceAll("\\", "/") === "api/app-api-provider.tsx") continue;
       const source = await Bun.file(new URL(path, sourceRoot)).text();
       for (const match of source.matchAll(/(?:from\s+|import\s*\()["']([^"']+)/g)) {
         const dependency = match[1];
@@ -112,9 +113,13 @@ describe("web import boundaries", () => {
   test("active recorder APIs use the generated methods and opaque file capabilities", async () => {
     const violations: string[] = [];
     const glob = new Bun.Glob("{api,adapters,ports,hooks}/**/*.{ts,tsx}");
-    for await (const path of glob.scan({ cwd: sourceRoot.pathname })) {
+    for await (const path of glob.scan({ cwd: fileURLToPath(sourceRoot) })) {
       // The independent Renderer remains an inactive, coming-soon integration.
-      if (path.startsWith("api/render/") || path === "api/domain-messages.ts") continue;
+      if (
+        path.replaceAll("\\", "/").startsWith("api/render/") ||
+        path.replaceAll("\\", "/") === "api/domain-messages.ts"
+      )
+        continue;
       const source = await Bun.file(new URL(path, sourceRoot)).text();
       if (
         /sendDomainCommand\(|\.namespace\.send\(/.test(source) ||
