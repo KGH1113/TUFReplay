@@ -39,3 +39,6 @@ TUFReplay.MicrophoneCapture.Mac/DerivedData/
 !vendor/adofai-ipc-runtime/*.dll
 !vendor/adofai-ipc-runtime/ipc/*.dll
 !vendor/adofai-ipc-legacy/*.dll
+
+# Claude worktrees
+.claude/worktrees/*
