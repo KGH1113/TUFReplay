@@ -125,7 +125,28 @@ export function createRenderApiMock(
       return true;
     },
     async readRenderVideo() {
-      throw new Error("No rendered video in the preview environment.");
+      // A 4K ProRes render is a QuickTime file of about 10 GB, which most browsers cannot play.
+      if (currentJob?.outputFile?.endsWith(".mov"))
+        return {
+          name: "TUFReplay-mock.mov",
+          type: "video/quicktime",
+          size: 9_951_246_926,
+          stream: () => {
+            throw new Error("The mock ProRes video has no content.");
+          },
+        };
+      const video = await sampleVideo();
+      return {
+        name: "TUFReplay-mock.webm",
+        type: video.type,
+        size: video.size,
+        stream: () => video.stream(),
+        // Stands in for the game's streaming URL.
+        async open() {
+          const url = URL.createObjectURL(video);
+          return { url, close: async () => URL.revokeObjectURL(url) };
+        },
+      };
     },
     async readRenderState() {
       return currentJob ? { ...currentJob } : null;
@@ -141,4 +162,48 @@ export function createRenderApiMock(
       return "http://127.0.0.1:32145/ipc/download/mock-render";
     },
   };
+}
+
+/**
+ * A two-second clip drawn in the browser, so the finished-video preview can be
+ * reviewed without a game. Falls back to an error where recording is unsupported.
+ */
+async function sampleVideo(): Promise<Blob> {
+  if (typeof MediaRecorder === "undefined") throw new Error("No video recorder in this browser.");
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("No canvas in this browser.");
+  const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: "video/webm" });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (event) => chunks.push(event.data);
+  const stopped = new Promise<void>((resolve) => {
+    recorder.onstop = () => resolve();
+  });
+  const start = performance.now();
+  recorder.start();
+  await new Promise<void>((resolve) => {
+    const draw = (now: number) => {
+      const t = (now - start) / 1000;
+      context.fillStyle = "#101010";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#b8f03c";
+      context.beginPath();
+      context.arc(
+        320 + Math.cos(t * Math.PI * 2) * 120,
+        180 + Math.sin(t * Math.PI * 2) * 120,
+        18,
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+      if (t < 2) requestAnimationFrame(draw);
+      else resolve();
+    };
+    requestAnimationFrame(draw);
+  });
+  recorder.stop();
+  await stopped;
+  return new Blob(chunks, { type: "video/webm" });
 }

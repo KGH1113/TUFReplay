@@ -203,6 +203,7 @@ export interface RenderRequest {
     includeMicrophone: boolean;
     includeWebcam: boolean;
     outputDirectory?: string;
+    proResProfile?: string;
     showCountdown: boolean;
     showHitJudgments: boolean;
     showPlanetRings: boolean;

@@ -24,7 +24,7 @@ export const defaultRenderOptions: RenderOptions = {
   encoder: "Software",
   encoding: "Balanced",
   bitDepth: 8,
-  proResProfile: "Standard",
+  proResProfile: "HQ",
   crf: null,
   pixelFormat: "auto",
   captureAudio: true,

@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "58320710b8c1c3dbd6048ceea4592c876bf659d2a8bc364641e4728e49b04237",
+    "hash": "d713a7ab5bd84b2758d23931b9ee5147134c23e4379f888a87cb703824c1a473",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -407,6 +407,9 @@ export const ReplayApiContract = defineContract({
                 "includeMicrophone": "boolean",
                 "includeWebcam": "boolean",
                 "outputDirectory": {
+                    "optional": "string"
+                },
+                "proResProfile": {
                     "optional": "string"
                 },
                 "showCountdown": "boolean",

@@ -287,6 +287,10 @@ public sealed class OrbitRenderOptions
   [JsonProperty("bitDepth")]
   public int? BitDepth { get; set; }
 
+  /// <summary>OrbitRender's ProRes profile; OrbitRender before profiles ignores it and uses HQ.</summary>
+  [JsonProperty("proResProfile")]
+  public string ProResProfile { get; set; }
+
   [JsonProperty("captureAudio")]
   public bool? CaptureAudio { get; set; }
 
