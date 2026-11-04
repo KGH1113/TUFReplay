@@ -25,6 +25,11 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   private const float StallSeconds = ClipSeconds - 2f;
   internal const int WriterQueueCapacity = ClipSeconds * SampleRate / CaptureChunkFrames + 1;
 
+  // Unity advances the device cursor once per capture block, so one reading can
+  // trail the first sample by a whole block. Every reading bounds the first
+  // sample's time from above; keep the tightest bound from the first seconds.
+  private const int StartRefinementSeconds = 5;
+
   private AudioClip _clip;
   private string _deviceId;
   private int _cursor;
@@ -35,6 +40,8 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
   private bool _failed;
   private float _lastPollRealtime;
   private long _captureStartTimestampTicks;
+  private long _startRefinementDeadlineTicks;
+  private long _drainedFrames;
 
   public void RequestPermission() { }
 
@@ -112,6 +119,8 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
 
       _cursor = position;
       _captureStartTimestampTicks = before + (after - before) / 2L;
+      _startRefinementDeadlineTicks = after + StartRefinementSeconds * Stopwatch.Frequency;
+      _drainedFrames = 0L;
       _runId = runId;
       _tempPath = tempPath;
       _failed = false;
@@ -142,10 +151,13 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       float now = Time.realtimeSinceStartup;
       if (now - _lastPollRealtime >= StallSeconds)
         throw new IOException("Microphone polling stalled longer than the loop buffer.");
+      long before = Stopwatch.GetTimestamp();
       int position = UnityEngine.Microphone.GetPosition(_deviceId);
+      long after = Stopwatch.GetTimestamp();
       if (position < 0)
         throw new IOException("Microphone device became unavailable.");
       int availableFrames = MicrophoneCaptureChunking.AvailableFrames(_cursor, position, _clip.samples);
+      RefineCaptureStart(before + (after - before) / 2L, availableFrames);
       if (availableFrames == 0)
         return;
 
@@ -181,6 +193,7 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
           throw new IOException("Microphone writer queue overflowed.");
 
         _cursor = MicrophoneCaptureChunking.AdvanceCursor(_cursor, frames, _clip.samples);
+        _drainedFrames += frames;
         availableFrames -= frames;
         chunks++;
         _lastPollRealtime = now;
@@ -191,6 +204,19 @@ public sealed class UnityMicrophoneCaptureBackend : IMicrophoneCaptureBackend
       _failed = true;
       Main.Instance?.Log("[Microphone] Capture failed. error=" + exception.Message);
     }
+  }
+
+  private void RefineCaptureStart(long readTicks, int availableFrames)
+  {
+    if (readTicks > _startRefinementDeadlineTicks)
+      return;
+    _captureStartTimestampTicks = MicrophoneCaptureChunking.RefineStartTimestamp(
+      _captureStartTimestampTicks,
+      readTicks,
+      _drainedFrames + availableFrames,
+      SampleRate,
+      Stopwatch.Frequency
+    );
   }
 
   public Task<CapturedMicrophoneRecording> EndRunAsync()

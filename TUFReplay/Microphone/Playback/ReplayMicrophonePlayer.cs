@@ -12,6 +12,17 @@ namespace TUFReplay.Microphone.Playback;
 public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 {
   private const int DriftThresholdMilliseconds = 50;
+
+  // A running source is rescheduled once it drifts this far from the replay
+  // timeline, for example after a pause section of the recording.
+  private const int ResyncThresholdMilliseconds = 30;
+
+  // Starts are scheduled on the DSP clock this far ahead, like ADOFAI's song.
+  private const double MinimumScheduleLeadSeconds = 0.05d;
+  private const int ScheduleLeadDspBuffers = 3;
+
+  // Prepared audio waits for a start at most this far in the future.
+  private const double ScheduleHorizonSeconds = 0.25d;
   private readonly object _readerGate = new object();
   private readonly StoredMicrophoneRecording _recording;
   private readonly Pcm16WaveInfo _wave;
@@ -23,6 +34,9 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private readonly int _frameBytes;
   private readonly int _prefillBytes;
   private readonly int _driftThresholdFrames;
+  private readonly int _resyncThresholdFrames;
+  private readonly long _audibleFromFrame;
+  private readonly double _scheduleLeadSeconds;
   private long _readerFrame;
   private long _requestedFrame;
   private long _lastResetFrame = -1L;
@@ -38,12 +52,13 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private bool _diagnosticsLogged = true;
   private double _dspAnchorTime;
   private long _dspAnchorFrame;
-  private long _microphoneLatencyUs;
+  private long _userLatencyUs;
   private long _underrunCount;
   private long _missingFrames;
   private long _recoverySeekCount;
   private long _duplicateResetCount;
   private long _maximumDriftFrames;
+  private long _resyncCount;
   private volatile float _gain;
   private volatile bool _failed;
   private volatile bool _disposed;
@@ -52,7 +67,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     StoredMicrophoneRecording recording,
     Pcm16WaveInfo wave,
     int userOffsetMs = 0,
-    int volumeDb = 0
+    double volumeDb = 0d
   )
   {
     _recording = recording ?? throw new ArgumentNullException(nameof(recording));
@@ -77,6 +92,13 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       prefetchBytes
     );
     _driftThresholdFrames = Math.Max(1, wave.SampleRate * DriftThresholdMilliseconds / 1000);
+    _resyncThresholdFrames = Math.Max(1, wave.SampleRate * ResyncThresholdMilliseconds / 1000);
+    _audibleFromFrame = Math.Min(wave.FrameCount, MicrophonePlaybackClock.AudibleFromFrame(recording, wave.SampleRate));
+    int outputSampleRate = Math.Max(1, AudioSettings.outputSampleRate);
+    _scheduleLeadSeconds = Math.Max(
+      MinimumScheduleLeadSeconds,
+      dspBufferFrames * (double)ScheduleLeadDspBuffers / outputSampleRate
+    );
 
     try
     {
@@ -106,6 +128,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           + wave.SampleRate
           + ", captureOffsetUs="
           + recording.CaptureStartOffsetUs
+          + ", timelinePoints="
+          + (recording.Timeline?.Points?.Length ?? 0)
+          + ", audibleFromFrame="
+          + _audibleFromFrame
           + ", volumeDb="
           + volumeDb
       );
@@ -133,7 +159,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     try
     {
       ApplyAudibility(snapshot);
-      long targetFrame = TargetFrame(snapshot);
+      long targetFrame = StartFrame(TargetFrame(snapshot));
       if (
         ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(
           targetFrame,
@@ -175,19 +201,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     try
     {
       ApplyAudibility(snapshot);
-      double microphoneTimeUs = ReplayMicrophoneClock.ToMicrophoneTimeUs(
-        snapshot.TimelineTimeUs,
-        snapshot.GameplayRate,
-        EffectiveCaptureOffsetUs(),
-        snapshot.WonTimeUs
-      );
       long targetFrame = TargetFrame(snapshot);
-      if (microphoneTimeUs < 0d)
-      {
-        if (_started || _paused)
-          StopSource();
-        return;
-      }
       if (targetFrame >= _wave.FrameCount)
       {
         Stop();
@@ -196,7 +210,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
       int recoveryGeneration = Interlocked.Exchange(ref _pendingRecoveryGeneration, 0);
       if (ReplayMicrophonePlaybackDecisions.IsCurrentRecovery(recoveryGeneration, _activeGeneration))
-        RequestSeek(targetFrame, recovery: true);
+        RequestSeek(StartFrame(targetFrame), recovery: true);
 
       if (snapshot.Paused)
       {
@@ -223,23 +237,38 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       }
 
       if (_paused)
-        RequestSeek(targetFrame, recovery: false);
+        RequestSeek(StartFrame(targetFrame), recovery: false);
       if (_preparing)
       {
-        TryStartPrepared(targetFrame, snapshot);
+        TryStartPrepared(snapshot);
         return;
       }
       if (!_started)
       {
-        RequestSeek(targetFrame, recovery: false);
-        TryStartPrepared(targetFrame, snapshot);
+        RequestSeek(StartFrame(targetFrame), recovery: false);
+        TryStartPrepared(snapshot);
         return;
       }
 
-      long expectedFrame =
-        _dspAnchorFrame + (long)Math.Max(0d, (AudioSettings.dspTime - _dspAnchorTime) * _wave.SampleRate);
-      long actualFrame = _source.timeSamples;
-      RecordMaximumDrift(Math.Abs(actualFrame - expectedFrame));
+      double dspTime = AudioSettings.dspTime;
+      long expectedFrame = ScheduledFrameAt(dspTime);
+      RecordMaximumDrift(Math.Abs(_source.timeSamples - expectedFrame));
+      if (!snapshot.HasDspTime || dspTime < _dspAnchorTime)
+        return;
+      long timelineFrame = FrameAtDsp(snapshot, dspTime);
+      if (
+        ReplayMicrophonePlaybackDecisions.ShouldResync(
+          timelineFrame,
+          expectedFrame,
+          _audibleFromFrame,
+          _resyncThresholdFrames
+        )
+      )
+      {
+        Interlocked.Increment(ref _resyncCount);
+        RequestSeek(StartFrame(targetFrame), recovery: false);
+        TryStartPrepared(snapshot);
+      }
     }
     catch (Exception exception)
     {
@@ -253,10 +282,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       return;
     SetLatency(latencyMs);
     if (_preparing || _started || _paused)
-      RequestSeek(TargetFrame(snapshot), recovery: false);
+      RequestSeek(StartFrame(TargetFrame(snapshot)), recovery: false);
   }
 
-  public void UpdateVolume(int volumeDb)
+  public void UpdateVolume(double volumeDb)
   {
     if (!_disposed)
       SetVolume(volumeDb);
@@ -299,11 +328,29 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     });
   }
 
-  private long TargetFrame(ReplayPlaybackSnapshot snapshot) =>
-    ReplayMicrophoneClock.ToFrame(snapshot, EffectiveCaptureOffsetUs(), _wave.SampleRate, _wave.FrameCount);
+  private long TargetFrame(ReplayPlaybackSnapshot snapshot) => FrameAtTimeline(snapshot, snapshot.TimelineTimeUs);
 
-  private long EffectiveCaptureOffsetUs() =>
-    ReplayMicrophoneClock.ApplyLatencyCorrection(_recording.CaptureStartOffsetUs, _microphoneLatencyUs);
+  private long FrameAtTimeline(ReplayPlaybackSnapshot snapshot, long timelineTimeUs) =>
+    MicrophonePlaybackClock.ToFrame(
+      MicrophonePlaybackClock.ToAudioTimeUs(_recording, snapshot, timelineTimeUs, _userLatencyUs),
+      _wave.SampleRate,
+      _wave.FrameCount
+    );
+
+  // The snapshot's timeline is exact at its DSP time, so the frame for any DSP
+  // time is exact as well. Song audio is scheduled on the same clock.
+  private long FrameAtDsp(ReplayPlaybackSnapshot snapshot, double dspTime) =>
+    FrameAtTimeline(
+      snapshot,
+      snapshot.HasDspTime
+        ? snapshot.TimelineTimeAtDspUs(dspTime)
+        : snapshot.TimelineTimeUs + (long)((dspTime - AudioSettings.dspTime) * snapshot.TimelineRate * 1_000_000d)
+    );
+
+  private long StartFrame(long frame) => Math.Max(frame, _audibleFromFrame);
+
+  private long ScheduledFrameAt(double dspTime) =>
+    _dspAnchorFrame + (long)Math.Max(0d, (dspTime - _dspAnchorTime) * _wave.SampleRate);
 
   private void ApplyAudibility(ReplayPlaybackSnapshot snapshot)
   {
@@ -317,16 +364,12 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       TUFReplaySetting.MinMicrophoneOffsetMs,
       Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, latencyMs)
     );
-    _microphoneLatencyUs = clampedLatency * 1000L;
+    _userLatencyUs = clampedLatency * 1000L;
   }
 
-  private void SetVolume(int volumeDb)
+  private void SetVolume(double volumeDb)
   {
-    int clampedVolumeDb = Math.Max(
-      TUFReplaySetting.MinMicrophoneVolumeDb,
-      Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
-    );
-    _gain = MicrophoneGain.FromDecibels(clampedVolumeDb);
+    _gain = MicrophoneGain.FromDecibels(MicrophoneGain.Normalize(volumeDb));
   }
 
   private void RequestSeek(long frame, bool recovery)
@@ -346,10 +389,27 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       Interlocked.Increment(ref _recoverySeekCount);
   }
 
-  private void TryStartPrepared(long targetFrame, ReplayPlaybackSnapshot snapshot)
+  private void TryStartPrepared(ReplayPlaybackSnapshot snapshot)
   {
     if (!_preparing)
       return;
+
+    // Play on the DSP clock instead of whenever the next audio buffer happens to
+    // be mixed, and choose the frame for that exact DSP time.
+    double now = AudioSettings.dspTime;
+    double startDspTime = now + _scheduleLeadSeconds;
+    long targetFrame = FrameAtDsp(snapshot, startDspTime);
+    if (targetFrame < _audibleFromFrame)
+    {
+      // Wait until the first audible frame, then start exactly on it.
+      startDspTime += (_audibleFromFrame - targetFrame) / (double)_wave.SampleRate;
+      if (startDspTime - now > ScheduleHorizonSeconds)
+        return;
+      targetFrame = _audibleFromFrame;
+    }
+    if (targetFrame >= _wave.FrameCount)
+      return;
+
     long advanceFrames = targetFrame - _requestedFrame;
     if (advanceFrames < 0L)
     {
@@ -377,21 +437,25 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       _readerFrame = targetFrame;
     }
     _source.timeSamples = checked((int)targetFrame);
-    _dspAnchorTime = AudioSettings.dspTime;
+    _dspAnchorTime = startDspTime;
     _dspAnchorFrame = targetFrame;
     _activeGeneration = _seekGeneration;
     _preparing = false;
     _started = true;
     _paused = false;
-    _source.Play();
+    _source.PlayScheduled(startDspTime);
     if (!_playbackStartLogged)
     {
       _playbackStartLogged = true;
       Main.Instance?.Log(
-        "[Replay/Microphone] Playback started. replayTimeUs="
+        "[Replay/Microphone] Playback scheduled. replayTimeUs="
           + snapshot.TimelineTimeUs
           + ", targetFrame="
           + targetFrame
+          + ", leadMs="
+          + ((startDspTime - now) * 1000d).ToString("0.###")
+          + ", inputOffsetUs="
+          + snapshot.GameInputOffsetUs
           + ", audible="
           + snapshot.MicrophoneAudible
           + ", gain="
@@ -542,6 +606,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         + Interlocked.Read(ref _recoverySeekCount)
         + ", duplicateResets="
         + Interlocked.Read(ref _duplicateResetCount)
+        + ", resyncs="
+        + Interlocked.Read(ref _resyncCount)
         + ", maxDriftMs="
         + maximumDriftMs.ToString("0.###")
     );
@@ -554,6 +620,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     Interlocked.Exchange(ref _recoverySeekCount, 0L);
     Interlocked.Exchange(ref _duplicateResetCount, 0L);
     Interlocked.Exchange(ref _maximumDriftFrames, 0L);
+    Interlocked.Exchange(ref _resyncCount, 0L);
     _playbackStartLogged = false;
   }
 

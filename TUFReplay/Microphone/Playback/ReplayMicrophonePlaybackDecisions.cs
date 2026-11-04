@@ -30,4 +30,14 @@ internal static class ReplayMicrophonePlaybackDecisions
   public static bool ShouldMute(bool microphoneAudible) => !microphoneAudible;
 
   public static bool ShouldStartSource(bool microphoneAudible) => microphoneAudible;
+
+  // A running source plays one frame per DSP sample period from its scheduled
+  // start. Reschedule when the replay timeline maps elsewhere, such as across a
+  // recorded pause or after a timeline jump the session did not reset.
+  public static bool ShouldResync(
+    long timelineFrame,
+    long scheduledFrame,
+    long audibleFromFrame,
+    int thresholdFrames
+  ) => Math.Abs(Math.Max(timelineFrame, audibleFromFrame) - scheduledFrame) > thresholdFrames;
 }

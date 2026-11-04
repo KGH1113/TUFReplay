@@ -57,7 +57,7 @@
     "title": "마이크 타이밍",
     "description": "레벨을 열지 않고 리플레이 타이밍과 마이크 게인을 조절합니다.",
     "offsetDescription": "리플레이에서 녹음된 마이크 소리를 앞이나 뒤로 이동합니다.",
-    "gainDescription": "미리듣기와 리플레이에 적용되는 마이크 음량을 조절합니다(-20~+30 dB).",
+    "gainDescription": "OBS 게인 필터처럼(-30~+30 dB) 미리듣기, 리플레이, 렌더에 적용됩니다. 방향키로 0.1 dB, Shift와 함께 1 dB씩 조정합니다.",
     "resetBoth": "타이밍과 게인 초기화",
     "calibrateWithLevel": "레벨에서 정밀 보정"
   },

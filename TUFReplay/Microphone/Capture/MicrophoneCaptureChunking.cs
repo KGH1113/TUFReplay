@@ -27,6 +27,23 @@ internal static class MicrophoneCaptureChunking
     return includePartialChunk ? availableFrames : 0;
   }
 
+  // A reading of capturedFrames at readTicks means the first sample was captured
+  // no later than readTicks minus their duration. The tightest bound is the one
+  // read right after the device delivered a block.
+  public static long RefineStartTimestamp(
+    long currentTicks,
+    long readTicks,
+    long capturedFrames,
+    int sampleRate,
+    long ticksPerSecond
+  )
+  {
+    if (readTicks <= 0 || capturedFrames < 0 || sampleRate <= 0 || ticksPerSecond <= 0)
+      return currentTicks;
+    long candidate = readTicks - (long)(capturedFrames * (double)ticksPerSecond / sampleRate);
+    return currentTicks <= 0 || candidate < currentTicks ? candidate : currentTicks;
+  }
+
   public static int AdvanceCursor(int cursor, int frames, int clipFrames)
   {
     if (clipFrames <= 0)

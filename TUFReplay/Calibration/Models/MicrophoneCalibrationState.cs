@@ -88,7 +88,7 @@ internal sealed class MicrophoneCalibrationState
     NotifyChanged();
   }
 
-  public void BeginMeasurement(string operationId, int microphoneVolumeDb)
+  public void BeginMeasurement(string operationId, double microphoneVolumeDb)
   {
     lock (_gate)
     {
@@ -163,7 +163,7 @@ internal sealed class MicrophoneCalibrationState
     NotifyChanged();
   }
 
-  public void SetVolume(int volumeDb)
+  public void SetVolume(double volumeDb)
   {
     lock (_gate)
       _status.MicrophoneVolumeDb = volumeDb;

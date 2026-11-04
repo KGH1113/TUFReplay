@@ -28,10 +28,12 @@ import type { MicrophoneOffsetCalibrationData } from "@/models/calibration/micro
 import {
   formatMicrophoneVolumeDb,
   MAX_MICROPHONE_VOLUME_DB,
+  MICROPHONE_VOLUME_STEP_DB,
   MIN_MICROPHONE_VOLUME_DB,
 } from "@/models/calibration/microphone-volume";
 import { Button } from "@/shared/ui/button";
 import { DialogTitle } from "@/shared/ui/dialog";
+import { Slider } from "@/shared/ui/slider";
 export function OffsetEditor({
   data,
   offsetMs,
@@ -320,26 +322,29 @@ export function MicrophoneVolumeControl({
         strokeWidth={2}
         className="shrink-0 text-muted-foreground"
       />
-      <label
-        htmlFor="microphone-preview-volume"
+      <span
+        id="microphone-preview-volume-label"
         className="shrink-0 text-xs font-medium text-muted-foreground"
       >
         {t("calibration.micGain")}
-      </label>
-      <input
+      </span>
+      {/* Like OBS's Gain filter: 0.1 dB per arrow key, 1 dB with Shift. */}
+      <Slider
         id="microphone-preview-volume"
-        type="range"
+        aria-labelledby="microphone-preview-volume-label"
+        aria-valuetext={formatMicrophoneVolumeDb(volumeDb)}
         min={MIN_MICROPHONE_VOLUME_DB}
         max={MAX_MICROPHONE_VOLUME_DB}
-        step={1}
-        value={volumeDb}
-        aria-valuetext={formatMicrophoneVolumeDb(volumeDb)}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-        className="h-1.5 min-w-20 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-28 sm:flex-none"
+        step={MICROPHONE_VOLUME_STEP_DB}
+        value={[volumeDb]}
+        onValueChange={([next]) => {
+          if (next !== undefined) onChange(next);
+        }}
+        className="min-w-20 flex-1 cursor-pointer sm:w-28 sm:flex-none"
       />
       <output
-        htmlFor="microphone-preview-volume"
-        className="w-14 shrink-0 text-right text-xs font-semibold tabular-nums"
+        aria-hidden="true"
+        className="w-16 shrink-0 text-right text-xs font-semibold tabular-nums"
       >
         {formatMicrophoneVolumeDb(volumeDb)}
       </output>

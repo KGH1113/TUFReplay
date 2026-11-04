@@ -11,4 +11,7 @@ public sealed class StoredMicrophoneRecording
   public string DeviceId;
   public long CaptureStartOffsetUs;
   public long ByteLength;
+
+  // Null for recordings made before timeline maps; they use CaptureStartOffsetUs.
+  public MicrophoneTimeline Timeline;
 }

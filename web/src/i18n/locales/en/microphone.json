@@ -57,7 +57,7 @@
     "title": "Microphone timing",
     "description": "Fine-tune replay timing and microphone gain without opening a level.",
     "offsetDescription": "Move recorded microphone audio earlier or later during replay.",
-    "gainDescription": "Adjust the microphone level used in previews and replays (-20 to +30 dB).",
+    "gainDescription": "Works like OBS's Gain filter (-30 to +30 dB) in previews, replays and renders. Use arrow keys for 0.1 dB or Shift for 1 dB.",
     "resetBoth": "Reset timing and gain",
     "calibrateWithLevel": "Calibrate with level"
   },

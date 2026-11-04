@@ -675,7 +675,7 @@ public sealed class TUFReplayIpcFeature
     bool locked = MicrophoneDeviceService.IsToggleLocked();
     bool enabled = settings?.MicrophoneEnabled != false;
     int offset = settings?.MicrophoneOffsetMs ?? 0;
-    int volume = settings?.MicrophoneVolumeDb ?? 0;
+    double volume = settings?.MicrophoneVolumeDb ?? 0d;
     if (
       _microphoneState.ToggleLocked == locked
       && _microphoneState.Enabled == enabled

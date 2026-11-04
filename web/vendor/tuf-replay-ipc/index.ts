@@ -145,7 +145,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "5a80030ff7bd6d51ba94907fa5a533e2d73f0146d09913d492479156624dcf7c",
+  "hash": "58320710b8c1c3dbd6048ceea4592c876bf659d2a8bc364641e4728e49b04237",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -199,7 +199,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
           "nullable": "string"
         },
         "microphoneOffsetMs": "int32",
-        "microphoneVolumeDb": "int32",
+        "microphoneVolumeDb": "float64",
         "operationId": {
           "nullable": "string"
         },
@@ -449,7 +449,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         },
         "enabled": "boolean",
         "microphoneOffsetMs": "int32",
-        "microphoneVolumeDb": "int32",
+        "microphoneVolumeDb": "float64",
         "selectedDeviceId": {
           "nullable": "string"
         },
@@ -459,7 +459,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
     "MicrophoneTiming": {
       "object": {
         "microphoneOffsetMs": "int32",
-        "microphoneVolumeDb": "int32"
+        "microphoneVolumeDb": "float64"
       }
     },
     "RenderErrorDetails": {
@@ -900,7 +900,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       "input": {
         "object": {
           "operationId": "string",
-          "volumeDb": "int32"
+          "volumeDb": "float64"
         }
       },
       "output": {
@@ -933,7 +933,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       "wireName": "rpc.mod.changemicrophonevolume",
       "input": {
         "object": {
-          "volumeDb": "int32"
+          "volumeDb": "float64"
         }
       },
       "output": {

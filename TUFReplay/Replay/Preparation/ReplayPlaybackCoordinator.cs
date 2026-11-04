@@ -144,7 +144,7 @@ public static partial class ReplayPlaybackCoordinator
     StoredMicrophoneRecording microphoneRecording,
     Pcm16WaveInfo microphoneWave,
     int microphoneOffsetMs,
-    int microphoneVolumeDb
+    double microphoneVolumeDb
   )
   {
     lock (CommandGate)

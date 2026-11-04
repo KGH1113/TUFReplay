@@ -11,5 +11,5 @@ public sealed class MicrophoneDevicesState
   public bool DefaultDeviceBluetooth;
   public string SelectedDeviceId;
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
+  public double MicrophoneVolumeDb;
 }

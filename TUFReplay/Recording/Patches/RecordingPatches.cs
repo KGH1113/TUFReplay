@@ -69,7 +69,7 @@ public static class RecordingPatches
         && !float.IsInfinity(pitch);
       session.ObserveInputAnchor(_conductorUpdatePrefixTicks, postfixTicks, songPosition, pitch, ready);
       if (ready && RecordingClock.IsTimelineAdvancing())
-        RecordingFeature.Instance.TryAnchorMicrophoneTimeline();
+        RecordingFeature.Instance.ObserveCaptureTimelines();
     }
     catch (Exception exception)
     {
