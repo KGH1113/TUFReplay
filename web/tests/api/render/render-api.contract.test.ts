@@ -132,6 +132,25 @@ describe("TUFReplay render IPC contract", () => {
     ]);
   });
 
+  test("sends the ProRes profile by OrbitRender's name, and only with ProRes", async () => {
+    const sent: Record<string, unknown>[] = [];
+    const api = createRenderApi(
+      clients((_method, params) => {
+        sent.push((params as { options: Record<string, unknown> }).options);
+        return { ...job, state: "exporting", stage: "exporting_recording", progress: 0 };
+      }),
+    );
+    await api.startRender("run-1", {
+      ...defaultRenderOptions,
+      videoCodec: "ProRes",
+      bitDepth: 10,
+      proResProfile: "FourFourFourFourXQ",
+    });
+    await api.startRender("run-1", { ...defaultRenderOptions, proResProfile: "Proxy" });
+    expect(sent[0]).toMatchObject({ videoCodec: "ProRes", proResProfile: "4444 XQ" });
+    expect(sent[1]).not.toHaveProperty("proResProfile");
+  });
+
   test("chooses a game-side output folder and preserves cancellation", async () => {
     let selected: string | null = "C:\\Videos\\My renders";
     const api = createRenderApi(clients(() => selected));

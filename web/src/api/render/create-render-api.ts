@@ -1,6 +1,7 @@
 import { callRecorder, decodeRecorder } from "@/api/recorder-call";
 import type { RenderApi } from "@/api/render/render-api";
 import { orbitVersionCompatibility } from "@/models/render/orbit-version";
+import { proResNames } from "@/models/render/render-choices";
 import {
   defaultRenderOptions,
   type RenderJob,
@@ -26,6 +27,10 @@ function toRenderRequest(options: RenderOptions) {
     bitrateMbps: options.bitrateMbps,
     videoCodec: options.videoCodec,
     bitDepth: options.bitDepth,
+    // OrbitRender's profile name; the profile replaces bitrate and bit depth for ProRes.
+    ...(options.videoCodec === "ProRes"
+      ? { proResProfile: proResNames[options.proResProfile] }
+      : {}),
     captureAudio: options.captureAudio,
     audioGainDb: options.audioGainDb,
     endDelaySeconds: options.endDelaySeconds,

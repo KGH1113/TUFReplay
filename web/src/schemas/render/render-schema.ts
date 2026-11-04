@@ -73,8 +73,8 @@ export const renderJobSchema = z.object({
 });
 export const renderOptionsSchema = z
   .object({
-    width: z.number().int().min(320).max(7680).multipleOf(2),
-    height: z.number().int().min(180).max(4320).multipleOf(2),
+    width: z.number().int().min(320).max(3840).multipleOf(2),
+    height: z.number().int().min(180).max(2160).multipleOf(2),
     videoFps: z.number().int().min(15).max(240),
     simulationFps: z.number().int().min(15).max(1024),
     bitrateMbps: z.number().int().min(1).max(200),

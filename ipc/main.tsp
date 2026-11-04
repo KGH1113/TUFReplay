@@ -128,6 +128,8 @@ namespace ReplayApi {
     outputDirectory?: string;
     width: int32; height: int32; videoFps: int32; targetFps: int32;
     bitrateMbps: int32; videoCodec: string; bitDepth: int32;
+    /** OrbitRender's ProRes profile name; only sent with ProRes. */
+    proResProfile?: string;
     captureAudio: boolean; audioGainDb: float64; endDelaySeconds: float64;
     bgaMode: boolean; showPlanetRings: boolean; showSongTitle: boolean;
     showCountdown: boolean; showResultText: boolean; showHitJudgments: boolean;

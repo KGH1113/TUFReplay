@@ -448,6 +448,8 @@ public static class RenderJobCoordinator
       BitrateMbps = options.BitrateMbps,
       VideoCodec = options.VideoCodec,
       BitDepth = options.BitDepth,
+      // The profile replaces bitrate and bit depth, so it belongs only with ProRes.
+      ProResProfile = IsProRes(options) && options.ProResProfile.IsSpecified ? options.ProResProfile.Value : null,
       CaptureAudio = options.CaptureAudio,
       AudioGainDb = options.AudioGainDb,
       EndDelaySeconds = options.EndDelaySeconds,
@@ -482,9 +484,21 @@ public static class RenderJobCoordinator
       || !VideoCodecs.Contains(options.VideoCodec, StringComparer.OrdinalIgnoreCase)
     )
       throw Domain("render_options_invalid", "Choose a supported video codec.");
+    if (
+      IsProRes(options)
+      && options.ProResProfile.IsSpecified
+      && !ProResProfiles.Contains(options.ProResProfile.Value, StringComparer.Ordinal)
+    )
+      throw Domain("render_options_invalid", "Choose a ProRes profile: Proxy, LT, Standard, HQ, 4444 or 4444 XQ.");
   }
 
+  private static bool IsProRes(RenderRequest options) =>
+    string.Equals(options.VideoCodec, "ProRes", StringComparison.OrdinalIgnoreCase);
+
   private static readonly string[] VideoCodecs = { "H264", "H265", "VP9", "AV1", "ProRes", "FFV1" };
+
+  // OrbitRender's profile names (OrbitRender PR #6).
+  private static readonly string[] ProResProfiles = { "Proxy", "LT", "Standard", "HQ", "4444", "4444 XQ" };
 
   private static double Clamp01(double value) => double.IsNaN(value) ? 0 : Math.Min(1, Math.Max(0, value));
 

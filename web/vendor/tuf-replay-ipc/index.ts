@@ -47,7 +47,7 @@ export interface RendererState { downloadedBytes: number; error: string | null; 
 
 export interface RenderJobState { errorCode: string | null; errorDetails: RenderErrorDetails | null; errorMessage: string | null; jobId: string; outputFile: string | null; progress: number; runId: string; stage: string | null; state: "cancelled" | "completed" | "compositing" | "exporting" | "failed" | "preparing" | "rendering"; waitingForGameFocus: boolean; warnings: Array<string> }
 
-export interface RenderRequest { audioGainDb: number; bgaMode: boolean; bitDepth: number; bitrateMbps: number; captureAudio: boolean; endDelaySeconds: number; height: number; includeMicrophone: boolean; includeWebcam: boolean; outputDirectory?: string; showCountdown: boolean; showHitJudgments: boolean; showPlanetRings: boolean; showResultText: boolean; showSongTitle: boolean; targetFps: number; videoCodec: string; videoFps: number; width: number }
+export interface RenderRequest { audioGainDb: number; bgaMode: boolean; bitDepth: number; bitrateMbps: number; captureAudio: boolean; endDelaySeconds: number; height: number; includeMicrophone: boolean; includeWebcam: boolean; outputDirectory?: string; proResProfile?: string; showCountdown: boolean; showHitJudgments: boolean; showPlanetRings: boolean; showResultText: boolean; showSongTitle: boolean; targetFps: number; videoCodec: string; videoFps: number; width: number }
 
 export interface ReplayState { errorCode: string | null; message: string | null; operationId: string | null; runId: string | null; state: "cancelled" | "completed" | "error" | "idle" | "opening_level" | "playing" | "preparing" | "returning_to_editor" | "starting" | "waiting_for_focus" }
 
@@ -145,7 +145,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "58320710b8c1c3dbd6048ceea4592c876bf659d2a8bc364641e4728e49b04237",
+  "hash": "d713a7ab5bd84b2758d23931b9ee5147134c23e4379f888a87cb703824c1a473",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -550,6 +550,9 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "includeMicrophone": "boolean",
         "includeWebcam": "boolean",
         "outputDirectory": {
+          "optional": "string"
+        },
+        "proResProfile": {
           "optional": "string"
         },
         "showCountdown": "boolean",

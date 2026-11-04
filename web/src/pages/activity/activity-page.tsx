@@ -125,7 +125,10 @@ export function ActivityPage() {
         open={legacyReplayNotice.open}
         onConfirm={legacyReplayNotice.confirm}
       />
-      <RenderDialog control={renderControl} />
+      <RenderDialog
+        control={renderControl}
+        metadata={selectedLevel ? viewModel.metadataFor(selectedLevel) : undefined}
+      />
       <Toaster position="bottom-center" />
     </TooltipProvider>
   );
