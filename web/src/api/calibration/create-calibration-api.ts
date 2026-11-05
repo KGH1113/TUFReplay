@@ -37,12 +37,6 @@ export function createCalibrationApi(clients: LocalAppChannels): CalibrationApi 
           mod.changeCalibrationOffset({ operationId, offsetMs }),
         ),
       ),
-    setVolume: async (operationId, volumeDb) =>
-      status(
-        await callRecorder(clients, (mod) =>
-          mod.changeCalibrationVolume({ operationId, volumeDb }),
-        ),
-      ),
     close: async (operationId) =>
       status(await callRecorder(clients, (mod) => mod.closeCalibration({ operationId }))),
   };

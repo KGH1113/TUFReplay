@@ -23,7 +23,6 @@ export const calibrationStatusDtoSchema = z
     PlaybackPositionMs: z.number(),
     ResultRevision: z.number().int(),
     MicrophoneOffsetMs: z.number(),
-    MicrophoneVolumeDb: z.number(),
   })
   .passthrough();
 

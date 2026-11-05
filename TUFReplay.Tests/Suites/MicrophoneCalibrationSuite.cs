@@ -1,5 +1,6 @@
 using System.Reflection;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json.Linq;
 using TUFReplay;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Migrations;
@@ -54,6 +55,7 @@ internal static class MicrophoneCalibrationSuite
     TestReplayMicrophoneClock();
     TestMicrophoneTimelineTrack(root);
     TestCalibrationSettings(root);
+    TestMicrophoneVolume(root);
     TestMicrophoneCalibrationState();
     TestCalibrationWaveforms(root);
   }
@@ -832,32 +834,126 @@ internal static class MicrophoneCalibrationSuite
     string timingPath = Path.Combine(root, "timing-settings.json");
     TUFReplaySettingStore.Initialize(timingPath);
     MicrophoneTimingSettingsState timing = MicrophoneTimingSettingsService.SetOffset(999);
-    timing = MicrophoneTimingSettingsService.SetVolume(-50);
     Assert(timing.MicrophoneOffsetMs == TUFReplaySetting.MaxMicrophoneOffsetMs, "Timing offset was not clamped.");
-    Assert(timing.MicrophoneVolumeDb == TUFReplaySetting.MinMicrophoneVolumeDb, "Timing gain was not clamped.");
-    timing = MicrophoneTimingSettingsService.SetVolume(100);
-    Assert(timing.MicrophoneVolumeDb == 30, "Timing gain was not clamped to +30 dB.");
-    timing = MicrophoneTimingSettingsService.SetVolume(-12.34d);
-    Assert(timing.MicrophoneVolumeDb == -12.3d, "Timing gain was not rounded to 0.1 dB.");
     TUFReplaySetting persistedTiming = TUFReplaySetting.Load(timingPath);
     Assert(persistedTiming.MicrophoneOffsetMs == timing.MicrophoneOffsetMs, "Timing offset was not persisted.");
-    Assert(persistedTiming.MicrophoneVolumeDb == timing.MicrophoneVolumeDb, "Timing gain was not persisted.");
+  }
+
+  private static void TestMicrophoneVolume(string root)
+  {
+    Assert(MicrophoneVolume.Default.Multiplier == 1f, "The default microphone volume is not 0 dB.");
+    Assert(default(MicrophoneVolume).Multiplier == 1f, "An unset microphone volume is not 0 dB.");
+    Assert(MicrophoneVolume.Create(20, off: true).Multiplier == 0f, "An Off microphone volume was audible.");
+    Assert(MicrophoneVolume.Create(-50, off: false).Decibels == -30d, "Microphone volume was not clamped to -30 dB.");
+    Assert(MicrophoneVolume.Create(100, off: false).Decibels == 30d, "Microphone volume was not clamped to +30 dB.");
+    Assert(MicrophoneVolume.Create(-12.34, off: false).Decibels == -12.3d, "Microphone volume was not rounded.");
+    Assert(
+      Math.Abs(MicrophoneVolume.Create(6, off: false).Multiplier - MicrophoneGain.FromDecibels(6)) < 1e-7f,
+      "Microphone volume did not use OBS's Gain-filter curve."
+    );
+
+    int off = MicrophoneVolumeMenu.OffStep;
+    int min = MicrophoneVolumeMenu.MinStep;
+    int max = MicrophoneVolumeMenu.MaxStep;
+    int big = MicrophoneVolumeMenu.ChangeBy;
+    int small = MicrophoneVolumeMenu.ChangeBySmall;
+    Assert(min == -300 && max == 300 && off == -301, "Microphone volume steps do not cover -30..+30 dB and Off.");
+    Assert(big == 50 && small == 10, "Microphone volume does not step 5 dB, or 1 dB with Shift.");
+    Assert(MicrophoneVolumeMenu.Move(0, big) == 50, "A 5 dB step was not applied.");
+    Assert(MicrophoneVolumeMenu.Move(0, -small) == -10, "A 1 dB step was not applied.");
+    Assert(MicrophoneVolumeMenu.Move(-123, big) == -73, "A step lost a 0.1 dB value saved by an older build.");
+    Assert(MicrophoneVolumeMenu.Move(-270, -big) == min, "A 5 dB step skipped past the minimum.");
+    Assert(MicrophoneVolumeMenu.Move(min, -big) == off, "Stepping below the minimum did not turn it off.");
+    Assert(MicrophoneVolumeMenu.Move(min, -small) == off, "A 1 dB step below the minimum did not turn it off.");
+    Assert(MicrophoneVolumeMenu.Move(off, -big) == off, "Off moved further down.");
+    Assert(MicrophoneVolumeMenu.Move(off, small) == min, "Stepping up from Off did not start at the minimum.");
+    Assert(MicrophoneVolumeMenu.Move(270, big) == max, "Microphone volume went past the maximum.");
+    Assert(MicrophoneVolumeMenu.Move(12, 0) == 12, "A refresh moved the microphone volume.");
+
+    Assert(MicrophoneVolumeMenu.FromStep(off).Off, "The Off step was audible.");
+    Assert(MicrophoneVolumeMenu.FromStep(-45).Decibels == -4.5d, "A step did not map to 0.1 dB.");
+    Assert(!MicrophoneVolumeMenu.FromStep(min).Off, "The minimum step was off.");
+    Assert(
+      MicrophoneVolumeMenu.ToStep(MicrophoneVolumeMenu.FromStep(-123)) == -123,
+      "Microphone volume steps did not round-trip."
+    );
+    Assert(MicrophoneVolumeMenu.FormatValue(off, korean: true) == "끔", "Korean Off text is wrong.");
+    Assert(MicrophoneVolumeMenu.FormatValue(off, korean: false) == "Off", "English Off text is wrong.");
+    Assert(MicrophoneVolumeMenu.FormatValue(0, korean: false) == "0 dB", "0 dB text is wrong.");
+    Assert(MicrophoneVolumeMenu.FormatValue(50, korean: false) == "+5 dB", "Positive dB text is wrong.");
+    Assert(MicrophoneVolumeMenu.FormatValue(-123, korean: false) == "-12.3 dB", "Fractional dB text is wrong.");
+    Assert(
+      MicrophoneVolumeMenu.Text(MicrophoneVolumeMenu.LabelKey, korean: true) == "TUFReplay 마이크",
+      "Korean row label is wrong."
+    );
+    Assert(
+      MicrophoneVolumeMenu.Text(MicrophoneVolumeMenu.DescriptionKey, korean: false) != null,
+      "The row has no description."
+    );
+    Assert(
+      MicrophoneVolumeMenu.Text("pauseMenu.settings.musicVolume", korean: false) == null,
+      "ADOFAI's own setting text was replaced."
+    );
+
+    const string menu =
+      "{\"general\":[{\"name\":\"language\",\"type\":\"Enum:Language\"}],"
+      + "\"audio\":[{\"name\":\"volume\",\"type\":\"Int\",\"min\":0,\"max\":10},"
+      + "{\"name\":\"interfaceVolume\",\"type\":\"Int\",\"min\":0,\"max\":10},"
+      + "{\"name\":\"inputOffset\",\"type\":\"Int\"}]}";
+    string withRow = MicrophoneVolumeMenu.AddRow(menu);
+    JArray audio = (JArray)JObject.Parse(withRow)["audio"];
+    Assert(audio.Count == 4, "The microphone volume row was not added once.");
+    Assert(
+      (string)audio[2]["name"] == MicrophoneVolumeMenu.RowName,
+      "The microphone volume row is not after the interface volume."
+    );
+    Assert((int)audio[2]["min"] == off && (int)audio[2]["max"] == max, "The row range is wrong.");
+    Assert(
+      (int)audio[2]["changeBy"] == big && (int)audio[2]["changeBySmall"] == small,
+      "The row does not use the 5 dB and 1 dB steps."
+    );
+    Assert((string)JObject.Parse(withRow)["general"][0]["name"] == "language", "Other tabs changed.");
+    Assert(MicrophoneVolumeMenu.AddRow(withRow) == withRow, "The row was added twice.");
+    Assert(MicrophoneVolumeMenu.AddRow("not json") == "not json", "Invalid menu JSON was changed.");
+    const string noAudio = "{\"general\":[]}";
+    Assert(MicrophoneVolumeMenu.AddRow(noAudio) == noAudio, "A menu without an audio tab was changed.");
+    const string noInterface = "{\"audio\":[{\"name\":\"volume\",\"type\":\"Int\"}]}";
+    JArray appended = (JArray)JObject.Parse(MicrophoneVolumeMenu.AddRow(noInterface))["audio"];
+    Assert(
+      (string)appended[1]["name"] == MicrophoneVolumeMenu.RowName,
+      "The row was not appended without an interface volume."
+    );
+
+    string oldPath = Path.Combine(root, "volume-old-settings.json");
+    File.WriteAllText(oldPath, "{\"Setting\":{\"MicrophoneVolumeDb\":20}}");
+    TUFReplaySetting old = TUFReplaySetting.Load(oldPath);
+    Assert(old.MicrophoneVolumeDb == 20d && !old.MicrophoneVolumeOff, "A volume saved by the companion was not kept.");
+
+    string path = Path.Combine(root, "volume-settings.json");
+    TUFReplaySettingStore.Initialize(path);
+    MicrophoneVolume set = MicrophoneVolumeService.Set(MicrophoneVolumeMenu.FromStep(off));
+    Assert(set.Off && MicrophoneVolumeService.Current.Off, "An Off microphone volume was not applied.");
+    Assert(TUFReplaySetting.Load(path).MicrophoneVolumeOff, "An Off microphone volume was not persisted.");
+    set = MicrophoneVolumeService.Set(MicrophoneVolume.Create(4.5, off: false));
+    TUFReplaySetting persisted = TUFReplaySetting.Load(path);
+    Assert(
+      !persisted.MicrophoneVolumeOff && persisted.MicrophoneVolumeDb == 4.5d,
+      "Microphone volume was not persisted."
+    );
+    Assert(!set.Off && set.Decibels == 4.5d, "Microphone volume did not return the saved value.");
   }
 
   private static void TestMicrophoneCalibrationState()
   {
     var state = new MicrophoneCalibrationState();
-    state.BeginMeasurement("first", 3);
+    state.BeginMeasurement("first");
     Assert(state.GetStatus().MicrophoneOffsetMs == 0, "The first calibration did not start from raw timing.");
     state.SetOffset(96);
-    state.SetVolume(30);
-    Assert(state.GetStatus().MicrophoneVolumeDb == 30, "Calibration did not accept +30 dB preview gain.");
 
-    state.BeginMeasurement("second", 3.5d);
+    state.BeginMeasurement("second");
     MicrophoneCalibrationStatus second = state.GetStatus();
     Assert(second.OperationId == "second", "The second calibration operation was not started.");
     Assert(second.MicrophoneOffsetMs == 0, "The second calibration reused the previous correction.");
-    Assert(second.MicrophoneVolumeDb == 3.5d, "The calibration microphone volume was not preserved.");
   }
 
   private static void TestCalibrationWaveforms(string root)

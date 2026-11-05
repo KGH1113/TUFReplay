@@ -20,7 +20,11 @@ public sealed class TUFReplaySetting
   public string MicrophoneDeviceId { get; set; }
   public int MicrophoneOffsetMs { get; set; }
   public int MicrophoneOffsetConventionVersion { get; set; } = CurrentMicrophoneOffsetConventionVersion;
+
+  // Set from ADOFAI's audio settings; replays and renders use it. Off leaves the
+  // microphone out of both without changing capture.
   public double MicrophoneVolumeDb { get; set; }
+  public bool MicrophoneVolumeOff { get; set; }
 
   public bool WebcamEnabled { get; set; }
   public string WebcamDeviceId { get; set; }

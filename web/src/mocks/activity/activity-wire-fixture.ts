@@ -243,12 +243,10 @@ export interface MicrophoneDevicesState {
   DefaultDeviceBluetooth: boolean;
   SelectedDeviceId: string | null;
   MicrophoneOffsetMs: number;
-  MicrophoneVolumeDb: number;
 }
 
 export interface MicrophoneTimingSettings {
   MicrophoneOffsetMs: number;
-  MicrophoneVolumeDb: number;
 }
 
 export type MicrophoneCalibrationState =
@@ -272,7 +270,6 @@ export interface MicrophoneCalibrationStatus {
   PlaybackPositionMs: number;
   ResultRevision: number;
   MicrophoneOffsetMs: number;
-  MicrophoneVolumeDb: number;
 }
 
 export interface MicrophoneCalibrationResult {

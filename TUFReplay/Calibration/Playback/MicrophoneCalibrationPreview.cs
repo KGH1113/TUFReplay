@@ -164,8 +164,7 @@ internal sealed class MicrophoneCalibrationPreview
       levelPath,
       recording,
       wave,
-      calibrationStatus.MicrophoneOffsetMs,
-      calibrationStatus.MicrophoneVolumeDb
+      calibrationStatus.MicrophoneOffsetMs
     );
     if (replayStatus.State == ReplayPlaybackStates.Error)
     {

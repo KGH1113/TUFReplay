@@ -372,7 +372,7 @@ public static partial class ReplayPlaybackCoordinator
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
           operation.MicrophoneOffsetMs ?? settings?.MicrophoneOffsetMs ?? 0,
-          operation.MicrophoneVolumeDb ?? settings?.MicrophoneVolumeDb ?? 0d
+          MicrophoneVolumeService.Current
         );
         operation.TransferMicrophoneOwnership();
       }

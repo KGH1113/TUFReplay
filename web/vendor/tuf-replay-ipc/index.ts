@@ -9,7 +9,7 @@ export interface AppSession { endedAtUtc: string | null; id: string; levelSessio
 
 export interface CalibrationResult { durationMs: number; gameWaveform: Array<number>; microphoneWaveform: Array<number>; operationId: string; revision: number; songWaveform: Array<number> }
 
-export interface CalibrationState { durationMs: number; errorCode: string | null; message: string | null; microphoneOffsetMs: number; microphoneVolumeDb: number; operationId: string | null; playbackPositionMs: number; resultRevision: number; state: "arming" | "editing" | "error" | "idle" | "opening_level" | "preview_playing" | "preview_starting" | "processing" | "recording" | "waiting_for_run" }
+export interface CalibrationState { durationMs: number; errorCode: string | null; message: string | null; microphoneOffsetMs: number; operationId: string | null; playbackPositionMs: number; resultRevision: number; state: "arming" | "editing" | "error" | "idle" | "opening_level" | "preview_playing" | "preview_starting" | "processing" | "recording" | "waiting_for_run" }
 
 export interface Chart { file: ReceivedFile; floorCount: number; levelSessionId: string }
 
@@ -37,9 +37,9 @@ export interface LogicalLevel { artist: string | null; author: string | null; ch
 
 export interface MicrophoneDevice { bluetooth: boolean; id: string; maxFrequency: number; minFrequency: number; name: string }
 
-export interface MicrophoneDevices { defaultDeviceBluetooth: boolean; devices: Array<MicrophoneDevice>; enabled: boolean; microphoneOffsetMs: number; microphoneVolumeDb: number; selectedDeviceId: string | null; toggleLocked: boolean }
+export interface MicrophoneDevices { defaultDeviceBluetooth: boolean; devices: Array<MicrophoneDevice>; enabled: boolean; microphoneOffsetMs: number; selectedDeviceId: string | null; toggleLocked: boolean }
 
-export interface MicrophoneTiming { microphoneOffsetMs: number; microphoneVolumeDb: number }
+export interface MicrophoneTiming { microphoneOffsetMs: number }
 
 export interface RenderErrorDetails { field: string | null; file: string | null; line: number | null }
 
@@ -75,10 +75,8 @@ export interface ReplayApiMod {
   "cancelRender"(request: { jobId: string }): Promise<RenderJobState>;
   "cancelRendererDownload"(): Promise<DownloadsState>;
   "changeCalibrationOffset"(request: { offsetMs: number; operationId: string }): Promise<CalibrationState>;
-  "changeCalibrationVolume"(request: { operationId: string; volumeDb: number }): Promise<CalibrationState>;
   "changeMicrophoneAccess"(request: { enabled: boolean }): Promise<MicrophoneDevices>;
   "changeMicrophoneOffset"(request: { offsetMs: number }): Promise<MicrophoneTiming>;
-  "changeMicrophoneVolume"(request: { volumeDb: number }): Promise<MicrophoneTiming>;
   "changeRunLock"(request: { locked: boolean; runId: string }): Promise<LockResult>;
   "changeWebcamSettings"(request: { settings: WebcamSettings }): Promise<WebcamState>;
   "chooseLevelFile"(request: { purpose?: "render" | "replay"; runId: string }): Promise<LevelFileResult>;
@@ -145,7 +143,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "d713a7ab5bd84b2758d23931b9ee5147134c23e4379f888a87cb703824c1a473",
+  "hash": "aaab7bdafb51fdfb0a2ffd260731962446aa8675ce420856b1680e91faf998f4",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -199,7 +197,6 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
           "nullable": "string"
         },
         "microphoneOffsetMs": "int32",
-        "microphoneVolumeDb": "float64",
         "operationId": {
           "nullable": "string"
         },
@@ -449,7 +446,6 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         },
         "enabled": "boolean",
         "microphoneOffsetMs": "int32",
-        "microphoneVolumeDb": "float64",
         "selectedDeviceId": {
           "nullable": "string"
         },
@@ -458,8 +454,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
     },
     "MicrophoneTiming": {
       "object": {
-        "microphoneOffsetMs": "int32",
-        "microphoneVolumeDb": "float64"
+        "microphoneOffsetMs": "int32"
       }
     },
     "RenderErrorDetails": {
@@ -898,18 +893,6 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "model": "CalibrationState"
       }
     },
-    "changeCalibrationVolume": {
-      "wireName": "rpc.mod.changecalibrationvolume",
-      "input": {
-        "object": {
-          "operationId": "string",
-          "volumeDb": "float64"
-        }
-      },
-      "output": {
-        "model": "CalibrationState"
-      }
-    },
     "changeMicrophoneAccess": {
       "wireName": "rpc.mod.changemicrophoneaccess",
       "input": {
@@ -926,17 +909,6 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
       "input": {
         "object": {
           "offsetMs": "int32"
-        }
-      },
-      "output": {
-        "model": "MicrophoneTiming"
-      }
-    },
-    "changeMicrophoneVolume": {
-      "wireName": "rpc.mod.changemicrophonevolume",
-      "input": {
-        "object": {
-          "volumeDb": "float64"
         }
       },
       "output": {

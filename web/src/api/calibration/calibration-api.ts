@@ -7,6 +7,5 @@ export interface CalibrationApi {
   playPreview(operationId: string): Promise<CalibrationStatus>;
   stopPreview(operationId: string): Promise<CalibrationStatus>;
   setOffset(operationId: string, offsetMs: number): Promise<CalibrationStatus>;
-  setVolume(operationId: string, volumeDb: number): Promise<CalibrationStatus>;
   close(operationId: string): Promise<CalibrationStatus>;
 }

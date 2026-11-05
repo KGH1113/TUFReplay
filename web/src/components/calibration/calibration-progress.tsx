@@ -1,10 +1,4 @@
-import {
-  Loading03Icon,
-  Mic02Icon,
-  RefreshIcon,
-  Tick02Icon,
-  WaveSquareIcon,
-} from "@hugeicons/core-free-icons";
+import { Loading03Icon, RefreshIcon, Tick02Icon, WaveSquareIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,12 +6,6 @@ import {
   MAX_MICROPHONE_OFFSET_MS,
   MIN_MICROPHONE_OFFSET_MS,
 } from "@/models/calibration/microphone-offset";
-import {
-  formatMicrophoneVolumeDb,
-  MAX_MICROPHONE_VOLUME_DB,
-  MICROPHONE_VOLUME_STEP_DB,
-  MIN_MICROPHONE_VOLUME_DB,
-} from "@/models/calibration/microphone-volume";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { DialogTitle } from "@/shared/ui/dialog";
@@ -26,18 +14,14 @@ import type { MicrophoneOffsetCalibrationPhase } from "@/state/calibration/micro
 
 export function TimingSettingsPanel({
   offsetMs,
-  microphoneVolumeDb,
   audioError,
   onCommitOffset,
-  onCommitMicrophoneVolume,
   onClose,
   onStartCalibration,
 }: {
   offsetMs: number;
-  microphoneVolumeDb: number;
   audioError: string;
   onCommitOffset: (offsetMs: number) => void;
-  onCommitMicrophoneVolume: (volumeDb: number) => void;
   onClose: () => void | Promise<void>;
   onStartCalibration: () => void;
 }) {
@@ -64,18 +48,6 @@ export function TimingSettingsPanel({
           valueText={formatMicrophoneOffset(offsetMs)}
           onChange={onCommitOffset}
         />
-        <TimingRangeControl
-          id="microphone-timing-gain"
-          icon={Mic02Icon}
-          label={t("calibration.micGain")}
-          description={t("timingSettings.gainDescription")}
-          min={MIN_MICROPHONE_VOLUME_DB}
-          max={MAX_MICROPHONE_VOLUME_DB}
-          step={MICROPHONE_VOLUME_STEP_DB}
-          value={microphoneVolumeDb}
-          valueText={formatMicrophoneVolumeDb(microphoneVolumeDb)}
-          onChange={onCommitMicrophoneVolume}
-        />
       </div>
 
       <div className="px-6 pb-1 sm:px-7">
@@ -83,14 +55,11 @@ export function TimingSettingsPanel({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={offsetMs === 0 && microphoneVolumeDb === 0}
-          onClick={() => {
-            onCommitOffset(0);
-            onCommitMicrophoneVolume(0);
-          }}
+          disabled={offsetMs === 0}
+          onClick={() => onCommitOffset(0)}
         >
           <HugeiconsIcon data-icon="inline-start" icon={RefreshIcon} size={14} strokeWidth={2} />
-          {t("timingSettings.resetBoth")}
+          {t("timingSettings.resetTiming")}
         </Button>
       </div>
 
@@ -129,7 +98,7 @@ function TimingRangeControl({
   onChange,
 }: {
   id: string;
-  icon: typeof Mic02Icon;
+  icon: typeof WaveSquareIcon;
   label: string;
   description: string;
   min: number;
@@ -159,7 +128,7 @@ function TimingRangeControl({
           <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
             {description}
           </p>
-          {/* Shift + arrow keys move ten steps, so gain moves 1 dB and offset 10 ms. */}
+          {/* Shift + arrow keys move ten steps, so the offset moves 10 ms. */}
           <Slider
             id={id}
             aria-labelledby={labelId}

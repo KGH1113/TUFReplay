@@ -20,7 +20,6 @@ const waitingStatus: MicrophoneCalibrationStatus = {
   PlaybackPositionMs: 0,
   ResultRevision: 0,
   MicrophoneOffsetMs: 0,
-  MicrophoneVolumeDb: 0,
 };
 
 describe("microphone calibration offset saving", () => {

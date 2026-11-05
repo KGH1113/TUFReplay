@@ -30,7 +30,5 @@ export function createMicrophoneApi(clients: LocalAppChannels): MicrophoneApi {
       devices(await callRecorder(clients, (mod) => mod.chooseMicrophoneDevice({ deviceId }))),
     setOffset: async (offsetMs) =>
       timing(await callRecorder(clients, (mod) => mod.changeMicrophoneOffset({ offsetMs }))),
-    setVolume: async (volumeDb) =>
-      timing(await callRecorder(clients, (mod) => mod.changeMicrophoneVolume({ volumeDb }))),
   };
 }
