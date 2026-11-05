@@ -23,6 +23,15 @@ The render bundle rewrites `microphone.wav` when needed (`MicrophoneTimelineTrac
 
 Gain matches OBS Studio's Gain filter: -30..+30 dB in 0.1 dB steps, `powf(10, dB/20)` and a hard clip. The IPC fields are `float64`. OrbitRender still applies `alimiter=limit=0.95` to its mix, so rendered audio is limited instead of clipped.
 
+## Renders (2026-11-05)
+
+A render of a checkpoint run (start tile 2296) had the mic 109 ms ahead of the song. Cross-correlating the video's audio with the song and with the mic WAV showed the timeline map was fine; the song was late.
+
+1. **EnhancedCountdown during renders.** EC arms in the editor whenever the start tile is above 0. It only stood down for autoplay and TUFReplay's own playback, so it also armed while OrbitRender rendered. It then rescheduled the song on Unity's DSP clock while OrbitRender drove the conductor, the picture and the mic placement on its render clock. The gap differs per render. EC now falls back to the native countdown while `OrbitRender.RenderApi.IsBusy` (or `RendererController.ControlsTime` on older OrbitRender) is true. This is merged into EC `main` after `fix/frozen-start-audio-sync`, not released yet.
+2. **Input offset in renders.** OrbitRender keeps the recorded input offset so judgments match, and ADOFAI draws planets one input offset behind the mixed song. The song, hit sounds and mic were therefore one input offset ahead of the picture. imnyang/OrbitRender#8 delays all rendered audio by that offset. TUFReplay keeps adding the offset to `latencyUs`, because OrbitRender places the mic against the game audio.
+
+The saved mic offset was 0 ms in that run, so capture latency was not compensated.
+
 ## Remaining
 
 - First-tile replays still align their origin on the replay's PlayerControl frame (`AlignFirstTilePlayerControlOrigin`). The recorded and replayed song-position origins differ there by about 0.86 s in tests, so the alignment is needed. It inherits up to one frame plus one DSP buffer of error, and that error moves inputs, mic and camera together relative to the song.
@@ -36,3 +45,4 @@ Gain matches OBS Studio's Gain filter: -30..+30 dB in 0.1 dB steps, `powf(10, dB
 - Log `[Replay/Microphone] Playback scheduled ... inputOffsetUs=...`.
 - `Playback stats ... resyncs=` should stay 0 without pauses, and be 1 per recorded pause.
 - With a non-zero input offset, a perfect hit's key sound should land on the beat.
+- Render: log `[Replay] Delaying render audio by the recorded input offset: N ms.`, and no EnhancedCountdown metronome panel appears during the render.
