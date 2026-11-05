@@ -67,13 +67,13 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     StoredMicrophoneRecording recording,
     Pcm16WaveInfo wave,
     int userOffsetMs = 0,
-    double volumeDb = 0d
+    MicrophoneVolume volume = default
   )
   {
     _recording = recording ?? throw new ArgumentNullException(nameof(recording));
     _wave = wave ?? throw new ArgumentNullException(nameof(wave));
     SetLatency(userOffsetMs);
-    SetVolume(volumeDb);
+    _gain = volume.Multiplier;
     if (wave.FrameCount > int.MaxValue)
       throw new InvalidDataException("The microphone recording is too long for Unity audio playback.");
 
@@ -109,6 +109,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       _source.loop = false;
       _source.spatialBlend = 0f;
       _source.volume = 1f;
+      // ADOFAI's master volume sets AudioListener.volume. Renders mix the mic
+      // without it, so in-game playback ignores it too and only follows the
+      // microphone volume.
+      _source.ignoreListenerVolume = true;
       _source.pitch = 1f;
       _source.priority = 0;
       _clip = AudioClip.Create(
@@ -132,8 +136,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           + (recording.Timeline?.Points?.Length ?? 0)
           + ", audibleFromFrame="
           + _audibleFromFrame
-          + ", volumeDb="
-          + volumeDb
+          + ", volume="
+          + volume
       );
     }
     catch
@@ -285,10 +289,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       RequestSeek(StartFrame(TargetFrame(snapshot)), recovery: false);
   }
 
-  public void UpdateVolume(double volumeDb)
+  public void UpdateVolume(MicrophoneVolume volume)
   {
     if (!_disposed)
-      SetVolume(volumeDb);
+      _gain = volume.Multiplier;
   }
 
   public void Stop()
@@ -365,11 +369,6 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
       Math.Min(TUFReplaySetting.MaxMicrophoneOffsetMs, latencyMs)
     );
     _userLatencyUs = clampedLatency * 1000L;
-  }
-
-  private void SetVolume(double volumeDb)
-  {
-    _gain = MicrophoneGain.FromDecibels(MicrophoneGain.Normalize(volumeDb));
   }
 
   private void RequestSeek(long frame, bool recovery)

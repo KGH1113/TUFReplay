@@ -18,7 +18,6 @@ const EMPTY_STATE: MicrophoneDevicesState = {
   defaultDeviceBluetooth: false,
   selectedDeviceId: null,
   microphoneOffsetMs: 0,
-  microphoneVolumeDb: 0,
 };
 const DEVICE_REFRESH_MAX_AGE_MS = 5000;
 
@@ -65,13 +64,7 @@ export function useMicrophoneDevices(connectionStatus: ConnectionStatus) {
   const applyTimingSettings = useCallback(
     (settings: MicrophoneTimingSettings) => {
       queryClient.setQueryData<MicrophoneDevicesState>(microphoneQueryKeys.devices, (current) =>
-        current
-          ? {
-              ...current,
-              microphoneOffsetMs: settings.microphoneOffsetMs,
-              microphoneVolumeDb: settings.microphoneVolumeDb,
-            }
-          : current,
+        current ? { ...current, microphoneOffsetMs: settings.microphoneOffsetMs } : current,
       );
     },
     [queryClient],

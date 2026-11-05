@@ -51,7 +51,8 @@ public static class RenderBundleExportService
         LevelPath = levelPath,
         Settings = settings,
         IncludeWebcam = webcam,
-        IncludeMicrophone = microphone,
+        // An Off microphone volume in ADOFAI's settings leaves it out of renders too.
+        IncludeMicrophone = microphone && !settings.MicrophoneVolumeOff,
         ScreenWidth = Math.Max(1, Screen.width),
         ScreenHeight = Math.Max(1, Screen.height),
       };

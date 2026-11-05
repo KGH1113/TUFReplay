@@ -26,7 +26,6 @@ export interface CalibrationState {
     errorCode: string | null;
     message: string | null;
     microphoneOffsetMs: number;
-    microphoneVolumeDb: number;
     operationId: string | null;
     playbackPositionMs: number;
     resultRevision: number;
@@ -156,13 +155,11 @@ export interface MicrophoneDevices {
     devices: Array<MicrophoneDevice>;
     enabled: boolean;
     microphoneOffsetMs: number;
-    microphoneVolumeDb: number;
     selectedDeviceId: string | null;
     toggleLocked: boolean;
 }
 export interface MicrophoneTiming {
     microphoneOffsetMs: number;
-    microphoneVolumeDb: number;
 }
 export interface RenderErrorDetails {
     field: string | null;
@@ -338,18 +335,11 @@ export interface ReplayApiMod {
         offsetMs: number;
         operationId: string;
     }): Promise<CalibrationState>;
-    "changeCalibrationVolume"(request: {
-        operationId: string;
-        volumeDb: number;
-    }): Promise<CalibrationState>;
     "changeMicrophoneAccess"(request: {
         enabled: boolean;
     }): Promise<MicrophoneDevices>;
     "changeMicrophoneOffset"(request: {
         offsetMs: number;
-    }): Promise<MicrophoneTiming>;
-    "changeMicrophoneVolume"(request: {
-        volumeDb: number;
     }): Promise<MicrophoneTiming>;
     "changeRunLock"(request: {
         locked: boolean;

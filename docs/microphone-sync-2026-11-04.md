@@ -21,7 +21,7 @@ The render bundle rewrites `microphone.wav` when needed (`MicrophoneTimelineTrac
 
 ## Gain
 
-Gain matches OBS Studio's Gain filter: -30..+30 dB in 0.1 dB steps, `powf(10, dB/20)` and a hard clip. The IPC fields are `float64`. OrbitRender still applies `alimiter=limit=0.95` to its mix, so rendered audio is limited instead of clipped.
+Gain matches OBS Studio's Gain filter: -30..+30 dB stored in 0.1 dB steps, `powf(10, dB/20)` and a hard clip. Since 2026-11-05 it is set in ADOFAI's audio settings instead of the companion (see Volume below). OrbitRender still applies `alimiter=limit=0.95` to its mix, so rendered audio is limited instead of clipped.
 
 ## Renders (2026-11-05)
 
@@ -31,6 +31,12 @@ A render of a checkpoint run (start tile 2296) had the mic 109 ms ahead of the s
 2. **Input offset in renders.** OrbitRender keeps the recorded input offset so judgments match, and ADOFAI draws planets one input offset behind the mixed song. The song, hit sounds and mic were therefore one input offset ahead of the picture. imnyang/OrbitRender#8 delays all rendered audio by that offset. TUFReplay keeps adding the offset to `latencyUs`, because OrbitRender places the mic against the game audio.
 
 The saved mic offset was 0 ms in that run, so capture latency was not compensated.
+
+## Volume (2026-11-05)
+
+In-game replays played the mic much quieter than renders at the same +20 dB gain. ADOFAI sets `AudioListener.volume = 0.5 * (volume / 10)^2` every frame (0.5 at the default 10), and that also scaled TUFReplay's mic `AudioSource`. OrbitRender's captured game audio already includes it, but the mic is mixed in FFmpeg without it, so the render mic was 1/`AudioListener.volume` louder against the game. The render matched the settings: song at -21 dB (calculated -20 dB from volume 10, music volume 4 and the song source's 0.8) and mic at x6.3 (x10 gain, -3 dB for FFmpeg's mono-to-stereo split, about 1 dB of limiter).
+
+The mic source now sets `ignoreListenerVolume`, so ADOFAI's volume settings no longer change it. The gain moved from the companion to a **TUFReplay Microphone** row in ADOFAI's audio settings (5 dB steps, 1 dB with Shift, Off below -30 dB). In-game replays, the calibration preview and renders all use it; Off leaves the mic out of renders as well. The companion's gain controls and the `changeMicrophoneVolume`/`changeCalibrationVolume` IPC methods and `microphoneVolumeDb` fields are removed, so the health protocol is now 16.
 
 ## Remaining
 
@@ -46,3 +52,4 @@ The saved mic offset was 0 ms in that run, so capture latency was not compensate
 - `Playback stats ... resyncs=` should stay 0 without pauses, and be 1 per recorded pause.
 - With a non-zero input offset, a perfect hit's key sound should land on the beat.
 - Render: log `[Replay] Delaying render audio by the recorded input offset: N ms.`, and no EnhancedCountdown metronome panel appears during the render.
+- Volume: at the same **TUFReplay Microphone** value, the replay mic is as loud against the song as in a render of the same run, and changing ADOFAI's master volume changes only the game. `Player ready ... volume=` and `Playback scheduled ... gain=` show the applied value.

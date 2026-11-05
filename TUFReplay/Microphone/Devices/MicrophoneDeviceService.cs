@@ -23,7 +23,6 @@ public static class MicrophoneDeviceService
       DefaultDeviceBluetooth = enabled && MicrophoneBluetoothDetector.IsDefaultBluetooth(devices),
       SelectedDeviceId = TUFReplaySettingStore.Current?.MicrophoneDeviceId,
       MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
-      MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
     };
   }
 

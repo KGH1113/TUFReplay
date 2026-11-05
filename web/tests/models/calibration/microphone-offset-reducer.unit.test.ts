@@ -11,9 +11,8 @@ describe("microphone offset calibration reducer", () => {
     state = microphoneOffsetCalibrationReducer(state, {
       type: "open_settings",
       offsetMs: 84,
-      microphoneVolumeDb: 4,
     });
-    expect(state).toEqual({ phase: "settings", offsetMs: 84, microphoneVolumeDb: 4 });
+    expect(state).toEqual({ phase: "settings", offsetMs: 84 });
     state = microphoneOffsetCalibrationReducer(state, { type: "start" });
     expect(state.phase).toBe("launching");
   });
@@ -27,31 +26,8 @@ describe("microphone offset calibration reducer", () => {
     state = microphoneOffsetCalibrationReducer(state, { type: "run_cleared" });
     expect(state.phase).toBe("editing");
     state = microphoneOffsetCalibrationReducer(state, { type: "commit_offset", offsetMs: 96 });
-    state = microphoneOffsetCalibrationReducer(state, {
-      type: "commit_microphone_volume",
-      volumeDb: 12,
-    });
     state = microphoneOffsetCalibrationReducer(state, { type: "close" });
-    expect(state).toEqual({
-      phase: "closed",
-      offsetMs: 96,
-      microphoneVolumeDb: 12,
-    });
-  });
-
-  test("clamps microphone volume to the OBS Gain filter range in 0.1 dB steps", () => {
-    let state = createMicrophoneOffsetCalibrationState(0, 40);
-    expect(state.microphoneVolumeDb).toBe(30);
-    state = microphoneOffsetCalibrationReducer(state, {
-      type: "commit_microphone_volume",
-      volumeDb: -40,
-    });
-    expect(state.microphoneVolumeDb).toBe(-30);
-    state = microphoneOffsetCalibrationReducer(state, {
-      type: "commit_microphone_volume",
-      volumeDb: -12.34,
-    });
-    expect(state.microphoneVolumeDb).toBe(-12.3);
+    expect(state).toEqual({ phase: "closed", offsetMs: 96 });
   });
 
   test("ignores out-of-order automatic transitions", () => {
@@ -60,13 +36,12 @@ describe("microphone offset calibration reducer", () => {
   });
 
   test("preserves state identity when a polled sync contains no changes", () => {
-    const state = createMicrophoneOffsetCalibrationState(42, 3);
+    const state = createMicrophoneOffsetCalibrationState(42);
     expect(
       microphoneOffsetCalibrationReducer(state, {
         type: "sync",
         phase: "closed",
         offsetMs: 42,
-        microphoneVolumeDb: 3,
       }),
     ).toBe(state);
   });

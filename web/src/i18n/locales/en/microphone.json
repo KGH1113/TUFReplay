@@ -22,7 +22,6 @@
     "calibrationFailed": "Calibration cannot continue. Close it and start again.",
     "loadWaveforms": "Could not load the calibration waveforms. Start the calibration again.",
     "startCalibration": "Could not start calibration. Check the microphone and its permission, then try again.",
-    "saveVolume": "Could not save the volume. The previous setting is unchanged. Please try again.",
     "controlPreview": "Could not control the preview. Your calibration result is still saved. Please try again.",
     "startMockPreview": "Could not start the audio preview. Check your browser audio settings.",
     "refreshStatus": "Could not check calibration status. Check the ADOFAI connection, then try again.",
@@ -55,10 +54,9 @@
   "timingLocked": "Finish the current play session first",
   "timingSettings": {
     "title": "Microphone timing",
-    "description": "Fine-tune replay timing and microphone gain without opening a level.",
+    "description": "Fine-tune replay timing without opening a level. Set the microphone volume in ADOFAI under Settings → Audio → TUFReplay Microphone.",
     "offsetDescription": "Move recorded microphone audio earlier or later during replay.",
-    "gainDescription": "Works like OBS's Gain filter (-30 to +30 dB) in previews, replays and renders. Use arrow keys for 0.1 dB or Shift for 1 dB.",
-    "resetBoth": "Reset timing and gain",
+    "resetTiming": "Reset timing",
     "calibrateWithLevel": "Calibrate with level"
   },
   "calibration": {
@@ -85,7 +83,6 @@
     "replayTest": "Replay test",
     "playTest": "Play test",
     "done": "Done",
-    "micGain": "Mic gain",
     "offsetSlider": "Microphone timing offset"
   },
   "recording": {

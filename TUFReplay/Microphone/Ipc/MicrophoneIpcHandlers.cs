@@ -95,20 +95,6 @@ public static class MicrophoneIpcHandlers
     return MicrophoneTimingSettingsDto.From(state);
   }
 
-  public static MicrophoneTimingSettingsDto SetVolume(double volumeDb)
-  {
-    if (
-      !MicrophoneTimingSettingsService.TrySetVolume(
-        volumeDb,
-        out MicrophoneTimingSettingsState state,
-        out string errorCode,
-        out string errorMessage
-      )
-    )
-      throw IpcDomainError.Create(errorCode, errorMessage);
-    return MicrophoneTimingSettingsDto.From(state);
-  }
-
   private static AdofaiIpc.IpcCallException MicrophoneFailure(
     Exception exception,
     string fallbackCode,

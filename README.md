@@ -354,8 +354,8 @@ The checked-in VS Code settings select CSharpier for C# and Biome for web files,
 ## Typed AdofaiIpc API
 
 TUFReplay uses **ADOFAI-IPC 2.2.0**, WebSocket wire protocol **3**, and TUFReplay
-health compatibility version **15**. Its source contract, [`ipc/main.tsp`](ipc/main.tsp),
-defines 58 typed mod methods and 10 typed app callbacks. Generated calls replace
+health compatibility version **16**. Its source contract, [`ipc/main.tsp`](ipc/main.tsp),
+defines 56 typed mod methods and 10 typed app callbacks. Generated calls replace
 the recorder's previous named-command/correlated-event protocol. The SDK owns
 request correlation, contract validation, app identity, file transport, and errors.
 
@@ -444,14 +444,26 @@ handle. File responses are consumed immediately and are not kept in snapshot cac
   completion. The browser's download settings determine the destination folder
   and whether it asks for a location.
 
-The microphone timing dialog retains global offset and gain editing, transient
+The microphone timing dialog retains global offset editing, transient
 calibration waveforms, and game preview playback. Calibration recordings are not
 written into activity history. Every calibration starts from raw uncorrected
-capture timing. The saved offset and gain remain applied to stored microphone
-playback. Gain works like OBS Studio's Gain filter: `-30 dB` to `+30 dB` in
-`0.1 dB` steps (arrow keys move 0.1 dB, Shift moves 1 dB), applied as a plain
-`10^(dB/20)` multiplier and hard-clipped at full scale with no limiter. Render
-bundles carry the same multiplier. Calibration
+capture timing. The saved offset remains applied to stored microphone playback.
+
+The microphone volume is set only in ADOFAI, under Settings → Audio →
+**TUFReplay Microphone / TUFReplay 마이크**, the row after **Interface Volume**;
+the companion no longer has a volume control. In-game replays, the calibration
+preview, and renders all use it. It goes from `-30 dB` to `+30 dB` (arrow keys
+move 5 dB, Shift moves 1 dB), one step below `-30 dB` is **Off / 끔**, and a
+volume saved earlier from the companion is kept. It works like OBS Studio's Gain
+filter: a plain `10^(dB/20)` multiplier, hard-clipped at full scale in game and
+passed to OrbitRender as the same multiplier. Off leaves the microphone out of
+replays and renders without changing capture. A change applies at once to the
+playing replay, so it can be tuned from the pause menu; a render uses the value
+saved when it starts. In-game playback ignores ADOFAI's own volume settings:
+ADOFAI applies its master volume through `AudioListener.volume` (half at the
+default of 10), and renders mix the microphone without it, so the replay
+microphone sits against the game exactly as in a render. If an ADOFAI update
+changes the settings menu, the row is left out and the menu works as before. Calibration
 preview clock callbacks remain limited to 20 Hz and the UI interpolates between
 samples. Installer progress callbacks remain limited to ten per second.
 

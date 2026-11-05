@@ -17,13 +17,11 @@ export const microphoneDevicesStateDtoSchema = z
     DefaultDeviceBluetooth: z.boolean().default(false),
     SelectedDeviceId: z.string().nullable(),
     MicrophoneOffsetMs: z.number(),
-    MicrophoneVolumeDb: z.number(),
   })
   .passthrough();
 
 export const microphoneTimingSettingsDtoSchema = z.object({
   MicrophoneOffsetMs: z.number(),
-  MicrophoneVolumeDb: z.number(),
 });
 
 export type MicrophoneDevicesStateDto = z.infer<typeof microphoneDevicesStateDtoSchema>;

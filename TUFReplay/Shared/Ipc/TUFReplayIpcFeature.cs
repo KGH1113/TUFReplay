@@ -230,11 +230,6 @@ public sealed class TUFReplayIpcFeature
       (r, _) => MicrophoneTiming(MicrophoneIpcHandlers.SetOffset(r.OffsetMs)),
       true
     );
-    Register(
-      ReplayApiMethods.ChangeMicrophoneVolume,
-      (r, _) => MicrophoneTiming(MicrophoneIpcHandlers.SetVolume(r.VolumeDb)),
-      true
-    );
     Register(ReplayApiMethods.StartCalibration, (_, _) => Map(MicrophoneCalibrationIpcHandlers.Start()), true);
     Register(
       ReplayApiMethods.ReadCalibrationState,
@@ -260,11 +255,6 @@ public sealed class TUFReplayIpcFeature
     Register(
       ReplayApiMethods.ChangeCalibrationOffset,
       (r, _) => Map(MicrophoneCalibrationIpcHandlers.SetOffset(RequiredOperation(r.OperationId), r.OffsetMs)),
-      true
-    );
-    Register(
-      ReplayApiMethods.ChangeCalibrationVolume,
-      (r, _) => Map(MicrophoneCalibrationIpcHandlers.SetVolume(RequiredOperation(r.OperationId), r.VolumeDb)),
       true
     );
     Register(
@@ -675,12 +665,10 @@ public sealed class TUFReplayIpcFeature
     bool locked = MicrophoneDeviceService.IsToggleLocked();
     bool enabled = settings?.MicrophoneEnabled != false;
     int offset = settings?.MicrophoneOffsetMs ?? 0;
-    double volume = settings?.MicrophoneVolumeDb ?? 0d;
     if (
       _microphoneState.ToggleLocked == locked
       && _microphoneState.Enabled == enabled
       && _microphoneState.MicrophoneOffsetMs == offset
-      && _microphoneState.MicrophoneVolumeDb == volume
     )
       return;
     MicrophoneState(
@@ -691,7 +679,6 @@ public sealed class TUFReplayIpcFeature
         Devices = _microphoneState.Devices,
         SelectedDeviceId = settings?.MicrophoneDeviceId,
         MicrophoneOffsetMs = offset,
-        MicrophoneVolumeDb = volume,
       }
     );
   }

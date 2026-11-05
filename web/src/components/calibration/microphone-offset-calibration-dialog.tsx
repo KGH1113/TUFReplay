@@ -12,7 +12,6 @@ export function MicrophoneOffsetCalibrationDialog({
   data,
   phase,
   offsetMs,
-  microphoneVolumeDb,
   playing,
   playbackPositionMs,
   getPlaybackPositionMs,
@@ -20,14 +19,12 @@ export function MicrophoneOffsetCalibrationDialog({
   onClose,
   onStartCalibration,
   onCommitOffset,
-  onCommitMicrophoneVolume,
   onResetOffset,
   onTogglePlayback,
 }: {
   data: MicrophoneOffsetCalibrationData;
   phase: MicrophoneOffsetCalibrationPhase;
   offsetMs: number;
-  microphoneVolumeDb: number;
   playing: boolean;
   playbackPositionMs: number;
   getPlaybackPositionMs: () => number;
@@ -35,7 +32,6 @@ export function MicrophoneOffsetCalibrationDialog({
   onClose: () => void | Promise<void>;
   onStartCalibration: () => void;
   onCommitOffset: (offsetMs: number) => void;
-  onCommitMicrophoneVolume: (volumeDb: number) => void;
   onResetOffset: () => void;
   onTogglePlayback: () => void;
 }) {
@@ -66,10 +62,8 @@ export function MicrophoneOffsetCalibrationDialog({
         {settings ? (
           <TimingSettingsPanel
             offsetMs={offsetMs}
-            microphoneVolumeDb={microphoneVolumeDb}
             audioError={audioError}
             onCommitOffset={onCommitOffset}
-            onCommitMicrophoneVolume={onCommitMicrophoneVolume}
             onClose={onClose}
             onStartCalibration={onStartCalibration}
           />
@@ -77,7 +71,6 @@ export function MicrophoneOffsetCalibrationDialog({
           <OffsetEditor
             data={data}
             offsetMs={offsetMs}
-            microphoneVolumeDb={microphoneVolumeDb}
             draftOffsetMs={draftOffsetMs}
             dragging={dragging}
             playing={playing}
@@ -87,7 +80,6 @@ export function MicrophoneOffsetCalibrationDialog({
             onDraftOffset={setDraftOffsetMs}
             onDraggingChange={setDragging}
             onCommitOffset={onCommitOffset}
-            onCommitMicrophoneVolume={onCommitMicrophoneVolume}
             onResetOffset={onResetOffset}
             onTogglePlayback={onTogglePlayback}
             onClose={onClose}

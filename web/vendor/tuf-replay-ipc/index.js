@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "d713a7ab5bd84b2758d23931b9ee5147134c23e4379f888a87cb703824c1a473",
+    "hash": "aaab7bdafb51fdfb0a2ffd260731962446aa8675ce420856b1680e91faf998f4",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -56,7 +56,6 @@ export const ReplayApiContract = defineContract({
                     "nullable": "string"
                 },
                 "microphoneOffsetMs": "int32",
-                "microphoneVolumeDb": "float64",
                 "operationId": {
                     "nullable": "string"
                 },
@@ -306,7 +305,6 @@ export const ReplayApiContract = defineContract({
                 },
                 "enabled": "boolean",
                 "microphoneOffsetMs": "int32",
-                "microphoneVolumeDb": "float64",
                 "selectedDeviceId": {
                     "nullable": "string"
                 },
@@ -315,8 +313,7 @@ export const ReplayApiContract = defineContract({
         },
         "MicrophoneTiming": {
             "object": {
-                "microphoneOffsetMs": "int32",
-                "microphoneVolumeDb": "float64"
+                "microphoneOffsetMs": "int32"
             }
         },
         "RenderErrorDetails": {
@@ -755,18 +752,6 @@ export const ReplayApiContract = defineContract({
                 "model": "CalibrationState"
             }
         },
-        "changeCalibrationVolume": {
-            "wireName": "rpc.mod.changecalibrationvolume",
-            "input": {
-                "object": {
-                    "operationId": "string",
-                    "volumeDb": "float64"
-                }
-            },
-            "output": {
-                "model": "CalibrationState"
-            }
-        },
         "changeMicrophoneAccess": {
             "wireName": "rpc.mod.changemicrophoneaccess",
             "input": {
@@ -783,17 +768,6 @@ export const ReplayApiContract = defineContract({
             "input": {
                 "object": {
                     "offsetMs": "int32"
-                }
-            },
-            "output": {
-                "model": "MicrophoneTiming"
-            }
-        },
-        "changeMicrophoneVolume": {
-            "wireName": "rpc.mod.changemicrophonevolume",
-            "input": {
-                "object": {
-                    "volumeDb": "float64"
                 }
             },
             "output": {

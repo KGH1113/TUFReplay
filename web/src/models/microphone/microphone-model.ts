@@ -25,14 +25,12 @@ export function mapMicrophoneDevicesState(dto: MicrophoneDevicesStateDto) {
     defaultDeviceBluetooth: dto.DefaultDeviceBluetooth,
     selectedDeviceId: dto.SelectedDeviceId,
     microphoneOffsetMs: dto.MicrophoneOffsetMs,
-    microphoneVolumeDb: dto.MicrophoneVolumeDb,
   };
 }
 
 export function mapMicrophoneTimingSettings(dto: MicrophoneTimingSettingsDto) {
   return {
     microphoneOffsetMs: dto.MicrophoneOffsetMs,
-    microphoneVolumeDb: dto.MicrophoneVolumeDb,
   };
 }
 
