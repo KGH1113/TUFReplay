@@ -11,7 +11,7 @@
   "loading": "Checking installed components…",
   "description": {
     "center": "Install the components needed for camera recording and rendering.",
-    "renderer": "Turn recorded runs into videos. Restart the game after installation.",
+    "renderer": "A mod that turns recorded runs into videos.",
     "ffmpeg": "Video encoding for Windows camera recording. OrbitRender manages its own FFmpeg setup."
   },
   "consent": {
@@ -62,5 +62,37 @@
     "restart": "Restart ADOFAI to finish"
   },
   "rendererUpdateRequired": "OrbitRender update required",
-  "rendererUpdateHelp": "Please update OrbitRender."
+  "rendererUpdateHelp": "Please update OrbitRender.",
+  "setup": {
+    "label": "Steps to make videos",
+    "forRender": "You need OrbitRender to make videos. Follow these steps.",
+    "state": {
+      "upcoming": "Later step",
+      "current": "Next step",
+      "working": "In progress",
+      "done": "Done",
+      "attention": "Needs attention"
+    },
+    "install": {
+      "title": "Install OrbitRender",
+      "updateTitle": "Update OrbitRender",
+      "about": "Downloads the official release from GitHub.",
+      "done": "Installed",
+      "update": "Version 2.6.2 or later is needed. This one is {{version}}.",
+      "updateUnknown": "Version 2.6.2 or later is needed.",
+      "latestRelease": "Get the latest release"
+    },
+    "restart": {
+      "title": "Restart ADOFAI",
+      "about": "Quit ADOFAI completely and open it again.",
+      "stuck": "Still off? Turn it on in Unity Mod Manager.",
+      "done": "OrbitRender is on."
+    },
+    "create": {
+      "title": "Make a video",
+      "about": "Choose “{{action}}” from a run's menu."
+    },
+    "license": "OrbitRender is a separate mod under the GPL license.",
+    "gotIt": "Got it"
+  }
 }
