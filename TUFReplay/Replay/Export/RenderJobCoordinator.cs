@@ -1,7 +1,12 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+using TUFReplay.RunState.Models;
+using TUFReplay.RunState.Playback;
+using TUFReplay.RunState.Repositories;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
 
@@ -55,6 +60,7 @@ public static class RenderJobCoordinator
     }
     if (job == null)
       return;
+    job.RunStateSession?.End();
     if (!job.IsTerminal && !string.IsNullOrEmpty(job.OrbitJobId))
       OrbitRenderClient.Cancel(job.OrbitJobId);
     if (job.IsTerminal && !string.IsNullOrEmpty(job.BundleJobId))
@@ -87,6 +93,7 @@ public static class RenderJobCoordinator
         State = "exporting",
         Stage = StageExporting,
         Progress = ExportWeight * Clamp01(bundle.Progress),
+        RunStates = Task.Run(() => LoadRunStates(runId)),
       };
       _job = job;
       _nextPoll = 0;
@@ -259,6 +266,9 @@ public static class RenderJobCoordinator
           Finish(job, "cancelled", null);
           return;
         }
+        // The mod states load alongside the export and are nearly always ready first.
+        if (!job.RunStates.IsCompleted)
+          return;
         BeginRender(job, bundle.ManifestPath);
         return;
       case "failed":
@@ -283,6 +293,8 @@ public static class RenderJobCoordinator
       Fail(job, "render_manifest_missing", "The recording bundle is incomplete. Start rendering again.", null);
       return;
     }
+    // Mods restore the state saved with this run before OrbitRender opens the level.
+    job.RunStateSession = RunStateReplays.Begin(job.RunId, render: true, job.RunStates.Result);
     var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptions(job.Options));
     if (!result.Ok)
     {
@@ -349,8 +361,23 @@ public static class RenderJobCoordinator
     Publish(job);
   }
 
+  private static IReadOnlyList<StoredRunState> LoadRunStates(string runId)
+  {
+    try
+    {
+      return RunStateRepository.Load(runId);
+    }
+    catch (Exception exception)
+    {
+      // Mods then see the run as one without saved state; the render itself goes on.
+      Main.Instance?.Log("[Render/RunState] Saved mod states unavailable. error=" + exception.Message);
+      return Array.Empty<StoredRunState>();
+    }
+  }
+
   private static void Finish(Job job, string state, string outputFile)
   {
+    job.RunStateSession?.End();
     job.State = state;
     job.Stage = null;
     job.WaitingForGameFocus = false;
@@ -369,6 +396,7 @@ public static class RenderJobCoordinator
 
   private static void Fail(Job job, string code, string message, RenderErrorDetails details)
   {
+    job.RunStateSession?.End();
     job.State = "failed";
     job.Stage = null;
     job.WaitingForGameFocus = false;
@@ -522,6 +550,8 @@ public static class RenderJobCoordinator
     public RenderErrorDetails ErrorDetails;
     public bool CancelRequested;
     public DateTime FinishedAtUtc;
+    public Task<IReadOnlyList<StoredRunState>> RunStates;
+    public RunStateReplaySession RunStateSession;
 
     public bool IsTerminal => State == "completed" || State == "failed" || State == "cancelled";
   }

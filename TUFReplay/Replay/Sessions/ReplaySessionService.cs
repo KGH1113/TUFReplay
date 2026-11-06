@@ -124,6 +124,7 @@ public static partial class ReplaySessionService
       context.NativeInputPlayer?.Dispose();
       context.MicrophonePlayer?.Dispose();
       context.WebcamPlayer?.Dispose();
+      context.RunStates?.End();
     }
     RestoreReplayNoFail();
     RestoreReplayGameInputOffset();

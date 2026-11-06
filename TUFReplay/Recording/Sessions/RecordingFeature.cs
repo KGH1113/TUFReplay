@@ -11,6 +11,7 @@ using TUFReplay.Recording.Microphone;
 using TUFReplay.Recording.Patches;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Transport;
+using TUFReplay.RunState.Recording;
 using TUFReplay.Shared.Unity;
 
 namespace TUFReplay.Recording.Sessions;
@@ -41,6 +42,7 @@ public partial class RecordingFeature
   private MicrophoneCaptureTimeline _microphoneTimeline;
   private PendingMicrophoneDisposition _pendingEditorRecording;
   private bool _calibrationRun;
+  private RunStateCapture _runStates;
 
   private readonly RecordingActivityTracker _activity = new RecordingActivityTracker();
 
@@ -422,6 +424,7 @@ public partial class RecordingFeature
     _failedRunWaitingForHit = false;
     _runSaved = false;
     _currentRun = null;
+    DiscardRunStates();
     _runPersistence = Task.FromResult(false);
     _microphoneCaptureStarted = false;
     _microphoneTimeline = null;
