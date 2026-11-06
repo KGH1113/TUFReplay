@@ -62,6 +62,7 @@ internal static class CameraFirstRunCoordinator
     && LiveCameraRequested
     && FeatureRegistry.WebcamRecording?.Supported == true
     && !ReplaySessionService.HasActiveContext
+    && !TUFReplay.Replay.Rendering.RenderReplayHost.IsActive
     && FeatureRegistry.MicrophoneCalibration?.IsCalibrationLevel() != true
     && (ADOBase.isLevelEditor || (ADOBase.isScnGame && !ADOBase.isOfficialLevel));
 
