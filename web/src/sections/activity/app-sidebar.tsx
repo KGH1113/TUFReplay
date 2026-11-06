@@ -9,6 +9,7 @@ import { LanguageMenu } from "@/components/activity/language-menu";
 import { DownloadCenter } from "@/components/downloads/download-center";
 import { MicrophoneControls } from "@/components/microphone/microphone-controls";
 import { WebcamControls } from "@/components/webcam/webcam-controls";
+import type { DownloadCenterControl } from "@/hooks/downloads/use-download-center";
 import type {
   ActivityDay,
   ConnectionStatus,
@@ -31,6 +32,7 @@ export function AppSidebar({
   todayDate,
   timeZone,
   metadataFor,
+  downloadCenter,
   mobileOpen,
   onMobileOpenChange,
   onRetry,
@@ -45,6 +47,7 @@ export function AppSidebar({
   todayDate: string;
   timeZone: string;
   metadataFor: (level: LevelCard) => LevelMetadata;
+  downloadCenter: DownloadCenterControl;
   mobileOpen: boolean;
   onMobileOpenChange: (open: boolean) => void;
   onRetry: () => void;
@@ -109,7 +112,7 @@ export function AppSidebar({
           <div className="grid grid-cols-2 gap-1">
             <MicrophoneControls connectionStatus={status} mockEnabled={mockEnabled} />
             <WebcamControls connectionStatus={status} />
-            <DownloadCenter connectionStatus={status} />
+            <DownloadCenter connectionStatus={status} center={downloadCenter} />
             <LanguageMenu />
           </div>
         </section>
