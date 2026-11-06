@@ -31,6 +31,7 @@ export function useDownloadCenter(enabled: boolean) {
       ["renderer", rendererStatus],
       ["ffmpeg", ffmpegStatus],
     ] as const) {
+      const wasAwaitingConsent = prompted.current[id];
       if (status === "awaiting-consent" && !prompted.current[id]) {
         setMenuOpen(false);
         if (currentItem.current !== id) {
@@ -42,8 +43,14 @@ export function useDownloadCenter(enabled: boolean) {
           setDialogOpen(true);
         }
       }
-      prompted.current[id] = status === "awaiting-consent";
-      if (currentItem.current === id && autoClose.current && status === "ready") {
+      // A peer completion is verified in the background before it becomes ready.
+      prompted.current[id] =
+        status === "awaiting-consent" || (status === "checking" && wasAwaitingConsent);
+      if (
+        currentItem.current === id &&
+        status === "ready" &&
+        (autoClose.current || (id === "ffmpeg" && wasAwaitingConsent))
+      ) {
         currentItem.current = null;
         autoClose.current = false;
         setDialogOpen(false);

@@ -8,6 +8,11 @@ internal static class Program
     Directory.CreateDirectory(root);
     try
     {
+      if (args.Length == 1 && args[0] == "--ffmpeg")
+      {
+        ManagedFfmpegSuite.RunAll(root);
+        return 0;
+      }
       if (args.Length == 1 && args[0] == "--renderer")
       {
         ManagedRendererSuite.RunAll(root);
