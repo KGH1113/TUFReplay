@@ -1,33 +1,38 @@
-# Run state API
+# Replay API
 
-Other mods can save their own state with each run TUFReplay records and get it back when TUFReplay replays that run in the game or renders it through OrbitRender. An attempt counter can show the attempt number the run was played at, and a key viewer can start from the key counts the player had then.
+`TUFReplay.ReplayApi` is how overlay, key-viewer and other mods take part in TUFReplay's recordings and replays. It does two things:
 
-The API is in TUFReplay 1.x builds that have `TUFReplay.RunStateApi`, with `ApiVersion = 1`.
+- **State**: a mod saves its own state with each recorded run, typed by its own class, and gets it back when that run is replayed. An attempt counter can show the attempt number the run was played at; a key viewer can start from the key counts the player had then.
+- **Replay**: while a run is replayed, the mod gets the replay's clock and recorded keys. The calls are the same whether TUFReplay plays the run in the game or renders it to video, so a mod writes one replay path.
+
+`ApiVersion` is 1.
 
 ## Isolation rules
 
-The rules are the same as for OrbitRender's Overlay API.
-
-- **No reference to TUFReplay.dll.** Your mod finds `TUFReplay.RunStateApi` by name in the loaded assembly named `TUFReplay`.
-- **Your own provider object.** You register an object of your own type. TUFReplay finds its methods by name and calls them through reflection.
+- **No reference to TUFReplay.dll.** Your mod finds `TUFReplay.ReplayApi` by name in the loaded assembly named `TUFReplay`.
+- **Your own provider object.** You register an object of your own type. TUFReplay finds its public methods by name and binds them once.
 - **Your own state type.** It stays in your assembly. TUFReplay reads its fields through reflection and never shares a type with you.
-- **Only BCL types cross the boundary.** These are `string`, `bool` and `object`. The method names and the state id are the contract.
+- **Only BCL and Unity types cross the boundary**: `string`, numbers, `bool`, `KeyCode`, `Canvas`. The method names and the provider id are the contract.
 
-So either mod keeps working when the other is missing or turned off.
+Either mod keeps working when the other is missing or turned off.
 
 ## TUFReplay surface
 
 ```csharp
 namespace TUFReplay
 {
-    public static class RunStateApi
+    public static class ReplayApi
     {
-        public const int ApiVersion = 1;            // changes only when a member or method changes meaning
+        public const int ApiVersion = 1;
         public const int MaxStateBytes = 65536;     // largest saved state per run, UTF-8 JSON
 
         public static bool IsReplaying { get; }     // between OnReplayBegin and OnReplayEnd
-        public static bool IsRendering { get; }     // the replay is an OrbitRender render
+        public static bool IsRendering { get; }     // the replay is being rendered to video
         public static string ReplayRunId { get; }   // the run being replayed, or null
+        public static long ReplayTicks { get; }     // the replay clock, 100 ns ticks
+        public static int RenderWidth { get; }      // the video while rendering, otherwise 0
+        public static int RenderHeight { get; }
+        public static int RenderFps { get; }
 
         public static bool Register(string id, object provider);
         public static void Unregister(string id);
@@ -39,72 +44,92 @@ namespace TUFReplay
 **`Register`**
 - Registering an id again replaces its provider.
 - It returns false when the id or the provider is invalid, and writes the reason to the mod log.
+- The log line on success says what the provider takes part in, such as `Registered JipperResourcePack (replay begin/end, keys, clock, render canvases, frame capture).`
 
 **The id**
-- Saved with every run, so keep it stable.
-- Use letters, digits, `.`, `_` and `-`, up to 64 characters. Name it after your mod and the state, such as `"Element.Attempts"`.
+- A provider that saves a state saves it under this id, so keep it stable.
+- Use letters, digits, `.`, `_` and `-`, up to 64 characters, such as `"JipperResourcePack"` or `"Element.Attempts"`.
 
 **Registering**
 - Register from Unity's main thread.
-- TUFReplay may load after your mod. If `TUFReplay.RunStateApi` is missing, try again when the next mod finishes loading.
+- TUFReplay may load after your mod. If `TUFReplay.ReplayApi` is missing, try again when the next mod finishes loading.
+- A mod can register one provider, or one per feature.
 
 ## Provider contract
 
-TUFReplay looks up these public instance methods by name. `TState` is your state class.
+TUFReplay looks up these public instance methods by name. Every method is optional, but a provider needs at least one. `TState` is your state class.
 
-| Method | Called |
-| --- | --- |
-| `TState CaptureRunState()` or `Task<TState> CaptureRunState()` | When a run starts recording |
-| `void OnReplayBegin(TState recorded, bool render)` or `void OnReplayBegin(TState recorded)` | Before TUFReplay replays a run in the game or renders it |
-| `void OnReplayEnd()` | When that replay or render ends |
-| `TState UpgradeRunState(TOldState old)` | When a run saved with an older state type is read. A provider can have any number of these. |
+| Method | In-game replay | Render |
+| --- | --- | --- |
+| `TState CaptureRunState()` or `Task<TState> CaptureRunState()` | When a run starts recording | |
+| `TState UpgradeRunState(TOldState old)` | When a run saved with an older state type is read; any number | |
+| `void OnReplayBegin(TState recorded, bool render)`, or `(TState recorded)`, `(bool render)`, `()` | Before the level starts | Before the renderer opens the level |
+| `void OnReplayClock(long ticks)` | Every frame, real time | Every frame, video time |
+| `void OnReplayKey(KeyCode key, int? nativeKey, bool down, long ticks)` | Each recorded key | Each recorded key |
+| `void OnReplayEnd()` | When the replay ends, fails or is replaced | When the render completes, fails or is cancelled |
+| `IEnumerable<Canvas> GetReplayCanvases()` or `Canvas GetReplayCanvases()` | Not called | Each frame the renderer collects canvases: the ones to put in the video |
+| `void OnBeforeFrameCapture()` / `void OnAfterFrameCapture()` | Not called | Around each captured frame |
 
-**Which methods**
-- Every method is optional, but a provider needs `CaptureRunState` or `OnReplayBegin`.
-- `CaptureRunState` and `OnReplayBegin` must use the same `TState`.
+**During a replay**
+- Take the replay's keys from `OnReplayKey` and ignore live input. TUFReplay still presses the keys through the OS during in-game replays, for now, so a mod that also listens to live input counts them twice.
+- Take time from `OnReplayClock` / `ReplayTicks`, not from a stopwatch. In a render, the game runs slower than the video, so real time is wrong.
+- Saving progress, counting attempts or adding to persistent counters during a replay is usually wrong: check `ReplayApi.IsReplaying`.
+
+**`ticks`**
+- 100 ns units (`TimeSpan.TicksPerSecond`), from 0 when the replay began. They never go back during a replay.
+- In a render they are the video's time; in the game, real time since the replay began.
+- A key's `ticks` is the time it was pressed, which can be slightly before the current clock.
+
+**`nativeKey`**
+- The platform key code the recording reported (Windows virtual-key code, macOS key code), already converted to this machine's platform.
+- It is null when TUFReplay only knows the Unity key, as in renders for now.
 
 **Calls and failures**
-- TUFReplay calls every method on Unity's main thread.
-- An exception from your method is written to the log, and recording, replay and rendering go on.
+- Every method runs on Unity's main thread. Per-frame calls allocate nothing on TUFReplay's side.
+- An exception from your method is written to the log, at most three times per method for per-frame calls, and the replay or render goes on.
 
 **What gets saved**
 - Return null from `CaptureRunState` to save nothing for that run.
-- `recorded` is null when the run has no readable state for your id. That covers runs recorded before your mod used the API, runs where your mod saved nothing, and runs saved with a type you can't read anymore.
+- `recorded` is null when the run has no readable state for your id: runs recorded before your mod saved one, runs where it saved nothing, and runs saved with a type you can't read anymore.
+
+## Mods without ReplayApi
+
+A mod that does not register gets nothing from TUFReplay:
+- In renders it sees no replay keys. TUFReplay does not inject keys into SkyHook or Unity's Input.
+- In in-game replays it currently sees the keys TUFReplay presses through the OS. That will stop when TUFReplay stops pressing keys through the OS; use `ReplayApi`.
 
 ## When methods are called
 
 ### Recording
 
 **When `CaptureRunState` runs**
-- It runs when the run's input capture starts, at the countdown or at a checkpoint, before the first recorded input.
-- If the activity database was busy then, it runs when the player gains control instead.
+- When the run's input capture starts, at the countdown or at a checkpoint, before the first recorded input.
+- If the activity database was busy then, when the player gains control instead.
 
 **Which runs**
 - Every attempt is its own run.
 - Calibration runs, replays and offline renders are not recorded.
 
 **Timing on the main thread**
-- `CaptureRunState` runs on the main thread just as a run starts. Keep it under a millisecond.
-- A slower one is reported once in the log.
-
-**Slow or out-of-process work**
-- Return a `Task<TState>`. It is saved if it finishes before the run is saved, which happens when the player clears, dies or leaves the level.
-- A result that arrives later is dropped with a log line.
+- `CaptureRunState` runs just as a run starts. Keep it under a millisecond; a slower one is reported once in the log.
+- For slow or out-of-process work, return a `Task<TState>`. It is saved if it finishes before the run is saved, when the player clears, dies or leaves the level. A later result is dropped with a log line.
 
 **What is saved**
 - The value is written to JSON as soon as TUFReplay gets it. Changing the object afterwards does not change what is saved.
-- Runs TUFReplay does not save are dropped with their states. That covers runs without forward progress and runs without native input.
+- Runs TUFReplay does not save are dropped with their states: runs without forward progress and runs without native input.
 
 ### In-game replay
 
-- `OnReplayBegin(recorded, render: false)` runs before the level starts.
-  - It runs before ADOFAI's `scnGame.Play`, so an attempt counter can already tell that this play is a replay.
-- `OnReplayEnd` runs when the replay ends, fails, or is replaced by another replay.
-- A timeline seek inside the replay restarts the level without calling these again.
+- `OnReplayBegin(recorded, render: false)` runs before the level starts, before ADOFAI's `scnGame.Play`, so an attempt counter can already tell that this play is a replay.
+- `OnReplayClock` runs every frame; `OnReplayKey` delivers each recorded key at its time, whether or not the game window has focus.
+- A timeline seek releases held keys and continues from the new time; keys in between are not sent.
+- `OnReplayEnd` runs when the replay ends, fails, or is replaced by another replay. Held keys are released first.
 
-### OrbitRender render
+### Render
 
-- `OnReplayBegin(recorded, render: true)` runs before TUFReplay hands the render job to OrbitRender. That is before OrbitRender's Overlay API calls `OnRenderSessionBegin`.
+TUFReplay replays the recording itself, and OrbitRender (RenderApi 3 or later) only captures and encodes it.
+- `OnReplayBegin(recorded, render: true)` runs before TUFReplay hands the job to OrbitRender. `RenderWidth`, `RenderHeight` and `RenderFps` describe the video; they are the final values once the first frame renders.
+- Every frame: `OnReplayClock` with the video time, `OnReplayKey` for the keys of that frame, `GetReplayCanvases`, then `OnBeforeFrameCapture` and `OnAfterFrameCapture` around the capture.
 - `OnReplayEnd` runs when the render completes, fails or is cancelled.
 
 `IsReplaying` is true from just before `OnReplayBegin` until just before `OnReplayEnd`, so it already reads false inside `OnReplayEnd`. Only one replay or render runs at a time.
@@ -198,14 +223,14 @@ public AttemptState UpgradeRunState(AttemptStateV1 old) =>
 
 ## Example adapter
 
-Element keeps its attempt numbers and ElementNote's key counts with each run. ElementNote runs in another process, so its counts arrive through a `Task`.
+A key viewer that shows replay keys and puts its canvas in videos, without saving a state:
 
 ```csharp
-// Element/OtherModApi/TUFReplayRunStateAPI.cs
-// Optional bridge to TUFReplay's run state API. No compile-time reference to TUFReplay.
-internal static class TUFReplayRunStateAPI
+// Optional bridge to TUFReplay's ReplayApi. No compile-time reference to TUFReplay.
+internal static class TUFReplayAPI
 {
-    public const int RequiredApiVersion = 1;
+    private const string ProviderId = "MyKeyViewer";
+    private const int RequiredApiVersion = 1;
     private static Func<string, object, bool> _register;
     private static Action<string> _unregister;
     private static bool _registered;
@@ -213,14 +238,12 @@ internal static class TUFReplayRunStateAPI
     public static void TryRegister()
     {
         if (_registered || !Resolve()) return;
-        _registered = _register("Element.Attempts", new AttemptStore())
-                    & _register("Element.KeyCounts", new KeyCountStore());
+        _registered = _register(ProviderId, new Provider());
     }
 
     public static void Shutdown()
     {
-        _unregister?.Invoke("Element.Attempts");
-        _unregister?.Invoke("Element.KeyCounts");
+        _unregister?.Invoke(ProviderId);
         _registered = false;
     }
 
@@ -230,7 +253,7 @@ internal static class TUFReplayRunStateAPI
         foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
         {
             if (assembly.GetName().Name != "TUFReplay") continue;
-            Type api = assembly.GetType("TUFReplay.RunStateApi", false);
+            Type api = assembly.GetType("TUFReplay.ReplayApi", false);
             if (api?.GetField("ApiVersion")?.GetValue(null) is not int version || version < RequiredApiVersion) continue;
             _register = (Func<string, object, bool>)Delegate.CreateDelegate(
                 typeof(Func<string, object, bool>), api.GetMethod("Register"));
@@ -240,60 +263,50 @@ internal static class TUFReplayRunStateAPI
         }
         return false;
     }
-}
 
+    // TUFReplay finds these methods by name.
+    private sealed class Provider
+    {
+        public void OnReplayBegin(bool render) => KeyViewer.Instance.BeginReplay();      // stop live input, copy the counts
+        public void OnReplayEnd() => KeyViewer.Instance.EndReplay();                   // back to live input
+        public void OnReplayClock(long ticks) => KeyViewer.Instance.ReplayTicks = ticks;
+        public void OnReplayKey(KeyCode key, int? nativeKey, bool down, long ticks) =>
+            KeyViewer.Instance.ApplyReplayKey(key, nativeKey, down, ticks);
+        public IEnumerable<Canvas> GetReplayCanvases()
+        {
+            yield return KeyViewer.Instance.Canvas;
+        }
+    }
+}
+```
+
+Register when your mod is enabled, and again whenever another mod finishes loading, until it succeeds:
+
+```csharp
+protected override void OnEnable() => TUFReplayAPI.TryRegister();
+protected override void OnDisable() => TUFReplayAPI.Shutdown();
+
+[JAPatch(typeof(UnityModManager.ModEntry), "Load", PatchType.Postfix, false)]
+private static void OnModLoaded() => TUFReplayAPI.TryRegister();
+```
+
+A provider that also saves a state adds `CaptureRunState` and takes it in `OnReplayBegin`:
+
+```csharp
 internal sealed class AttemptState
 {
     public int Attempt;
     public int FullAttempt;
 }
 
-internal sealed class KeyCountState
-{
-    // ElementNote tab → key slot → presses
-    public Dictionary<string, Dictionary<string, int>> ByTab = new();
-}
-
 internal sealed class AttemptStore
 {
-    public AttemptState CaptureRunState()
-    {
-        AttemptCounts now = AttemptTracker.Instance.Current;   // already counts this play
-        return new AttemptState { Attempt = now.Attempt, FullAttempt = now.FullAttempt };
-    }
+    public AttemptState CaptureRunState() =>
+        new AttemptState { Attempt = Attempts.Current, FullAttempt = Attempts.Full };
 
-    public void OnReplayBegin(AttemptState recorded, bool render) => AttemptDisplay.ShowRecorded(recorded); // null: "-"
-
-    public void OnReplayEnd() => AttemptDisplay.ShowLive();
+    public void OnReplayBegin(AttemptState recorded, bool render) => AttemptText.ShowRecorded(recorded); // null: "-"
+    public void OnReplayEnd() => AttemptText.ShowLive();
 }
-
-internal sealed class KeyCountStore
-{
-    public async Task<KeyCountState> CaptureRunState() =>
-        new KeyCountState { ByTab = await ElementNoteClient.Instance.ReadCountersAsync() };
-
-    public void OnReplayBegin(KeyCountState recorded, bool render)
-    {
-        if (render) KeyCountBaseline.Set(recorded?.ByTab);            // used by the OrbitRender render
-        else ElementNoteClient.Instance.BeginReplay(recorded?.ByTab); // replayed keys don't add to the totals
-    }
-
-    public void OnReplayEnd()
-    {
-        KeyCountBaseline.Clear();
-        ElementNoteClient.Instance.EndReplay();
-    }
-}
-```
-
-Register like any optional integration: when your mod is enabled, and again whenever another mod finishes loading, until it succeeds.
-
-```csharp
-protected override void OnEnable() => TUFReplayRunStateAPI.TryRegister();
-protected override void OnDisable() => TUFReplayRunStateAPI.Shutdown();
-
-[JAPatch(typeof(UnityModManager.ModEntry), "Load", PatchType.Postfix, false)]
-private static void OnModLoaded() => TUFReplayRunStateAPI.TryRegister();
 ```
 
 ## Storage
@@ -315,11 +328,13 @@ States live in TUFReplay's activity database.
 
 ## Log messages
 
-Every message starts with `[RunState]` and names the state id.
+Every message starts with `[ReplayApi]` and names the provider id.
 
 ```text
-[RunState] Element.Attempts was not registered: AttemptState.Extra is object, which can't be stored. TUFReplay needs the exact type to read a run back. Use a concrete class or struct.
-[RunState] Element.Attempts: 12 saved runs can't be read: AttemptState.Speed was string and is now double. Add UpgradeRunState(the old type) to AttemptStore, or those runs reach OnReplayBegin as null.
-[RunState] Element.KeyCounts: CaptureRunState finished after the run ended, so its value was not saved for that run.
-[RunState] Element.Attempts: AttemptStore.CaptureRunState took 3.2 ms on the main thread, right as a run starts. Return a Task for slow work so ADOFAI does not stutter.
+[ReplayApi] Registered JipperResourcePack (replay begin/end, keys, clock, render canvases, frame capture).
+[ReplayApi] MyMod was not registered: Provider.OnReplayClock must be void OnReplayClock(long ticks).
+[ReplayApi] Element.Attempts was not registered: AttemptState.Extra is object, which can't be stored. TUFReplay needs the exact type to read a run back. Use a concrete class or struct.
+[ReplayApi] Element.Attempts: 12 saved runs can't be read: AttemptState.Speed was string and is now double. Add UpgradeRunState(the old type) to AttemptStore, or those runs reach OnReplayBegin as null.
+[ReplayApi] Element.KeyCounts: CaptureRunState finished after the run ended, so its value was not saved for that run.
+[ReplayApi] Element.Attempts: AttemptStore.CaptureRunState took 3.2 ms on the main thread, right as a run starts. Return a Task for slow work so ADOFAI does not stutter.
 ```
