@@ -3,6 +3,7 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
+using TUFReplay.ModApi.Playback;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Levels;
@@ -132,6 +133,7 @@ public sealed class Main
     RenderJobCoordinator.Tick();
     ReplaySessionService.TickStartup();
     ReplaySessionService.TickWebcamPlayback();
+    ReplaySessions.TickInGame();
     CameraFirstRunCoordinator.Tick();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
   }

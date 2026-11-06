@@ -4,9 +4,12 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using TUFReplay.RunState.Models;
-using TUFReplay.RunState.Playback;
-using TUFReplay.RunState.Repositories;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using TUFReplay.ModApi.Models;
+using TUFReplay.ModApi.Playback;
+using TUFReplay.ModApi.Repositories;
+using TUFReplay.Replay.Rendering;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
 
@@ -60,7 +63,7 @@ public static class RenderJobCoordinator
     }
     if (job == null)
       return;
-    job.RunStateSession?.End();
+    ReleaseHost(job);
     if (!job.IsTerminal && !string.IsNullOrEmpty(job.OrbitJobId))
       OrbitRenderClient.Cancel(job.OrbitJobId);
     if (job.IsTerminal && !string.IsNullOrEmpty(job.BundleJobId))
@@ -269,6 +272,16 @@ public static class RenderJobCoordinator
         // The mod states load alongside the export and are nearly always ready first.
         if (!job.RunStates.IsCompleted)
           return;
+        if (OrbitRenderClient.SupportsHostedReplay)
+        {
+          // TUFReplay replays the recording itself; reading it back stays off the game thread.
+          string manifestPath = bundle.ManifestPath;
+          job.Recording ??= Task.Run(() => RecordingBundle.Load(manifestPath));
+          if (!job.Recording.IsCompleted)
+            return;
+          BeginHostedRender(job);
+          return;
+        }
         BeginRender(job, bundle.ManifestPath);
         return;
       case "failed":
@@ -294,7 +307,11 @@ public static class RenderJobCoordinator
       return;
     }
     // Mods restore the state saved with this run before OrbitRender opens the level.
-    job.RunStateSession = RunStateReplays.Begin(job.RunId, render: true, job.RunStates.Result);
+    job.RunStateSession = ReplaySessions.Begin(
+      job.RunId,
+      new ReplayRender(job.Options.Width, job.Options.Height, job.Options.VideoFps),
+      job.RunStates.Result
+    );
     var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptions(job.Options));
     if (!result.Ok)
     {
@@ -306,6 +323,83 @@ public static class RenderJobCoordinator
     job.Stage = StageOpeningLevel;
     job.Progress = Math.Max(job.Progress, PrepareProgress);
     Publish(job);
+  }
+
+  // OrbitRender 3 and later: OrbitRender captures and encodes, TUFReplay replays as its host.
+  private static void BeginHostedRender(Job job)
+  {
+    RecordingBundle recording;
+    RenderReplayHost host;
+    try
+    {
+      recording = job.Recording.GetAwaiter().GetResult();
+      host = new RenderReplayHost(recording, job.Options.EndDelaySeconds);
+    }
+    catch (RecordingFormatException exception)
+    {
+      Fail(
+        job,
+        exception.Code,
+        exception.Message,
+        new RenderErrorDetails
+        {
+          Field = exception.Field,
+          File = exception.File,
+          Line = exception.Line,
+        }
+      );
+      return;
+    }
+    job.Host = host;
+    // Mods restore the state saved with this run before OrbitRender opens the level.
+    job.RunStateSession = ReplaySessions.Begin(
+      job.RunId,
+      new ReplayRender(job.Options.Width, job.Options.Height, job.Options.VideoFps),
+      job.RunStates.Result
+    );
+    var result = OrbitRenderClient.StartHostedReplay(HostedRequestJson(recording, BuildOptions(job.Options)), host);
+    if (!result.Ok)
+    {
+      Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
+      return;
+    }
+    job.OrbitJobId = result.Job.Id;
+    job.State = "preparing";
+    job.Stage = StageOpeningLevel;
+    job.Progress = Math.Max(job.Progress, PrepareProgress);
+    Publish(job);
+  }
+
+  // What OrbitRender needs besides the host: where the level is, how to name the file,
+  // when the audio starts, and the camera and microphone to compose, with absolute paths.
+  internal static string HostedRequestJson(RecordingBundle recording, OrbitRenderOptions options)
+  {
+    RecordingManifest manifest = recording.Manifest;
+    var media = manifest.Media == null ? null : (JObject)manifest.Media.DeepClone();
+    foreach (string name in new[] { "webcam", "microphone" })
+      if (media?[name] is JObject item && item["path"]?.Type == JTokenType.String)
+        item["path"] = recording.ResolveFile((string)item["path"]);
+    var serializer = JsonSerializer.Create(new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
+    var request = new JObject
+    {
+      ["levelPath"] = recording.ResolveLevelPath(),
+      ["levelFileSha256"] = manifest.Level.FileSha256,
+      ["startTile"] = manifest.Replay.StartTile,
+      ["gameInputOffsetMs"] = manifest.Replay.GameInputOffsetMs,
+      ["wonTimeUs"] = manifest.Replay.WonTimeUs,
+      ["media"] = media,
+      ["warnings"] = JArray.FromObject(manifest.Warnings ?? Array.Empty<string>()),
+      ["options"] = JObject.FromObject(options ?? new OrbitRenderOptions(), serializer),
+    };
+    return request.ToString(Formatting.None);
+  }
+
+  private static void ReleaseHost(Job job)
+  {
+    job.RunStateSession?.End();
+    // OrbitRender restores the game itself; this covers a job that ended without it.
+    job.Host?.RestoreAfterRender();
+    job.Host = null;
   }
 
   private static void AdvanceRender(Job job)
@@ -377,7 +471,7 @@ public static class RenderJobCoordinator
 
   private static void Finish(Job job, string state, string outputFile)
   {
-    job.RunStateSession?.End();
+    ReleaseHost(job);
     job.State = state;
     job.Stage = null;
     job.WaitingForGameFocus = false;
@@ -396,7 +490,7 @@ public static class RenderJobCoordinator
 
   private static void Fail(Job job, string code, string message, RenderErrorDetails details)
   {
-    job.RunStateSession?.End();
+    ReleaseHost(job);
     job.State = "failed";
     job.Stage = null;
     job.WaitingForGameFocus = false;
@@ -551,7 +645,9 @@ public static class RenderJobCoordinator
     public bool CancelRequested;
     public DateTime FinishedAtUtc;
     public Task<IReadOnlyList<StoredRunState>> RunStates;
-    public RunStateReplaySession RunStateSession;
+    public ReplaySession RunStateSession;
+    public Task<RecordingBundle> Recording;
+    public RenderReplayHost Host;
 
     public bool IsTerminal => State == "completed" || State == "failed" || State == "cancelled";
   }

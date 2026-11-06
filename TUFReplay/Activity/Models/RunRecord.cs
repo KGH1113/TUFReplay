@@ -48,5 +48,5 @@ public class RunRecord
   public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;
 
   /// <summary>Mod states captured for this run, saved in the same transaction.</summary>
-  internal System.Collections.Generic.IReadOnlyList<TUFReplay.RunState.Models.RunStateRecord> RunStates;
+  internal System.Collections.Generic.IReadOnlyList<TUFReplay.ModApi.Models.RunStateRecord> RunStates;
 }

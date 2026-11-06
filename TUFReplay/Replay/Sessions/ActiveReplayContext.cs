@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using TUFReplay.Activity.Models;
+using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
-using TUFReplay.RunState.Playback;
 using TUFReplay.Webcam.Playback;
 
 namespace TUFReplay.Replay.Sessions;
@@ -47,5 +47,6 @@ public class ActiveReplayContext
   public bool ReplayHitMarginLimitApplied;
   public bool? OriginalNoFailMode;
   public bool ReplayNoFailApplied;
-  internal RunStateReplaySession RunStates;
+  internal ReplaySession RunStates;
+  internal ReplayKeyFeed KeyFeed;
 }
