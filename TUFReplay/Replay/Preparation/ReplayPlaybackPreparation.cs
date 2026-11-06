@@ -437,8 +437,8 @@ public static partial class ReplayPlaybackCoordinator
       Meta = operation.Meta,
     };
 
-    // ImplResourcePack checks its rule when editor.Play() below starts the level.
-    ImplResourcePackAttempts.EnsureRegistered();
+    // Element checks its rule when editor.Play() below starts the level.
+    ElementAttempts.EnsureRegistered();
     ReplaySessionService.InstallActiveContext(context);
     ReplaySessionService.ApplyReplayNoFailNow();
     ReplaySessionService.ApplyReplayGameInputOffsetNow();

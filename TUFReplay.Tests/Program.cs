@@ -32,7 +32,7 @@ internal static class Program
       RunRecordManagementSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
-      ImplResourcePackAttemptsSuite.RunAll();
+      ElementAttemptsSuite.RunAll();
       CGEventCaptureRegressionSuite.RunAll();
       PerformanceRegressionSuite.RunAll(root);
       UpdaterTests.RunAll();
