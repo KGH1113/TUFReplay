@@ -5,18 +5,19 @@ using TUFReplay.Replay.Sessions;
 namespace TUFReplay.Replay.Compatibility;
 
 /// <summary>
-/// Keeps replay playback out of ImplResourcePack's attempt counter. ImplResourcePack asks this
-/// rule each time a play starts, and the rule reads whether a replay is installed, so nothing has
-/// to be switched back on after the replay. Optional: without ImplResourcePack, or with a version
-/// that has no attempt counter, this does nothing. Resolved by reflection, like ImplResourcePack
-/// resolves <see cref="NativeInputPause"/>.
+/// Keeps replay playback out of Element's attempt counter. Element asks this rule each time a
+/// play starts, and the rule reads whether a replay is installed, so nothing has to be switched
+/// back on after the replay. Optional: without Element, or with a version that has no attempt
+/// counter, this does nothing. Resolved by reflection, like Element resolves
+/// <see cref="NativeInputPause"/>. Element was called ImplResourcePack before 1.0.0, and those
+/// versions have the same API under their old names.
 /// </summary>
-internal static class ImplResourcePackAttempts
+internal static class ElementAttempts
 {
   private const string Owner = "TUFReplay";
-  private const string AssemblyName = "ImplResourcePack";
-  private const string ApiTypeName = "ImplResourcePack.AttemptCounter";
   internal const int SupportedApiVersion = 1;
+
+  private static readonly string[] AssemblyNames = { "Element", "ImplResourcePack" };
 
   internal static readonly Func<bool> SkipReplays = () => ReplaySessionService.HasActiveContext;
 
@@ -24,7 +25,7 @@ internal static class ImplResourcePackAttempts
   private static bool _warned;
 
   /// <summary>
-  /// Sets the rule if ImplResourcePack is loaded. Called before every replay starts, so mod load
+  /// Sets the rule if Element is loaded. Called before every replay starts, so mod load
   /// order does not matter; once set, this only checks a flag.
   /// </summary>
   public static void EnsureRegistered()
@@ -35,16 +36,24 @@ internal static class ImplResourcePackAttempts
     {
       foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
       {
-        if (!string.Equals(assembly.GetName().Name, AssemblyName, StringComparison.Ordinal))
-          continue;
-        if (TryRegister(assembly.GetType(ApiTypeName, false)))
+        string typeName = ApiTypeNameFor(assembly.GetName().Name);
+        if (typeName != null && TryRegister(assembly.GetType(typeName, false)))
           _registered = true;
       }
     }
     catch (Exception exception)
     {
-      Main.Instance?.LogException(nameof(ImplResourcePackAttempts), exception);
+      Main.Instance?.LogException(nameof(ElementAttempts), exception);
     }
+  }
+
+  /// <summary>The attempt counter type in the assembly <paramref name="assemblyName"/>, or null.</summary>
+  internal static string ApiTypeNameFor(string assemblyName)
+  {
+    foreach (string name in AssemblyNames)
+      if (string.Equals(assemblyName, name, StringComparison.Ordinal))
+        return name + ".AttemptCounter";
+    return null;
   }
 
   /// <summary>Sets the rule through <paramref name="api"/>; false if it is missing or a different version.</summary>
@@ -77,7 +86,7 @@ internal static class ImplResourcePackAttempts
       return;
     _warned = true;
     Main.Instance?.Log(
-      "[Replay] ImplResourcePack's attempt counter API is version "
+      "[Replay] Element's attempt counter API is version "
         + (version ?? "unknown")
         + ", and this TUFReplay supports "
         + SupportedApiVersion
