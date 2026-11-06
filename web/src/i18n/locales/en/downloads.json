@@ -12,11 +12,11 @@
   "description": {
     "center": "Install the components needed for camera recording and rendering.",
     "renderer": "A mod that turns recorded runs into videos.",
-    "ffmpeg": "Used for Windows camera recording and making replay videos."
+    "ffmpeg": "TUFReplay uses FFmpeg to record your camera on Windows."
   },
   "consent": {
     "renderer": "With your consent, TUFReplay downloads the official OrbitRender release from GitHub and installs this separately licensed GPL mod into the game's Mods folder.",
-    "ffmpeg": "With your consent, TUFReplay downloads and verifies FFmpeg. The build may include GPL components. It is installed in the game's ffmpeg/<platform>/ folder and can be shared by other mods on this game installation."
+    "ffmpeg": "With your consent, TUFReplay downloads and verifies FFmpeg in the game's ffmpeg/<platform>/ folder. The build may include GPL components. Compatible mods can adopt this installation; your OrbitRender version may still require its own setup."
   },
   "status": {
     "checking": "Checking installation…",
@@ -99,7 +99,7 @@
     "title": "Install FFmpeg",
     "ready": "Ready to use",
     "restartHelp": "Fully quit and reopen the game to use FFmpeg.",
-    "readyHelp": "You can now record your camera or make a replay video. No game restart is needed.",
+    "readyHelp": "FFmpeg is ready for Windows camera recording. No game restart is needed. OrbitRender manages its own rendering setup.",
     "source": "Provider: {{source}}",
     "backgroundHelp": "You can keep working. Installation continues when you close this window.",
     "installInfo": "Installation and license",

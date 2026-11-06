@@ -86,7 +86,7 @@
   "syncHint": "The first frame is automatically aligned with the replay clock. To correct camera latency, pause near a key press and compare the image with the replay. Positive values show the image earlier; negative values show it later.",
   "resetOffset": "Reset sync correction",
   "windowsSetup": "Windows camera setup",
-  "ffmpegHint": "Windows camera recording needs FFmpeg. Turn on the camera and approve installation in the web setup dialog. It is installed in the game's ffmpeg folder and reused by replay rendering.",
+  "ffmpegHint": "Windows camera recording needs FFmpeg. Turn on the camera and approve installation in the web setup dialog. TUFReplay installs it in the game's ffmpeg folder. OrbitRender manages its own rendering setup.",
   "applyPath": "Apply path",
   "errors": {
     "readSettings": "Camera settings could not be read. Check the game connection and update TUFReplay if needed.",

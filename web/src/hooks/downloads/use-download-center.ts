@@ -43,7 +43,9 @@ export function useDownloadCenter(enabled: boolean) {
           setDialogOpen(true);
         }
       }
-      prompted.current[id] = status === "awaiting-consent";
+      // A peer completion is verified in the background before it becomes ready.
+      prompted.current[id] =
+        status === "awaiting-consent" || (status === "checking" && wasAwaitingConsent);
       if (
         currentItem.current === id &&
         status === "ready" &&

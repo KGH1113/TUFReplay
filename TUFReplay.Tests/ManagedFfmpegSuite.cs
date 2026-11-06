@@ -1,7 +1,9 @@
 using System.IO.Compression;
 using System.Net;
 using System.Net.Http;
+using System.Security.Cryptography;
 using System.Text;
+using Newtonsoft.Json;
 using TUFReplay.Shared.Media;
 
 internal static class ManagedFfmpegSuite
@@ -32,8 +34,8 @@ internal static class ManagedFfmpegSuite
       Check(FfmpegPlatform.Current().Url == url, "Windows downloads the BtbN release build");
     await CheckInstallGateAsync(root);
     await CheckSharedInstallationAsync(root);
-    if (OperatingSystem.IsWindows())
-      await CheckDirectoryMoveAsync(root);
+    await CheckDirectoryMoveAsync(root);
+    await CheckConcurrentInstallAsync(root);
     Check(
       FfmpegPlatform.ResolveGameDirectory(Path.Combine(root, "Game.app", "Contents"), true) == Path.GetFullPath(root),
       "macOS Contents resolves outside the app bundle"
@@ -51,14 +53,15 @@ internal static class ManagedFfmpegSuite
       ("../../outside.txt", "should not escape"),
       ("vendor/LICENSE.txt", "fixture vendor notice")
     );
-    var platform = new FfmpegPlatform("fixture-macos", "ffmpeg", "https://fixture.invalid/ffmpeg.zip");
+    var platform = FixturePlatform("fixture-macos", "ffmpeg");
     int requests = 0;
     Func<HttpMessageHandler> transport = () =>
       new FixtureHandler(
         (request, token) =>
         {
-          Interlocked.Increment(ref requests);
-          return Task.FromResult(Response(request, archive));
+          if (request.RequestUri.AbsolutePath != "/checksum")
+            Interlocked.Increment(ref requests);
+          return Task.FromResult(VerifiedResponse(request, archive));
         }
       );
     using (var installer = new ManagedFfmpegInstaller(directory, platform, transport))
@@ -91,12 +94,12 @@ internal static class ManagedFfmpegSuite
     {
       await reused.Work;
       Check(reused.Snapshot().Available && requests == 1, "verified installation reused without another download");
-      File.Delete(reused.Snapshot().Path);
+      File.AppendAllText(reused.Snapshot().Path, "# tampered\n");
     }
     using (var changed = new ManagedFfmpegInstaller(directory, platform, transport))
     {
       await changed.Work;
-      Check(changed.Snapshot().Status == "missing", "missing executable must be reinstalled");
+      Check(changed.Snapshot().Status == "missing", "changed executable must be reinstalled");
     }
     string legacyGame = Path.Combine(root, "legacy game");
     string legacyDirectory = Path.Combine(legacyGame, "Mods", "OrbitRender", "FFmpeg", platform.Name);
@@ -108,17 +111,29 @@ internal static class ManagedFfmpegSuite
     using (var migrated = new ManagedFfmpegInstaller(legacyGame, platform, transport))
     {
       await migrated.Work;
-      Check(migrated.Snapshot().Available, "existing per-mod installation is reused without a download");
-      Check(requests == 1, "legacy migration stays offline");
-      Check(
-        migrated.Snapshot().Path.StartsWith(Path.Combine(legacyGame, "ffmpeg", platform.Name)),
-        "legacy installation is published to the shared game directory"
-      );
+      Check(migrated.Snapshot().Status == "missing", "other mods' binaries are not adopted");
+      Check(requests == 1, "startup stays offline");
       Check(File.Exists(legacyExecutable), "legacy source installation is not deleted");
       Check(
-        File.Exists(Path.Combine(Path.GetDirectoryName(migrated.Snapshot().Path), "LICENSE.txt")),
-        "legacy installation gains a LICENSE file"
+        !Directory.Exists(Path.Combine(legacyGame, "ffmpeg", platform.Name)),
+        "startup never copies a legacy installation"
       );
+    }
+    foreach (
+      string candidate in new[]
+      {
+        Path.Combine(legacyGame, "Mods", "TUFReplay", "FFmpeg", platform.Name, "ffmpeg"),
+        Path.Combine(legacyGame, "ffmpeg", "ffmpeg"),
+        Path.Combine(legacyGame, "ffmpeg", platform.Name, "ffmpeg"),
+      }
+    )
+    {
+      Directory.CreateDirectory(Path.GetDirectoryName(candidate));
+      File.Copy(legacyExecutable, candidate);
+      using var untrusted = new ManagedFfmpegInstaller(legacyGame, platform, transport);
+      await untrusted.Work;
+      Check(untrusted.Snapshot().Status == "missing", "receiptless binaries are not re-blessed: " + candidate);
+      Check(!File.Exists(Path.Combine(Path.GetDirectoryName(candidate), "installation.json")), "no receipt minted");
     }
     var waiting = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     using (
@@ -187,7 +202,7 @@ internal static class ManagedFfmpegSuite
         platform,
         () =>
           new FixtureHandler(
-            (request, token) => Task.FromResult(Response(request, Encoding.UTF8.GetBytes("not a ZIP")))
+            (request, token) => Task.FromResult(VerifiedResponse(request, Encoding.UTF8.GetBytes("not a ZIP")))
           )
       )
     )
@@ -199,6 +214,24 @@ internal static class ManagedFfmpegSuite
       Check(bad.Snapshot().Status == "failed", "invalid download fails without installing");
       bad.Request();
       Check(bad.Snapshot().Status == "awaiting-consent", "retry asks for consent");
+    }
+    using (
+      var noChecksum = new ManagedFfmpegInstaller(
+        Path.Combine(root, "unchecked provider"),
+        new FfmpegPlatform("unchecked-fixture", "ffmpeg", platform.Url),
+        transport
+      )
+    )
+    {
+      await noChecksum.Work;
+      noChecksum.Request();
+      noChecksum.Confirm();
+      await noChecksum.Work;
+      Check(
+        noChecksum.Snapshot().Status == "failed" && noChecksum.Snapshot().Error.Contains("checksum"),
+        "providers without checksums fail before downloading or executing"
+      );
+      Check(requests == 1, "unchecked provider never contacts the network");
     }
     string duplicate = Path.Combine(root, "duplicate.zip");
     File.WriteAllBytes(duplicate, Zip(("a/ffmpeg.exe", "one"), ("b/ffmpeg.exe", "two")));
@@ -258,7 +291,23 @@ internal static class ManagedFfmpegSuite
       initializing.Dispose();
       await initializing.Work.WaitAsync(TimeSpan.FromSeconds(2));
       Check(notifications == 0, "disposing cancels initialization without later notifications");
-      await Task.Run(first.Dispose);
+      await Task.Yield();
+      int acquiredThread = Environment.CurrentManagedThreadId;
+      var released = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+      new Thread(() =>
+      {
+        try
+        {
+          Check(Environment.CurrentManagedThreadId != acquiredThread, "release uses a different thread");
+          first.Dispose();
+          released.SetResult(true);
+        }
+        catch (Exception error)
+        {
+          released.SetException(error);
+        }
+      }).Start();
+      await released.Task.WaitAsync(TimeSpan.FromSeconds(2));
     }
     using (var second = await Acquire(TimeSpan.FromSeconds(2)))
       Check(second != null, "another thread reacquires after release");
@@ -296,32 +345,63 @@ internal static class ManagedFfmpegSuite
     try
     {
       TUFReplay.FfmpegApi.NotifyInstallationCompleted("wrong-platform", executable);
+      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, null);
+      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, "\0");
       TUFReplay.FfmpegApi.NotifyInstallationCompleted(
         platform.Name,
         Path.Combine(root, "other game", platform.Executable)
       );
       Check(observer.Snapshot().Status == "awaiting-consent", "unrelated installation notifications are ignored");
+      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, executable);
+      await observer.Work;
+      Check(observer.Snapshot().Status == "awaiting-consent", "notification cannot trust a missing executable");
+      Directory.CreateDirectory(Path.GetDirectoryName(executable));
+      File.WriteAllText(executable, "verified fixture bytes");
+      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, executable);
+      await observer.Work;
+      Check(!observer.Snapshot().Available, "notification cannot trust a receiptless executable");
+      var receipt = new FfmpegInstallReceipt
+      {
+        SchemaVersion = 1,
+        Platform = platform.Name,
+        Executable = platform.Executable,
+        Sha256 = new string('0', 64),
+        Version = "ffmpeg version fixture",
+      };
+      string receiptPath = Path.Combine(Path.GetDirectoryName(executable), "installation.json");
+      File.WriteAllText(receiptPath, JsonConvert.SerializeObject(receipt));
+      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, executable);
+      await observer.Work;
+      Check(!observer.Snapshot().Available, "notification rejects a checksum mismatch");
+      receipt.Sha256 = FileHash(executable);
+      File.WriteAllText(receiptPath, JsonConvert.SerializeObject(receipt));
+      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, executable);
+      await observer.Work;
+      Check(
+        observer.Snapshot().Available && observer.Snapshot().Path == executable,
+        "the C# completion API verifies the file before completing an open consent prompt"
+      );
       int changes = 0;
       observer.Changed += () => Interlocked.Increment(ref changes);
       TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, executable);
-      Check(
-        observer.Snapshot().Available && observer.Snapshot().Path == executable,
-        "the C# completion API immediately updates an open consent prompt"
-      );
-      Check(changes == 1, "external completion publishes a single ready event");
-      TUFReplay.FfmpegApi.NotifyInstallationCompleted(platform.Name, executable);
-      Check(changes == 1, "duplicate notifications do not publish additional events");
+      Check(changes == 0, "duplicate notifications do not publish additional events");
     }
     finally
     {
       field.SetValue(null, previous);
     }
-    Console.WriteLine("PASS: C# API completion dismisses pending consent immediately without polling.");
+    Console.WriteLine("PASS: C# API completion verifies receipts and checksums in the background without polling.");
   }
 
   private static async Task CheckDirectoryMoveAsync(string root)
   {
     var fixture = Environment.GetEnvironmentVariable("TUFREPLAY_TEST_FFMPEG");
+    if (!OperatingSystem.IsWindows())
+    {
+      fixture = Path.Combine(root, "fixture-encoder");
+      File.WriteAllText(fixture, "#!/bin/sh\necho 'ffmpeg version publication fixture'\n");
+      File.SetUnixFileMode(fixture, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
     if (string.IsNullOrEmpty(fixture))
       return;
     string archive = Path.Combine(root, "download-fixture.zip");
@@ -335,11 +415,13 @@ internal static class ManagedFfmpegSuite
     using (
       var downloaded = new ManagedFfmpegInstaller(
         Path.Combine(root, "download regression"),
-        new FfmpegPlatform("fixture-platform", "encoder.exe", "https://fixture.invalid/ffmpeg.zip"),
+        FixturePlatform("fixture-platform", "encoder.exe"),
         () =>
           new FixtureHandler(
             (request, _) =>
             {
+              if (request.RequestUri.AbsolutePath == "/checksum")
+                return Task.FromResult(Response(request, Encoding.UTF8.GetBytes(FileHash(archive))));
               Interlocked.Increment(ref downloads);
               return Task.FromResult(
                 new HttpResponseMessage(HttpStatusCode.OK)
@@ -391,7 +473,8 @@ internal static class ManagedFfmpegSuite
       "PromoteStaging",
       System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance
     );
-    var executable = (string)publish.Invoke(installer, new object[] { staging, CancellationToken.None });
+    var executable = (string)
+      publish.Invoke(installer, new object[] { staging, FileHash(fixture), CancellationToken.None });
     Check(
       File.Exists(executable) && File.Exists(Path.Combine(destination, ManagedFfmpegInstaller.ReceiptFileName)),
       "final-path verification writes completion record"
@@ -407,14 +490,14 @@ internal static class ManagedFfmpegSuite
     );
     using (var busy = new FileStream(executable, FileMode.Open, FileAccess.Read, FileShare.None))
       Check(
-        (string)inspect.Invoke(installer, null) == executable,
-        "readiness inspection neither hashes nor executes busy binaries"
+        (string)inspect.Invoke(installer, null) == null,
+        "an unreadable executable cannot bypass checksum verification"
       );
     Directory.CreateDirectory(staging);
     File.WriteAllText(Path.Combine(staging, platform.Executable), "invalid executable");
     try
     {
-      publish.Invoke(installer, new object[] { staging, CancellationToken.None });
+      publish.Invoke(installer, new object[] { staging, FileHash(fixture), CancellationToken.None });
       throw new Exception("Expected invalid executable rejection");
     }
     catch (System.Reflection.TargetInvocationException) { }
@@ -426,13 +509,64 @@ internal static class ManagedFfmpegSuite
     installer.Dispose();
     await installer.Work;
     Check(!notified, "disposal emits no state notifications");
-    Console.WriteLine(
-      "PASS: final-path executable verification, lightweight inspection, backup cleanup, rollback and callbacks outside locks."
-    );
+    Console.WriteLine("PASS: final-path checksum verification, backup cleanup, rollback and callbacks outside locks.");
   }
 
   private static HttpResponseMessage Response(HttpRequestMessage request, byte[] content) =>
     new(HttpStatusCode.OK) { RequestMessage = request, Content = new ByteArrayContent(content) };
+
+  private static FfmpegPlatform FixturePlatform(string name, string executable) =>
+    new(name, executable, "https://fixture.invalid/ffmpeg.zip", checksumUrl: "https://fixture.invalid/checksum");
+
+  private static string FileHash(string path) => Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path)));
+
+  private static HttpResponseMessage VerifiedResponse(HttpRequestMessage request, byte[] archive) =>
+    Response(
+      request,
+      request.RequestUri.AbsolutePath == "/checksum"
+        ? Encoding.UTF8.GetBytes(Convert.ToHexString(SHA256.HashData(archive)))
+        : archive
+    );
+
+  private static async Task CheckConcurrentInstallAsync(string root)
+  {
+    if (OperatingSystem.IsWindows())
+      return;
+    string game = Path.Combine(root, "concurrent install");
+    var platform = FixturePlatform("concurrent-fixture", "ffmpeg");
+    byte[] archive = Zip(("ffmpeg", "#!/bin/sh\necho 'ffmpeg version concurrent fixture'\n"));
+    var downloading = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    var proceed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+    int downloads = 0;
+    Func<HttpMessageHandler> transport = () =>
+      new FixtureHandler(
+        async (request, token) =>
+        {
+          await Task.Yield();
+          if (request.RequestUri.AbsolutePath != "/checksum")
+          {
+            Interlocked.Increment(ref downloads);
+            downloading.TrySetResult(true);
+            await proceed.Task.WaitAsync(token).ConfigureAwait(false);
+          }
+          return VerifiedResponse(request, archive);
+        }
+      );
+    using var first = new ManagedFfmpegInstaller(game, platform, transport);
+    using var second = new ManagedFfmpegInstaller(game, platform, transport);
+    await Task.WhenAll(first.Work, second.Work);
+    first.Request();
+    first.Confirm();
+    await downloading.Task.WaitAsync(TimeSpan.FromSeconds(5));
+    second.Request();
+    second.Confirm();
+    proceed.SetResult(true);
+    await Task.WhenAll(first.Work, second.Work).WaitAsync(TimeSpan.FromSeconds(10));
+    Check(
+      first.Snapshot().Available && second.Snapshot().Available && downloads == 1,
+      "concurrent installers reuse one verified download across asynchronous continuations"
+    );
+  }
 
   private static byte[] Zip(params (string name, string content)[] files)
   {
