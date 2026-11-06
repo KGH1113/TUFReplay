@@ -86,7 +86,7 @@
   "syncHint": "카메라 영상이 리플레이와 맞지 않을 때 시간을 조절해요. 키를 누르는 장면에서 일시정지한 뒤 영상과 입력을 비교해 보세요.",
   "resetOffset": "0 ms로 초기화",
   "windowsSetup": "Windows 카메라 설정",
-  "ffmpegHint": "Windows에서 카메라를 녹화하려면 FFmpeg가 필요해요. 카메라를 켠 뒤 설치 안내에 동의하면 자동으로 설치돼요.",
+  "ffmpegHint": "Windows에서 카메라를 녹화하려면 FFmpeg가 필요해요. 카메라를 켠 뒤 설치 안내에 동의하면 게임 폴더의 ffmpeg 폴더에 설치되고 리플레이 렌더링에서도 재사용해요.",
   "applyPath": "경로 적용",
   "errors": {
     "readSettings": "카메라 설정을 불러오지 못했어요. 게임 연결을 확인하고, 필요하면 TUFReplay를 업데이트해 주세요.",
