@@ -1,7 +1,9 @@
 import { useTranslation } from "react-i18next";
+import { installationBusy } from "@/api/downloads/downloads-api";
 import type { DownloadCenterControl } from "@/hooks/downloads/use-download-center";
 import { ApiError } from "@/shared/errors/api-error";
 import { Button } from "@/shared/ui/button";
+import { DetailsToggle } from "@/shared/ui/details-toggle";
 import {
   Dialog,
   DialogContent,
@@ -28,7 +30,7 @@ export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
       }}
     >
       <DialogContent
-        className="max-h-[calc(100dvh-2rem)] space-y-5 overflow-y-auto rounded-2xl p-6"
+        className="flex max-h-[92dvh] flex-col gap-0 overflow-hidden p-0"
         // Focus the dialog itself, so no button shows a ring or takes Enter before it is read.
         onOpenAutoFocus={(event) => {
           event.preventDefault();
@@ -40,14 +42,26 @@ export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
           center.restoreFocus();
         }}
       >
-        <DialogHeader>
-          <DialogTitle>{renderer ? "OrbitRender" : "FFmpeg"}</DialogTitle>
+        <DialogHeader className="shrink-0 gap-1 px-6 pt-6 pb-5">
+          <DialogTitle>
+            {renderer
+              ? "OrbitRender"
+              : t(
+                  state?.Status === "ready"
+                    ? "ffmpeg.readyTitle"
+                    : state?.Status === "failed"
+                      ? "ffmpeg.failedTitle"
+                      : state && installationBusy(state) && state.Status !== "checking"
+                        ? "ffmpeg.installingTitle"
+                        : "ffmpeg.title",
+                )}
+          </DialogTitle>
           <DialogDescription>
             {t(renderer && reason === "render" ? "setup.forRender" : `description.${item}`)}
           </DialogDescription>
         </DialogHeader>
         {center.error ? (
-          <div role="alert" className="space-y-2 text-sm text-destructive">
+          <div role="alert" className="mx-6 mb-5 space-y-2 text-sm text-destructive">
             <p>
               {t(
                 needsUpdate
@@ -58,10 +72,9 @@ export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
               )}
             </p>
             {center.error instanceof Error ? (
-              <details className="text-xs">
-                <summary>{t("details")}</summary>
+              <DetailsToggle label={t("details")}>
                 <p className="break-words">{center.error.message}</p>
-              </details>
+              </DetailsToggle>
             ) : null}
             <Button size="sm" variant="outline" onClick={center.refresh}>
               {t("retry")}
@@ -69,12 +82,14 @@ export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
           </div>
         ) : null}
         {state && renderer ? (
-          <OrbitRenderSetup
-            state={state}
-            pending={center.pending}
-            onAction={(action) => center.act("renderer", action)}
-            onClose={center.close}
-          />
+          <div className="min-h-0 overflow-y-auto px-6 pb-6">
+            <OrbitRenderSetup
+              state={state}
+              pending={center.pending}
+              onAction={(action) => center.act("renderer", action)}
+              onClose={center.close}
+            />
+          </div>
         ) : state ? (
           <DownloadItem
             item={item}
@@ -84,14 +99,14 @@ export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
             onClose={center.close}
           />
         ) : (
-          <>
+          <div className="space-y-5 px-6 pb-6">
             <p role="status" className="text-sm text-muted-foreground">
               {t("loading")}
             </p>
             <Button variant="outline" onClick={center.close}>
               {t("close")}
             </Button>
-          </>
+          </div>
         )}
       </DialogContent>
     </Dialog>
