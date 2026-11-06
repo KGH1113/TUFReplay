@@ -592,14 +592,20 @@ internal static class ReplayApiSuite
     var keyViewer = new KeyViewerProvider();
     ReplayApi.Register("Test.KeyViewer", keyViewer);
     ReplaySession session = ReplaySessions.Begin("run", new ReplayRender(1, 1, 1), null);
-    NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.A, out int a);
-    NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.B, out int b);
+    NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.A, out int aCode);
+    NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.B, out int bCode);
+    // Native codes reach mods only on Windows, where they match SkyHook's.
+    bool windows = System.Runtime.InteropServices.RuntimeInformation.IsOSPlatform(
+      System.Runtime.InteropServices.OSPlatform.Windows
+    );
+    int? a = windows ? aCode : null;
+    int? b = windows ? bCode : null;
     var feed = new ReplayKeyFeed(
       new[]
       {
-        new RecordedInput(1_000, a, RecordInputFlags.Down),
-        new RecordedInput(2_000, a, 0),
-        new RecordedInput(3_000, b, RecordInputFlags.Down),
+        new RecordedInput(1_000, aCode, RecordInputFlags.Down),
+        new RecordedInput(2_000, aCode, 0),
+        new RecordedInput(3_000, bCode, RecordInputFlags.Down),
       }
     );
 

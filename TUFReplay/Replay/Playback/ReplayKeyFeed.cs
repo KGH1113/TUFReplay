@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Models;
 using TUFReplay.Shared.NativeInput;
@@ -13,6 +14,11 @@ namespace TUFReplay.Replay.Playback;
 /// </summary>
 internal sealed class ReplayKeyFeed
 {
+  // On Windows the recorded virtual-key codes are the codes SkyHook reports, so mods that bind
+  // native codes can match them. macOS records virtual key codes, but SkyHook reports USB HID
+  // usages on newer game versions, so a native code would name the wrong key there.
+  private static readonly bool SendsNativeKeys = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+
   private readonly long[] _timesUs;
   private readonly KeyCode[] _keys;
   private readonly int[] _nativeKeys;
@@ -32,7 +38,7 @@ internal sealed class ReplayKeyFeed
     {
       NativeInputKeyCodeMapper.TryGetPlaybackKeyCode(input, out KeyCode key);
       // A key only a native code names still reaches mods that bind native codes.
-      if (key == KeyCode.None && input.Key < 0)
+      if (key == KeyCode.None && (!SendsNativeKeys || input.Key < 0))
         continue;
       times.Add(input.TimeUs);
       keys.Add(key);
@@ -79,7 +85,7 @@ internal sealed class ReplayKeyFeed
     _release.Clear();
     _release.AddRange(_held.Keys);
     foreach (int native in _release)
-      ReplaySessions.Key(_held[native], native, false, nowTicks);
+      ReplaySessions.Key(_held[native], SendsNativeKeys ? native : null, false, nowTicks);
     _held.Clear();
   }
 
@@ -91,6 +97,6 @@ internal sealed class ReplayKeyFeed
       _held[native] = _keys[index];
     else
       _held.Remove(native);
-    ReplaySessions.Key(_keys[index], native, down, ticks);
+    ReplaySessions.Key(_keys[index], SendsNativeKeys ? native : null, down, ticks);
   }
 }
