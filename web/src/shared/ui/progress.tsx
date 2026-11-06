@@ -12,6 +12,7 @@ function Progress({
   return (
     <ProgressPrimitive.Root
       data-slot="progress"
+      value={value}
       className={cn(
         "relative flex h-3 w-full items-center overflow-x-hidden rounded-4xl bg-muted",
         className,
@@ -20,8 +21,11 @@ function Progress({
     >
       <ProgressPrimitive.Indicator
         data-slot="progress-indicator"
-        className="size-full flex-1 bg-primary transition-all"
-        style={{ transform: `translateX(-${100 - (value || 0)}%)` }}
+        className={cn(
+          "size-full flex-1 bg-primary transition-all motion-reduce:transition-none",
+          value == null && "motion-safe:animate-pulse",
+        )}
+        style={{ transform: `translateX(-${value == null ? 60 : 100 - value}%)` }}
       />
     </ProgressPrimitive.Root>
   );

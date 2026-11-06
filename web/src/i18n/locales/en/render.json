@@ -182,7 +182,7 @@
     "ffmpeg_owner_unavailable": "TUFReplay's installer could not be reached. Enable the latest TUFReplay, then retry.",
     "ffmpeg_install_declined": "FFmpeg installation was skipped. Start rendering again and approve installation in the web download center.",
     "ffmpeg_install_failed": "FFmpeg could not be installed. Check the details below and retry installation in the web download center.",
-    "ffmpeg_install_invalid": "TUFReplay's FFmpeg installation is missing. Retry installation in the web download center.",
+    "ffmpeg_install_invalid": "The FFmpeg installation in the game's ffmpeg folder is missing. Retry installation in the web download center.",
     "folder_picker_busy": "A folder selection window is already open. Finish or cancel that selection first.",
     "folder_selection_missing": "The folder selection has expired. Choose the save folder again.",
     "folder_picker_failed": "The folder chooser could not finish. Enter the save folder's full local path instead.",
