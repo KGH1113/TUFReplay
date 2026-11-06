@@ -81,8 +81,8 @@ TUFReplay looks up these public instance methods by name. Every method is option
 - A key's `ticks` is the time it was pressed, which can be slightly before the current clock.
 
 **`nativeKey`**
-- The platform key code the recording reported (Windows virtual-key code, macOS key code), already converted to this machine's platform.
-- It is null when TUFReplay only knows the Unity key, as in renders for now.
+- On Windows, the key's virtual-key code: the same code SkyHook reports there, so a mod that binds native codes matches it.
+- Null on macOS, where SkyHook reports USB HID usages on newer game versions while recordings keep macOS key codes, and null in renders for now. Match on `key` then.
 
 **Calls and failures**
 - Every method runs on Unity's main thread. Per-frame calls allocate nothing on TUFReplay's side.
