@@ -11,6 +11,7 @@ using TUFReplay.Microphone.Processing;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
+using TUFReplay.RunState.Models;
 using TUFReplay.Webcam.Repositories;
 using UnityEngine;
 
@@ -51,6 +52,7 @@ public static partial class ReplayPlaybackCoordinator
     public bool AllowBackground;
     public WebcamRecordingLease WebcamLease;
     public string WebcamWarning;
+    public IReadOnlyList<StoredRunState> RunStates = Array.Empty<StoredRunState>();
 
     public PendingReplay(
       string operationId,

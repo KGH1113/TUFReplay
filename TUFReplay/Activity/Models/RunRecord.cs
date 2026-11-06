@@ -46,4 +46,7 @@ public class RunRecord
   public string ReplayUnavailableReason;
   public bool Locked;
   public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;
+
+  /// <summary>Mod states captured for this run, saved in the same transaction.</summary>
+  internal System.Collections.Generic.IReadOnlyList<TUFReplay.RunState.Models.RunStateRecord> RunStates;
 }
