@@ -33,7 +33,7 @@ export function createDownloadsApiMock(
     },
     Ffmpeg: {
       Status: "missing",
-      InstallationDirectory: "Mods/TUFReplay/FFmpeg/windows-x64",
+      InstallationDirectory: "ffmpeg/windows-x64",
       DownloadedBytes: 0,
       TotalBytes: null,
     },

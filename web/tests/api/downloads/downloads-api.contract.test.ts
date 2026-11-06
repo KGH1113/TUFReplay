@@ -14,7 +14,7 @@ const state = () => ({
     Status: "awaiting-consent",
     DownloadedBytes: 0,
     TotalBytes: null,
-    InstallationDirectory: "Mods/TUFReplay/FFmpeg/windows-x64",
+    InstallationDirectory: "ffmpeg/windows-x64",
   },
   CameraNeedsFfmpeg: true,
 });

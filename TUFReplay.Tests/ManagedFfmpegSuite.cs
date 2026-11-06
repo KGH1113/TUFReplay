@@ -46,7 +46,10 @@ internal static class ManagedFfmpegSuite
       await installer.Work;
       Check(installer.Snapshot().Available && requests == 1, "one download for concurrent approval");
       string path = installer.Snapshot().Path;
-      Check(path.StartsWith(Path.Combine(directory, "FFmpeg")), "installation belongs to TUFReplay root");
+      Check(
+        path.StartsWith(Path.Combine(directory, "ffmpeg", platform.Name)),
+        "installation belongs to the shared game directory"
+      );
       Check(File.ReadAllText(path).Contains("fixture"), "extracted executable");
       Check(!File.Exists(Path.Combine(root, "outside.txt")), "archive cannot escape installation");
       Check(File.Exists(Path.Combine(Path.GetDirectoryName(path), "vendor-notice-1.txt")), "vendor notice retained");
@@ -61,6 +64,27 @@ internal static class ManagedFfmpegSuite
     {
       await changed.Work;
       Check(changed.Snapshot().Status == "missing", "changed binary must be reinstalled");
+    }
+    string legacyGame = Path.Combine(root, "legacy game");
+    string legacyDirectory = Path.Combine(legacyGame, "Mods", "OrbitRender", "FFmpeg", platform.Name);
+    Directory.CreateDirectory(legacyDirectory);
+    string legacyExecutable = Path.Combine(legacyDirectory, "ffmpeg");
+    File.WriteAllText(legacyExecutable, "#!/bin/sh\necho 'ffmpeg version legacy fixture'\n");
+    File.SetUnixFileMode(legacyExecutable, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    using (var migrated = new ManagedFfmpegInstaller(legacyGame, platform, transport))
+    {
+      await migrated.Work;
+      Check(migrated.Snapshot().Available, "existing per-mod installation is reused without a download");
+      Check(requests == 1, "legacy migration stays offline");
+      Check(
+        migrated.Snapshot().Path.StartsWith(Path.Combine(legacyGame, "ffmpeg", platform.Name)),
+        "legacy installation is published to the shared game directory"
+      );
+      Check(File.Exists(legacyExecutable), "legacy source installation is not deleted");
+      Check(
+        File.Exists(Path.Combine(Path.GetDirectoryName(migrated.Snapshot().Path), "LICENSE.txt")),
+        "legacy installation gains a LICENSE file"
+      );
     }
     var waiting = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     using (
@@ -87,7 +111,7 @@ internal static class ManagedFfmpegSuite
       await cancelled.Work;
       Check(cancelled.Snapshot().Status == "cancelled", "download cancellation finishes");
       Check(
-        !Directory.EnumerateDirectories(Path.Combine(root, "cancelled install", "FFmpeg")).Any(),
+        !Directory.Exists(Path.Combine(root, "cancelled install", "ffmpeg", platform.Name)),
         "cancel cleans partial files"
       );
     }

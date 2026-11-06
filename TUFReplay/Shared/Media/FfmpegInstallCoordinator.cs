@@ -44,7 +44,7 @@ internal static class FfmpegInstallCoordinator
   {
     try
     {
-      _installer = new ManagedFfmpegInstaller(Main.Instance.InstallPath, FfmpegPlatform.Current());
+      _installer = new ManagedFfmpegInstaller(FfmpegPlatform.GameDirectory, FfmpegPlatform.Current());
       _installer.Changed += NotifyChanged;
     }
     catch (Exception error)
