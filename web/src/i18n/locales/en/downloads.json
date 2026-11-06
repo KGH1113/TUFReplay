@@ -76,7 +76,7 @@
     "install": {
       "title": "Install OrbitRender",
       "updateTitle": "Update OrbitRender",
-      "about": "Downloads the official release from GitHub into ADOFAI's Mods folder.",
+      "about": "Downloads the official release from GitHub.",
       "done": "Installed",
       "update": "Version 2.6.2 or later is needed. This one is {{version}}.",
       "updateUnknown": "Version 2.6.2 or later is needed.",
@@ -84,15 +84,13 @@
     },
     "restart": {
       "title": "Restart ADOFAI",
-      "about": "Once it's installed, quit ADOFAI completely and open it again.",
-      "now": "Quit ADOFAI completely and open it again to turn OrbitRender on.",
-      "stuck": "Still on this step after restarting? Turn OrbitRender on in Unity Mod Manager.",
+      "about": "Quit ADOFAI completely and open it again.",
+      "stuck": "Still off? Turn it on in Unity Mod Manager.",
       "done": "OrbitRender is on."
     },
     "create": {
       "title": "Make a video",
-      "about": "Choose “{{action}}” from a run's menu.",
-      "ready": "You're all set. Choose “{{action}}” from a run's menu."
+      "about": "Choose “{{action}}” from a run's menu."
     },
     "license": "OrbitRender is a separate mod under the GPL license.",
     "gotIt": "Got it"

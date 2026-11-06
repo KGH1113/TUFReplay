@@ -76,7 +76,7 @@
     "install": {
       "title": "OrbitRender 설치",
       "updateTitle": "OrbitRender 업데이트",
-      "about": "GitHub의 공식 배포 파일을 받아 얼불춤의 Mods 폴더에 넣어요.",
+      "about": "GitHub에서 공식 배포 파일을 받아 설치해요.",
       "done": "설치했어요",
       "update": "2.6.2 이상이 필요해요. 지금은 {{version}}이에요.",
       "updateUnknown": "2.6.2 이상이 필요해요.",
@@ -84,15 +84,13 @@
     },
     "restart": {
       "title": "얼불춤 다시 켜기",
-      "about": "설치가 끝나면 얼불춤을 완전히 끄고 다시 열어요.",
-      "now": "얼불춤을 완전히 끄고 다시 열면 OrbitRender가 켜져요.",
-      "stuck": "다시 열어도 이 단계라면 Unity Mod Manager에서 OrbitRender를 켜 주세요.",
+      "about": "얼불춤을 완전히 끄고 다시 열면 OrbitRender가 켜져요.",
+      "stuck": "그래도 안 켜지면 Unity Mod Manager에서 켜 주세요.",
       "done": "OrbitRender가 켜져 있어요."
     },
     "create": {
       "title": "영상 만들기",
-      "about": "플레이 메뉴에서 ‘{{action}}’를 누르면 돼요.",
-      "ready": "준비가 끝났어요. 플레이 메뉴에서 ‘{{action}}’를 누르면 돼요."
+      "about": "플레이 메뉴에서 ‘{{action}}’를 누르면 돼요."
     },
     "license": "OrbitRender는 별도의 GPL 라이선스를 따르는 모드예요.",
     "gotIt": "확인"
