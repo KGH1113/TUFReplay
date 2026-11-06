@@ -12,11 +12,11 @@
   "description": {
     "center": "Install the components needed for camera recording and rendering.",
     "renderer": "A mod that turns recorded runs into videos.",
-    "ffmpeg": "Video encoding for Windows camera recording. OrbitRender manages its own FFmpeg setup."
+    "ffmpeg": "TUFReplay uses FFmpeg to record your camera on Windows."
   },
   "consent": {
     "renderer": "With your consent, TUFReplay downloads the official OrbitRender release from GitHub and installs this separately licensed GPL mod into the game's Mods folder.",
-    "ffmpeg": "With your consent, TUFReplay downloads and verifies FFmpeg for camera recording. The build may include GPL components. It is stored in TUFReplay’s folder."
+    "ffmpeg": "With your consent, TUFReplay downloads and verifies FFmpeg in the game's ffmpeg/<platform>/ folder. The build may include GPL components. Compatible mods can adopt this installation; your OrbitRender version may still require its own setup."
   },
   "status": {
     "checking": "Checking installation…",
@@ -94,5 +94,19 @@
     },
     "license": "OrbitRender is a separate mod under the GPL license.",
     "gotIt": "Got it"
+  },
+  "ffmpeg": {
+    "title": "Install FFmpeg",
+    "ready": "Ready to use",
+    "restartHelp": "Fully quit and reopen the game to use FFmpeg.",
+    "readyHelp": "FFmpeg is ready for Windows camera recording. No game restart is needed. OrbitRender manages its own rendering setup.",
+    "source": "Provider: {{source}}",
+    "backgroundHelp": "You can keep working. Installation continues when you close this window.",
+    "installInfo": "Installation and license",
+    "percent": "{{percent}}%",
+    "preparing": "Finishing setup",
+    "failedTitle": "Check FFmpeg installation",
+    "installingTitle": "Installing FFmpeg",
+    "readyTitle": "FFmpeg is installed"
   }
 }
