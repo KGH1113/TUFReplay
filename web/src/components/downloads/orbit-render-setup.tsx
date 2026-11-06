@@ -12,7 +12,6 @@ import {
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { DetailsToggle } from "@/shared/ui/details-toggle";
-import { Progress } from "@/shared/ui/progress";
 
 const licenseUrl = "https://github.com/imnyang/OrbitRender/blob/main/LICENSE.md";
 const latestReleaseUrl = "https://github.com/imnyang/OrbitRender/releases/latest";
@@ -20,6 +19,8 @@ const latestReleaseUrl = "https://github.com/imnyang/OrbitRender/releases/latest
 /**
  * Getting OrbitRender ready as three steps: install, restart ADOFAI, make a video.
  * The step you are on stands out, finished steps are ticked, and the button does that step.
+ * Every step keeps the same number of lines from start to finish, so the dialog does not
+ * jump while installing; only an install error adds lines.
  */
 export function OrbitRenderSetup({
   state,
@@ -36,8 +37,10 @@ export function OrbitRenderSetup({
   const { t: renderT } = useTranslation("render");
   const stage = orbitRenderSetupStage(state);
   const [install, restart, create] = orbitRenderSetupSteps(stage);
-  const consent = state.Status === "awaiting-consent";
-  const action = renderT("button");
+  const downloaded =
+    state.Status === "downloading" && state.TotalBytes
+      ? Math.min(100, (state.DownloadedBytes / state.TotalBytes) * 100)
+      : undefined;
 
   return (
     <div className="space-y-5">
@@ -48,33 +51,30 @@ export function OrbitRenderSetup({
         <SetupStep
           index={1}
           state={install}
+          progress={downloaded}
           title={t(stage === "update" ? "setup.install.updateTitle" : "setup.install.title")}
         >
           <InstallDetail state={state} stage={stage} />
         </SetupStep>
         <SetupStep index={2} state={restart} title={t("setup.restart.title")}>
-          {restart === "current" ? (
+          {restart === "done" ? (
+            <p>{t("setup.restart.done")}</p>
+          ) : (
             <>
-              <p>{t("setup.restart.now")}</p>
+              <p>{t("setup.restart.about")}</p>
               <p className="text-muted-foreground/80">{t("setup.restart.stuck")}</p>
             </>
-          ) : (
-            <p>{t(restart === "done" ? "setup.restart.done" : "setup.restart.about")}</p>
           )}
         </SetupStep>
         <SetupStep index={3} state={create} title={t("setup.create.title")} last>
-          <p>
-            {create === "current"
-              ? t("setup.create.ready", { action })
-              : t("setup.create.about", { action })}
-          </p>
+          <p>{t("setup.create.about", { action: renderT("button") })}</p>
         </SetupStep>
       </ol>
-      <FinePrint state={state} stage={stage} consent={consent} />
+      <FinePrint state={state} />
       <div className="flex flex-wrap justify-end gap-2 border-t border-border/60 pt-4">
         <SetupActions
+          state={state}
           stage={stage}
-          consent={consent}
           pending={pending}
           onAction={onAction}
           onClose={onClose}
@@ -84,65 +84,42 @@ export function OrbitRenderSetup({
   );
 }
 
-/** The license before installing and where OrbitRender goes, kept small under the steps. */
-function FinePrint({
-  state,
-  stage,
-  consent,
-}: {
-  state: InstallState;
-  stage: OrbitRenderSetupStage;
-  consent: boolean;
-}) {
+/** The license and where OrbitRender goes, kept small under the steps at every stage. */
+function FinePrint({ state }: { state: InstallState }) {
   const { t } = useTranslation("downloads");
-  const license = stage === "install" || stage === "install-failed";
-  const location =
-    state.InstallationDirectory && (consent || stage === "restart" || stage === "ready");
-  if (!license && !location) return null;
   return (
     <div className="space-y-0.5 text-xs leading-relaxed text-muted-foreground">
-      {license ? (
-        <p>
-          {t("setup.license")}{" "}
-          <a
-            href={licenseUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-primary underline underline-offset-2"
-          >
-            {t("license")}
-          </a>
-        </p>
-      ) : null}
-      {location ? (
+      <p>
+        {t("setup.license")}{" "}
+        <a
+          href={licenseUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="text-primary underline underline-offset-2"
+        >
+          {t("license")}
+        </a>
+      </p>
+      {state.InstallationDirectory ? (
         <p className="break-all">{t("installLocation", { path: state.InstallationDirectory })}</p>
       ) : null}
     </div>
   );
 }
 
-/** What step 1 says: what installing does, how far it got, or why it stopped. */
+/** What step 1 says, in one line: what installing does, how far it got, or what is installed. */
 function InstallDetail({ state, stage }: { state: InstallState; stage: OrbitRenderSetupStage }) {
   const { t, i18n } = useTranslation("downloads");
   if (stage === "checking") return <p>{t("status.checking")}</p>;
   if (stage === "installing") {
-    const total = state.TotalBytes;
+    const total = state.Status === "downloading" ? state.TotalBytes : null;
     return (
-      <div className="space-y-2">
-        <div className="flex items-baseline justify-between gap-3">
-          <p>{t(`status.${state.Status}`)}</p>
-          {total ? (
-            <p className="shrink-0 tabular-nums">
-              {(state.DownloadedBytes / 1048576).toFixed(1)} / {(total / 1048576).toFixed(1)} MB
-            </p>
-          ) : null}
-        </div>
+      <div className="flex items-baseline justify-between gap-3">
+        <p className="truncate">{t(`status.${state.Status}`)}</p>
         {total ? (
-          <Progress
-            aria-label={t("progress", { name: "OrbitRender" })}
-            value={Math.min(100, (state.DownloadedBytes / total) * 100)}
-            className="h-1.5"
-          />
+          <p className="shrink-0 tabular-nums">
+            {(state.DownloadedBytes / 1048576).toFixed(1)} / {(total / 1048576).toFixed(1)} MB
+          </p>
         ) : null}
       </div>
     );
@@ -154,16 +131,9 @@ function InstallDetail({ state, stage }: { state: InstallState; stage: OrbitRend
         <p className="text-destructive">
           {known ? t(`errors.${state.ErrorCode}` as never) : t("errors.installFailed")}
         </p>
-        {state.Error || state.InstallationDirectory ? (
+        {state.Error ? (
           <DetailsToggle label={t("details")}>
-            <div className="space-y-1 break-words">
-              {state.Error ? <p>{state.Error}</p> : null}
-              {state.InstallationDirectory ? (
-                <p className="break-all">
-                  {t("installLocation", { path: state.InstallationDirectory })}
-                </p>
-              ) : null}
-            </div>
+            <p className="break-words">{state.Error}</p>
           </DetailsToggle>
         ) : null}
       </div>
@@ -190,21 +160,29 @@ function InstallDetail({ state, stage }: { state: InstallState; stage: OrbitRend
   return <p>{t("setup.install.about")}</p>;
 }
 
-/** The buttons always offer the step you are on; closing never loses progress. */
+/**
+ * The buttons always offer the step you are on, and keep their labels while the game
+ * catches up, so they do not change under the pointer right after the dialog opens.
+ */
 function SetupActions({
+  state,
   stage,
-  consent,
   pending,
   onAction,
   onClose,
 }: {
+  state: InstallState;
   stage: OrbitRenderSetupStage;
-  consent: boolean;
   pending: boolean;
   onAction: (action: DownloadAction) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation("downloads");
+  // Agreeing here is the consent; ask for it first when the game has not yet.
+  const install = () => {
+    if (state.Status !== "awaiting-consent") onAction("request");
+    onAction("confirm");
+  };
   if (stage === "installing")
     return (
       <>
@@ -220,14 +198,10 @@ function SetupActions({
     return (
       <>
         <Button size="sm" variant="outline" onClick={onClose}>
-          {consent ? t("later") : t("close")}
+          {stage === "install" ? t("later") : t("close")}
         </Button>
-        <Button
-          size="sm"
-          disabled={pending}
-          onClick={() => onAction(consent ? "confirm" : "request")}
-        >
-          {consent ? t("agreeInstall") : stage === "install-failed" ? t("retry") : t("install")}
+        <Button size="sm" disabled={pending} onClick={install}>
+          {stage === "install" ? t("agreeInstall") : t("retry")}
         </Button>
       </>
     );
@@ -247,12 +221,14 @@ function SetupActions({
 function SetupStep({
   index,
   state,
+  progress,
   title,
   last = false,
   children,
 }: {
   index: number;
   state: SetupStepState;
+  progress?: number;
   title: string;
   last?: boolean;
   children: ReactNode;
@@ -272,7 +248,7 @@ function SetupStep({
           )}
         />
       )}
-      <StepMarker index={index} state={state} />
+      <StepMarker index={index} state={state} progress={progress} />
       <div className="min-w-0 flex-1 space-y-1 pt-1">
         <p
           className={cn(
@@ -296,12 +272,62 @@ function SetupStep({
   );
 }
 
-function StepMarker({ index, state }: { index: number; state: SetupStepState }) {
+const ringRadius = 12;
+const ringLength = 2 * Math.PI * ringRadius;
+
+/** A number, a tick, a spinner, a warning, or while downloading, a ring that fills up. */
+function StepMarker({
+  index,
+  state,
+  progress,
+}: {
+  index: number;
+  state: SetupStepState;
+  progress?: number;
+}) {
+  const { t } = useTranslation("downloads");
+  const base =
+    "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-300";
+  if (state === "working" && progress !== undefined)
+    return (
+      <span
+        role="progressbar"
+        aria-label={t("progress", { name: "OrbitRender" })}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(progress)}
+        className={cn(base, "text-primary")}
+      >
+        <svg viewBox="0 0 28 28" aria-hidden="true" className="size-7 -rotate-90">
+          <circle
+            cx="14"
+            cy="14"
+            r={ringRadius}
+            fill="none"
+            stroke="currentColor"
+            strokeOpacity={0.2}
+            strokeWidth={2.5}
+          />
+          <circle
+            cx="14"
+            cy="14"
+            r={ringRadius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2.5}
+            strokeLinecap="round"
+            strokeDasharray={ringLength}
+            strokeDashoffset={ringLength * (1 - progress / 100)}
+            className="transition-[stroke-dashoffset] duration-300 ease-out motion-reduce:transition-none"
+          />
+        </svg>
+      </span>
+    );
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "flex size-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold tabular-nums transition-colors duration-300",
+        base,
         state === "upcoming" && "border border-border text-muted-foreground",
         state === "current" && "bg-primary text-primary-foreground",
         (state === "working" || state === "done") && "bg-primary/15 text-primary",
