@@ -1,5 +1,5 @@
 import { useTranslation } from "react-i18next";
-import type { useDownloadCenter } from "@/hooks/downloads/use-download-center";
+import type { DownloadCenterControl } from "@/hooks/downloads/use-download-center";
 import { ApiError } from "@/shared/errors/api-error";
 import { Button } from "@/shared/ui/button";
 import {
@@ -10,23 +10,30 @@ import {
   DialogTitle,
 } from "@/shared/ui/dialog";
 import { DownloadItem } from "./download-item";
+import { OrbitRenderSetup } from "./orbit-render-setup";
 
-export function DownloadDialog({ center }: { center: ReturnType<typeof useDownloadCenter> }) {
+export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
   const { t } = useTranslation("downloads");
-  const state = center.item === "renderer" ? center.state?.Renderer : center.state?.Ffmpeg;
-  const name = center.item === "renderer" ? "OrbitRender" : "FFmpeg";
+  const { item, reason } = center.dialog;
+  const renderer = item === "renderer";
+  const state = renderer ? center.state?.Renderer : center.state?.Ffmpeg;
   const needsUpdate =
     center.error instanceof ApiError &&
     (center.error.code === "downloads_unavailable" || center.error.code === "handler_not_found");
   return (
     <Dialog
-      open={Boolean(center.item)}
+      open={center.dialogOpen}
       onOpenChange={(open) => {
         if (!open) center.close();
       }}
     >
       <DialogContent
         className="max-h-[calc(100dvh-2rem)] space-y-5 overflow-y-auto rounded-2xl p-6"
+        // Focus the dialog itself, so no button shows a ring or takes Enter before it is read.
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          if (event.currentTarget instanceof HTMLElement) event.currentTarget.focus();
+        }}
         onInteractOutside={(event) => event.preventDefault()}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
@@ -34,8 +41,10 @@ export function DownloadDialog({ center }: { center: ReturnType<typeof useDownlo
         }}
       >
         <DialogHeader>
-          <DialogTitle>{name}</DialogTitle>
-          <DialogDescription>{t(`description.${center.item ?? "ffmpeg"}`)}</DialogDescription>
+          <DialogTitle>{renderer ? "OrbitRender" : "FFmpeg"}</DialogTitle>
+          <DialogDescription>
+            {t(renderer && reason === "render" ? "setup.forRender" : `description.${item}`)}
+          </DialogDescription>
         </DialogHeader>
         {center.error ? (
           <div role="alert" className="space-y-2 text-sm text-destructive">
@@ -59,9 +68,16 @@ export function DownloadDialog({ center }: { center: ReturnType<typeof useDownlo
             </Button>
           </div>
         ) : null}
-        {center.item && state ? (
+        {state && renderer ? (
+          <OrbitRenderSetup
+            state={state}
+            pending={center.pending}
+            onAction={(action) => center.act("renderer", action)}
+            onClose={center.close}
+          />
+        ) : state ? (
           <DownloadItem
-            item={center.item}
+            item={item}
             state={state}
             pending={center.pending}
             onAction={center.act}

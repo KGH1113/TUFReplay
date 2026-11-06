@@ -11,7 +11,7 @@
   "loading": "설치 상태를 확인하고 있어요…",
   "description": {
     "center": "카메라 녹화와 렌더링에 필요한 구성 요소를 설치해요.",
-    "renderer": "녹화된 플레이를 영상으로 만들어요. 설치 후 게임을 다시 시작해 주세요.",
+    "renderer": "녹화한 플레이를 영상으로 만들어 주는 모드예요.",
     "ffmpeg": "Windows 카메라 녹화에 필요한 영상 인코더예요. OrbitRender는 FFmpeg를 별도로 관리해요."
   },
   "consent": {
@@ -62,5 +62,39 @@
     "restart": "얼불춤을 다시 시작하면 끝나요"
   },
   "rendererUpdateRequired": "OrbitRender 업데이트 필요",
-  "rendererUpdateHelp": "OrbitRender를 업데이트해 주세요."
+  "rendererUpdateHelp": "OrbitRender를 업데이트해 주세요.",
+  "setup": {
+    "label": "영상 만들기 준비 순서",
+    "forRender": "영상을 만들려면 OrbitRender가 필요해요. 아래 순서대로 준비해 주세요.",
+    "state": {
+      "upcoming": "다음 단계",
+      "current": "지금 할 일",
+      "working": "진행 중",
+      "done": "완료",
+      "attention": "확인 필요"
+    },
+    "install": {
+      "title": "OrbitRender 설치",
+      "updateTitle": "OrbitRender 업데이트",
+      "about": "GitHub의 공식 배포 파일을 받아 얼불춤의 Mods 폴더에 넣어요.",
+      "done": "설치했어요",
+      "update": "2.6.2 이상이 필요해요. 지금은 {{version}}이에요.",
+      "updateUnknown": "2.6.2 이상이 필요해요.",
+      "latestRelease": "최신 버전 받기"
+    },
+    "restart": {
+      "title": "얼불춤 다시 켜기",
+      "about": "설치가 끝나면 얼불춤을 완전히 끄고 다시 열어요.",
+      "now": "얼불춤을 완전히 끄고 다시 열면 OrbitRender가 켜져요.",
+      "stuck": "다시 열어도 이 단계라면 Unity Mod Manager에서 OrbitRender를 켜 주세요.",
+      "done": "OrbitRender가 켜져 있어요."
+    },
+    "create": {
+      "title": "영상 만들기",
+      "about": "플레이 메뉴에서 ‘{{action}}’를 누르면 돼요.",
+      "ready": "준비가 끝났어요. 플레이 메뉴에서 ‘{{action}}’를 누르면 돼요."
+    },
+    "license": "OrbitRender는 별도의 GPL 라이선스를 따르는 모드예요.",
+    "gotIt": "확인"
+  }
 }

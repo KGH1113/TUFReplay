@@ -166,6 +166,8 @@ function RunSummary({ run, metadata }: { run: ActivityRun; metadata?: LevelMetad
 /** Why the video cannot be made right now, or how the last try ended. */
 function SetupNotices({ control, unavailable }: { control: Control; unavailable: boolean }) {
   const { t } = useTranslation("render");
+  if (control.health && !control.health.available)
+    return <RenderNotice message={t("errors.ipc_unavailable")} />;
   if (unavailable) return <RenderNotice message={t("notice.orbitMissing")} />;
   if (control.health?.busy) return <RenderNotice message={t("notice.busy")} />;
   if (control.phase === "cancelled") return <RenderNotice message={t("notice.stopped")} />;

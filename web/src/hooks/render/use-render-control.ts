@@ -28,7 +28,12 @@ type Phase =
 const pollIntervalMs = 500;
 const pause = () => new Promise<void>((resolve) => setTimeout(resolve, pollIntervalMs));
 
-export function useRenderControl() {
+export function useRenderControl({
+  onRendererMissing,
+}: {
+  /** Called instead of showing render settings when OrbitRender is not ready to render. */
+  onRendererMissing?: (opener: HTMLElement | null) => void;
+} = {}) {
   const apiPromise = useApiPromise();
   const [run, setRun] = useState<ActivityRun | null>(null);
   const [levelPath, setLevelPath] = useState<string | undefined>();
@@ -101,6 +106,12 @@ export function useRenderControl() {
         .then(async (api) => Promise.all([api.getHealth(), api.getSettings()]))
         .then(([state, saved]) => {
           if (!activeRef.current || current !== generation.current) return;
+          if (state.available && !state.orbitAvailable && onRendererMissing) {
+            ++generation.current;
+            setRun(null);
+            onRendererMissing(trigger.current);
+            return;
+          }
           setHealth(state);
           setSettings(saved);
           setOptions(
@@ -115,7 +126,7 @@ export function useRenderControl() {
           if (current === generation.current) fail(cause);
         });
     },
-    [renderer, fail],
+    [renderer, fail, onRendererMissing],
   );
 
   const start = useCallback(async () => {

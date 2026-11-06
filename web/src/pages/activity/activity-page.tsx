@@ -3,11 +3,13 @@ import { AutoSubmissionBuildNotice } from "@/components/activity/auto-submission
 import { ConnectionStatePanel } from "@/components/activity/connection-state-panel";
 import { LegacyReplayNoticeDialog } from "@/components/activity/legacy-replay-notice-dialog";
 import { OfflineBanner } from "@/components/activity/offline-banner";
+import { DownloadDialog } from "@/components/downloads/download-dialog";
 import { RenderDialog } from "@/components/render/render-dialog";
 import { ReplayLevelChoiceDialog } from "@/components/replay/replay-level-choice-dialog";
 import { useActivityPageViewModel } from "@/hooks/activity/use-activity-page-view-model";
 import { useLegacyReplayNotice } from "@/hooks/activity/use-legacy-replay-notice";
-import { useRenderControl } from "@/hooks/render/use-render-control";
+import { useDownloadCenter } from "@/hooks/downloads/use-download-center";
+import { useRenderLauncher } from "@/hooks/render/use-render-launcher";
 import { useSidebarDrawer } from "@/hooks/shared/use-sidebar-drawer";
 import { ActivityWorkspace } from "@/sections/activity/activity-workspace";
 import { AppSidebar } from "@/sections/activity/app-sidebar";
@@ -17,9 +19,10 @@ import { TooltipProvider } from "@/shared/ui/tooltip";
 
 export function ActivityPage() {
   const viewModel = useActivityPageViewModel();
-  const renderControl = useRenderControl();
   const drawer = useSidebarDrawer();
   const { activity, replay, actions } = viewModel;
+  const downloadCenter = useDownloadCenter(activity.status === "online");
+  const render = useRenderLauncher(downloadCenter);
   const legacyReplayNotice = useLegacyReplayNotice(activity.status);
   const retry = () => void actions.retry();
   const readOnly = activity.status !== "online";
@@ -43,6 +46,7 @@ export function ActivityPage() {
           todayDate={viewModel.todayDate}
           timeZone={viewModel.timeZone}
           metadataFor={viewModel.metadataFor}
+          downloadCenter={downloadCenter}
           mobileOpen={drawer.open}
           onMobileOpenChange={drawer.setOpen}
           onRetry={retry}
@@ -102,7 +106,7 @@ export function ActivityPage() {
               onToggleRun={actions.toggleRun}
               onFocusRun={actions.focusRun}
               onPlayReplay={actions.openReplayChoice}
-              onRender={renderControl.open}
+              onRender={render.open}
               onDeleteRun={actions.deleteRun}
               onSetRunLocked={actions.setRunLocked}
             />
@@ -126,9 +130,10 @@ export function ActivityPage() {
         onConfirm={legacyReplayNotice.confirm}
       />
       <RenderDialog
-        control={renderControl}
+        control={render.control}
         metadata={selectedLevel ? viewModel.metadataFor(selectedLevel) : undefined}
       />
+      <DownloadDialog center={downloadCenter} />
       <Toaster position="bottom-center" />
     </TooltipProvider>
   );
