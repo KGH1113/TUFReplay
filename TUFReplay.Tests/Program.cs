@@ -30,9 +30,10 @@ internal static class Program
       RunJudgmentTimelineSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
       RunRecordManagementSuite.RunAll(root);
+      RunStateSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
-      ImplResourcePackAttemptsSuite.RunAll();
+      ElementAttemptsSuite.RunAll();
       CGEventCaptureRegressionSuite.RunAll();
       PerformanceRegressionSuite.RunAll(root);
       UpdaterTests.RunAll();

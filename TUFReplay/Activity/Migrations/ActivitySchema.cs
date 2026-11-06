@@ -14,6 +14,7 @@ public static partial class ActivitySchema
     if (applicationId == 0 && version == 0)
     {
       CreateCurrent(connection);
+      EnsureRunStateTables(connection);
       return;
     }
 
@@ -22,6 +23,7 @@ public static partial class ActivitySchema
         "Unsupported TUFReplay activity database. applicationId=" + applicationId + ", version=" + version
       );
     EnsureAdditiveColumns(connection);
+    EnsureRunStateTables(connection);
   }
 
   // Columns added after version 1 shipped. They are optional with defaults, so the

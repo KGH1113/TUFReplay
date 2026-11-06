@@ -20,6 +20,8 @@ using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.RunState.Playback;
+using TUFReplay.RunState.Repositories;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Playback;
@@ -33,6 +35,7 @@ public static partial class ReplayPlaybackCoordinator
   {
     ThreadPool.QueueUserWorkItem(_ =>
     {
+      LoadRunStates(operation);
       string path = ReplayMicrophonePlaybackFiles.ForOperation(operation.OperationId);
       try
       {
@@ -79,6 +82,19 @@ public static partial class ReplayPlaybackCoordinator
         UnityMainThread.Post(() => BeginOnMainThread(operation));
       }
     });
+  }
+
+  private static void LoadRunStates(PendingReplay operation)
+  {
+    try
+    {
+      operation.RunStates = RunStateRepository.Load(operation.Run.Id);
+    }
+    catch (Exception exception)
+    {
+      // Mods then see the run as one without saved state; the replay itself still plays.
+      Main.Instance?.Log("[Replay/RunState] Saved mod states unavailable. error=" + exception.Message);
+    }
   }
 
   private static void CancelPendingPreparation()
@@ -437,9 +453,11 @@ public static partial class ReplayPlaybackCoordinator
       Meta = operation.Meta,
     };
 
-    // ImplResourcePack checks its rule when editor.Play() below starts the level.
-    ImplResourcePackAttempts.EnsureRegistered();
+    // Element checks its rule when editor.Play() below starts the level.
+    ElementAttempts.EnsureRegistered();
     ReplaySessionService.InstallActiveContext(context);
+    // Mods restore the state saved with this run before the level starts.
+    context.RunStates = RunStateReplays.Begin(operation.Run.Id, render: false, operation.RunStates);
     ReplaySessionService.ApplyReplayNoFailNow();
     ReplaySessionService.ApplyReplayGameInputOffsetNow();
     ReplaySessionService.ApplyReplayPitchNow();
