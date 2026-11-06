@@ -40,11 +40,17 @@ internal static class FfmpegInstallCoordinator
   private static int _cameraWaiters;
   private static string _initializationError;
 
+  public static void NotifySharedInstallationCompleted(string platform, string executablePath) =>
+    _installer?.NotifySharedInstallationCompleted(platform, executablePath);
+
   public static void Initialize()
   {
     try
     {
-      _installer = new ManagedFfmpegInstaller(FfmpegPlatform.GameDirectory, FfmpegPlatform.Current());
+      string modsDirectory = Directory
+        .GetParent(Main.Instance.InstallPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+        .FullName;
+      _installer = new ManagedFfmpegInstaller(Directory.GetParent(modsDirectory).FullName, FfmpegPlatform.Current());
       _installer.Changed += NotifyChanged;
     }
     catch (Exception error)
