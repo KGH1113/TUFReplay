@@ -12,11 +12,11 @@
   "description": {
     "center": "카메라 녹화와 렌더링에 필요한 구성 요소를 설치해요.",
     "renderer": "녹화한 플레이를 영상으로 만들어 주는 모드예요.",
-    "ffmpeg": "Windows 카메라 녹화와 영상 만들기에 사용하는 도구예요."
+    "ffmpeg": "TUFReplay가 Windows에서 카메라를 녹화할 때 사용하는 도구예요."
   },
   "consent": {
     "renderer": "동의하면 TUFReplay가 GitHub의 공식 OrbitRender 배포 파일을 받아 게임의 Mods 폴더에 설치해요. Renderer는 별도의 GPL 라이선스를 따르는 확장 모드예요.",
-    "ffmpeg": "동의하면 운영체제에 맞는 배포처에서 FFmpeg를 받아 검증한 뒤 게임 폴더의 ffmpeg/<플랫폼>/에 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있으며, 이 게임 설치의 다른 모드도 함께 사용할 수 있어요."
+    "ffmpeg": "동의하면 FFmpeg를 받아 검증한 뒤 게임 폴더의 ffmpeg/<플랫폼>/에 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있어요. 이 설치 방식을 지원하는 모드는 함께 사용할 수 있지만, OrbitRender 버전에 따라 별도 설정이 필요해요."
   },
   "status": {
     "checking": "설치 상태 확인 중…",
@@ -99,7 +99,7 @@
     "title": "FFmpeg 설치",
     "ready": "사용할 준비가 됐어요",
     "restartHelp": "게임을 완전히 종료한 뒤 다시 열면 사용할 수 있어요.",
-    "readyHelp": "이제 카메라를 녹화하거나 리플레이를 영상으로 만들 수 있어요. 게임을 다시 켤 필요는 없어요.",
+    "readyHelp": "Windows 카메라 녹화에 사용할 준비가 됐어요. 게임을 다시 켤 필요는 없어요. 영상 렌더링은 OrbitRender에서 별도로 준비해 주세요.",
     "source": "배포처: {{source}}",
     "backgroundHelp": "다른 작업을 해도 괜찮아요. 이 창을 닫아도 설치는 계속돼요.",
     "installInfo": "설치 정보와 라이선스",

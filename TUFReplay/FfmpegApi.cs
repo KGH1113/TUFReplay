@@ -7,7 +7,7 @@ namespace TUFReplay;
 
 public static class FfmpegApi
 {
-  /// <summary>Reports a verified shared installation from another mod. Safe from any thread.</summary>
+  /// <summary>Requests background verification of a shared installation. Safe from any thread.</summary>
   public static void NotifyInstallationCompleted(string platform, string executablePath) =>
     FfmpegInstallCoordinator.NotifySharedInstallationCompleted(platform, executablePath);
 
