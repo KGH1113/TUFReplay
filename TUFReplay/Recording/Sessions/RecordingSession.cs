@@ -119,6 +119,7 @@ public class RecordingSession
       if (!IsRecording || IsCapturingInput)
         return;
       IsCapturingInput = true;
+      Data.OverlayStates = RecordingOverlayState.Capture();
       RefreshNoFailModeLocked();
       RefreshPitchLocked();
     }

@@ -53,6 +53,7 @@ public class RecordedRunPayload
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
   public string PitchSource;
+  public Dictionary<string, string> OverlayStates;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
 
@@ -65,6 +66,7 @@ public class RecordedRunPayload
     var meta = new
     {
       metadataVersion = 1,
+      overlayStates = OverlayStates,
       tufLevelId = TufLevelId,
       startedAtUtc = StartedAtUtc,
       endedAtUtc = EndedAtUtc,

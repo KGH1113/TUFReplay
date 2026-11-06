@@ -349,6 +349,7 @@ public static class RenderBundleExportService
           },
           inputsFile = "inputs.csv",
           hitsFile = "hits.csv",
+          overlayStates = meta.overlayStates,
           warnings,
         }
       );

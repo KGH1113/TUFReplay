@@ -2,6 +2,7 @@ namespace TUFReplay.Replay.Models;
 
 public class ReplayMetadata
 {
+  public System.Collections.Generic.Dictionary<string, string> overlayStates;
   public int metadataVersion;
   public int? tufLevelId;
   public string startedAtUtc;
