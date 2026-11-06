@@ -67,8 +67,8 @@ TUFReplay looks up these public instance methods by name. Every method is option
 | `void OnReplayClock(long ticks)` | Every frame, real time | Every frame, video time |
 | `void OnReplayKey(KeyCode key, int? nativeKey, bool down, long ticks)` | Each recorded key | Each recorded key |
 | `void OnReplayEnd()` | When the replay ends, fails or is replaced | When the render completes, fails or is cancelled |
-| `IEnumerable<Canvas> GetReplayCanvases()` or `Canvas GetReplayCanvases()` | Not called | Each frame the renderer collects canvases: the ones to put in the video |
-| `void OnBeforeFrameCapture()` / `void OnAfterFrameCapture()` | Not called | Around each captured frame |
+| `IEnumerable<Canvas> GetReplayCanvases()` or `Canvas GetReplayCanvases()` | Not called | Once, as the video starts: the canvases to put in the video |
+| `void OnBeforeFrameCapture()` / `void OnAfterFrameCapture()` | Not called | Around each new video frame |
 
 **During a replay**
 - Take the replay's keys from `OnReplayKey` and ignore live input. TUFReplay still presses the keys through the OS during in-game replays, for now, so a mod that also listens to live input counts them twice.
@@ -128,9 +128,10 @@ A mod that does not register gets nothing from TUFReplay:
 ### Render
 
 TUFReplay replays the recording itself, and OrbitRender (RenderApi 3 or later) only captures and encodes it.
-- `OnReplayBegin(recorded, render: true)` runs before TUFReplay hands the job to OrbitRender. `RenderWidth`, `RenderHeight` and `RenderFps` describe the video; they are the final values once the first frame renders.
-- Every frame: `OnReplayClock` with the video time, `OnReplayKey` for the keys of that frame, `GetReplayCanvases`, then `OnBeforeFrameCapture` and `OnAfterFrameCapture` around the capture.
-- `OnReplayEnd` runs when the render completes, fails or is cancelled.
+- `OnReplayBegin(recorded, render: true)` runs before TUFReplay hands the job to OrbitRender, before the level opens. Providers begin one after another, so another provider's state may not be restored yet.
+- `GetReplayCanvases` runs once, after the level is ready and before the first frame. Canvases you create later are not in the video, so create them by then, or in this call. `RenderWidth`, `RenderHeight` and `RenderFps` hold the video's final values from this call on; before it they are the requested values.
+- Every frame: `OnReplayClock` with the video time and `OnReplayKey` for the keys of that frame. `OnBeforeFrameCapture` and `OnAfterFrameCapture` wrap each new video frame; a repeated frame does not call them.
+- `OnReplayEnd` runs when the render completes, fails or is cancelled, after OrbitRender has restored the game. A render that ends before its first frame, such as one cancelled while the level opens, calls `OnReplayEnd` without `GetReplayCanvases`.
 
 `IsReplaying` is true from just before `OnReplayBegin` until just before `OnReplayEnd`, so it already reads false inside `OnReplayEnd`. Only one replay or render runs at a time.
 
