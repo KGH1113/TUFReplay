@@ -46,7 +46,7 @@
     "completed": "Replay completed.",
     "cancelled": "Replay cancelled.",
     "failed": "Replay failed.",
-    "replaceActive": "Starting this run will replace the active replay."
+    "replaceActive": "Finish or cancel the current replay before starting this one."
   },
   "controlFailed": "Could not control replay",
   "run": {
