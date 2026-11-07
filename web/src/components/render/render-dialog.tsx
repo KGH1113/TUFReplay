@@ -9,6 +9,7 @@ import type { ActivityRun, LevelMetadata } from "@/models/activity/activity-mode
 import { describeLevel } from "@/models/activity/level-description";
 import { runEndPercent, runOutcome, runStartPercent } from "@/models/activity/run-progress";
 import { formatXAccuracy } from "@/models/activity/x-accuracy";
+import { describeFolder } from "@/models/render/render-choices";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import {
@@ -87,7 +88,9 @@ export function RenderDialog({
         <DialogHeader className="shrink-0 gap-1 px-6 pt-6 pb-4">
           <DialogTitle>{t(done ? "doneTitle" : "title")}</DialogTitle>
           <DialogDescription className="truncate">
-            {control.run ? <RunSummary run={control.run} metadata={metadata} /> : null}
+            {control.run ? (
+              <RunSummary run={control.run} metadata={metadata} levelPath={control.levelPath} />
+            ) : null}
           </DialogDescription>
         </DialogHeader>
         {/* Radix lays the content out as a table that grows with long text; keep it to the dialog's width. */}
@@ -145,8 +148,19 @@ export function RenderDialog({
   );
 }
 
-/** What is being made: the level, how far the run got and its accuracy. */
-function RunSummary({ run, metadata }: { run: ActivityRun; metadata?: LevelMetadata }) {
+/**
+ * What is being made: the level, the file chosen in place of the recorded one, how far the run
+ * got and its accuracy.
+ */
+function RunSummary({
+  run,
+  metadata,
+  levelPath,
+}: {
+  run: ActivityRun;
+  metadata?: LevelMetadata;
+  levelPath?: string;
+}) {
   const { t, i18n } = useTranslation("render");
   const { t: activityT } = useTranslation("activity");
   const locale = i18n.resolvedLanguage ?? "en";
@@ -154,6 +168,7 @@ function RunSummary({ run, metadata }: { run: ActivityRun; metadata?: LevelMetad
   const end = runEndPercent(run);
   const parts = [
     metadata ? describeLevel(metadata, activityT).name : null,
+    levelPath ? describeFolder(levelPath).name : null,
     runOutcome(run) === "clear"
       ? t("summary.clear")
       : start > 0

@@ -47,13 +47,21 @@ WHERE id=@id
     return deleted > 0;
   }
 
-  public static List<AppSession> List(int offset, int limit)
+  // A session stays open while the game runs, even after all its runs are deleted,
+  // so history pages only the sessions that still hold a run.
+  public static List<AppSession> ListWithRuns(int offset, int limit)
   {
     var result = new List<AppSession>();
     using SqliteConnection c = DatabaseStore.OpenConnection();
     using SqliteCommand q = c.CreateCommand();
     q.CommandText =
-      "SELECT id,started_at_utc,ended_at_utc,recorder_time_zone_id,recorder_utc_offset_minutes FROM app_sessions ORDER BY started_at_utc DESC,id DESC LIMIT @limit OFFSET @offset";
+      @"SELECT a.id,a.started_at_utc,a.ended_at_utc,a.recorder_time_zone_id,a.recorder_utc_offset_minutes
+FROM app_sessions a
+WHERE EXISTS(
+  SELECT 1 FROM level_sessions l JOIN runs r ON r.level_session_id=l.id WHERE l.app_session_id=a.id
+)
+ORDER BY a.started_at_utc DESC,a.id DESC
+LIMIT @limit OFFSET @offset";
     q.Parameters.AddWithValue("@limit", limit);
     q.Parameters.AddWithValue("@offset", offset);
     using SqliteDataReader r = q.ExecuteReader();
