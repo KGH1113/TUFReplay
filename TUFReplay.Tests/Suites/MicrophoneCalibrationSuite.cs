@@ -51,6 +51,7 @@ internal static class MicrophoneCalibrationSuite
     TestPcm16PrefetchBuffer();
     TestPcm16PrefetchUnderrunRecovery();
     TestMicrophonePlaybackDecisions();
+    TestReplayMicrophoneRenderer();
     TestMicrophoneTimelineAnchor();
     TestReplayMicrophoneClock();
     TestMicrophoneTimelineTrack(root);
@@ -315,36 +316,16 @@ internal static class MicrophoneCalibrationSuite
   private static void TestMicrophonePlaybackDecisions()
   {
     Assert(
-      ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 4, 4, true, 100, false, 0, 10),
-      "A duplicate prefetch reset was not suppressed."
+      !ReplayMicrophonePlaybackDecisions.ShouldPlay(paused: false, microphoneAudible: false),
+      "Replay microphone audio played against the unstable pre-roll timeline."
     );
     Assert(
-      ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 4, 4, false, 0, true, 105, 10),
-      "A duplicate checkpoint reset at the active position was not suppressed."
+      ReplayMicrophonePlaybackDecisions.ShouldPlay(paused: false, microphoneAudible: true),
+      "Replay microphone audio did not play against the PlayerControl timeline."
     );
     Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 4, 4, false, 0, true, 500, 10),
-      "A timeline seek back to an old reset target was incorrectly suppressed."
-    );
-    Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldSuppressReset(100, 100, 5, 4, true, 100, false, 0, 10),
-      "A reset from a new recovery generation was incorrectly suppressed."
-    );
-    Assert(
-      ReplayMicrophonePlaybackDecisions.IsCurrentRecovery(7, 7),
-      "The active underrun generation was not accepted for recovery."
-    );
-    Assert(
-      !ReplayMicrophonePlaybackDecisions.IsCurrentRecovery(6, 7),
-      "A stale underrun generation triggered another recovery seek."
-    );
-    Assert(
-      ReplayMicrophonePlaybackDecisions.ShouldAcceptReaderPosition(0),
-      "An idle streaming clip rejected its initial reader position."
-    );
-    Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldAcceptReaderPosition(7),
-      "An active streaming clip mistook normal read-ahead for an external seek."
+      !ReplayMicrophonePlaybackDecisions.ShouldPlay(paused: true, microphoneAudible: true),
+      "Replay microphone audio kept playing while the replay was paused."
     );
   }
 
@@ -665,26 +646,6 @@ internal static class MicrophoneCalibrationSuite
 
     var physicalInputSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: false);
     long physicalInputFrame = ReplayMicrophoneClock.ToFrame(physicalInputSnapshot, 0L, 48000, 100000);
-    Assert(
-      ReplayMicrophonePlaybackDecisions.ShouldMute(
-        new ReplayPlaybackSnapshot(0L, 1d, 1d, null, paused: false, microphoneAudible: false).MicrophoneAudible
-      ),
-      "Replay microphone audio was not muted during pre-roll."
-    );
-    Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldMute(
-        new ReplayPlaybackSnapshot(0L, 1d, 1d, null, paused: false, microphoneAudible: true).MicrophoneAudible
-      ),
-      "Replay microphone audio remained muted after gameplay started."
-    );
-    Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldStartSource(microphoneAudible: false),
-      "Replay microphone source started against the unstable pre-roll timeline."
-    );
-    Assert(
-      ReplayMicrophonePlaybackDecisions.ShouldStartSource(microphoneAudible: true),
-      "Replay microphone source did not start against the PlayerControl timeline."
-    );
     var pausedSnapshot = new ReplayPlaybackSnapshot(500_000L, 1d, 1d, null, paused: true);
     Assert(
       ReplayMicrophoneClock.ToFrame(pausedSnapshot, 0L, 48000, 100000) == physicalInputFrame,
@@ -747,19 +708,13 @@ internal static class MicrophoneCalibrationSuite
     );
 
     Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldResync(48_000L, 48_500L, 0L, 1_440),
-      "A source within the resync threshold was restarted."
+      !ReplayMicrophonePlaybackDecisions.ShouldReanchor(48_000d, 48_500d, 1_440),
+      "A schedule within the resync threshold was moved."
     );
     Assert(
-      ReplayMicrophonePlaybackDecisions.ShouldResync(288_000L, 48_500L, 0L, 1_440),
-      "A source playing across a recorded pause was not rescheduled."
+      ReplayMicrophonePlaybackDecisions.ShouldReanchor(288_000d, 48_500d, 1_440),
+      "A schedule playing across a recorded pause was not moved."
     );
-    Assert(
-      !ReplayMicrophonePlaybackDecisions.ShouldResync(1_000L, 43_200L, 43_200L, 1_440),
-      "A source waiting at the frozen-start boundary was restarted."
-    );
-
-    TestReplayMicrophoneSourceCheck();
 
     Assert(
       MicrophoneCaptureChunking.RefineStartTimestamp(1_000L, 2_000L, 48_000, 48_000, 1_000L) == 1_000L,
@@ -771,87 +726,141 @@ internal static class MicrophoneCalibrationSuite
     );
   }
 
-  private static void TestReplayMicrophoneSourceCheck()
+  // Each frame of the test recording holds its own index (mod 30000), so a
+  // rendered sample tells which WAV frame was played.
+  private static float RampSample(double frame) => (float)(frame % 30_000d) / 32768f;
+
+  private static ReplayMicrophoneRenderer CreateRampRenderer(
+    int frames,
+    int channels,
+    int outputSampleRate,
+    out Pcm16PrefetchBuffer prefetch
+  )
   {
-    Assert(
-      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(48_000, 48_000, 256, 4, 50) == 2_400,
-      "Small output buffers did not keep the 50 ms minimum."
-    );
-    Assert(
-      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(48_000, 48_000, 1_024, 4, 50) == 6_144,
-      "Large output buffers were not tolerated."
-    );
-    Assert(
-      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(48_000, 44_100, 1_024, 4, 50) == 6_688,
-      "Output buffers were not converted to the clip's sample rate."
-    );
-
-    // Windows 2026-11-07: Unity played a middle-of-level start from frame 0
-    // instead of 34139, so the source trailed its schedule by 711 ms.
-    var check = new ReplayMicrophoneSourceCheck(2_400);
-    Assert(
-      check.Observe(1_024L, 35_163L) == ReplayMicrophoneSourceCheckResult.None
-        && check.Observe(2_048L, 36_187L) == ReplayMicrophoneSourceCheckResult.None,
-      "A source off its schedule was restarted before the check was sure."
-    );
-    Assert(
-      check.Observe(3_072L, 37_211L) == ReplayMicrophoneSourceCheckResult.Restart,
-      "A source playing from the wrong place was not restarted."
-    );
-
-    var jitter = new ReplayMicrophoneSourceCheck(2_400);
-    for (int i = 0; i < 10; i++)
+    byte[] pcm = new byte[frames * channels * 2];
+    for (int frame = 0; frame < frames; frame++)
     {
-      // Normal output buffering on Windows: up to 1024 frames behind.
-      Assert(
-        jitter.Observe(48_000L + i * 800L, 49_024L + i * 800L) == ReplayMicrophoneSourceCheckResult.None,
-        "Normal output buffering restarted the source."
-      );
-    }
-
-    var interrupted = new ReplayMicrophoneSourceCheck(2_400);
-    interrupted.Observe(0L, 40_000L);
-    interrupted.Observe(0L, 40_000L);
-    interrupted.Observe(40_000L, 40_100L);
-    Assert(
-      interrupted.Observe(0L, 41_000L) == ReplayMicrophoneSourceCheckResult.None,
-      "One on-schedule reading did not reset the off-schedule streak."
-    );
-
-    var stubborn = new ReplayMicrophoneSourceCheck(2_400);
-    int restarts = 0;
-    ReplayMicrophoneSourceCheckResult last = ReplayMicrophoneSourceCheckResult.None;
-    for (int i = 0; i < 30 && !stubborn.Disabled; i++)
-    {
-      last = stubborn.Observe(0L, 40_000L);
-      if (last == ReplayMicrophoneSourceCheckResult.Restart)
+      short value = (short)(frame % 30_000);
+      for (int channel = 0; channel < channels; channel++)
       {
-        restarts++;
-        stubborn.OnStarted();
+        int index = (frame * channels + channel) * 2;
+        pcm[index] = (byte)value;
+        pcm[index + 1] = (byte)(value >> 8);
       }
     }
-    Assert(
-      restarts == ReplayMicrophoneSourceCheck.MaximumRestarts
-        && last == ReplayMicrophoneSourceCheckResult.GiveUp
-        && stubborn.Disabled,
-      "A source that never comes back on schedule kept being restarted."
-    );
-    Assert(
-      stubborn.Observe(0L, 40_000L) == ReplayMicrophoneSourceCheckResult.None,
-      "A stopped check still asked for restarts."
-    );
+    prefetch = new Pcm16PrefetchBuffer(new MemoryStream(pcm), 0, pcm.Length, 48_000 * channels * 2);
+    return new ReplayMicrophoneRenderer(prefetch, 48_000, channels, frames, outputSampleRate);
+  }
 
-    var recovered = new ReplayMicrophoneSourceCheck(2_400);
-    for (int round = 0; round < 5; round++)
+  // The prefetch reads in 64 KB chunks; wait until its ring is full so a test
+  // does not depend on how far the reader got.
+  private static void PrimeAndWait(ReplayMicrophoneRenderer renderer, Pcm16PrefetchBuffer prefetch, long frame)
+  {
+    renderer.Prime(frame);
+    Assert(WaitUntilReady(prefetch, prefetch.Generation, prefetch.Capacity), "The microphone prefetch never filled.");
+  }
+
+  private static void TestReplayMicrophoneRenderer()
+  {
+    const int block = 256;
+    const double blockSeconds = block / 48_000d;
+
+    // A middle-of-level start (Windows 2026-11-07: frame 35490) plays that
+    // exact frame on the scheduled DSP time, then continues block by block.
+    using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(600_000, 1, 48_000, out var prefetch))
     {
-      recovered.Observe(0L, 40_000L);
-      recovered.Observe(0L, 40_000L);
+      var schedule = new ReplayMicrophoneSchedule(10d, 35_490d);
+      PrimeAndWait(renderer, prefetch, 35_490 - 960);
+      renderer.Publish(schedule);
+      float[] data = new float[block];
+      renderer.Render(data, 1, 10d);
       Assert(
-        recovered.Observe(0L, 40_000L) == ReplayMicrophoneSourceCheckResult.Restart,
-        "A restart that worked counted against later restarts."
+        data[0] == RampSample(35_490) && data[block - 1] == RampSample(35_490 + block - 1),
+        "A middle-of-level start did not play its scheduled frame on its DSP time."
       );
-      recovered.OnStarted();
-      recovered.Observe(40_000L, 40_000L);
+      Assert(
+        renderer.TryTakeFirstBlock(out ReplayMicrophoneFirstBlock first)
+          && first.Frame == 35_490d
+          && first.DspTime == 10d,
+        "The first block with recorded audio was not reported."
+      );
+      renderer.Render(data, 1, 10d + blockSeconds);
+      Assert(data[0] == RampSample(35_490 + block), "The next block did not continue where the previous one ended.");
+
+      // A little disagreement in a block's DSP time keeps playing continuously.
+      renderer.Render(data, 1, 10d + 2 * blockSeconds + 0.0005d);
+      Assert(data[0] == RampSample(35_490 + 2 * block), "DSP time jitter made playback jump.");
+
+      // A paused listener skips blocks; playback continues at the new time.
+      double resumed = 20d;
+      renderer.Render(data, 1, resumed);
+      Assert(WaitUntilReady(prefetch, prefetch.Generation, 4_096), "The prefetch did not refill after a jump.");
+      renderer.Render(data, 1, resumed + blockSeconds);
+      double expected = 35_490d + (resumed + blockSeconds - 10d) * 48_000d;
+      Assert(
+        data[0] == RampSample(expected) && data[block - 1] == RampSample(expected + block - 1),
+        "Playback did not continue at the frame for the clock after a jump."
+      );
+      Assert(renderer.TakeStats().Jumps == 1, "A jump of the clock was not counted once.");
+
+      renderer.Publish(null);
+      renderer.Render(data, 1, resumed + 2 * blockSeconds);
+      Assert(Array.TrueForAll(data, sample => sample == 0f), "An unpublished schedule did not play silence.");
+    }
+
+    // A mono recording fills both speakers, and the volume scales it.
+    using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(96_000, 1, 48_000, out var prefetch))
+    {
+      PrimeAndWait(renderer, prefetch, 0);
+      renderer.Gain = 2f;
+      renderer.Publish(new ReplayMicrophoneSchedule(5d, 1_000d));
+      float[] stereo = new float[block * 2];
+      renderer.Render(stereo, 2, 5d);
+      Assert(
+        stereo[0] == RampSample(1_000) * 2f && stereo[1] == stereo[0] && stereo[2] == RampSample(1_001) * 2f,
+        "A mono recording was not played on both speakers at its volume."
+      );
+    }
+
+    // The wait of an EnhancedCountdown frozen start stays silent.
+    using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(96_000, 1, 48_000, out var prefetch))
+    {
+      PrimeAndWait(renderer, prefetch, 0);
+      renderer.AudibleFromFrame = 1_100;
+      renderer.Publish(new ReplayMicrophoneSchedule(5d, 1_000d));
+      float[] data = new float[block];
+      renderer.Render(data, 1, 5d);
+      Assert(
+        data[99] == 0f && data[100] == RampSample(1_100),
+        "The frozen-start wait was played, or the first audible frame was not."
+      );
+    }
+
+    // A stereo recording keeps its channels.
+    using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(96_000, 2, 48_000, out var prefetch))
+    {
+      PrimeAndWait(renderer, prefetch, 0);
+      renderer.Publish(new ReplayMicrophoneSchedule(5d, 2_000d));
+      float[] stereo = new float[block * 2];
+      renderer.Render(stereo, 2, 5d);
+      Assert(
+        stereo[0] == RampSample(2_000) && stereo[1] == RampSample(2_000) && stereo[2] == RampSample(2_001),
+        "A stereo recording was not played frame by frame."
+      );
+    }
+
+    // A 44.1 kHz output reads the 48 kHz recording at its own rate.
+    using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(96_000, 1, 44_100, out var prefetch))
+    {
+      PrimeAndWait(renderer, prefetch, 0);
+      renderer.Publish(new ReplayMicrophoneSchedule(5d, 3_000d));
+      float[] data = new float[block];
+      renderer.Render(data, 1, 5d);
+      double step = 48_000d / 44_100d;
+      Assert(
+        Math.Abs(data[0] - RampSample(3_000)) < 1e-5f && Math.Abs(data[100] - RampSample(3_000 + 100 * step)) < 1e-5f,
+        "A different output rate did not resample the recording on the schedule."
+      );
     }
   }
 
