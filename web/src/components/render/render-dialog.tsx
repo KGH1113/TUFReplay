@@ -71,13 +71,14 @@ export function RenderDialog({
       <DialogContent
         className={cn(
           "flex max-h-[min(92dvh,56rem)] flex-col gap-0 p-0",
-          // Settings take two columns; progress and the finished video need less room.
-          setup ? "w-[min(60rem,calc(100vw-2rem))]" : "w-[min(36rem,calc(100vw-2rem))]",
+          // Settings take two columns and the finished video wants a large picture; progress needs less room.
+          setup || done ? "w-[min(60rem,calc(100vw-2rem))]" : "w-[min(36rem,calc(100vw-2rem))]",
         )}
         // Nothing is focused on open, so no field shows a selected value or a ring.
         onOpenAutoFocus={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
-          if (control.busy) event.preventDefault();
+          // Esc in a full-screen preview only leaves full screen.
+          if (control.busy || document.fullscreenElement) event.preventDefault();
         }}
         onInteractOutside={(event) => {
           if (control.busy) event.preventDefault();

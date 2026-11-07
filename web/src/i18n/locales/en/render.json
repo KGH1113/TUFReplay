@@ -113,7 +113,9 @@
     "reload": "Load again",
     "play": "Play",
     "pause": "Pause",
-    "seek": "Video position"
+    "seek": "Video position",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen"
   },
   "start": "Make video",
   "retry": "Make again",
