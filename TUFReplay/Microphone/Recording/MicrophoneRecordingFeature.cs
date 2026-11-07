@@ -30,7 +30,7 @@ public sealed partial class MicrophoneRecordingFeature
   private IMicrophoneCaptureBackend _backend;
   private MicrophoneCaptureTicker _ticker;
   private System.Threading.Timer _retentionTimer;
-  private int _retentionCleanupRunning;
+  private int _storageMaintenanceRunning;
   private string _tempDirectory;
   private bool _active;
   private bool _permissionRequestStarted;
@@ -57,7 +57,7 @@ public sealed partial class MicrophoneRecordingFeature
         Main.Instance?.LogException("Microphone/Recovery", exception);
       }
       _retentionTimer = new System.Threading.Timer(
-        _ => GameplayIdleGate.Run(DeleteExpiredRecordings),
+        _ => GameplayIdleGate.Run(MaintainStorage),
         null,
         TimeSpan.Zero,
         TimeSpan.FromHours(1)
