@@ -9,7 +9,7 @@ public static class ActivityQueryService
 {
   public static List<AppSessionActivity> ListAppSessionActivities(int offset, int limit)
   {
-    List<AppSession> sessions = AppSessionRepository.List(offset, limit);
+    List<AppSession> sessions = AppSessionRepository.ListWithRuns(offset, limit);
     var result = new List<AppSessionActivity>(sessions.Count);
     if (sessions.Count == 0)
       return result;
