@@ -38,6 +38,20 @@ In-game replays played the mic much quieter than renders at the same +20 dB gain
 
 The mic source now sets `ignoreListenerVolume`, so ADOFAI's volume settings no longer change it. The gain moved from the companion to a **TUFReplay Microphone** row in ADOFAI's audio settings (5 dB steps, 1 dB with Shift, Off below -30 dB). In-game replays, the calibration preview and renders all use it; Off leaves the mic out of renders as well. The companion's gain controls and the `changeMicrophoneVolume`/`changeCalibrationVolume` IPC methods and `microphoneVolumeDb` fields are removed, so the health protocol is now 16.
 
+## Middle-of-level replay start (2026-11-07)
+
+A tester on Windows (1.2.0) replayed runs that started at 81 %. The mic stayed silent for about two seconds after the run began, then played far out of sync, until the tester focused another window and came back. The recording was fine: its timeline points ran every 2 s without a break, and the capture offset was the same (about −0.54 s) in all three recordings.
+
+The tester's `Player.log` showed `Playback stats ... maxDriftMs` of 622–741 ms in all nine middle-of-level replays, equal to each start position (611–720 ms) plus up to 1024 frames of normal output buffering. A first-tile replay in the same session showed 21 ms. Unity's `timeSamples` therefore counted from 0: the start position set before `PlayScheduled` was not applied. The timeline check (`ShouldResync`) compares only the schedule with the timeline and never asked Unity where the source was, so nothing reacted. Returning focus calls `ResumeReplayAt`, which stops the source and seeks again, and that seek was applied.
+
+The likely difference: a first-tile start stops the source once more at the PlayerControl alignment reset, while a middle-of-level start played the fresh clip with no Stop before it. Every start after a Stop applied its position. The silence is probably what Unity read from the clip while playback was not yet active, played before any real mic data. This part is inferred, not measured.
+
+Changes:
+
+- Every start now calls `Stop()` before it sets the position.
+- `Tick` compares Unity's `timeSamples` with the schedule (`ReplayMicrophoneSourceCheck`). Three readings in a row more than 50 ms off, or more than the queued output buffers plus two if those are longer, restart the source the way a focus change did. After three restarts that do not help, the check stops for that replay so the mic does not keep cutting out. It is skipped near the end of the clip and while `AudioListener.pause` is set.
+- `Playback scheduled` logs `silentReadsMs`, the silence Unity read before playback became active, and `positionCheckMs`. `Source is off its schedule; restarting` logs the first restart, and `Playback stats` adds `sourceRestarts`.
+
 ## Remaining
 
 - First-tile replays still align their origin on the replay's PlayerControl frame (`AlignFirstTilePlayerControlOrigin`). The recorded and replayed song-position origins differ there by about 0.86 s in tests, so the alignment is needed. It inherits up to one frame plus one DSP buffer of error, and that error moves inputs, mic and camera together relative to the song.
@@ -50,6 +64,7 @@ The mic source now sets `ignoreListenerVolume`, so ADOFAI's volume settings no l
 - Log `[Recording/Microphone] Capture aligned ... points=N, audibleFromUs=...`. A frozen start shows a value; a normal countdown shows `start`.
 - Log `[Replay/Microphone] Playback scheduled ... inputOffsetUs=...`.
 - `Playback stats ... resyncs=` should stay 0 without pauses, and be 1 per recorded pause.
+- Middle-of-level replay: the mic is heard from the first hit, `Playback stats ... maxDriftMs=` stays near one output buffer, and `sourceRestarts=` is 0. A restart logs `Source is off its schedule` with `offMs` and `silentReadsMs`.
 - With a non-zero input offset, a perfect hit's key sound should land on the beat.
 - Render: log `[Replay] Delaying render audio by the recorded input offset: N ms.`, and no EnhancedCountdown metronome panel appears during the render.
 - Volume: at the same **TUFReplay Microphone** value, the replay mic is as loud against the song as in a render of the same run, and changing ADOFAI's master volume changes only the game. `Player ready ... volume=` and `Playback scheduled ... gain=` show the applied value.

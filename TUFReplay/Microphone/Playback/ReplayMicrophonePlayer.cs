@@ -23,6 +23,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
   // Prepared audio waits for a start at most this far in the future.
   private const double ScheduleHorizonSeconds = 0.25d;
+
+  // A playing source counts as off its schedule past this, or past the frames
+  // queued in the output buffers when those are longer.
+  private const int SourceCheckMinimumMilliseconds = 50;
   private readonly object _readerGate = new object();
   private readonly StoredMicrophoneRecording _recording;
   private readonly Pcm16WaveInfo _wave;
@@ -37,6 +41,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private readonly int _resyncThresholdFrames;
   private readonly long _audibleFromFrame;
   private readonly double _scheduleLeadSeconds;
+  private readonly ReplayMicrophoneSourceCheck _sourceCheck;
   private long _readerFrame;
   private long _requestedFrame;
   private long _lastResetFrame = -1L;
@@ -48,6 +53,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private bool _started;
   private bool _paused;
   private bool _playbackStartLogged;
+  private bool _sourceRestartLogged;
   private bool _failureLogged;
   private bool _diagnosticsLogged = true;
   private double _dspAnchorTime;
@@ -59,6 +65,11 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
   private long _duplicateResetCount;
   private long _maximumDriftFrames;
   private long _resyncCount;
+  private long _sourceRestartCount;
+
+  // Frames Unity read while no playback was active. They were silence, and a
+  // source that plays them first is late by that much.
+  private long _inactiveReadFrames;
   private volatile float _gain;
   private volatile bool _failed;
   private volatile bool _disposed;
@@ -77,7 +88,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     if (wave.FrameCount > int.MaxValue)
       throw new InvalidDataException("The microphone recording is too long for Unity audio playback.");
 
-    AudioSettings.GetDSPBufferSize(out int dspBufferFrames, out _);
+    AudioSettings.GetDSPBufferSize(out int dspBufferFrames, out int dspBufferCount);
     dspBufferFrames = Math.Max(1, dspBufferFrames);
     _frameBytes = checked(wave.Channels * 2);
     _prefillBytes = checked(dspBufferFrames * _frameBytes);
@@ -98,6 +109,15 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     _scheduleLeadSeconds = Math.Max(
       MinimumScheduleLeadSeconds,
       dspBufferFrames * (double)ScheduleLeadDspBuffers / outputSampleRate
+    );
+    _sourceCheck = new ReplayMicrophoneSourceCheck(
+      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(
+        wave.SampleRate,
+        outputSampleRate,
+        dspBufferFrames,
+        dspBufferCount,
+        SourceCheckMinimumMilliseconds
+      )
     );
 
     try
@@ -256,13 +276,14 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
 
       double dspTime = AudioSettings.dspTime;
       long expectedFrame = ScheduledFrameAt(dspTime);
-      RecordMaximumDrift(Math.Abs(_source.timeSamples - expectedFrame));
-      if (!snapshot.HasDspTime || dspTime < _dspAnchorTime)
+      long sourceFrame = _source.timeSamples;
+      RecordMaximumDrift(Math.Abs(sourceFrame - expectedFrame));
+      if (dspTime < _dspAnchorTime)
         return;
-      long timelineFrame = FrameAtDsp(snapshot, dspTime);
       if (
-        ReplayMicrophonePlaybackDecisions.ShouldResync(
-          timelineFrame,
+        snapshot.HasDspTime
+        && ReplayMicrophonePlaybackDecisions.ShouldResync(
+          FrameAtDsp(snapshot, dspTime),
           expectedFrame,
           _audibleFromFrame,
           _resyncThresholdFrames
@@ -272,7 +293,9 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         Interlocked.Increment(ref _resyncCount);
         RequestSeek(StartFrame(targetFrame), recovery: false);
         TryStartPrepared(snapshot);
+        return;
       }
+      CheckSourcePosition(snapshot, sourceFrame, expectedFrame, targetFrame);
     }
     catch (Exception exception)
     {
@@ -430,6 +453,12 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     if (advanceBytes > 0 && !_prefetch.TrySkip(_seekGeneration, advanceBytes, _frameBytes))
       return;
 
+    // A middle-of-level start plays the fresh clip without any earlier Stop,
+    // and on Windows that start ignored the position below and first played
+    // the silence Unity had read before playback was active. Every start that
+    // came after a Stop applied it, so always stop first. The position check
+    // in Tick catches a start that still goes wrong.
+    _source.Stop();
     _requestedFrame = targetFrame;
     lock (_readerGate)
     {
@@ -442,6 +471,7 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     _preparing = false;
     _started = true;
     _paused = false;
+    _sourceCheck.OnStarted();
     _source.PlayScheduled(startDspTime);
     if (!_playbackStartLogged)
     {
@@ -459,9 +489,61 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
           + snapshot.MicrophoneAudible
           + ", gain="
           + _gain
+          + ", silentReadsMs="
+          + FramesToMilliseconds(Interlocked.Read(ref _inactiveReadFrames))
+          + ", positionCheckMs="
+          + FramesToMilliseconds(_sourceCheck.ThresholdFrames)
       );
     }
   }
+
+  // Restarts a source that Unity plays somewhere other than its schedule. The
+  // timeline check above cannot see that, because it compares the schedule
+  // with the timeline and never asks Unity where the source is.
+  private void CheckSourcePosition(
+    ReplayPlaybackSnapshot snapshot,
+    long sourceFrame,
+    long scheduledFrame,
+    long targetFrame
+  )
+  {
+    // A clip near its end stops on its own, and a paused listener holds every
+    // source while the DSP clock runs on.
+    if (!_source.isPlaying || AudioListener.pause || scheduledFrame + _sourceCheck.ThresholdFrames >= _wave.FrameCount)
+      return;
+
+    switch (_sourceCheck.Observe(sourceFrame, scheduledFrame))
+    {
+      case ReplayMicrophoneSourceCheckResult.Restart:
+        Interlocked.Increment(ref _sourceRestartCount);
+        if (!_sourceRestartLogged)
+        {
+          _sourceRestartLogged = true;
+          Main.Instance?.Log(
+            "[Replay/Microphone] Source is off its schedule; restarting. sourceFrame="
+              + sourceFrame
+              + ", scheduledFrame="
+              + scheduledFrame
+              + ", offMs="
+              + FramesToMilliseconds(sourceFrame - scheduledFrame)
+              + ", silentReadsMs="
+              + FramesToMilliseconds(Interlocked.Read(ref _inactiveReadFrames))
+          );
+        }
+        RequestSeek(StartFrame(targetFrame), recovery: false);
+        TryStartPrepared(snapshot);
+        break;
+
+      case ReplayMicrophoneSourceCheckResult.GiveUp:
+        Main.Instance?.Log(
+          "[Replay/Microphone] Restarts did not bring the source back on schedule; position check stopped. offMs="
+            + FramesToMilliseconds(sourceFrame - scheduledFrame)
+        );
+        break;
+    }
+  }
+
+  private string FramesToMilliseconds(long frames) => (frames * 1000d / _wave.SampleRate).ToString("0.###");
 
   private void StopSource()
   {
@@ -481,6 +563,8 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     {
       if (_disposed || _failed || _activeGeneration == 0)
       {
+        if (!_disposed && !_failed)
+          Interlocked.Add(ref _inactiveReadFrames, data.Length / _wave.Channels);
         Array.Clear(data, 0, data.Length);
         return;
       }
@@ -607,6 +691,9 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
         + Interlocked.Read(ref _duplicateResetCount)
         + ", resyncs="
         + Interlocked.Read(ref _resyncCount)
+        + ", sourceRestarts="
+        + Interlocked.Read(ref _sourceRestartCount)
+        + (_sourceCheck.Disabled ? " (check stopped)" : "")
         + ", maxDriftMs="
         + maximumDriftMs.ToString("0.###")
     );
@@ -620,7 +707,10 @@ public sealed class ReplayMicrophonePlayer : IReplayMicrophonePlayer
     Interlocked.Exchange(ref _duplicateResetCount, 0L);
     Interlocked.Exchange(ref _maximumDriftFrames, 0L);
     Interlocked.Exchange(ref _resyncCount, 0L);
+    Interlocked.Exchange(ref _sourceRestartCount, 0L);
+    Interlocked.Exchange(ref _inactiveReadFrames, 0L);
     _playbackStartLogged = false;
+    _sourceRestartLogged = false;
   }
 
   private void DeletePlaybackFile()

@@ -759,6 +759,8 @@ internal static class MicrophoneCalibrationSuite
       "A source waiting at the frozen-start boundary was restarted."
     );
 
+    TestReplayMicrophoneSourceCheck();
+
     Assert(
       MicrophoneCaptureChunking.RefineStartTimestamp(1_000L, 2_000L, 48_000, 48_000, 1_000L) == 1_000L,
       "A later device reading moved the first sample later."
@@ -767,6 +769,90 @@ internal static class MicrophoneCalibrationSuite
       MicrophoneCaptureChunking.RefineStartTimestamp(1_000L, 1_900L, 48_000, 48_000, 1_000L) == 900L,
       "A tighter device reading did not refine the first sample."
     );
+  }
+
+  private static void TestReplayMicrophoneSourceCheck()
+  {
+    Assert(
+      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(48_000, 48_000, 256, 4, 50) == 2_400,
+      "Small output buffers did not keep the 50 ms minimum."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(48_000, 48_000, 1_024, 4, 50) == 6_144,
+      "Large output buffers were not tolerated."
+    );
+    Assert(
+      ReplayMicrophonePlaybackDecisions.SourceCheckThresholdFrames(48_000, 44_100, 1_024, 4, 50) == 6_688,
+      "Output buffers were not converted to the clip's sample rate."
+    );
+
+    // Windows 2026-11-07: Unity played a middle-of-level start from frame 0
+    // instead of 34139, so the source trailed its schedule by 711 ms.
+    var check = new ReplayMicrophoneSourceCheck(2_400);
+    Assert(
+      check.Observe(1_024L, 35_163L) == ReplayMicrophoneSourceCheckResult.None
+        && check.Observe(2_048L, 36_187L) == ReplayMicrophoneSourceCheckResult.None,
+      "A source off its schedule was restarted before the check was sure."
+    );
+    Assert(
+      check.Observe(3_072L, 37_211L) == ReplayMicrophoneSourceCheckResult.Restart,
+      "A source playing from the wrong place was not restarted."
+    );
+
+    var jitter = new ReplayMicrophoneSourceCheck(2_400);
+    for (int i = 0; i < 10; i++)
+    {
+      // Normal output buffering on Windows: up to 1024 frames behind.
+      Assert(
+        jitter.Observe(48_000L + i * 800L, 49_024L + i * 800L) == ReplayMicrophoneSourceCheckResult.None,
+        "Normal output buffering restarted the source."
+      );
+    }
+
+    var interrupted = new ReplayMicrophoneSourceCheck(2_400);
+    interrupted.Observe(0L, 40_000L);
+    interrupted.Observe(0L, 40_000L);
+    interrupted.Observe(40_000L, 40_100L);
+    Assert(
+      interrupted.Observe(0L, 41_000L) == ReplayMicrophoneSourceCheckResult.None,
+      "One on-schedule reading did not reset the off-schedule streak."
+    );
+
+    var stubborn = new ReplayMicrophoneSourceCheck(2_400);
+    int restarts = 0;
+    ReplayMicrophoneSourceCheckResult last = ReplayMicrophoneSourceCheckResult.None;
+    for (int i = 0; i < 30 && !stubborn.Disabled; i++)
+    {
+      last = stubborn.Observe(0L, 40_000L);
+      if (last == ReplayMicrophoneSourceCheckResult.Restart)
+      {
+        restarts++;
+        stubborn.OnStarted();
+      }
+    }
+    Assert(
+      restarts == ReplayMicrophoneSourceCheck.MaximumRestarts
+        && last == ReplayMicrophoneSourceCheckResult.GiveUp
+        && stubborn.Disabled,
+      "A source that never comes back on schedule kept being restarted."
+    );
+    Assert(
+      stubborn.Observe(0L, 40_000L) == ReplayMicrophoneSourceCheckResult.None,
+      "A stopped check still asked for restarts."
+    );
+
+    var recovered = new ReplayMicrophoneSourceCheck(2_400);
+    for (int round = 0; round < 5; round++)
+    {
+      recovered.Observe(0L, 40_000L);
+      recovered.Observe(0L, 40_000L);
+      Assert(
+        recovered.Observe(0L, 40_000L) == ReplayMicrophoneSourceCheckResult.Restart,
+        "A restart that worked counted against later restarts."
+      );
+      recovered.OnStarted();
+      recovered.Observe(40_000L, 40_000L);
+    }
   }
 
   private static void TestCalibrationSettings(string root)

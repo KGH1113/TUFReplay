@@ -40,4 +40,27 @@ internal static class ReplayMicrophonePlaybackDecisions
     long audibleFromFrame,
     int thresholdFrames
   ) => Math.Abs(Math.Max(timelineFrame, audibleFromFrame) - scheduledFrame) > thresholdFrames;
+
+  // Unity's reported source position trails the schedule by up to the frames
+  // queued in the output buffers. Anything well past that means the source is
+  // not playing where it was scheduled.
+  public static int SourceCheckThresholdFrames(
+    int sampleRate,
+    int outputSampleRate,
+    int dspBufferFrames,
+    int dspBufferCount,
+    int minimumMilliseconds
+  )
+  {
+    int minimumFrames = Math.Max(1, sampleRate * minimumMilliseconds / 1000);
+    double queuedFrames =
+      Math.Max(1, dspBufferFrames)
+      * (double)(Math.Max(1, dspBufferCount) + 2)
+      * sampleRate
+      / Math.Max(1, outputSampleRate);
+    return Math.Max(minimumFrames, (int)Math.Ceiling(queuedFrames));
+  }
+
+  public static bool IsSourceOffSchedule(long sourceFrame, long scheduledFrame, int thresholdFrames) =>
+    Math.Abs(sourceFrame - scheduledFrame) > thresholdFrames;
 }
