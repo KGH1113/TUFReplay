@@ -19,8 +19,32 @@ internal static class RunRecordManagementSuite
     TestDayDeleteKeepsLockedRunsAndClears(root);
     TestDayDeleteWithoutKeepingClears(root);
     TestDayDeleteSkipsRunInUse(root);
+    TestHistoryHidesSessionsWithoutRuns(root);
     TestMicrophoneBatchDelete(root);
     TestNoFailRunWithoutDeathsIsAClear(root);
+  }
+
+  // The level last played stays open until another level opens or the game quits.
+  // Deleting its runs must not leave it, or its day, in history with nothing to delete.
+  private static void TestHistoryHidesSessionsWithoutRuns(string root)
+  {
+    Open(root, "history-without-runs.sqlite");
+    SaveRun("closed-run", "level-closed", 0, clear: false);
+    SaveRun("open-run", "level-other", 0, clear: false);
+
+    Assert(RunRepository.Delete("open-run"), "The open level's run was not deleted.");
+
+    Assert(CountRows("level_sessions", "level-other") == 1, "The open level session was removed while in use.");
+    List<AppSession> sessions = AppSessionRepository.ListWithRuns(0, 10);
+    Assert(sessions.Count == 1 && sessions[0].Id == "app-closed", "History still lists the app session without runs.");
+    List<LevelSessionOverview> levels = ActivityRepository.ListLevelSessionOverviewsByAppSessions(
+      new[] { "app-closed", "app-open" }
+    );
+    Assert(levels.Count == 1 && levels[0].Id == "level-closed", "History still lists the level visit without runs.");
+
+    SaveRun("next-run", "level-other", 1, clear: false);
+    Assert(AppSessionRepository.ListWithRuns(0, 10).Count == 2, "The open level did not return with its next run.");
+    Console.WriteLine("PASS history hides levels and days whose runs were all deleted");
   }
 
   private static void TestNoFailRunWithoutDeathsIsAClear(string root)
