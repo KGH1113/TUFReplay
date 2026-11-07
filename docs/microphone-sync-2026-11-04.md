@@ -44,13 +44,32 @@ A tester on Windows (1.2.0) replayed runs that started at 81 %. The mic stayed s
 
 The tester's `Player.log` showed `Playback stats ... maxDriftMs` of 622–741 ms in all nine middle-of-level replays, equal to each start position (611–720 ms) plus up to 1024 frames of normal output buffering. A first-tile replay in the same session showed 21 ms. Unity's `timeSamples` therefore counted from 0: the start position set before `PlayScheduled` was not applied. The timeline check (`ShouldResync`) compares only the schedule with the timeline and never asked Unity where the source was, so nothing reacted. Returning focus calls `ResumeReplayAt`, which stops the source and seeks again, and that seek was applied.
 
-The likely difference: a first-tile start stops the source once more at the PlayerControl alignment reset, while a middle-of-level start played the fresh clip with no Stop before it. Every start after a Stop applied its position. The silence is probably what Unity read from the clip while playback was not yet active, played before any real mic data. This part is inferred, not measured.
+First fix (972bd48, tested as `1.2.1-test.1`):
 
-Changes:
+- Every start called `Stop()` right before it set the position.
+- `Tick` compared Unity's `timeSamples` with the schedule (`ReplayMicrophoneSourceCheck`) and restarted a source that was off by more than 50 ms (or the queued output buffers plus two, if longer) three readings in a row.
+- `Playback scheduled` logs `silentReadsMs`, the silence Unity read before playback became active.
 
-- Every start now calls `Stop()` before it sets the position.
-- `Tick` compares Unity's `timeSamples` with the schedule (`ReplayMicrophoneSourceCheck`). Three readings in a row more than 50 ms off, or more than the queued output buffers plus two if those are longer, restart the source the way a focus change did. After three restarts that do not help, the check stops for that replay so the mic does not keep cutting out. It is skipped near the end of the clip and while `AudioListener.pause` is set.
-- `Playback scheduled` logs `silentReadsMs`, the silence Unity read before playback became active, and `positionCheckMs`. `Source is off its schedule; restarting` logs the first restart, and `Playback stats` adds `sourceRestarts`.
+The tester reported the sync fixed but the mic starting late. Their log showed:
+
+- `silentReadsMs=800` in every replay: Unity reads 800 ms of a new clip ahead, while nothing is active, so that read is silence. A start that ignores its position plays it first, which explains the silence and the lateness of the old build.
+- Every middle-of-level start still ignored its position (Unity reported frame 0–416 against about 33,500), so the `Stop()` right before it did not help. Both first-tile starts applied it.
+- A restart applied the position only about half the time: replays needed 1, 2, 1, 3, 3 and 1 restarts. Each failed one cost about 55 ms of clip, so the mic came in 0.06–0.22 s after the run started. Two replays needed exactly three, the limit, after which the check would have stopped and left the mic 800 ms late.
+
+Second try (`1.2.1-test.2`, not committed): stop the fresh source right after its clip is created, and check the start position before the start is heard. The log showed no start retries: before the start Unity reported the position that was set, then played from 0 anyway. The playing check restarted those sources, and Unity then reported them on schedule, yet the tester heard the original problem again: the 800 ms of silence followed by late audio. Without the `Stop()` right before the seek, a restart played Unity's stale read while reporting the requested position. Unity's reported position therefore does not tell what is heard, in either direction.
+
+### Playback through an audio filter
+
+Replay playback no longer uses a streamed `AudioClip`:
+
+- A silent, looping carrier clip with the recording's channel count keeps an `AudioSource` mixing, so Unity calls `ReplayMicrophoneFilter.OnAudioFilterRead` for every block on the audio thread.
+- `ReplayMicrophoneRenderer` writes the recording into that block. The WAV position comes from the block's DSP time (`AudioSettings.dspTime` in the filter) and the published `ReplayMicrophoneSchedule` (a DSP time and the WAV frame that plays then). Nothing asks Unity to seek, so its read-ahead and start positions no longer matter.
+- The main thread only publishes the schedule: at a reset, when gameplay starts playing, and when the replay timeline maps more than 30 ms away from it. A reset within 2 ms of the playing schedule keeps it. A pause or the pre-roll publishes none, which plays silence.
+- Consecutive blocks continue each other; a block whose DSP time is more than two blocks (at least 2 ms) away from the previous one's end starts at its own position. That covers a paused listener or a skipped block.
+- The renderer reads from the same `Pcm16PrefetchBuffer`, now one second long. It skips ahead inside what is buffered, seeks when a jump is longer than half of it, and plays silence for frames that are not read yet. A new schedule primes the prefetch 20 ms before its frame.
+- Output at another sample rate than the recording is resampled linearly. A mono recording fills every output channel; a stereo one keeps left and right.
+- Frames before `AudibleFromUs` (the EnhancedCountdown frozen-start wait) stay silent.
+- Logs: `Playback scheduled ... frame=`, `Playback started. firstBlockAfterScheduleMs=..., frame=..., blockFrames=..., blockChannels=...` for the first block with recorded audio, and `Playback stats. blocks=, missingMs=, prefetchSeeks=, jumps=, resyncs=, duplicateResets=`.
 
 ## Remaining
 
@@ -64,7 +83,7 @@ Changes:
 - Log `[Recording/Microphone] Capture aligned ... points=N, audibleFromUs=...`. A frozen start shows a value; a normal countdown shows `start`.
 - Log `[Replay/Microphone] Playback scheduled ... inputOffsetUs=...`.
 - `Playback stats ... resyncs=` should stay 0 without pauses, and be 1 per recorded pause.
-- Middle-of-level replay: the mic is heard from the first hit, `Playback stats ... maxDriftMs=` stays near one output buffer, and `sourceRestarts=` is 0. A restart logs `Source is off its schedule` with `offMs` and `silentReadsMs`.
+- Middle-of-level replay: the mic is heard from the first hit and stays in sync without a focus change. `Playback started ... firstBlockAfterScheduleMs=` is under one output buffer and `frame=` matches `Playback scheduled ... frame=`; `missingMs` stays near 0.
 - With a non-zero input offset, a perfect hit's key sound should land on the beat.
 - Render: log `[Replay] Delaying render audio by the recorded input offset: N ms.`, and no EnhancedCountdown metronome panel appears during the render.
 - Volume: at the same **TUFReplay Microphone** value, the replay mic is as loud against the song as in a render of the same run, and changing ADOFAI's master volume changes only the game. `Player ready ... volume=` and `Playback scheduled ... gain=` show the applied value.
