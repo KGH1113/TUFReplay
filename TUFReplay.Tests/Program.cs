@@ -35,6 +35,7 @@ internal static class Program
       RunJudgmentTimelineSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
       RunRecordManagementSuite.RunAll(root);
+      MicrophoneDatabaseSuite.RunAll(root);
       ReplayApiSuite.RunAll(root);
       RenderHostSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();

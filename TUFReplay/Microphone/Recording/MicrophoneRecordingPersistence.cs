@@ -7,6 +7,7 @@ using Newtonsoft.Json;
 using TUFReplay.Activity.Management;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Repositories;
+using TUFReplay.Shared.Database;
 using TUFReplay.Shared.Threading;
 using UnityEngine;
 
@@ -249,10 +250,25 @@ public sealed partial class MicrophoneRecordingFeature
       Delete(path);
   }
 
-  private void DeleteExpiredRecordings()
+  // Runs at startup and hourly, while gameplay is idle.
+  private void MaintainStorage()
   {
-    if (Interlocked.Exchange(ref _retentionCleanupRunning, 1) != 0)
+    if (Interlocked.Exchange(ref _storageMaintenanceRunning, 1) != 0)
       return;
+    try
+    {
+      // Expired recordings go first, so a one-time rebuild has less audio to copy.
+      DeleteExpiredRecordings();
+      EnableAutoVacuum();
+    }
+    finally
+    {
+      Interlocked.Exchange(ref _storageMaintenanceRunning, 0);
+    }
+  }
+
+  private static void DeleteExpiredRecordings()
+  {
     try
     {
       int deleted = MicrophoneRecordingRepository.DeleteExpired(DateTime.UtcNow);
@@ -263,9 +279,18 @@ public sealed partial class MicrophoneRecordingFeature
     {
       Main.Instance?.Log("[Microphone] Expired recording cleanup failed. error=" + exception.Message);
     }
-    finally
+  }
+
+  private static void EnableAutoVacuum()
+  {
+    try
     {
-      Interlocked.Exchange(ref _retentionCleanupRunning, 0);
+      if (MicrophoneDatabase.EnableAutoVacuum())
+        Main.Instance?.Log("[Microphone] Rebuilt the recording database so deleted recordings free their space.");
+    }
+    catch (Exception exception)
+    {
+      Main.Instance?.Log("[Microphone] Recording database rebuild deferred. error=" + exception.Message);
     }
   }
 
