@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using TUFReplay.Activity.Models;
+using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Preparation;
 using TUFReplay.Replay.Timeline;
@@ -314,6 +315,7 @@ public static partial class ReplaySessionService
       floorIndex--;
 
     context.NativeInputPlayer?.SkipTo(targetTimeUs);
+    context.KeyFeed?.SkipTo(targetTimeUs, ReplaySessions.NowTicks);
     context.MicrophonePlayer?.Stop();
     context.WebcamPlayer?.Stop();
     ResetReplayHeldInputState();

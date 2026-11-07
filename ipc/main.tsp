@@ -77,15 +77,15 @@ namespace ReplayApi {
   model MicrophoneDevice { id: string; name: string; minFrequency: int32; maxFrequency: int32; bluetooth: boolean; }
   model MicrophoneDevices {
     enabled: boolean; toggleLocked: boolean; devices: MicrophoneDevice[]; defaultDeviceBluetooth: boolean;
-    selectedDeviceId: string | null; microphoneOffsetMs: int32; microphoneVolumeDb: int32;
+    selectedDeviceId: string | null; microphoneOffsetMs: int32;
   }
-  model MicrophoneTiming { microphoneOffsetMs: int32; microphoneVolumeDb: int32; }
+  model MicrophoneTiming { microphoneOffsetMs: int32; }
   model CalibrationState {
     operationId: string | null;
     state: "idle" | "arming" | "opening_level" | "waiting_for_run" | "recording" | "processing" | "editing" | "preview_starting" | "preview_playing" | "error";
     errorCode: string | null; message: string | null; durationMs: float64;
     playbackPositionMs: float64; resultRevision: int32;
-    microphoneOffsetMs: int32; microphoneVolumeDb: int32;
+    microphoneOffsetMs: int32;
   }
   model CalibrationResult {
     operationId: string; revision: int32; durationMs: float64;
@@ -124,10 +124,24 @@ namespace ReplayApi {
   }
   model DownloadsState { renderer: RendererState; ffmpeg: FfmpegState; cameraNeedsFfmpeg: boolean; }
   model RenderErrorDetails { field: string | null; line: int32 | null; file: string | null; }
-  model RenderBundleState {
-    jobId: string; runId: string; state: "preparing" | "completed" | "failed" | "cancelled";
-    progress: float64; manifestPath: string | null; errorCode: string | null;
-    errorMessage: string | null; errorDetails: RenderErrorDetails | null;
+  model RenderRequest {
+    outputDirectory?: string;
+    width: int32; height: int32; videoFps: int32; targetFps: int32;
+    bitrateMbps: int32; videoCodec: string; bitDepth: int32;
+    /** OrbitRender's ProRes profile name; only sent with ProRes. */
+    proResProfile?: string;
+    captureAudio: boolean; audioGainDb: float64; endDelaySeconds: float64;
+    bgaMode: boolean; showPlanetRings: boolean; showSongTitle: boolean;
+    showCountdown: boolean; showResultText: boolean; showHitJudgments: boolean;
+    includeWebcam: boolean; includeMicrophone: boolean;
+  }
+  model RenderJobState {
+    jobId: string; runId: string;
+    state: "exporting" | "preparing" | "rendering" | "compositing" | "completed" | "failed" | "cancelled";
+    stage: string | null; progress: float64;
+    outputFile: string | null; warnings: string[];
+    waitingForGameFocus: boolean;
+    errorCode: string | null; errorMessage: string | null; errorDetails: RenderErrorDetails | null;
   }
 
   op readHealth(): Health;
@@ -152,18 +166,20 @@ namespace ReplayApi {
   op startReplay(runId: string, levelPath?: string | null): ReplayState;
   op readReplayState(): ReplayState;
   op chooseLevelFile(runId: string, purpose?: "replay" | "render"): LevelFileResult;
+  op chooseRenderOutputDirectory(): string | null;
+  op readRenderVideo(jobId: string): ipc.File;
+  op openRenderFile(jobId: string): boolean;
+  op revealRenderFile(jobId: string): boolean;
   op refreshMicrophoneDevices(): MicrophoneDevices;
   op changeMicrophoneAccess(enabled: boolean): MicrophoneDevices;
   op chooseMicrophoneDevice(deviceId: string | null): MicrophoneDevices;
   op changeMicrophoneOffset(offsetMs: int32): MicrophoneTiming;
-  op changeMicrophoneVolume(volumeDb: int32): MicrophoneTiming;
   op startCalibration(): CalibrationState;
   op readCalibrationState(operationId: string): CalibrationState;
   op readCalibrationResult(operationId: string, revision?: int32): CalibrationResult;
   op startCalibrationPreview(operationId: string): CalibrationState;
   op stopCalibrationPreview(operationId: string): CalibrationState;
   op changeCalibrationOffset(operationId: string, offsetMs: int32): CalibrationState;
-  op changeCalibrationVolume(operationId: string, volumeDb: int32): CalibrationState;
   op closeCalibration(operationId: string): CalibrationState;
   op refreshWebcamState(refreshDevices?: boolean): WebcamState;
   op changeWebcamSettings(settings: WebcamSettings): WebcamState;
@@ -181,9 +197,9 @@ namespace ReplayApi {
   op requestRendererDownload(): DownloadsState;
   op confirmRendererDownload(): DownloadsState;
   op cancelRendererDownload(): DownloadsState;
-  op prepareRenderBundle(runId: string, levelPath?: string | null, includeWebcam?: boolean, includeMicrophone?: boolean): RenderBundleState;
-  op readRenderBundleState(jobId: string): RenderBundleState;
-  op cancelRenderBundle(jobId: string): RenderBundleState;
+  op startRender(runId: string, options: RenderRequest, levelPath?: string | null): RenderJobState;
+  op readRenderState(): RenderJobState | null;
+  op cancelRender(jobId: string): RenderJobState;
 
   @ipc.app
   interface Companion {
@@ -196,6 +212,6 @@ namespace ReplayApi {
     webcamStateChanged(value: WebcamState): void;
     ffmpegStateChanged(value: FfmpegState): void;
     downloadsStateChanged(value: DownloadsState): void;
-    renderBundleStateChanged(value: RenderBundleState): void;
+    renderStateChanged(value: RenderJobState): void;
   }
 }

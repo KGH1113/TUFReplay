@@ -1,10 +1,4 @@
-import {
-  Loading03Icon,
-  Mic02Icon,
-  RefreshIcon,
-  Tick02Icon,
-  WaveSquareIcon,
-} from "@hugeicons/core-free-icons";
+import { Loading03Icon, RefreshIcon, Tick02Icon, WaveSquareIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useTranslation } from "react-i18next";
 import {
@@ -12,30 +6,22 @@ import {
   MAX_MICROPHONE_OFFSET_MS,
   MIN_MICROPHONE_OFFSET_MS,
 } from "@/models/calibration/microphone-offset";
-import {
-  formatMicrophoneVolumeDb,
-  MAX_MICROPHONE_VOLUME_DB,
-  MIN_MICROPHONE_VOLUME_DB,
-} from "@/models/calibration/microphone-volume";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { DialogTitle } from "@/shared/ui/dialog";
+import { Slider } from "@/shared/ui/slider";
 import type { MicrophoneOffsetCalibrationPhase } from "@/state/calibration/microphone-offset-reducer";
 
 export function TimingSettingsPanel({
   offsetMs,
-  microphoneVolumeDb,
   audioError,
   onCommitOffset,
-  onCommitMicrophoneVolume,
   onClose,
   onStartCalibration,
 }: {
   offsetMs: number;
-  microphoneVolumeDb: number;
   audioError: string;
   onCommitOffset: (offsetMs: number) => void;
-  onCommitMicrophoneVolume: (volumeDb: number) => void;
   onClose: () => void | Promise<void>;
   onStartCalibration: () => void;
 }) {
@@ -57,20 +43,10 @@ export function TimingSettingsPanel({
           description={t("timingSettings.offsetDescription")}
           min={MIN_MICROPHONE_OFFSET_MS}
           max={MAX_MICROPHONE_OFFSET_MS}
+          step={1}
           value={offsetMs}
           valueText={formatMicrophoneOffset(offsetMs)}
           onChange={onCommitOffset}
-        />
-        <TimingRangeControl
-          id="microphone-timing-gain"
-          icon={Mic02Icon}
-          label={t("calibration.micGain")}
-          description={t("timingSettings.gainDescription")}
-          min={MIN_MICROPHONE_VOLUME_DB}
-          max={MAX_MICROPHONE_VOLUME_DB}
-          value={microphoneVolumeDb}
-          valueText={formatMicrophoneVolumeDb(microphoneVolumeDb)}
-          onChange={onCommitMicrophoneVolume}
         />
       </div>
 
@@ -79,14 +55,11 @@ export function TimingSettingsPanel({
           type="button"
           variant="ghost"
           size="sm"
-          disabled={offsetMs === 0 && microphoneVolumeDb === 0}
-          onClick={() => {
-            onCommitOffset(0);
-            onCommitMicrophoneVolume(0);
-          }}
+          disabled={offsetMs === 0}
+          onClick={() => onCommitOffset(0)}
         >
           <HugeiconsIcon data-icon="inline-start" icon={RefreshIcon} size={14} strokeWidth={2} />
-          {t("timingSettings.resetBoth")}
+          {t("timingSettings.resetTiming")}
         </Button>
       </div>
 
@@ -119,20 +92,24 @@ function TimingRangeControl({
   description,
   min,
   max,
+  step,
   value,
   valueText,
   onChange,
 }: {
   id: string;
-  icon: typeof Mic02Icon;
+  icon: typeof WaveSquareIcon;
   label: string;
   description: string;
   min: number;
   max: number;
+  step: number;
   value: number;
   valueText: string;
   onChange: (value: number) => void;
 }) {
+  const labelId = `${id}-label`;
+  const descriptionId = `${id}-description`;
   return (
     <div className="py-5">
       <div className="flex items-start gap-3">
@@ -141,24 +118,30 @@ function TimingRangeControl({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline justify-between gap-4">
-            <label htmlFor={id} className="text-sm font-medium">
+            <span id={labelId} className="text-sm font-medium">
               {label}
-            </label>
-            <output htmlFor={id} className="shrink-0 text-sm font-semibold tabular-nums">
+            </span>
+            <output aria-hidden="true" className="shrink-0 text-sm font-semibold tabular-nums">
               {valueText}
             </output>
           </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
-          <input
+          <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
+            {description}
+          </p>
+          {/* Shift + arrow keys move ten steps, so the offset moves 10 ms. */}
+          <Slider
             id={id}
-            type="range"
+            aria-labelledby={labelId}
+            aria-describedby={descriptionId}
+            aria-valuetext={valueText}
             min={min}
             max={max}
-            step={1}
-            value={value}
-            aria-valuetext={valueText}
-            onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-            className="mt-4 h-1.5 w-full cursor-pointer appearance-none rounded-full bg-muted accent-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            step={step}
+            value={[value]}
+            onValueChange={([next]) => {
+              if (next !== undefined) onChange(next);
+            }}
+            className="mt-2 cursor-pointer"
           />
         </div>
       </div>

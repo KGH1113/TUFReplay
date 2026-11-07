@@ -1,25 +1,31 @@
 # Replay rendering integration
 
-TUFReplay keeps recording and storage separate from video rendering. It has no reference to
-OrbitRender or TUFReplay-Renderer source or assemblies. The independent renderer consumes
-schema version 1 files through its own `tuf-replay-renderer` AdofaiIpc namespace.
+The companion's Render action starts a render job in TUFReplay. TUFReplay prepares a
+recording bundle, then hands the job to the installed OrbitRender mod, which reports
+progress and cancellation back. OrbitRender must be installed and enabled separately. Its
+current settings determine the output format and local output folder. Camera and
+microphone inclusion are chosen in the dialog. TUFReplay snapshots their calibration and
+microphone gain when the bundle is prepared.
 
-The web run card's menu contains the Render action. The dialog checks `health.get` and
-`settings.get`, exports a bundle through the `tuf-replay` namespace, starts `render.start`,
-and polls `render.status.get`. The renderer embeds the OrbitRender engine, so a separate
-OrbitRender mod is not required. Resolution, simulation/video frame rates, codec, encoder,
-quality/speed, bitrate or supported software CRF, bit depth, ProRes profile, pixel format,
-game audio, end delay, preview, and display flags are editable. Camera, microphone, and
-configured ImplDmNote overlay inclusion are optional.
+## Who does what
 
-The video is saved in the user's selected local folder on the computer running ADOFAI.
-`output-directory.choose` returns a selection ID immediately; the web polls
-`output-directory.selection.get` while the native folder dialog runs outside the game
-thread. Closing the render dialog cancels a pending selection with
-`output-directory.selection.cancel`. The path can also be typed directly. The completed
-job exposes `localOutputPath` and `canOpenOutput`; `output-directory.open` takes the job ID
-and opens its verified save folder. Completion appears in the web dialog and does not
-start a browser download. `settings.update` optionally saves the chosen render defaults.
+With OrbitRender's RenderApi 3, TUFReplay leads the render and OrbitRender only renders:
+
+- **TUFReplay** replays the recording as OrbitRender's host (`RenderReplayHost`):
+  - it applies the recorded settings, inputs and hits, clear, death and end
+  - it hands mods the replay through `ReplayApi`: clock, keys, the canvases to capture, and capture calls. See [replay-api.md](replay-api.md).
+- **OrbitRender** opens the level and runs the offline clock and frame loop. It captures frames and audio, encodes them, composes the webcam and microphone, and writes the file.
+
+TUFReplay calls `RenderApi.StartHostedReplay(requestJson, host)`. The request carries only:
+- the level path and file hash
+- the start tile
+- the recorded input offset and clear time
+- the media with absolute paths
+- the render options
+
+OrbitRender does not read the bundle. The bundle below is TUFReplay's own format: the host reads it back.
+
+**Older OrbitRender (RenderApi 2)**: TUFReplay still hands it the bundle's `manifest.json` through `StartReplay`, and OrbitRender replays the recording itself, as before.
 
 ## Export lifecycle
 

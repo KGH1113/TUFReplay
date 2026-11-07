@@ -11,12 +11,12 @@
   "loading": "설치 상태를 확인하고 있어요…",
   "description": {
     "center": "카메라 녹화와 렌더링에 필요한 구성 요소를 설치해요.",
-    "renderer": "녹화된 플레이를 영상으로 만들어요. 설치 후 게임을 다시 시작해 주세요.",
-    "ffmpeg": "렌더링과 Windows 카메라 녹화에 필요한 영상 인코더예요. 두 기능이 함께 사용해요."
+    "renderer": "녹화한 플레이를 영상으로 만들어 주는 모드예요.",
+    "ffmpeg": "TUFReplay가 Windows에서 카메라를 녹화할 때 사용하는 도구예요."
   },
   "consent": {
-    "renderer": "동의하면 TUFReplay가 GitHub의 공식 Renderer 배포 파일을 받아 게임의 Mods 폴더에 설치해요. Renderer는 별도의 GPL 라이선스를 따르는 확장 모드예요.",
-    "ffmpeg": "동의하면 운영체제에 맞는 배포처에서 FFmpeg를 받아 검증한 뒤 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있어요. TUFReplay 폴더에 저장하고 카메라 녹화와 렌더링에 함께 사용해요."
+    "renderer": "동의하면 TUFReplay가 GitHub의 공식 OrbitRender 배포 파일을 받아 게임의 Mods 폴더에 설치해요. Renderer는 별도의 GPL 라이선스를 따르는 확장 모드예요.",
+    "ffmpeg": "동의하면 FFmpeg를 받아 검증한 뒤 게임 폴더의 ffmpeg/<플랫폼>/에 설치해요. 빌드에 GPL 구성 요소가 포함될 수 있어요. 이 설치 방식을 지원하는 모드는 함께 사용할 수 있지만, OrbitRender 버전에 따라 별도 설정이 필요해요."
   },
   "status": {
     "checking": "설치 상태 확인 중…",
@@ -41,14 +41,14 @@
   "details": "자세히 보기",
   "progress": "{{name}} 다운로드 진행률",
   "installLocation": "설치 위치: {{path}}",
-  "restartHelp": "ADOFAI를 완전히 종료한 뒤 다시 열고, Unity Mod Manager에서 TUFReplay-Renderer를 켜 주세요.",
+  "restartHelp": "ADOFAI를 완전히 종료한 뒤 다시 열고, Unity Mod Manager에서 OrbitRender를 켜 주세요.",
   "errors": {
     "statusFailed": "설치 상태를 읽지 못했어요. 게임에서 최신 TUFReplay가 켜져 있는지 확인한 뒤 다시 시도해 주세요.",
     "downloads_unavailable": "최신 TUFReplay로 업데이트하고 얼불춤을 완전히 다시 실행하면 다운로드 센터를 사용할 수 있어요.",
     "actionFailed": "설치 요청을 게임에 전달하지 못했어요. 게임과 연결되어 있는지 확인한 뒤 다시 시도해 주세요.",
     "renderer_download_timeout": "Renderer를 받는 데 시간이 너무 오래 걸렸어요. 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
     "installFailed": "설치를 마치지 못했어요. 자세한 내용과 여유 공간, 인터넷 연결을 확인한 뒤 다시 시도해 주세요.",
-    "renderer_release_unavailable": "아직 공식 Renderer 배포 파일이 올라오지 않았어요. 배포 후 다시 시도해 주세요.",
+    "renderer_release_unavailable": "아직 공식 OrbitRender 배포 파일이 올라오지 않았어요. 배포 후 다시 시도해 주세요.",
     "renderer_release_inaccessible": "Renderer 저장소에 접근하지 못했어요. 비공개이거나 사용할 수 없는 저장소일 수 있어요. 공개 릴리스가 제공되면 다시 시도해 주세요.",
     "renderer_release_invalid": "배포된 Renderer 설치 파일이나 검증 파일이 올바르지 않아요. 배포 파일이 수정되면 다시 시도해 주세요.",
     "renderer_checksum_mismatch": "받은 Renderer 파일이 공식 배포 파일과 일치하지 않아요. 다시 다운로드해 주세요.",
@@ -60,5 +60,53 @@
     "approval": "승인이 필요해요",
     "failed": "설치하지 못했어요",
     "restart": "얼불춤을 다시 시작하면 끝나요"
+  },
+  "rendererUpdateRequired": "OrbitRender 업데이트 필요",
+  "rendererUpdateHelp": "OrbitRender를 업데이트해 주세요.",
+  "setup": {
+    "label": "영상 만들기 준비 순서",
+    "forRender": "영상을 만들려면 OrbitRender가 필요해요. 아래 순서대로 준비해 주세요.",
+    "state": {
+      "upcoming": "다음 단계",
+      "current": "지금 할 일",
+      "working": "진행 중",
+      "done": "완료",
+      "attention": "확인 필요"
+    },
+    "install": {
+      "title": "OrbitRender 설치",
+      "updateTitle": "OrbitRender 업데이트",
+      "about": "GitHub에서 공식 배포 파일을 받아 설치해요.",
+      "done": "설치했어요",
+      "update": "2.6.2 이상이 필요해요. 지금은 {{version}}이에요.",
+      "updateUnknown": "2.6.2 이상이 필요해요.",
+      "latestRelease": "최신 버전 받기"
+    },
+    "restart": {
+      "title": "얼불춤 다시 켜기",
+      "about": "얼불춤을 완전히 끄고 다시 열면 OrbitRender가 켜져요.",
+      "stuck": "그래도 안 켜지면 Unity Mod Manager에서 켜 주세요.",
+      "done": "OrbitRender가 켜져 있어요."
+    },
+    "create": {
+      "title": "영상 만들기",
+      "about": "플레이 메뉴에서 ‘{{action}}’를 누르면 돼요."
+    },
+    "license": "OrbitRender는 별도의 GPL 라이선스를 따르는 모드예요.",
+    "gotIt": "확인"
+  },
+  "ffmpeg": {
+    "title": "FFmpeg 설치",
+    "ready": "사용할 준비가 됐어요",
+    "restartHelp": "게임을 완전히 종료한 뒤 다시 열면 사용할 수 있어요.",
+    "readyHelp": "Windows 카메라 녹화에 사용할 준비가 됐어요. 게임을 다시 켤 필요는 없어요. 영상 렌더링은 OrbitRender에서 별도로 준비해 주세요.",
+    "source": "배포처: {{source}}",
+    "backgroundHelp": "다른 작업을 해도 괜찮아요. 이 창을 닫아도 설치는 계속돼요.",
+    "installInfo": "설치 정보와 라이선스",
+    "percent": "{{percent}}%",
+    "preparing": "마무리 작업 중",
+    "failedTitle": "FFmpeg 설치 확인",
+    "installingTitle": "FFmpeg 설치 중",
+    "readyTitle": "FFmpeg 설치 완료"
   }
 }

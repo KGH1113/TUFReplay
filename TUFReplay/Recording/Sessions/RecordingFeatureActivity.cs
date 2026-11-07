@@ -1,5 +1,8 @@
+using System.Collections.Generic;
 using TUFReplay.Activity.Models;
 using TUFReplay.Composition;
+using TUFReplay.ModApi.Models;
+using TUFReplay.ModApi.Recording;
 using TUFReplay.Recording.Activity;
 
 namespace TUFReplay.Recording.Sessions;
@@ -20,7 +23,23 @@ public partial class RecordingFeature
     _currentRun = _calibrationRun
       ? CalibrationRunDraftFactory.Create(Session.Data, startTile, levelTileCount)
       : _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
+    // Other mods save their state as the run starts, before its first recorded input.
+    if (_currentRun != null && !_calibrationRun)
+      _runStates = RunStateCapture.Begin(_currentRun.Id);
     return _currentRun != null;
+  }
+
+  private IReadOnlyList<RunStateRecord> CloseRunStates()
+  {
+    RunStateCapture capture = _runStates;
+    _runStates = null;
+    return capture?.Close();
+  }
+
+  private void DiscardRunStates()
+  {
+    _runStates?.Discard();
+    _runStates = null;
   }
 
   private bool OpenActivityLevel(int levelTileCount)
@@ -54,6 +73,7 @@ public partial class RecordingFeature
     RunRecord run = _currentRun;
     var completed = Session.CompleteRunPayload(run, lastTile, result);
     _runSaved = true;
+    IReadOnlyList<RunStateRecord> runStates = CloseRunStates();
 
     if (run.InputCount <= 0 && completed.GetInputFailureReason() == null)
     {
@@ -74,6 +94,7 @@ public partial class RecordingFeature
       return false;
     }
 
+    run.RunStates = runStates;
     var microphone = FeatureRegistry.MicrophoneRecording;
     _runPersistence = _activity.SaveRun(
       run,

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Processing;
+using TUFReplay.Microphone.Timing;
 using TUFReplay.Replay.Models;
 
 namespace TUFReplay.Calibration.Analysis;
@@ -63,12 +64,18 @@ public static class CalibrationWaveformBuilder
       FrameCount = recording.FrameCount,
       CaptureStartOffsetUs = recording.CaptureStartOffsetUs,
       ByteLength = new FileInfo(recording.TempPath).Length,
+      Timeline = recording.Timeline,
     };
     Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(stored);
     var result = new float[BinCount];
     var bytes = new byte[64 * 1024];
     double durationUs = Math.Max(1d, durationMs * 1000d);
 
+    // Draw each sample at its timeline position. Audio captured during a pause
+    // has none and is left out, as in the replay.
+    MicrophoneAudioTimelineCursor timeline = MicrophoneTimelineMap.HasPoints(recording.Timeline)
+      ? new MicrophoneAudioTimelineCursor(recording.Timeline)
+      : null;
     using var stream = new FileStream(recording.TempPath, FileMode.Open, FileAccess.Read, FileShare.Read);
     stream.Position = wave.DataOffset;
     long frame = 0;
@@ -89,7 +96,12 @@ public static class CalibrationWaveformBuilder
           short sample = (short)(bytes[sampleOffset] | (bytes[sampleOffset + 1] << 8));
           peak = Math.Max(peak, Math.Abs((int)sample));
         }
-        double timeUs = recording.CaptureStartOffsetUs + frame * 1_000_000d / wave.SampleRate;
+        double audioTimeUs = frame * 1_000_000d / wave.SampleRate;
+        double timeUs;
+        if (timeline == null)
+          timeUs = recording.CaptureStartOffsetUs + audioTimeUs;
+        else if (!timeline.TryMap(audioTimeUs, out timeUs))
+          continue;
         int bin = (int)(timeUs / durationUs * BinCount);
         if (bin >= 0 && bin < BinCount)
           result[bin] = Math.Max(result[bin], peak / 32768f);

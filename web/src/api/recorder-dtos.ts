@@ -161,7 +161,6 @@ export function toMicrophoneDevicesDto(value: MicrophoneDevices) {
     Devices: value.devices.map(toMicrophoneDeviceDto),
     Enabled: value.enabled,
     MicrophoneOffsetMs: value.microphoneOffsetMs,
-    MicrophoneVolumeDb: value.microphoneVolumeDb,
     SelectedDeviceId: value.selectedDeviceId,
     ToggleLocked: value.toggleLocked,
   };
@@ -180,7 +179,6 @@ export function toMicrophoneDeviceDto(value: MicrophoneDevice) {
 export function toMicrophoneTimingDto(value: MicrophoneTiming) {
   return {
     MicrophoneOffsetMs: value.microphoneOffsetMs,
-    MicrophoneVolumeDb: value.microphoneVolumeDb,
   };
 }
 
@@ -190,7 +188,6 @@ export function toCalibrationStateDto(value: CalibrationState) {
     ErrorCode: value.errorCode,
     Message: value.message,
     MicrophoneOffsetMs: value.microphoneOffsetMs,
-    MicrophoneVolumeDb: value.microphoneVolumeDb,
     OperationId: value.operationId,
     PlaybackPositionMs: value.playbackPositionMs,
     ResultRevision: value.resultRevision,

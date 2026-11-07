@@ -58,15 +58,6 @@ public static class MicrophoneCalibrationIpcHandlers
     return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.SetOffset(operationId, offsetMs));
   }
 
-  public static MicrophoneCalibrationStatusDto SetVolume(string operationId, int volumeDb)
-  {
-    if (string.IsNullOrWhiteSpace(operationId))
-      throw IpcDomainError.Create("invalid_operation_id", "operationId must be a non-empty string.");
-    if (!FeatureRegistry.MicrophoneCalibration.IsCurrentOperation(operationId))
-      throw StaleOperationError();
-    return MicrophoneCalibrationStatusDto.From(FeatureRegistry.MicrophoneCalibration.SetVolume(operationId, volumeDb));
-  }
-
   public static MicrophoneCalibrationStatusDto Close(string operationId)
   {
     if (string.IsNullOrWhiteSpace(operationId))

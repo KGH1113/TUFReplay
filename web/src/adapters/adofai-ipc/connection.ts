@@ -17,9 +17,7 @@ export function createRecorderSnapshots() {
   const listeners = new Map<RecorderEventName, Set<(value: never) => void>>();
   const publish = <K extends RecorderEventName>(name: K, value: RecorderEvent<K>) => {
     const identity =
-      name === "renderBundleStateChanged"
-        ? (value as RecorderEvent<"renderBundleStateChanged">).jobId
-        : "";
+      name === "renderStateChanged" ? (value as RecorderEvent<"renderStateChanged">).jobId : "";
     const key = `${name}:${identity}`;
     latest.delete(key);
     latest.set(key, { name, value });
@@ -36,7 +34,7 @@ export function createRecorderSnapshots() {
     webcamStateChanged: ({ value }) => publish("webcamStateChanged", value),
     ffmpegStateChanged: ({ value }) => publish("ffmpegStateChanged", value),
     downloadsStateChanged: ({ value }) => publish("downloadsStateChanged", value),
-    renderBundleStateChanged: ({ value }) => publish("renderBundleStateChanged", value),
+    renderStateChanged: ({ value }) => publish("renderStateChanged", value),
   };
   const on: RecorderClient["on"] = (name, listener) => {
     const set = listeners.get(name) ?? new Set();

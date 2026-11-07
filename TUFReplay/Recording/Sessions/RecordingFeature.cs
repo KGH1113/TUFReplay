@@ -6,6 +6,7 @@ using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Microphone.Timing;
+using TUFReplay.ModApi.Recording;
 using TUFReplay.Recording.Input;
 using TUFReplay.Recording.Microphone;
 using TUFReplay.Recording.Patches;
@@ -38,9 +39,10 @@ public partial class RecordingFeature
   private byte[] _gameplayHash;
   private int? _gameplayHashVersion;
   private bool _microphoneCaptureStarted;
-  private MicrophoneTimelineAnchor? _microphoneTimelineAnchor;
+  private MicrophoneCaptureTimeline _microphoneTimeline;
   private PendingMicrophoneDisposition _pendingEditorRecording;
   private bool _calibrationRun;
+  private RunStateCapture _runStates;
 
   private readonly RecordingActivityTracker _activity = new RecordingActivityTracker();
 
@@ -58,6 +60,7 @@ public partial class RecordingFeature
     _clearReached = true;
     Session.MarkWonReached();
     ObserveWebcamWon();
+    ObserveMicrophoneWon();
     if (_calibrationRun)
       return;
     Main.Instance.Log("[Recording] Clear reached; input and microphone capture continue until editor return.");
@@ -421,9 +424,10 @@ public partial class RecordingFeature
     _failedRunWaitingForHit = false;
     _runSaved = false;
     _currentRun = null;
+    DiscardRunStates();
     _runPersistence = Task.FromResult(false);
     _microphoneCaptureStarted = false;
-    _microphoneTimelineAnchor = null;
+    _microphoneTimeline = null;
     _webcamCaptureStarted = false;
     _webcamTimeline = null;
     _persistFailedWebcam = false;

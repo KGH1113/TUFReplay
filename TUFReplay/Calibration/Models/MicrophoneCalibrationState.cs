@@ -88,7 +88,7 @@ internal sealed class MicrophoneCalibrationState
     NotifyChanged();
   }
 
-  public void BeginMeasurement(string operationId, int microphoneVolumeDb)
+  public void BeginMeasurement(string operationId)
   {
     lock (_gate)
     {
@@ -99,7 +99,6 @@ internal sealed class MicrophoneCalibrationState
         State = MicrophoneCalibrationStates.Arming,
         Message = "Preparing microphone access.",
         MicrophoneOffsetMs = 0,
-        MicrophoneVolumeDb = microphoneVolumeDb,
       };
     }
     NotifyChanged();
@@ -163,13 +162,6 @@ internal sealed class MicrophoneCalibrationState
     NotifyChanged();
   }
 
-  public void SetVolume(int volumeDb)
-  {
-    lock (_gate)
-      _status.MicrophoneVolumeDb = volumeDb;
-    NotifyChanged();
-  }
-
   public void ClearResult()
   {
     lock (_gate)
@@ -195,7 +187,6 @@ internal sealed class MicrophoneCalibrationState
         ErrorCode = code,
         Message = message,
         MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
-        MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
       };
     }
     NotifyChanged();
@@ -215,7 +206,6 @@ internal sealed class MicrophoneCalibrationState
       ErrorCode = code,
       Message = message,
       MicrophoneOffsetMs = TUFReplaySettingStore.Current?.MicrophoneOffsetMs ?? 0,
-      MicrophoneVolumeDb = TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0,
     };
 
   private static MicrophoneCalibrationStatus Clone(MicrophoneCalibrationStatus status) =>
@@ -229,6 +219,5 @@ internal sealed class MicrophoneCalibrationState
       PlaybackPositionMs = status.PlaybackPositionMs,
       ResultRevision = status.ResultRevision,
       MicrophoneOffsetMs = status.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = status.MicrophoneVolumeDb,
     };
 }

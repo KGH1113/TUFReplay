@@ -1,9 +1,15 @@
-import { Download04Icon } from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RenderOptionsForm } from "@/components/render/render-options-form";
-import { useDownloads } from "@/hooks/downloads/use-downloads";
+import { RenderFailureNotice, RenderNotice } from "@/components/render/render-notice";
+import { RenderOptionsForm, RenderSaveLocation } from "@/components/render/render-options-form";
+import { RenderProgress } from "@/components/render/render-progress";
+import { RenderResult } from "@/components/render/render-result";
 import type { useRenderControl } from "@/hooks/render/use-render-control";
+import type { ActivityRun, LevelMetadata } from "@/models/activity/activity-model";
+import { describeLevel } from "@/models/activity/level-description";
+import { runEndPercent, runOutcome, runStartPercent } from "@/models/activity/run-progress";
+import { formatXAccuracy } from "@/models/activity/x-accuracy";
+import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import {
   Dialog,
@@ -12,236 +18,167 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/shared/ui/dialog";
+import { ScrollArea } from "@/shared/ui/scroll-area";
 
-export function RenderDialog({ control }: { control: ReturnType<typeof useRenderControl> }) {
-  const { t, i18n } = useTranslation("render");
-  const downloads = useDownloads(Boolean(control.run));
-  const unavailable =
-    control.health && (!control.health.orbitAvailable || !control.health.available);
-  const knownError =
-    control.errorCode && i18n.exists(`errors.${control.errorCode}`, { ns: "render" })
-      ? t(`errors.${control.errorCode}` as never)
-      : null;
-  const field = control.errorDetails?.field?.replace(/^replay\./, "");
-  const fieldLabel =
-    field && i18n.exists(`errorFields.${field}`, { ns: "render" })
-      ? t(`errorFields.${field}` as never)
-      : field && i18n.exists(`options.${field}`, { ns: "render" })
-        ? t(`options.${field}` as never)
-        : field;
-  const completed = control.phase === "completed";
-  const needsRendererSetup = control.errorCode === "renderer_missing" && !control.settings;
-  const rendererState = downloads.state?.Renderer.Status;
-  const setupStep =
-    rendererState === "restart-required"
-      ? "restart"
-      : rendererState === "ready"
-        ? "ready"
-        : "install";
+type Control = ReturnType<typeof useRenderControl>;
+
+export function RenderDialog({
+  control,
+  metadata,
+}: {
+  control: Control;
+  /** The level the run belongs to, named in the header. */
+  metadata?: LevelMetadata;
+}) {
+  const { t } = useTranslation("render");
+  const [opening, setOpening] = useState(false);
+  const [openFailed, setOpenFailed] = useState(false);
+  const done = control.phase === "completed";
+  const setup = !control.busy && !done;
+  const unavailable = control.health ? !control.health.orbitAvailable : false;
   const canStart =
     !control.busy &&
     control.phase !== "checking" &&
-    !control.choosingDirectory &&
     !unavailable &&
     !control.health?.busy &&
-    Boolean(control.health && control.settings) &&
-    control.optionValidation.success &&
-    (control.settingsMode === "advanced" ||
-      Boolean(
-        control.recommendations.levels.find((value) => value.quality === control.quality)
-          ?.supported,
-      )) &&
-    control.options.outputDirectory.trim().length > 0;
+    Boolean(control.health?.orbitAvailable) &&
+    control.optionValidation.success;
 
-  if (needsRendererSetup) {
-    return (
-      <Dialog
-        open={Boolean(control.run)}
-        onOpenChange={(open) => {
-          if (!open) control.close();
-        }}
-      >
-        <DialogContent className="w-[min(30rem,calc(100vw-2rem))] space-y-6 p-6">
-          <div className="flex size-11 items-center justify-center rounded-2xl bg-muted/60 text-muted-foreground">
-            <HugeiconsIcon icon={Download04Icon} size={22} aria-hidden="true" />
-          </div>
-          <DialogHeader>
-            <DialogTitle>{t(`setup.${setupStep}.title`)}</DialogTitle>
-            <DialogDescription className="leading-relaxed">
-              {t(`setup.${setupStep}.description`)}
-            </DialogDescription>
-          </DialogHeader>
-          {setupStep === "install" ? (
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {t("setup.restartHint")}
-            </p>
-          ) : null}
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="ghost" onClick={control.close}>
-              {t("setup.later")}
-            </Button>
-            <Button
-              disabled={downloads.pending}
-              onClick={() => {
-                if (setupStep === "install") void downloads.act("renderer", "request");
-                else if (control.run) control.open(control.run, undefined, control.levelPath);
-              }}
-            >
-              {setupStep === "install"
-                ? t("installRenderer")
-                : setupStep === "ready"
-                  ? t("setup.continue")
-                  : t("setup.checkConnection")}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-    );
-  }
+  const openOutput = async (reveal: boolean) => {
+    const jobId = control.job?.jobId;
+    if (!jobId) return;
+    setOpening(true);
+    setOpenFailed(false);
+    try {
+      if (!(await control.openRenderOutput(jobId, reveal))) setOpenFailed(true);
+    } catch {
+      setOpenFailed(true);
+    } finally {
+      setOpening(false);
+    }
+  };
 
   return (
     <Dialog
       open={Boolean(control.run)}
       onOpenChange={(open) => {
-        if (!open) control.close();
+        if (!open && !control.busy) {
+          setOpenFailed(false);
+          control.close();
+        }
       }}
     >
       <DialogContent
-        className="flex max-h-[min(90dvh,56rem)] w-[min(44rem,calc(100vw-2rem))] flex-col gap-5 p-0"
+        className={cn(
+          "flex max-h-[min(92dvh,56rem)] flex-col gap-0 p-0",
+          // Settings take two columns and the finished video wants a large picture; progress needs less room.
+          setup || done ? "w-[min(60rem,calc(100vw-2rem))]" : "w-[min(36rem,calc(100vw-2rem))]",
+        )}
+        // Nothing is focused on open, so no field shows a selected value or a ring.
+        onOpenAutoFocus={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
-          if (control.busy) event.preventDefault();
+          // Esc in a full-screen preview only leaves full screen.
+          if (control.busy || document.fullscreenElement) event.preventDefault();
         }}
         onInteractOutside={(event) => {
           if (control.busy) event.preventDefault();
         }}
       >
-        <DialogHeader className="shrink-0 px-6 pt-6">
-          <DialogTitle>{t("title", { runIndex: control.run?.runIndex })}</DialogTitle>
-          <DialogDescription>
-            {completed ? t("completedDescription") : t("description")}
+        <DialogHeader className="shrink-0 gap-1 px-6 pt-6 pb-4">
+          <DialogTitle>{t(done ? "doneTitle" : "title")}</DialogTitle>
+          <DialogDescription className="truncate">
+            {control.run ? <RunSummary run={control.run} metadata={metadata} /> : null}
           </DialogDescription>
         </DialogHeader>
-        <div className="min-h-0 space-y-5 overflow-y-auto px-6 pb-1">
-          {!completed && control.settings ? <RenderOptionsForm control={control} /> : null}
-          <div aria-live="polite" className="space-y-2 text-sm">
-            {control.job?.warnings.length ? (
-              <div className="rounded-lg border border-amber-500/25 bg-amber-500/5 p-3 text-xs">
-                <p className="mb-1 font-medium">{t("warnings")}</p>
-                <ul className="list-disc space-y-1 pl-4">
-                  {control.job.warnings.map((warning) => (
-                    <li key={warning}>{warning}</li>
-                  ))}
-                </ul>
-              </div>
-            ) : null}
-            {control.phase !== "idle" ? (
-              <p className="font-medium">
-                {control.busy && control.job?.waitingForFfmpeg
-                  ? t("waitingForFfmpeg")
-                  : control.busy && control.job?.waitingForGameFocus
-                    ? t("waitingForGameFocus")
-                    : t(`status.${control.phase}`)}
-              </p>
-            ) : null}
-            {control.busy && control.phase !== "checking" && control.phase !== "installing" ? (
-              <progress
-                aria-label={t("progress")}
-                value={control.progress}
-                max={1}
-                className="h-2 w-full accent-primary"
-              />
-            ) : null}
+        {/* Radix lays the content out as a table that grows with long text; keep it to the dialog's width. */}
+        <ScrollArea className="min-h-0 [&_[data-radix-scroll-area-viewport]]:max-h-[calc(min(92dvh,56rem)-9.5rem)] [&_[data-radix-scroll-area-viewport]>div]:block!">
+          <div className="space-y-5 px-6 pb-6">
             {control.busy ? (
-              <p className="text-xs text-muted-foreground">
-                {control.job?.waitingForFfmpeg
-                  ? t("ffmpegInstallHelp")
-                  : control.job?.waitingForGameFocus
-                    ? t("gameFocusWaitHelp")
-                    : t("keepGameOpen")}
-              </p>
-            ) : null}
-            {unavailable ? (
-              <p role="alert" className="text-destructive">
-                {t("errors.orbit_missing")}
-              </p>
-            ) : null}
-            {control.health?.busy ? (
-              <p role="alert" className="text-destructive">
-                {t("errors.render_busy")}
-              </p>
-            ) : null}
-            {control.errorMessage || knownError ? (
-              <div role="alert" className="space-y-2 rounded-lg border border-border p-3">
-                <p>{knownError || control.errorMessage || t("errors.failed")}</p>
-                {control.errorCode === "renderer_missing" &&
-                downloads.state?.Renderer.Status !== "restart-required" ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={downloads.pending}
-                    onClick={() => downloads.act("renderer", "request")}
-                  >
-                    {t("installRenderer")}
-                  </Button>
-                ) : null}
-                {knownError && control.errorMessage && control.errorMessage !== knownError ? (
-                  <details className="text-xs text-muted-foreground">
-                    <summary className="cursor-pointer">{t("errorDetails")}</summary>
-                    <p className="mt-2 break-words leading-relaxed">{control.errorMessage}</p>
-                  </details>
-                ) : null}
-                {fieldLabel ? (
-                  <p className="text-xs">{t("errorDetailField", { field: fieldLabel })}</p>
-                ) : null}
-                {control.errorDetails?.line ? (
-                  <p className="text-xs">
-                    {t("errorDetailLine", {
-                      line: control.errorDetails.line,
-                      file: control.errorDetails.file || t("recordingFile"),
-                    })}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-            {completed && (control.job?.localOutputPath || control.job?.outputFile) ? (
-              <div className="rounded-lg bg-muted/40 p-3">
-                <p className="mb-1 text-xs font-medium">{t("savedTo")}</p>
-                <p className="break-all text-xs leading-relaxed text-muted-foreground">
-                  {control.job.localOutputPath || control.job.outputFile}
-                </p>
-              </div>
-            ) : null}
+              <RenderProgress phase={control.phase} progress={control.progress} job={control.job} />
+            ) : done && control.job ? (
+              <RenderResult control={control} openFailed={openFailed} />
+            ) : (
+              <>
+                <SetupNotices control={control} unavailable={unavailable} />
+                <RenderOptionsForm control={control} />
+              </>
+            )}
           </div>
-        </div>
-        <div className="flex shrink-0 justify-end gap-2 border-t border-border bg-muted/20 px-6 py-4">
-          <Button
-            variant="outline"
-            onClick={control.busy ? () => void control.cancel() : control.close}
-          >
-            {control.busy ? t("cancel") : t("close")}
-          </Button>
-          {completed ? (
-            <Button
-              disabled={!control.job?.canOpenOutput || control.openingDirectory}
-              onClick={() => void control.openOutputDirectory()}
-            >
-              {control.openingDirectory ? t("openingDirectory") : t("openSaveLocation")}
-            </Button>
-          ) : control.phase === "failed" && !control.health ? (
-            <Button
-              onClick={() => {
-                if (control.run) control.open(control.run, undefined, control.levelPath);
-              }}
-            >
-              {t("retry")}
-            </Button>
-          ) : (
-            <Button disabled={!canStart} onClick={() => void control.start()}>
-              {t("start")}
-            </Button>
-          )}
+        </ScrollArea>
+        <div className="flex shrink-0 flex-wrap items-center justify-end gap-x-4 gap-y-2 border-t border-border bg-muted/20 px-6 py-4">
+          {setup ? <RenderSaveLocation control={control} /> : null}
+          <div className="flex shrink-0 gap-2">
+            {control.busy ? (
+              <Button variant="outline" onClick={() => void control.cancel()}>
+                {t("stop")}
+              </Button>
+            ) : done ? (
+              <>
+                <Button variant="ghost" onClick={control.close}>
+                  {t("close")}
+                </Button>
+                <Button variant="outline" disabled={opening} onClick={() => void openOutput(true)}>
+                  {t("result.reveal")}
+                </Button>
+                <Button disabled={opening} onClick={() => void openOutput(false)}>
+                  {t("result.open")}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="ghost" onClick={control.close}>
+                  {t("close")}
+                </Button>
+                <Button disabled={!canStart} onClick={() => void control.start()}>
+                  {control.phase === "checking"
+                    ? t("checking")
+                    : control.phase === "failed" || control.phase === "cancelled"
+                      ? t("retry")
+                      : t("start")}
+                </Button>
+              </>
+            )}
+          </div>
         </div>
       </DialogContent>
     </Dialog>
   );
+}
+
+/** What is being made: the level, how far the run got and its accuracy. */
+function RunSummary({ run, metadata }: { run: ActivityRun; metadata?: LevelMetadata }) {
+  const { t, i18n } = useTranslation("render");
+  const { t: activityT } = useTranslation("activity");
+  const locale = i18n.resolvedLanguage ?? "en";
+  const start = runStartPercent(run);
+  const end = runEndPercent(run);
+  const parts = [
+    metadata ? describeLevel(metadata, activityT).name : null,
+    runOutcome(run) === "clear"
+      ? t("summary.clear")
+      : start > 0
+        ? t("summary.range", { start, end })
+        : t("summary.reached", { end }),
+    run.xAccuracy === null ? null : formatXAccuracy(run.xAccuracy, locale),
+  ];
+  return <>{parts.filter(Boolean).join(" · ")}</>;
+}
+
+/** Why the video cannot be made right now, or how the last try ended. */
+function SetupNotices({ control, unavailable }: { control: Control; unavailable: boolean }) {
+  const { t } = useTranslation("render");
+  if (control.health && !control.health.available)
+    return <RenderNotice message={t("errors.ipc_unavailable")} />;
+  if (unavailable) return <RenderNotice message={t("notice.orbitMissing")} />;
+  if (control.health?.busy) return <RenderNotice message={t("notice.busy")} />;
+  if (control.phase === "cancelled") return <RenderNotice message={t("notice.stopped")} />;
+  if (control.phase === "failed")
+    return (
+      <RenderFailureNotice
+        code={control.errorCode}
+        message={control.errorMessage}
+        details={control.errorDetails}
+      />
+    );
+  return null;
 }

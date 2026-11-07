@@ -73,7 +73,6 @@ interface ActivityWireFixture {
   setMicrophoneEnabled(enabled: boolean): Promise<MicrophoneDevicesState>;
   selectMicrophoneDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
   setMicrophoneOffset(offsetMs: number): Promise<MicrophoneTimingSettings>;
-  setMicrophoneVolume(volumeDb: number): Promise<MicrophoneTimingSettings>;
   startMicrophoneCalibration(): Promise<MicrophoneCalibrationStatus>;
   getMicrophoneCalibrationStatus(operationId: string): Promise<MicrophoneCalibrationStatus>;
   getMicrophoneCalibrationResult(
@@ -85,10 +84,6 @@ interface ActivityWireFixture {
   setMicrophoneCalibrationOffset(
     operationId: string,
     offsetMs: number,
-  ): Promise<MicrophoneCalibrationStatus>;
-  setMicrophoneCalibrationVolume(
-    operationId: string,
-    volumeDb: number,
   ): Promise<MicrophoneCalibrationStatus>;
   closeMicrophoneCalibration(operationId: string): Promise<MicrophoneCalibrationStatus>;
 }
@@ -199,7 +194,6 @@ export function createActivityWireFixture(): ActivityWireFixture {
   let selectedMicrophoneDeviceId: string | null = null;
   let microphoneEnabled = true;
   let microphoneOffsetMs = mockMicrophoneOffsetCalibration.initialOffsetMs;
-  let microphoneVolumeDb = 0;
   const microphoneDevices = [
     {
       Id: "MacBook Pro Microphone",
@@ -239,7 +233,6 @@ export function createActivityWireFixture(): ActivityWireFixture {
     PlaybackPositionMs: 0,
     ResultRevision: 0,
     MicrophoneOffsetMs: mockMicrophoneOffsetCalibration.initialOffsetMs,
-    MicrophoneVolumeDb: 0,
   };
   return {
     judgmentTimelines: (runIds) =>
@@ -466,7 +459,6 @@ export function createActivityWireFixture(): ActivityWireFixture {
       DefaultDeviceBluetooth: false,
       SelectedDeviceId: selectedMicrophoneDeviceId,
       MicrophoneOffsetMs: microphoneOffsetMs,
-      MicrophoneVolumeDb: microphoneVolumeDb,
     }),
     setMicrophoneEnabled: async (enabled) => {
       microphoneEnabled = enabled;
@@ -477,7 +469,6 @@ export function createActivityWireFixture(): ActivityWireFixture {
         DefaultDeviceBluetooth: false,
         SelectedDeviceId: selectedMicrophoneDeviceId,
         MicrophoneOffsetMs: microphoneOffsetMs,
-        MicrophoneVolumeDb: microphoneVolumeDb,
       };
     },
     selectMicrophoneDevice: async (deviceId) => {
@@ -489,22 +480,11 @@ export function createActivityWireFixture(): ActivityWireFixture {
         DefaultDeviceBluetooth: false,
         SelectedDeviceId: selectedMicrophoneDeviceId,
         MicrophoneOffsetMs: microphoneOffsetMs,
-        MicrophoneVolumeDb: microphoneVolumeDb,
       };
     },
     setMicrophoneOffset: async (offsetMs) => {
       microphoneOffsetMs = offsetMs;
-      return {
-        MicrophoneOffsetMs: microphoneOffsetMs,
-        MicrophoneVolumeDb: microphoneVolumeDb,
-      };
-    },
-    setMicrophoneVolume: async (volumeDb) => {
-      microphoneVolumeDb = volumeDb;
-      return {
-        MicrophoneOffsetMs: microphoneOffsetMs,
-        MicrophoneVolumeDb: microphoneVolumeDb,
-      };
+      return { MicrophoneOffsetMs: microphoneOffsetMs };
     },
     startMicrophoneCalibration: async () => {
       calibrationStatus = {
@@ -534,10 +514,6 @@ export function createActivityWireFixture(): ActivityWireFixture {
     },
     setMicrophoneCalibrationOffset: async (_operationId, offsetMs) => {
       calibrationStatus = { ...calibrationStatus, MicrophoneOffsetMs: offsetMs };
-      return calibrationStatus;
-    },
-    setMicrophoneCalibrationVolume: async (_operationId, volumeDb) => {
-      calibrationStatus = { ...calibrationStatus, MicrophoneVolumeDb: volumeDb };
       return calibrationStatus;
     },
     closeMicrophoneCalibration: async () => {

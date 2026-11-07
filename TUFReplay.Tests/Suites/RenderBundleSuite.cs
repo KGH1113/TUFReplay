@@ -7,12 +7,79 @@ using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
+using TUFReplay.Shared.Ipc.Generated;
 using static TestFixture;
 
 internal static class RenderBundleSuite
 {
+  // The ProRes profile reaches OrbitRender only with ProRes, and only by its own names.
+  private static void AssertProResProfiles()
+  {
+    MethodInfo build = typeof(RenderJobCoordinator).GetMethod(
+      "BuildOptions",
+      BindingFlags.NonPublic | BindingFlags.Static
+    );
+    MethodInfo validate = typeof(RenderJobCoordinator).GetMethod(
+      "ValidateOptions",
+      BindingFlags.NonPublic | BindingFlags.Static
+    );
+    RenderRequest Request(string codec, string profile) =>
+      new RenderRequest
+      {
+        Width = 1920,
+        Height = 1080,
+        VideoFps = 60,
+        TargetFps = 240,
+        BitrateMbps = 18,
+        VideoCodec = codec,
+        BitDepth = 10,
+        ProResProfile = profile,
+      };
+    var proRes = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("ProRes", "4444 XQ") });
+    var h264 = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("H264", "HQ") });
+    Assert(
+      proRes.ProResProfile == "4444 XQ" && h264.ProResProfile == null,
+      "The ProRes profile must go to OrbitRender with ProRes only."
+    );
+    var json = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(proRes));
+    Assert((string)json["proResProfile"] == "4444 XQ", "OrbitRender reads the profile as proResProfile.");
+    validate.Invoke(null, new object[] { Request("ProRes", "Proxy") });
+    validate.Invoke(null, new object[] { Request("H264", "anything") });
+    bool rejected = false;
+    try
+    {
+      validate.Invoke(null, new object[] { Request("ProRes", "FourFourFourFour") });
+    }
+    catch (TargetInvocationException)
+    {
+      rejected = true;
+    }
+    Assert(rejected, "An unknown ProRes profile name was accepted.");
+  }
+
   internal static void RunAll()
   {
+    AssertProResProfiles();
+    var optionsJson = JsonConvert.SerializeObject(
+      new OrbitRenderOptions { OutputDirectory = @"C:\Users\Example\Videos\한글", Width = 1920 },
+      new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }
+    );
+    var optionsObject = Newtonsoft.Json.Linq.JObject.Parse(optionsJson);
+    Assert(
+      (string)optionsObject["outputDirectory"] == @"C:\Users\Example\Videos\한글"
+        && (int)optionsObject["width"] == 1920
+        && optionsObject["height"] == null,
+      "OrbitRender options did not preserve the output path or omitted defaults."
+    );
+    var supportsOutput = typeof(OrbitRenderClient).GetMethod(
+      "SupportsOutputDirectory",
+      BindingFlags.NonPublic | BindingFlags.Static
+    );
+    Assert(
+      (bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectorySupported) })
+        && !(bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) }),
+      "OrbitRender output folder capability detection failed."
+    );
     using var windows = new StringWriter();
     RenderBundleCsv.WriteInputs(
       windows,
@@ -185,6 +252,13 @@ internal static class RenderBundleSuite
     TestRecordedTerminalFixture();
     Console.WriteLine("TUFReplay neutral render bundle tests passed.");
   }
+
+  private sealed class OutputDirectorySupported
+  {
+    public const int OutputDirectoryOptionVersion = 1;
+  }
+
+  private sealed class OutputDirectoryUnsupported { }
 
   private static void TestPrematureTerminalRecovery()
   {

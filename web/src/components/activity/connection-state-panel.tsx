@@ -3,6 +3,7 @@ import type { ConnectionStatus } from "@/models/activity/activity-model";
 import type { IpcVersionMismatchDirection } from "@/ports/local-message-peer";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
+import { DetailsToggle } from "@/shared/ui/details-toggle";
 
 /** What is wrong with the game connection, and the steps that fix it, in that order. */
 export function ConnectionStatePanel({
@@ -75,14 +76,11 @@ export function ConnectionStatePanel({
           </Button>
         ) : null}
 
-        <details className="group mt-6 text-sm">
-          <summary className="cursor-pointer text-xs text-subtle-foreground outline-none transition-colors select-none hover:text-foreground focus-visible:text-foreground">
-            {viewModel.diagnosticLabel}
-          </summary>
-          <p className="mt-2 break-words rounded-lg bg-foreground/[0.04] px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
+        <DetailsToggle label={viewModel.diagnosticLabel} className="mt-6">
+          <p className="break-words rounded-lg bg-foreground/[0.04] px-3 py-2 font-mono text-[11px] leading-relaxed text-muted-foreground">
             {viewModel.diagnostic}
           </p>
-        </details>
+        </DetailsToggle>
       </section>
     </div>
   );

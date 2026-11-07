@@ -2,10 +2,22 @@ import { useEffect, useRef, useState } from "react";
 import type { DownloadItemId } from "@/api/downloads/downloads-api";
 import { useDownloads } from "./use-downloads";
 
+/** Why a download dialog opened outside the download center. */
+export type DownloadDialogReason = "render";
+
+export interface DownloadDialogTarget {
+  item: DownloadItemId;
+  reason: DownloadDialogReason | null;
+}
+
+export type DownloadCenterControl = ReturnType<typeof useDownloadCenter>;
+
 export function useDownloadCenter(enabled: boolean) {
   const downloads = useDownloads(enabled);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [item, setItem] = useState<DownloadItemId | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Kept after closing so the dialog keeps its content while it fades out.
+  const [dialog, setDialog] = useState<DownloadDialogTarget>({ item: "ffmpeg", reason: null });
   const currentItem = useRef<DownloadItemId | null>(null);
   const autoClose = useRef(false);
   const prompted = useRef({ renderer: false, ffmpeg: false });
@@ -19,7 +31,7 @@ export function useDownloadCenter(enabled: boolean) {
       ["renderer", rendererStatus],
       ["ffmpeg", ffmpegStatus],
     ] as const) {
-      if (id === "renderer") continue;
+      const wasAwaitingConsent = prompted.current[id];
       if (status === "awaiting-consent" && !prompted.current[id]) {
         setMenuOpen(false);
         if (currentItem.current !== id) {
@@ -27,14 +39,21 @@ export function useDownloadCenter(enabled: boolean) {
             document.activeElement instanceof HTMLElement ? document.activeElement : null;
           currentItem.current = id;
           autoClose.current = id === "ffmpeg";
-          setItem(id);
+          setDialog({ item: id, reason: null });
+          setDialogOpen(true);
         }
       }
-      prompted.current[id] = status === "awaiting-consent";
-      if (currentItem.current === id && autoClose.current && status === "ready") {
+      // A peer completion is verified in the background before it becomes ready.
+      prompted.current[id] =
+        status === "awaiting-consent" || (status === "checking" && wasAwaitingConsent);
+      if (
+        currentItem.current === id &&
+        status === "ready" &&
+        (autoClose.current || (id === "ffmpeg" && wasAwaitingConsent))
+      ) {
         currentItem.current = null;
         autoClose.current = false;
-        setItem(null);
+        setDialogOpen(false);
       }
     }
   }, [enabled, rendererStatus, ffmpegStatus]);
@@ -42,27 +61,37 @@ export function useDownloadCenter(enabled: boolean) {
   return {
     ...downloads,
     act: (id: DownloadItemId, action: Parameters<typeof downloads.act>[1]) => {
-      if (id !== "renderer") downloads.act(id, action);
+      downloads.act(id, action);
     },
     menuOpen,
     setMenuOpen,
-    item,
+    dialog,
+    dialogOpen,
     trigger,
-    showDetails: (next: DownloadItemId, request = false) => {
-      if (next === "renderer") return;
-      returnFocus.current = trigger.current;
+    /**
+     * Opens one component's dialog. `request` asks the game for install consent right away;
+     * `from` names why it opened and where focus goes back afterwards.
+     */
+    showDetails: (
+      next: DownloadItemId,
+      request = false,
+      from?: { reason?: DownloadDialogReason; focus?: HTMLElement | null },
+    ) => {
+      returnFocus.current = from?.focus ?? trigger.current;
       setMenuOpen(false);
       currentItem.current = next;
       autoClose.current = false;
-      setItem(next);
+      setDialog({ item: next, reason: from?.reason ?? null });
+      setDialogOpen(true);
       if (request) downloads.act(next, "request");
     },
     close: () => {
-      const state = item === "renderer" ? downloads.state?.Renderer : downloads.state?.Ffmpeg;
-      if (item && state?.Status === "awaiting-consent") downloads.act(item, "cancel");
+      const state =
+        dialog.item === "renderer" ? downloads.state?.Renderer : downloads.state?.Ffmpeg;
+      if (dialogOpen && state?.Status === "awaiting-consent") downloads.act(dialog.item, "cancel");
       currentItem.current = null;
       autoClose.current = false;
-      setItem(null);
+      setDialogOpen(false);
     },
     restoreFocus: () => {
       const previous = returnFocus.current;

@@ -44,7 +44,6 @@ describe("Bluetooth microphone warning", () => {
         Devices: [{ Id: "mic", Name: "Mic", MinFrequency: 48_000, MaxFrequency: 48_000 }],
         SelectedDeviceId: null,
         MicrophoneOffsetMs: 0,
-        MicrophoneVolumeDb: 0,
       }),
     );
     expect(state.defaultDeviceBluetooth).toBe(false);

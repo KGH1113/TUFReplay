@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ADOFAI;
 using TUFReplay.Activity.Charts;
+using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
@@ -124,6 +125,8 @@ public static partial class ReplaySessionService
       context.NativeInputPlayer?.Dispose();
       context.MicrophonePlayer?.Dispose();
       context.WebcamPlayer?.Dispose();
+      context.KeyFeed?.ReleaseAll(ReplaySessions.NowTicks);
+      context.RunStates?.End();
     }
     RestoreReplayNoFail();
     RestoreReplayGameInputOffset();
@@ -450,6 +453,9 @@ public static partial class ReplaySessionService
     if (!TryComputeReplayTimeUs(out nowUs, out _))
       return false;
 
+    // Before the pause and focus checks: mods show every recorded key, focused or not.
+    _activeContext.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
+
     if (ADOBase.controller.paused)
     {
       SetEditorPausedInPlayMode(true);
@@ -643,8 +649,35 @@ public static partial class ReplaySessionService
       CurrentGameplayRate(),
       CurrentWonTimeUs(),
       paused ?? ADOBase.controller?.paused == true,
-      IsMicrophoneAudible()
+      IsMicrophoneAudible(),
+      CurrentTimelineDspTime(),
+      CurrentGameInputOffsetUs()
     );
+
+  // Before the clear, replay time is songposition_minusi, which the conductor
+  // derives linearly from its dspTime. After it, replay time follows the
+  // realtime clock instead and has no exact DSP time.
+  private static double CurrentTimelineDspTime()
+  {
+    scrConductor conductor = ADOBase.conductor;
+    if (_activeContext == null || _activeContext.WonClockStarted || conductor == null || conductor.song == null)
+      return double.NaN;
+    if (GCS.d_oldConductor || GCS.d_webglConductor)
+      return double.NaN;
+    return conductor.dspTime;
+  }
+
+  private static long CurrentGameInputOffsetUs()
+  {
+    try
+    {
+      return scrConductor.currentPreset.inputOffset * 1000L;
+    }
+    catch
+    {
+      return 0L;
+    }
+  }
 
   private static void ResetReplayHeldInputState()
   {

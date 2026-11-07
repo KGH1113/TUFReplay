@@ -2,12 +2,22 @@ using TUFReplay.Shared.Database;
 
 internal static class Program
 {
-  private static int Main()
+  private static int Main(string[] args)
   {
     string root = Path.Combine(Path.GetTempPath(), "tufreplay-tests-" + Guid.NewGuid().ToString("N"));
     Directory.CreateDirectory(root);
     try
     {
+      if (args.Length == 1 && args[0] == "--ffmpeg")
+      {
+        ManagedFfmpegSuite.RunAll(root);
+        return 0;
+      }
+      if (args.Length == 1 && args[0] == "--renderer")
+      {
+        ManagedRendererSuite.RunAll(root);
+        return 0;
+      }
       NativeSqliteLoader.Initialize();
       MicrophonePermissionWarningSuite.RunAll();
       MicrophoneCalibrationSuite.RunAll(root);
@@ -25,8 +35,11 @@ internal static class Program
       RunJudgmentTimelineSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
       RunRecordManagementSuite.RunAll(root);
+      ReplayApiSuite.RunAll(root);
+      RenderHostSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
+      ElementAttemptsSuite.RunAll();
       CGEventCaptureRegressionSuite.RunAll();
       PerformanceRegressionSuite.RunAll(root);
       UpdaterTests.RunAll();

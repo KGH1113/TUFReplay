@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "e968328bd044754fe7c09283d90683c6f96b433f5707c67ad4937cb41a23313f",
+    "hash": "aaab7bdafb51fdfb0a2ffd260731962446aa8675ce420856b1680e91faf998f4",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -56,7 +56,6 @@ export const ReplayApiContract = defineContract({
                     "nullable": "string"
                 },
                 "microphoneOffsetMs": "int32",
-                "microphoneVolumeDb": "int32",
                 "operationId": {
                     "nullable": "string"
                 },
@@ -306,7 +305,6 @@ export const ReplayApiContract = defineContract({
                 },
                 "enabled": "boolean",
                 "microphoneOffsetMs": "int32",
-                "microphoneVolumeDb": "int32",
                 "selectedDeviceId": {
                     "nullable": "string"
                 },
@@ -315,37 +313,7 @@ export const ReplayApiContract = defineContract({
         },
         "MicrophoneTiming": {
             "object": {
-                "microphoneOffsetMs": "int32",
-                "microphoneVolumeDb": "int32"
-            }
-        },
-        "RenderBundleState": {
-            "object": {
-                "errorCode": {
-                    "nullable": "string"
-                },
-                "errorDetails": {
-                    "nullable": {
-                        "model": "RenderErrorDetails"
-                    }
-                },
-                "errorMessage": {
-                    "nullable": "string"
-                },
-                "jobId": "string",
-                "manifestPath": {
-                    "nullable": "string"
-                },
-                "progress": "float64",
-                "runId": "string",
-                "state": {
-                    "enum": [
-                        "cancelled",
-                        "completed",
-                        "failed",
-                        "preparing"
-                    ]
-                }
+                "microphoneOffsetMs": "int32"
             }
         },
         "RenderErrorDetails": {
@@ -383,6 +351,73 @@ export const ReplayApiContract = defineContract({
                 "version": {
                     "nullable": "string"
                 }
+            }
+        },
+        "RenderJobState": {
+            "object": {
+                "errorCode": {
+                    "nullable": "string"
+                },
+                "errorDetails": {
+                    "nullable": {
+                        "model": "RenderErrorDetails"
+                    }
+                },
+                "errorMessage": {
+                    "nullable": "string"
+                },
+                "jobId": "string",
+                "outputFile": {
+                    "nullable": "string"
+                },
+                "progress": "float64",
+                "runId": "string",
+                "stage": {
+                    "nullable": "string"
+                },
+                "state": {
+                    "enum": [
+                        "cancelled",
+                        "completed",
+                        "compositing",
+                        "exporting",
+                        "failed",
+                        "preparing",
+                        "rendering"
+                    ]
+                },
+                "waitingForGameFocus": "boolean",
+                "warnings": {
+                    "array": "string"
+                }
+            }
+        },
+        "RenderRequest": {
+            "object": {
+                "audioGainDb": "float64",
+                "bgaMode": "boolean",
+                "bitDepth": "int32",
+                "bitrateMbps": "int32",
+                "captureAudio": "boolean",
+                "endDelaySeconds": "float64",
+                "height": "int32",
+                "includeMicrophone": "boolean",
+                "includeWebcam": "boolean",
+                "outputDirectory": {
+                    "optional": "string"
+                },
+                "proResProfile": {
+                    "optional": "string"
+                },
+                "showCountdown": "boolean",
+                "showHitJudgments": "boolean",
+                "showPlanetRings": "boolean",
+                "showResultText": "boolean",
+                "showSongTitle": "boolean",
+                "targetFps": "int32",
+                "videoCodec": "string",
+                "videoFps": "int32",
+                "width": "int32"
             }
         },
         "ReplayState": {
@@ -685,15 +720,15 @@ export const ReplayApiContract = defineContract({
                 "model": "DownloadsState"
             }
         },
-        "cancelRenderBundle": {
-            "wireName": "rpc.mod.cancelrenderbundle",
+        "cancelRender": {
+            "wireName": "rpc.mod.cancelrender",
             "input": {
                 "object": {
                     "jobId": "string"
                 }
             },
             "output": {
-                "model": "RenderBundleState"
+                "model": "RenderJobState"
             }
         },
         "cancelRendererDownload": {
@@ -717,18 +752,6 @@ export const ReplayApiContract = defineContract({
                 "model": "CalibrationState"
             }
         },
-        "changeCalibrationVolume": {
-            "wireName": "rpc.mod.changecalibrationvolume",
-            "input": {
-                "object": {
-                    "operationId": "string",
-                    "volumeDb": "int32"
-                }
-            },
-            "output": {
-                "model": "CalibrationState"
-            }
-        },
         "changeMicrophoneAccess": {
             "wireName": "rpc.mod.changemicrophoneaccess",
             "input": {
@@ -745,17 +768,6 @@ export const ReplayApiContract = defineContract({
             "input": {
                 "object": {
                     "offsetMs": "int32"
-                }
-            },
-            "output": {
-                "model": "MicrophoneTiming"
-            }
-        },
-        "changeMicrophoneVolume": {
-            "wireName": "rpc.mod.changemicrophonevolume",
-            "input": {
-                "object": {
-                    "volumeDb": "int32"
                 }
             },
             "output": {
@@ -817,6 +829,15 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "MicrophoneDevices"
+            }
+        },
+        "chooseRenderOutputDirectory": {
+            "wireName": "rpc.mod.chooserenderoutputdirectory",
+            "input": {
+                "object": {}
+            },
+            "output": {
+                "nullable": "string"
             }
         },
         "closeCalibration": {
@@ -943,27 +964,14 @@ export const ReplayApiContract = defineContract({
                 }
             }
         },
-        "prepareRenderBundle": {
-            "wireName": "rpc.mod.preparerenderbundle",
+        "openRenderFile": {
+            "wireName": "rpc.mod.openrenderfile",
             "input": {
                 "object": {
-                    "includeMicrophone": {
-                        "optional": "boolean"
-                    },
-                    "includeWebcam": {
-                        "optional": "boolean"
-                    },
-                    "levelPath": {
-                        "optional": {
-                            "nullable": "string"
-                        }
-                    },
-                    "runId": "string"
+                    "jobId": "string"
                 }
             },
-            "output": {
-                "model": "RenderBundleState"
-            }
+            "output": "boolean"
         },
         "readCalibrationResult": {
             "wireName": "rpc.mod.readcalibrationresult",
@@ -1070,16 +1078,25 @@ export const ReplayApiContract = defineContract({
                 "model": "Chart"
             }
         },
-        "readRenderBundleState": {
-            "wireName": "rpc.mod.readrenderbundlestate",
+        "readRenderState": {
+            "wireName": "rpc.mod.readrenderstate",
+            "input": {
+                "object": {}
+            },
+            "output": {
+                "nullable": {
+                    "model": "RenderJobState"
+                }
+            }
+        },
+        "readRenderVideo": {
+            "wireName": "rpc.mod.readrendervideo",
             "input": {
                 "object": {
                     "jobId": "string"
                 }
             },
-            "output": {
-                "model": "RenderBundleState"
-            }
+            "output": "file"
         },
         "readReplayState": {
             "wireName": "rpc.mod.readreplaystate",
@@ -1247,6 +1264,15 @@ export const ReplayApiContract = defineContract({
                 "model": "RetainResult"
             }
         },
+        "revealRenderFile": {
+            "wireName": "rpc.mod.revealrenderfile",
+            "input": {
+                "object": {
+                    "jobId": "string"
+                }
+            },
+            "output": "boolean"
+        },
         "startCalibration": {
             "wireName": "rpc.mod.startcalibration",
             "input": {
@@ -1265,6 +1291,25 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "CalibrationState"
+            }
+        },
+        "startRender": {
+            "wireName": "rpc.mod.startrender",
+            "input": {
+                "object": {
+                    "levelPath": {
+                        "optional": {
+                            "nullable": "string"
+                        }
+                    },
+                    "options": {
+                        "model": "RenderRequest"
+                    },
+                    "runId": "string"
+                }
+            },
+            "output": {
+                "model": "RenderJobState"
             }
         },
         "startReplay": {
@@ -1373,12 +1418,12 @@ export const ReplayApiContract = defineContract({
             },
             "output": "void"
         },
-        "renderBundleStateChanged": {
-            "wireName": "rpc.app.renderbundlestatechanged",
+        "renderStateChanged": {
+            "wireName": "rpc.app.renderstatechanged",
             "input": {
                 "object": {
                     "value": {
-                        "model": "RenderBundleState"
+                        "model": "RenderJobState"
                     }
                 }
             },

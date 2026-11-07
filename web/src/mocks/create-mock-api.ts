@@ -174,11 +174,6 @@ export function createMockApi(): AppApi {
           microphoneTimingSettingsDtoSchema.parse(await fixture.setMicrophoneOffset(offsetMs)),
         );
       },
-      async setVolume(volumeDb) {
-        return mapMicrophoneTimingSettings(
-          microphoneTimingSettingsDtoSchema.parse(await fixture.setMicrophoneVolume(volumeDb)),
-        );
-      },
     },
     calibration: {
       async start() {
@@ -218,13 +213,6 @@ export function createMockApi(): AppApi {
         return mapCalibrationStatus(
           calibrationStatusDtoSchema.parse(
             await fixture.setMicrophoneCalibrationOffset(operationId, offsetMs),
-          ),
-        );
-      },
-      async setVolume(operationId, volumeDb) {
-        return mapCalibrationStatus(
-          calibrationStatusDtoSchema.parse(
-            await fixture.setMicrophoneCalibrationVolume(operationId, volumeDb),
           ),
         );
       },

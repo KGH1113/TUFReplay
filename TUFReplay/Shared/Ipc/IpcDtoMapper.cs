@@ -178,15 +178,10 @@ internal static class IpcDtoMapper
       DefaultDeviceBluetooth = value.DefaultDeviceBluetooth,
       SelectedDeviceId = value.SelectedDeviceId,
       MicrophoneOffsetMs = value.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = value.MicrophoneVolumeDb,
     };
 
   public static Api.MicrophoneTiming Map(TUFReplay.Microphone.Ipc.MicrophoneTimingSettingsDto value) =>
-    new Api.MicrophoneTiming
-    {
-      MicrophoneOffsetMs = value.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = value.MicrophoneVolumeDb,
-    };
+    new Api.MicrophoneTiming { MicrophoneOffsetMs = value.MicrophoneOffsetMs };
 
   public static Api.DeleteResult Map(TUFReplay.Microphone.Ipc.MicrophoneRecordingDeleteResultDto value) =>
     new Api.DeleteResult { RunId = value.RunId, Deleted = value.Deleted };
@@ -211,7 +206,6 @@ internal static class IpcDtoMapper
       PlaybackPositionMs = value.PlaybackPositionMs,
       ResultRevision = value.ResultRevision,
       MicrophoneOffsetMs = value.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = value.MicrophoneVolumeDb,
     };
 
   public static Api.CalibrationResult Map(TUFReplay.Calibration.Ipc.MicrophoneCalibrationResultDto value) =>

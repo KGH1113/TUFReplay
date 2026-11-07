@@ -14,7 +14,6 @@ import { localizedErrorMessage, translatedDomainError } from "@/models/activity/
 import type { CalibrationState } from "@/models/calibration/calibration-model";
 import { clampMicrophoneOffset } from "@/models/calibration/microphone-offset";
 import type { MicrophoneOffsetCalibrationData } from "@/models/calibration/microphone-offset-calibration-data";
-import { clampMicrophoneVolumeDb } from "@/models/calibration/microphone-volume";
 import {
   createMicrophoneOffsetCalibrationState,
   type MicrophoneOffsetCalibrationPhase,
@@ -23,7 +22,6 @@ import {
 
 const LEVEL_LAUNCH_DELAY_MS = 650;
 const MOCK_CLEAR_DELAY_MS = 1_350;
-const VOLUME_UPDATE_INTERVAL_MS = 50;
 const TIMING_SETTINGS_SAVE_DELAY_MS = 120;
 
 interface CalibrationStatusSubscriptionOptions {
@@ -126,13 +124,11 @@ export function useMicrophoneOffsetCalibration(
   connectionStatus: ConnectionStatus,
   mockEnabled: boolean,
   initialOffsetMs: number,
-  initialMicrophoneVolumeDb: number,
   onTimingSettingsChange: (settings: MicrophoneTimingSettings) => void,
 ) {
   const [state, dispatch] = useReducer(microphoneOffsetCalibrationReducer, undefined, () =>
     createMicrophoneOffsetCalibrationState(
       mockEnabled ? mockMicrophoneOffsetCalibration.initialOffsetMs : initialOffsetMs,
-      initialMicrophoneVolumeDb,
     ),
   );
   const [data, setData] = useState<MicrophoneOffsetCalibrationData>(
@@ -158,23 +154,14 @@ export function useMicrophoneOffsetCalibration(
     ),
   );
   const offsetReconcilerRef = useRef(createCalibrationOffsetReconciler(state.offsetMs));
-  const pendingVolumeRef = useRef<number | null>(null);
-  const volumeTimerRef = useRef<number | null>(null);
   const requestGenerationRef = useRef(0);
   const phaseRef = useRef<MicrophoneOffsetCalibrationPhase>(state.phase);
   const pendingTimingOffsetRef = useRef<number | null>(null);
-  const pendingTimingVolumeRef = useRef<number | null>(null);
   const timingSaveTimerRef = useRef<number | null>(null);
   const timingSaveTailRef = useRef(Promise.resolve());
-  const timingDraftRef = useRef({
-    MicrophoneOffsetMs: state.offsetMs,
-    MicrophoneVolumeDb: state.microphoneVolumeDb,
-  });
+  const timingDraftRef = useRef({ MicrophoneOffsetMs: state.offsetMs });
   phaseRef.current = state.phase;
-  timingDraftRef.current = {
-    MicrophoneOffsetMs: state.offsetMs,
-    MicrophoneVolumeDb: state.microphoneVolumeDb,
-  };
+  timingDraftRef.current = { MicrophoneOffsetMs: state.offsetMs };
 
   const stopLocalPlayback = useCallback((positionMs = 0) => {
     playingRef.current = false;
@@ -194,10 +181,8 @@ export function useMicrophoneOffsetCalibration(
       timingSaveTimerRef.current = null;
     }
     const offsetMs = pendingTimingOffsetRef.current;
-    const volumeDb = pendingTimingVolumeRef.current;
     pendingTimingOffsetRef.current = null;
-    pendingTimingVolumeRef.current = null;
-    if (offsetMs === null && volumeDb === null) {
+    if (offsetMs === null) {
       await timingSaveTailRef.current;
       return;
     }
@@ -208,27 +193,20 @@ export function useMicrophoneOffsetCalibration(
 
     const gateway = gatewayRef.current;
     if (!gateway || connectionStatus !== "online") {
-      if (offsetMs !== null) pendingTimingOffsetRef.current = offsetMs;
-      if (volumeDb !== null) pendingTimingVolumeRef.current = volumeDb;
+      pendingTimingOffsetRef.current = offsetMs;
       setAudioError(i18n.t("errors.notConnectedToGame", { ns: "common" }));
       throw new Error("Microphone timing settings are unavailable while disconnected.");
     }
 
     const save = timingSaveTailRef.current.then(async () => {
-      let settings: MicrophoneTimingSettings | null = null;
-      if (offsetMs !== null) settings = await gateway.setMicrophoneOffset(offsetMs);
-      if (volumeDb !== null) settings = await gateway.setMicrophoneVolume(volumeDb);
-      if (settings) onTimingSettingsChange(settings);
+      onTimingSettingsChange(await gateway.setMicrophoneOffset(offsetMs));
     });
     timingSaveTailRef.current = save.catch(() => undefined);
     try {
       await save;
       setAudioError("");
     } catch (cause) {
-      if (offsetMs !== null && pendingTimingOffsetRef.current === null)
-        pendingTimingOffsetRef.current = offsetMs;
-      if (volumeDb !== null && pendingTimingVolumeRef.current === null)
-        pendingTimingVolumeRef.current = volumeDb;
+      if (pendingTimingOffsetRef.current === null) pendingTimingOffsetRef.current = offsetMs;
       setAudioError(errorMessage(cause, i18n.t("errors.saveTiming", { ns: "microphone" })));
       throw cause;
     }
@@ -246,12 +224,8 @@ export function useMicrophoneOffsetCalibration(
     stopLocalPlayback();
     setAudioError("");
     offsetReconcilerRef.current = createCalibrationOffsetReconciler(initialOffsetMs);
-    dispatch({
-      type: "open_settings",
-      offsetMs: initialOffsetMs,
-      microphoneVolumeDb: initialMicrophoneVolumeDb,
-    });
-  }, [initialMicrophoneVolumeDb, initialOffsetMs, stopLocalPlayback]);
+    dispatch({ type: "open_settings", offsetMs: initialOffsetMs });
+  }, [initialOffsetMs, stopLocalPlayback]);
 
   const applyBackendResult = useCallback((result: MicrophoneCalibrationResult) => {
     resultRevisionRef.current = result.Revision;
@@ -273,7 +247,6 @@ export function useMicrophoneOffsetCalibration(
       type: "sync",
       phase,
       offsetMs: offsetReconcilerRef.current.synchronize(status.MicrophoneOffsetMs),
-      microphoneVolumeDb: status.MicrophoneVolumeDb,
     });
 
     const previewActive = status.State === "preview_starting" || status.State === "preview_playing";
@@ -344,12 +317,7 @@ export function useMicrophoneOffsetCalibration(
     const gateway = gatewayRef.current;
     if (!gateway || connectionStatus !== "online") {
       setAudioError(i18n.t("errors.notConnectedToGame", { ns: "common" }));
-      dispatch({
-        type: "sync",
-        phase: "error",
-        offsetMs: state.offsetMs,
-        microphoneVolumeDb: state.microphoneVolumeDb,
-      });
+      dispatch({ type: "sync", phase: "error", offsetMs: state.offsetMs });
       return;
     }
     activeGatewayRef.current = gateway;
@@ -364,12 +332,7 @@ export function useMicrophoneOffsetCalibration(
       await loadBackendResult(status);
     } catch (cause) {
       setAudioError(errorMessage(cause, i18n.t("errors.startCalibration", { ns: "microphone" })));
-      dispatch({
-        type: "sync",
-        phase: "error",
-        offsetMs: state.offsetMs,
-        microphoneVolumeDb: state.microphoneVolumeDb,
-      });
+      dispatch({ type: "sync", phase: "error", offsetMs: state.offsetMs });
     }
   }, [
     applyBackendStatus,
@@ -378,7 +341,6 @@ export function useMicrophoneOffsetCalibration(
     gatewayRef,
     loadBackendResult,
     mockEnabled,
-    state.microphoneVolumeDb,
     state.offsetMs,
     stopLocalPlayback,
   ]);
@@ -395,12 +357,6 @@ export function useMicrophoneOffsetCalibration(
     const gateway = gatewayRef.current ?? activeGatewayRef.current;
     const operationId = operationIdRef.current;
     const pendingOffsetSaves = offsetSaveQueueRef.current.flush();
-    const pendingVolume = pendingVolumeRef.current;
-    pendingVolumeRef.current = null;
-    if (volumeTimerRef.current !== null) {
-      window.clearTimeout(volumeTimerRef.current);
-      volumeTimerRef.current = null;
-    }
     stopLocalPlayback();
     setAudioError("");
     operationIdRef.current = null;
@@ -411,8 +367,6 @@ export function useMicrophoneOffsetCalibration(
     if (!mockEnabled && gateway && operationId)
       void (async () => {
         await pendingOffsetSaves;
-        if (pendingVolume !== null)
-          await gateway.setMicrophoneCalibrationVolume(operationId, pendingVolume);
         await gateway.closeMicrophoneCalibration(operationId);
       })().catch(() => undefined);
   }, [flushTimingSettings, gatewayRef, mockEnabled, stopLocalPlayback]);
@@ -441,10 +395,7 @@ export function useMicrophoneOffsetCalibration(
             const status = await gateway.setMicrophoneCalibrationOffset(operationId, nextOffsetMs);
             const resolved = reconciler.resolve(commit, status.MicrophoneOffsetMs);
             if (!resolved.latest) return status;
-            onTimingSettingsChange({
-              MicrophoneOffsetMs: status.MicrophoneOffsetMs,
-              MicrophoneVolumeDb: status.MicrophoneVolumeDb,
-            });
+            onTimingSettingsChange({ MicrophoneOffsetMs: status.MicrophoneOffsetMs });
             return status;
           } catch (cause) {
             const rejected = reconciler.reject(commit);
@@ -455,44 +406,6 @@ export function useMicrophoneOffsetCalibration(
           }
         });
       }
-    },
-    [gatewayRef, mockEnabled, onTimingSettingsChange, scheduleTimingSettingsSave],
-  );
-
-  const commitMicrophoneVolume = useCallback(
-    (volumeDb: number) => {
-      const nextVolumeDb = clampMicrophoneVolumeDb(volumeDb);
-      dispatch({ type: "commit_microphone_volume", volumeDb: nextVolumeDb });
-      if (phaseRef.current === "settings") {
-        pendingTimingVolumeRef.current = nextVolumeDb;
-        scheduleTimingSettingsSave();
-        return;
-      }
-      if (mockEnabled) {
-        playerRef.current?.updateMicrophoneVolume(nextVolumeDb);
-        return;
-      }
-      pendingVolumeRef.current = nextVolumeDb;
-      if (volumeTimerRef.current !== null) return;
-      volumeTimerRef.current = window.setTimeout(() => {
-        volumeTimerRef.current = null;
-        const gateway = gatewayRef.current;
-        const operationId = operationIdRef.current;
-        const pendingVolume = pendingVolumeRef.current;
-        pendingVolumeRef.current = null;
-        if (!gateway || !operationId || pendingVolume === null) return;
-        void gateway
-          .setMicrophoneCalibrationVolume(operationId, pendingVolume)
-          .then((status) =>
-            onTimingSettingsChange({
-              MicrophoneOffsetMs: status.MicrophoneOffsetMs,
-              MicrophoneVolumeDb: status.MicrophoneVolumeDb,
-            }),
-          )
-          .catch((cause) =>
-            setAudioError(errorMessage(cause, i18n.t("errors.saveVolume", { ns: "microphone" }))),
-          );
-      }, VOLUME_UPDATE_INTERVAL_MS);
     },
     [gatewayRef, mockEnabled, onTimingSettingsChange, scheduleTimingSettingsSave],
   );
@@ -544,21 +457,14 @@ export function useMicrophoneOffsetCalibration(
       const player =
         playerRef.current ?? new MockMicrophoneOffsetAudioPlayer(mockMicrophoneOffsetCalibration);
       playerRef.current = player;
-      await player.play(state.offsetMs, state.microphoneVolumeDb);
+      await player.play(state.offsetMs);
     } catch (cause) {
       playerRef.current?.dispose();
       playerRef.current = null;
       stopLocalPlayback();
       setAudioError(errorMessage(cause, i18n.t("errors.startMockPreview", { ns: "microphone" })));
     }
-  }, [
-    applyBackendStatus,
-    gatewayRef,
-    mockEnabled,
-    state.microphoneVolumeDb,
-    state.offsetMs,
-    stopLocalPlayback,
-  ]);
+  }, [applyBackendStatus, gatewayRef, mockEnabled, state.offsetMs, stopLocalPlayback]);
 
   useEffect(() => {
     if (!mockEnabled) return undefined;
@@ -613,7 +519,6 @@ export function useMicrophoneOffsetCalibration(
   useEffect(
     () => () => {
       if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
-      if (volumeTimerRef.current !== null) window.clearTimeout(volumeTimerRef.current);
       if (timingSaveTimerRef.current !== null) window.clearTimeout(timingSaveTimerRef.current);
       playerRef.current?.dispose();
     },
@@ -635,7 +540,6 @@ export function useMicrophoneOffsetCalibration(
     data,
     phase: state.phase,
     offsetMs: state.offsetMs,
-    microphoneVolumeDb: state.microphoneVolumeDb,
     playing,
     playbackPositionMs,
     getPlaybackPositionMs,
@@ -644,7 +548,6 @@ export function useMicrophoneOffsetCalibration(
     start,
     close,
     commitOffset,
-    commitMicrophoneVolume,
     resetOffset: () => commitOffset(0),
     togglePlayback,
   };

@@ -1,454 +1,405 @@
-import { useId } from "react";
+import { Folder01Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { RenderQualitySettings } from "@/components/render/render-quality-settings";
+import {
+  ChoiceCards,
+  OptionGroup,
+  Segmented,
+  SettingRow,
+  SliderSetting,
+  SwitchSetting,
+} from "@/components/render/render-option-controls";
 import type { useRenderControl } from "@/hooks/render/use-render-control";
 import {
-  availableEncoders,
-  availablePixelFormats,
-  type RenderOptions,
-} from "@/models/render/render-model";
+  describeFolder,
+  formatChoices,
+  formatNames,
+  maxVideoSize,
+  megabytesPerMinute,
+  precisionChoices,
+  proResChoices,
+  proResNames,
+  qualityChoices,
+  qualityOf,
+  smoothnessChoices,
+  withQuality,
+  withVideoCodec,
+  withVideoFps,
+} from "@/models/render/render-choices";
+import type { RenderOptions } from "@/models/render/render-model";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/shared/ui/native-select";
-import { Switch } from "@/shared/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 
 type Control = ReturnType<typeof useRenderControl>;
-type NumericOption =
-  | "width"
-  | "height"
-  | "videoFps"
-  | "simulationFps"
-  | "bitrateMbps"
-  | "audioGainDb"
-  | "endDelaySeconds";
-type ToggleOption =
-  | "includeWebcam"
-  | "includeMicrophone"
-  | "includeDmNote"
-  | "captureAudio"
-  | "showRenderPreview"
-  | "bgaMode"
-  | "showPlanetRings"
-  | "showSongTitle"
-  | "showCountdown"
-  | "showResultText"
-  | "showHitJudgments";
+type Update = (change: (current: RenderOptions) => RenderOptions) => void;
 
+/** Where OrbitRender saves videos when no folder is chosen. */
+const defaultFolder = "~/Videos/A Dance of Fire and Ice/TUFReplay";
+
+/**
+ * Every video setting on one screen: how the video looks on the left, the
+ * file it becomes on the right.
+ */
 export function RenderOptionsForm({ control }: { control: Control }) {
-  const { t } = useTranslation("render");
-  const id = useId();
-  const options = control.options;
-  const capabilities = control.settings?.capabilities;
-  const encoders = availableEncoders(
-    options.videoCodec,
-    capabilities?.encoders ?? ["Software"],
-    control.settings?.engineOptions,
-  );
-  const pixels = availablePixelFormats(options);
-  const supportsCrf = options.encoder === "Software" && options.videoCodec !== "ProRes";
-  const crfMax = options.videoCodec === "H264" || options.videoCodec === "H265" ? 51 : 63;
-  const disabled = control.busy || control.phase === "checking";
-  const issues = control.optionValidation.success ? [] : control.optionValidation.error.issues;
-  const invalid = (field: keyof RenderOptions) => issues.some((issue) => issue.path[0] === field);
-  const number = (
-    field: NumericOption,
-    min: number,
-    max: number,
-    step = 1,
-    help?: string,
-    fieldDisabled = false,
-  ) => (
-    <label htmlFor={`${id}-${field}`} className="space-y-1.5 text-sm">
-      <span className="font-medium">{t(`options.${field}`)}</span>
-      <Input
-        id={`${id}-${field}`}
-        type="number"
-        inputMode={step < 1 ? "decimal" : "numeric"}
-        value={Number.isFinite(options[field]) ? options[field] : ""}
-        min={min}
-        max={max}
-        step={step}
-        disabled={fieldDisabled}
-        aria-invalid={invalid(field)}
-        onChange={(event) => {
-          const value = event.currentTarget.valueAsNumber;
-          control.setOptions((current) => ({
-            ...current,
-            [field]: value,
-          }));
-        }}
-      />
-      {help ? (
-        <span className="block text-xs leading-relaxed text-muted-foreground">{help}</span>
-      ) : null}
-      {invalid(field) ? (
-        <span className="block text-xs text-destructive">
-          {(field === "width" || field === "height") && options[field] % 2 !== 0
-            ? t("validation.evenDimensions")
-            : t("validation.numberRange", { min, max })}
-        </span>
-      ) : null}
-    </label>
-  );
-  const toggle = (field: ToggleOption, fieldDisabled = false, hint?: string) => (
-    <div key={field} className="flex items-center justify-between gap-4 py-1">
-      <label htmlFor={`${id}-${field}`} className="text-sm">
-        {t(`options.${field}`)}
-        {hint ? (
-          <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground">{hint}</span>
-        ) : null}
-      </label>
-      <Switch
-        id={`${id}-${field}`}
-        checked={options[field] && !fieldDisabled}
-        disabled={disabled || fieldDisabled}
-        onCheckedChange={(checked) =>
-          control.setOptions((current) => ({ ...current, [field]: checked }))
-        }
-      />
+  const update: Update = (change) => control.setOptions((current) => change(current));
+  return (
+    <div className="grid gap-x-8 gap-y-6 md:grid-cols-2">
+      <div className="min-w-0 space-y-6">
+        <QualitySettings control={control} update={update} />
+        <SmoothnessSettings control={control} update={update} />
+        <IncludeSettings control={control} update={update} />
+      </div>
+      <div className="min-w-0 space-y-6">
+        <FormatSettings control={control} update={update} />
+        <PlaybackSettings control={control} update={update} />
+      </div>
     </div>
   );
-  const changeCodec = (videoCodec: RenderOptions["videoCodec"]) =>
-    control.setOptions((current) => {
-      const allowed = availableEncoders(
-        videoCodec,
-        capabilities?.encoders ?? ["Software"],
-        control.settings?.engineOptions,
-      );
-      return {
-        ...current,
-        videoCodec,
-        encoder: allowed.includes(current.encoder)
-          ? current.encoder
-          : allowed.includes("Software")
-            ? "Software"
-            : allowed[0],
-        bitDepth: videoCodec === "ProRes" ? 10 : current.bitDepth,
-        crf: null,
-        pixelFormat: "auto",
-      };
-    });
-  const resolution = ["1280x720", "1920x1080", "2560x1440", "3840x2160", "7680x4320"].includes(
-    `${options.width}x${options.height}`,
-  )
-    ? `${options.width}x${options.height}`
-    : "custom";
+}
+
+function QualitySettings({ control, update }: { control: Control; update: Update }) {
+  const { t } = useTranslation("render");
+  const options = control.options;
+  const quality = qualityOf(options);
+  const [typing, setTyping] = useState(false);
+  const issues = control.optionValidation.success ? [] : control.optionValidation.error.issues;
+  const invalid = issues.some((issue) => issue.path[0] === "width" || issue.path[0] === "height");
+  const exact = typing || quality === null;
 
   return (
-    <fieldset disabled={disabled} className="space-y-6 disabled:opacity-60">
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">{t("sections.save")}</h3>
-        <label htmlFor={`${id}-outputDirectory`} className="block space-y-1.5 text-sm">
-          <span>{t("outputDirectory")}</span>
-          <div className="flex gap-2">
-            <Input
-              id={`${id}-outputDirectory`}
-              value={options.outputDirectory}
-              placeholder={t("outputDirectoryPlaceholder")}
-              onChange={(event) =>
-                control.setOptions((current) => ({
+    <OptionGroup
+      label={t("quality.label")}
+      aside={
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          aria-expanded={exact}
+          className="-mr-2 text-muted-foreground hover:text-foreground"
+          onClick={() => setTyping((value) => !value)}
+          disabled={quality === null}
+        >
+          {t("quality.exact")}
+        </Button>
+      }
+    >
+      <ChoiceCards
+        label={t("quality.label")}
+        className="grid-cols-4"
+        value={quality}
+        choices={qualityChoices.map((choice) => ({
+          value: choice.id,
+          title: choice.label,
+          detail: t(`quality.${choice.id}`),
+        }))}
+        onChange={(id) => {
+          setTyping(false);
+          update((current) => withQuality(current, id));
+        }}
+      />
+      {exact ? (
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-center gap-2">
+            {(["width", "height"] as const).map((field, index) => (
+              <span key={field} className="flex items-center gap-2">
+                {index > 0 ? (
+                  <span aria-hidden="true" className="text-xs text-muted-foreground">
+                    ×
+                  </span>
+                ) : null}
+                <Input
+                  aria-label={t(`quality.${field}`)}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  className="h-8 w-20 text-center tabular-nums"
+                  value={options[field] > 0 ? String(options[field]) : ""}
+                  aria-invalid={invalid}
+                  onChange={(event) => {
+                    const digits = event.target.value.replace(/\D/g, "").slice(0, 4);
+                    update((current) => ({ ...current, [field]: digits ? Number(digits) : 0 }));
+                  }}
+                />
+              </span>
+            ))}
+          </div>
+          <p className={`text-xs ${invalid ? "text-destructive" : "text-muted-foreground"}`}>
+            {t("quality.exactHint", maxVideoSize)}
+          </p>
+        </div>
+      ) : null}
+    </OptionGroup>
+  );
+}
+
+function SmoothnessSettings({ control, update }: { control: Control; update: Update }) {
+  const { t } = useTranslation("render");
+  const fps = control.options.videoFps;
+  const known = (smoothnessChoices as readonly number[]).includes(fps);
+  return (
+    <OptionGroup
+      label={t("smoothness.label")}
+      aside={
+        known ? null : (
+          <span className="text-xs text-muted-foreground">{t("smoothness.value", { fps })}</span>
+        )
+      }
+    >
+      <ChoiceCards
+        label={t("smoothness.label")}
+        className="grid-cols-3"
+        value={known ? String(fps) : null}
+        choices={smoothnessChoices.map((choice) => ({
+          value: String(choice),
+          title: t("smoothness.value", { fps: choice }),
+          detail: t(`smoothness.${choice}`),
+        }))}
+        onChange={(choice) => update((current) => withVideoFps(current, Number(choice)))}
+      />
+    </OptionGroup>
+  );
+}
+
+function IncludeSettings({ control, update }: { control: Control; update: Update }) {
+  const { t } = useTranslation("render");
+  const options = control.options;
+  const run = control.run;
+  return (
+    <OptionGroup label={t("include.label")}>
+      <div className="divide-y divide-border/60">
+        <SwitchSetting
+          label={t("include.captureAudio")}
+          checked={options.captureAudio}
+          onChange={(captureAudio) => update((current) => ({ ...current, captureAudio }))}
+        />
+        {options.captureAudio ? (
+          <SliderSetting
+            label={t("include.volume")}
+            value={options.audioGainDb}
+            min={-30}
+            max={12}
+            step={1}
+            format={(db) =>
+              db === 0
+                ? t("include.volumeSame")
+                : t("include.decibels", { db: db > 0 ? `+${db}` : db })
+            }
+            onChange={(audioGainDb) => update((current) => ({ ...current, audioGainDb }))}
+          />
+        ) : null}
+        {/* Only recordings this play has; there is nothing to add otherwise. */}
+        {run?.hasMicrophoneRecording ? (
+          <SwitchSetting
+            label={t("include.includeMicrophone")}
+            checked={options.includeMicrophone}
+            onChange={(includeMicrophone) =>
+              update((current) => ({ ...current, includeMicrophone }))
+            }
+          />
+        ) : null}
+        {run?.hasCameraRecording ? (
+          <SwitchSetting
+            label={t("include.includeWebcam")}
+            checked={options.includeWebcam}
+            onChange={(includeWebcam) => update((current) => ({ ...current, includeWebcam }))}
+          />
+        ) : null}
+      </div>
+    </OptionGroup>
+  );
+}
+
+/** The video format, with the settings that format has. */
+function FormatSettings({ control, update }: { control: Control; update: Update }) {
+  const { t } = useTranslation("render");
+  const options = control.options;
+  const codec = options.videoCodec;
+  return (
+    <OptionGroup label={t("format.label")}>
+      <Segmented
+        stretch
+        label={t("format.label")}
+        value={codec}
+        choices={formatChoices.map((value) => ({ value, title: formatNames[value] }))}
+        onChange={(value) => update((current) => withVideoCodec(current, value))}
+      />
+      <p className="text-xs text-muted-foreground">{t(`format.about.${codec}`)}</p>
+      {codec === "ProRes" ? (
+        <div className="space-y-2 pt-2">
+          <ChoiceCards
+            label={t("format.proResLabel")}
+            className="grid-cols-3"
+            value={options.proResProfile}
+            choices={proResChoices.map((profile) => ({
+              value: profile,
+              title: proResNames[profile],
+              detail: t(`format.proRes.${profile}`),
+            }))}
+            onChange={(proResProfile) => update((current) => ({ ...current, proResProfile }))}
+          />
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            {t("format.proResHardware")}
+          </p>
+        </div>
+      ) : (
+        <div className="divide-y divide-border/60">
+          <SliderSetting
+            label={t("format.fileSize")}
+            value={options.bitrateMbps}
+            min={1}
+            max={200}
+            step={1}
+            format={(value) => t("format.fileSizeValue", { size: megabytesPerMinute(value) })}
+            onChange={(bitrateMbps) => update((current) => ({ ...current, bitrateMbps }))}
+          />
+          <SettingRow label={t("format.colors")}>
+            <Segmented
+              label={t("format.colors")}
+              value={String(options.bitDepth) as "8" | "10"}
+              choices={[
+                { value: "8", title: t("format.colors8") },
+                { value: "10", title: t("format.colors10") },
+              ]}
+              onChange={(bits) =>
+                update((current) => ({
                   ...current,
-                  outputDirectory: event.target.value,
+                  bitDepth: Number(bits) as 8 | 10,
+                  pixelFormat: "auto",
                 }))
               }
             />
-            <Button
-              type="button"
-              variant="outline"
-              disabled={disabled || control.choosingDirectory}
-              onClick={() => void control.chooseOutputDirectory()}
-            >
-              {control.choosingDirectory ? t("choosingDirectory") : t("chooseDirectory")}
-            </Button>
-          </div>
-        </label>
-        <p className="text-xs leading-relaxed text-muted-foreground">{t("outputDirectoryHelp")}</p>
-      </section>
-      <Tabs
-        value={control.settingsMode}
-        onValueChange={(value) =>
-          control.setSettingsMode(value === "advanced" ? "advanced" : "recommended")
+          </SettingRow>
+        </div>
+      )}
+    </OptionGroup>
+  );
+}
+
+function PlaybackSettings({ control, update }: { control: Control; update: Update }) {
+  const { t } = useTranslation("render");
+  const options = control.options;
+  const precisions = precisionChoices.filter((value) => value >= options.videoFps);
+  const issues = control.optionValidation.success ? [] : control.optionValidation.error.issues;
+  const invalidPrecision = issues.some((issue) => issue.path[0] === "simulationFps");
+  return (
+    <div className="divide-y divide-border/60 border-t border-border/60">
+      <SettingRow
+        label={t("precision.label")}
+        hint={
+          invalidPrecision ? t("precision.invalid", { fps: options.videoFps }) : t("precision.hint")
         }
-        className="gap-5"
       >
-        <TabsList aria-label={t("settingsMode.label")}>
-          <TabsTrigger value="recommended" disabled={disabled}>
-            {t("settingsMode.recommended")}
-          </TabsTrigger>
-          <TabsTrigger value="advanced" disabled={disabled}>
-            {t("settingsMode.advanced")}
-          </TabsTrigger>
-        </TabsList>
-        <TabsContent value="recommended">
-          <RenderQualitySettings control={control} />
-        </TabsContent>
-        <TabsContent value="advanced" className="space-y-6">
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold">{t("sections.video")}</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <label htmlFor={`${id}-resolution`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("resolution")}</span>
-                <NativeSelect
-                  id={`${id}-resolution`}
-                  value={resolution}
-                  onChange={(event) => {
-                    if (event.target.value === "custom") return;
-                    const [width, height] = event.target.value.split("x").map(Number);
-                    control.setOptions((current) => ({ ...current, width, height }));
-                  }}
-                >
-                  <NativeSelectOption value="custom">{t("customResolution")}</NativeSelectOption>
-                  {["1280x720", "1920x1080", "2560x1440", "3840x2160", "7680x4320"].map((size) => (
-                    <NativeSelectOption key={size} value={size}>
-                      {size.replace("x", " × ")}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-              <label htmlFor={`${id}-codec`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("videoCodec")}</span>
-                <NativeSelect
-                  id={`${id}-codec`}
-                  value={options.videoCodec}
-                  onChange={(event) =>
-                    changeCodec(event.target.value as RenderOptions["videoCodec"])
-                  }
-                >
-                  {(capabilities?.codecs ?? ["H264", "H265", "VP9", "AV1", "ProRes"]).map(
-                    (codec) => (
-                      <NativeSelectOption key={codec} value={codec}>
-                        {t(`codecs.${codec}`)}
-                      </NativeSelectOption>
-                    ),
-                  )}
-                </NativeSelect>
-              </label>
-              {number("width", 320, 7680, 2)}
-              {number("height", 180, 4320, 2)}
-              {number("videoFps", 15, 240)}
-              {number("simulationFps", options.videoFps, 1024, 1, t("simulationFpsHelp"))}
-            </div>
-            {options.simulationFps < options.videoFps ? (
-              <p role="alert" className="text-xs text-destructive">
-                {t("validation.simulation_fps_below_video")}
-              </p>
-            ) : null}
-          </section>
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold">{t("sections.encoding")}</h3>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-3">
-              <label htmlFor={`${id}-encoder`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("encoder")}</span>
-                <NativeSelect
-                  id={`${id}-encoder`}
-                  value={options.encoder}
-                  onChange={(event) =>
-                    control.setOptions((current) => ({
-                      ...current,
-                      encoder: event.target.value as RenderOptions["encoder"],
-                      crf: null,
-                      pixelFormat: "auto",
-                    }))
-                  }
-                >
-                  {encoders.map((encoder) => (
-                    <NativeSelectOption key={encoder} value={encoder}>
-                      {t(`encoders.${encoder}`)}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-              <label htmlFor={`${id}-encoding`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("encoding")}</span>
-                <NativeSelect
-                  id={`${id}-encoding`}
-                  value={options.encoding}
-                  onChange={(event) =>
-                    control.setOptions((current) => ({
-                      ...current,
-                      encoding: event.target.value as RenderOptions["encoding"],
-                    }))
-                  }
-                >
-                  {(["Maximum", "Balanced", "Quality"] as const).map((speed) => (
-                    <NativeSelectOption key={speed} value={speed}>
-                      {t(`encodingSpeeds.${speed}`)}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-              <label htmlFor={`${id}-rateControl`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("rateControl")}</span>
-                <NativeSelect
-                  id={`${id}-rateControl`}
-                  value={options.crf === null ? "bitrate" : "crf"}
-                  disabled={options.videoCodec === "ProRes"}
-                  onChange={(event) =>
-                    control.setOptions((current) => ({
-                      ...current,
-                      crf: event.target.value === "crf" ? (crfMax === 51 ? 23 : 32) : null,
-                    }))
-                  }
-                >
-                  <NativeSelectOption value="bitrate">{t("bitrate")}</NativeSelectOption>
-                  {supportsCrf ? (
-                    <NativeSelectOption value="crf">{t("constantQuality")}</NativeSelectOption>
-                  ) : null}
-                </NativeSelect>
-              </label>
-              {options.crf === null ? (
-                number("bitrateMbps", 1, 200, 1, undefined, options.videoCodec === "ProRes")
-              ) : (
-                <label htmlFor={`${id}-crf`} className="space-y-1.5 text-sm">
-                  <span className="font-medium">{t("crf")}</span>
-                  <Input
-                    id={`${id}-crf`}
-                    type="number"
-                    min={0}
-                    max={crfMax}
-                    value={Number.isFinite(options.crf) ? options.crf : ""}
-                    aria-invalid={invalid("crf")}
-                    onChange={(event) => {
-                      const value = event.currentTarget.valueAsNumber;
-                      control.setOptions((current) => ({
-                        ...current,
-                        crf: value,
-                      }));
-                    }}
-                  />
-                  <span className="block text-xs text-muted-foreground">
-                    {t("crfHelp", { max: crfMax })}
-                  </span>
-                </label>
-              )}
-              <label htmlFor={`${id}-bitDepth`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("bitDepth")}</span>
-                <NativeSelect
-                  id={`${id}-bitDepth`}
-                  value={options.bitDepth}
-                  disabled={options.videoCodec === "ProRes"}
-                  onChange={(event) =>
-                    control.setOptions((current) => ({
-                      ...current,
-                      bitDepth: Number(event.target.value) as 8 | 10,
-                      pixelFormat: "auto",
-                    }))
-                  }
-                >
-                  {(capabilities?.bitDepths ?? [8, 10]).map((depth) => (
-                    <NativeSelectOption key={depth} value={depth}>
-                      {t("bitDepthValue", { depth })}
-                    </NativeSelectOption>
-                  ))}
-                </NativeSelect>
-              </label>
-              <label htmlFor={`${id}-pixelFormat`} className="space-y-1.5 text-sm">
-                <span className="font-medium">{t("pixelFormat")}</span>
-                <NativeSelect
-                  id={`${id}-pixelFormat`}
-                  value={options.pixelFormat}
-                  onChange={(event) =>
-                    control.setOptions((current) => ({
-                      ...current,
-                      pixelFormat: event.target.value as RenderOptions["pixelFormat"],
-                    }))
-                  }
-                >
-                  {pixels
-                    .filter(
-                      (format) =>
-                        format === "auto" ||
-                        !capabilities ||
-                        capabilities.pixelFormats.includes(format),
-                    )
-                    .map((format) => (
-                      <NativeSelectOption key={format} value={format}>
-                        {format === "auto" ? t("automatic") : format}
-                      </NativeSelectOption>
-                    ))}
-                </NativeSelect>
-              </label>
-              {options.videoCodec === "ProRes" ? (
-                <label htmlFor={`${id}-proResProfile`} className="col-span-2 space-y-1.5 text-sm">
-                  <span className="font-medium">{t("proResProfile")}</span>
-                  <NativeSelect
-                    id={`${id}-proResProfile`}
-                    value={options.proResProfile}
-                    onChange={(event) =>
-                      control.setOptions((current) => ({
-                        ...current,
-                        proResProfile: event.target.value as RenderOptions["proResProfile"],
-                        pixelFormat: "auto",
-                      }))
-                    }
-                  >
-                    {(
-                      capabilities?.proResProfiles ?? [
-                        "Proxy",
-                        "LT",
-                        "Standard",
-                        "HQ",
-                        "FourFourFourFour",
-                        "FourFourFourFourXQ",
-                      ]
-                    ).map((profile) => (
-                      <NativeSelectOption key={profile} value={profile}>
-                        {t(`proResProfiles.${profile}`)}
-                      </NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                  <span className="block text-xs text-muted-foreground">{t("proResHelp")}</span>
-                </label>
-              ) : null}
-            </div>
-          </section>
-        </TabsContent>
-      </Tabs>
-      <section className="space-y-2">
-        <h3 className="text-sm font-semibold">{t("sections.recordings")}</h3>
-        {toggle("captureAudio")}
-        {toggle("includeMicrophone")}
-        {toggle("includeWebcam")}
-        {toggle(
-          "includeDmNote",
-          !control.health?.dmNoteConfigured,
-          !control.health?.dmNoteConfigured ? t("dmNoteUnavailable") : undefined,
-        )}
-      </section>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {number("endDelaySeconds", 0, 30, 0.1, t("endDelayHelp"))}
-      </div>
-      {control.settingsMode === "advanced" ? (
-        <details className="group rounded-lg border border-border p-3">
-          <summary className="cursor-pointer text-sm font-semibold outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            {t("advancedOptions")}
-          </summary>
-          <div className="space-y-4 pt-4">
-            <div className="grid grid-cols-2 gap-4">
-              {number("audioGainDb", -60, 12, 0.5, t("audioGainHelp"), !options.captureAudio)}
-            </div>
-            {toggle("showRenderPreview")}
-            {toggle("bgaMode", false, t("bgaModeHelp"))}
-            {toggle("showPlanetRings")}
-            {toggle("showSongTitle")}
-            {toggle("showCountdown")}
-            {toggle("showResultText")}
-            {toggle("showHitJudgments")}
-          </div>
-        </details>
-      ) : null}
-      <div className="flex items-center justify-between gap-4 rounded-lg bg-muted/40 p-3">
-        <label htmlFor={`${id}-saveAsDefault`} className="text-sm">
-          {t("saveAsDefault")}
-        </label>
-        <Switch
-          id={`${id}-saveAsDefault`}
-          checked={control.saveAsDefault}
-          disabled={disabled}
-          onCheckedChange={control.setSaveAsDefault}
+        <Segmented
+          label={t("precision.label")}
+          value={
+            (precisions as readonly number[]).includes(options.simulationFps)
+              ? String(options.simulationFps)
+              : null
+          }
+          choices={precisions.map((fps) => ({ value: String(fps), title: String(fps) }))}
+          onChange={(fps) => update((current) => ({ ...current, simulationFps: Number(fps) }))}
         />
-      </div>
-    </fieldset>
+      </SettingRow>
+      <SliderSetting
+        label={t("ending.label")}
+        hint={t("ending.hint")}
+        value={options.endDelaySeconds}
+        min={0}
+        max={10}
+        step={0.5}
+        format={(seconds) => t("ending.seconds", { seconds })}
+        onChange={(endDelaySeconds) => update((current) => ({ ...current, endDelaySeconds }))}
+      />
+    </div>
+  );
+}
+
+/**
+ * Where the video is saved, kept apart from how it looks: the folder as one
+ * button that changes it. The folder window opens on the computer running
+ * ADOFAI; if it cannot, the path can be typed instead.
+ */
+export function RenderSaveLocation({ control }: { control: Control }) {
+  const { t } = useTranslation("render");
+  const [choosing, setChoosing] = useState(false);
+  const [typing, setTyping] = useState(false);
+  const folder = describeFolder(
+    control.options.outputDirectory || control.settings?.outputDirectory || defaultFolder,
+  );
+  const choose = async () => {
+    setChoosing(true);
+    try {
+      await control.chooseOutputDirectory();
+      setTyping(false);
+    } catch {
+      // The folder window could not open; let the player type the path instead.
+      setTyping(true);
+    } finally {
+      setChoosing(false);
+    }
+  };
+
+  return (
+    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+      <span className="shrink-0 text-xs text-muted-foreground">{t("saveTo.label")}</span>
+      {typing ? (
+        <Input
+          aria-label={t("saveTo.pathLabel")}
+          value={control.options.outputDirectory}
+          placeholder={defaultFolder}
+          maxLength={4096}
+          spellCheck={false}
+          autoComplete="off"
+          className="h-8 min-w-0 flex-1 text-xs"
+          onChange={(event) => {
+            const outputDirectory = event.target.value;
+            control.setOptions((current) => ({ ...current, outputDirectory }));
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          disabled={choosing}
+          onClick={() => void choose()}
+          className="flex h-8 min-w-0 items-center gap-2 rounded-lg border border-border bg-foreground/[0.03] pr-2.5 pl-2 text-left transition-[background-color,transform] outline-none hover:bg-foreground/[0.07] focus-visible:ring-3 focus-visible:ring-ring/50 active:scale-[0.98] disabled:opacity-70"
+        >
+          <HugeiconsIcon
+            aria-hidden="true"
+            icon={Folder01Icon}
+            size={15}
+            className="shrink-0 text-muted-foreground"
+          />
+          {choosing ? (
+            <span role="status" className="truncate text-xs text-muted-foreground">
+              {t("saveTo.choosingHelp")}
+            </span>
+          ) : (
+            <>
+              <span className="shrink-0 text-sm font-medium">{folder.name || folder.path}</span>
+              {folder.parent ? (
+                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  {folder.parent}
+                </span>
+              ) : null}
+              <span className="shrink-0 pl-1 text-xs font-medium text-primary">
+                {t("saveTo.change")}
+              </span>
+            </>
+          )}
+        </button>
+      )}
+      {typing ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          className="shrink-0"
+          disabled={choosing}
+          onClick={() => void choose()}
+        >
+          {t(choosing ? "saveTo.choosing" : "saveTo.change")}
+        </Button>
+      ) : null}
+    </div>
   );
 }

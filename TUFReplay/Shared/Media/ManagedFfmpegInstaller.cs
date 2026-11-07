@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -13,43 +14,42 @@ using Newtonsoft.Json;
 
 namespace TUFReplay.Shared.Media;
 
-// Owns only TUFReplay's downloaded executable. Never consults PATH, user settings,
-// another mod's FFmpeg, or the versioned runtime payload directory.
 public sealed class ManagedFfmpegInstaller : IDisposable
 {
   public const long MaximumBytes = 256L * 1024 * 1024;
-  public event Action Changed;
-  private long _nextProgressNotification;
+  public const string SharedFolderName = "ffmpeg";
+  public const string ReceiptFileName = "installation.json";
+  public const string LicenseFileName = "LICENSE.txt";
+  public const string LockFileName = ".install.lock";
 
-  private void NotifyChanged(bool progress = false)
-  {
-    if (progress)
-    {
-      long now = System.Diagnostics.Stopwatch.GetTimestamp();
-      lock (_gate)
-      {
-        if (now < _nextProgressNotification)
-          return;
-        _nextProgressNotification = now + System.Diagnostics.Stopwatch.Frequency / 10;
-      }
-    }
-    Changed?.Invoke();
-  }
-
-  private readonly object _gate = new object();
-  private readonly string _directory;
+  // Serialize local callers independently of the runtime's file-sharing behavior.
+  private static readonly ConcurrentDictionary<string, SemaphoreSlim> InstallGates = new(
+    RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal
+  );
+  private readonly object _gate = new();
+  private readonly string _installRoot,
+    _directory;
   private readonly FfmpegPlatform _platform;
   private readonly Func<HttpMessageHandler> _transport;
-  private CancellationTokenSource _cancel;
+  private CancellationTokenSource _cancel = new();
   private bool _disposed;
+  private long _nextProgressNotification;
   private FfmpegInstallState _state;
+  public event Action Changed;
   public Task Work { get; private set; }
 
-  public ManagedFfmpegInstaller(string modDirectory, FfmpegPlatform platform, Func<HttpMessageHandler> transport = null)
+  public ManagedFfmpegInstaller(
+    string gameDirectory,
+    FfmpegPlatform platform,
+    Func<HttpMessageHandler> transport = null
+  )
   {
+    if (string.IsNullOrWhiteSpace(gameDirectory))
+      throw new ArgumentException("A game directory is required.", nameof(gameDirectory));
     _platform = platform;
     _transport = transport;
-    _directory = Path.Combine(modDirectory, "FFmpeg", platform.Name);
+    _installRoot = Path.Combine(Path.GetFullPath(gameDirectory), SharedFolderName);
+    _directory = Path.Combine(_installRoot, platform.Name);
     _state = new FfmpegInstallState
     {
       Status = "checking",
@@ -57,28 +57,8 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       Source = platform.Url,
       InstallationDirectory = _directory,
     };
-    Work = Task.Run(() =>
-    {
-      try
-      {
-        string path = Path.Combine(_directory, platform.Executable);
-        string receipt = Path.Combine(_directory, "installation.json");
-        bool valid = File.Exists(receipt) && new FileInfo(receipt).Length < 65536 && File.Exists(path);
-        if (valid)
-        {
-          var installed = JsonConvert.DeserializeObject<FfmpegInstallReceipt>(File.ReadAllText(receipt));
-          valid =
-            installed?.SchemaVersion == 1 && installed.Platform == platform.Name && installed.Sha256 == Hash(path);
-          if (valid)
-            VerifyExecutable(path, CancellationToken.None);
-        }
-        Publish(valid ? "ready" : "missing", valid ? path : null);
-      }
-      catch
-      {
-        Publish("missing");
-      }
-    });
+    var token = _cancel.Token;
+    Work = Task.Run(() => InstallAsync(false, token));
   }
 
   public FfmpegInstallState Snapshot()
@@ -87,25 +67,61 @@ public sealed class ManagedFfmpegInstaller : IDisposable
       return _state.Clone();
   }
 
+  public void NotifySharedInstallationCompleted(string platform, string executablePath)
+  {
+    if (platform != _platform.Name || string.IsNullOrWhiteSpace(executablePath))
+      return;
+    try
+    {
+      if (
+        !Path.IsPathRooted(executablePath)
+        || !string.Equals(
+          Path.GetFullPath(executablePath),
+          Path.Combine(_directory, _platform.Executable),
+          RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal
+        )
+      )
+        return;
+    }
+    catch (ArgumentException)
+    {
+      return;
+    }
+    catch (NotSupportedException)
+    {
+      return;
+    }
+    lock (_gate)
+    {
+      if (_disposed || _state.Busy || _state.Available)
+        return;
+      string previousStatus = _state.Status;
+      _cancel.Dispose();
+      _cancel = new CancellationTokenSource();
+      var token = _cancel.Token;
+      _state.Status = "checking";
+      // A notification is only a hint. Verify the receipt and file off the game thread.
+      Work = Task.Run(() => InstallAsync(false, token, previousStatus));
+    }
+    NotifyChanged();
+  }
+
   public FfmpegInstallState Request()
   {
     lock (_gate)
     {
       if (_disposed)
         throw new ObjectDisposedException(nameof(ManagedFfmpegInstaller));
-      if (
-        _state.Status == "missing"
-        || _state.Status == "declined"
-        || _state.Status == "cancelled"
-        || _state.Status == "failed"
-      )
+      if (_state.Status is "missing" or "declined" or "cancelled" or "failed")
       {
         _state.Status = "awaiting-consent";
         _state.Error = null;
       }
-      NotifyChanged();
-      return _state.Clone();
     }
+    NotifyChanged();
+    return Snapshot();
   }
 
   public void Decline()
@@ -118,12 +134,20 @@ public sealed class ManagedFfmpegInstaller : IDisposable
 
   public void Cancel()
   {
+    CancellationTokenSource cancel;
     lock (_gate)
     {
-      _cancel?.Cancel();
+      if (_disposed)
+        return;
+      cancel = _cancel;
       if (_state.Status == "awaiting-consent")
         _state.Status = "cancelled";
     }
+    try
+    {
+      cancel.Cancel();
+    }
+    catch (ObjectDisposedException) { }
     NotifyChanged();
   }
 
@@ -133,131 +157,55 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     {
       if (_disposed || _state.Status != "awaiting-consent")
         return;
-      _cancel?.Dispose();
+      _cancel.Dispose();
       _cancel = new CancellationTokenSource();
+      var token = _cancel.Token;
       _state.Status = "downloading";
       _state.Error = null;
       _state.DownloadedBytes = 0;
       _state.TotalBytes = null;
-      CancellationToken token = _cancel.Token;
-      Work = Task.Run(() => InstallAsync(token));
+      Work = Task.Run(() => InstallAsync(true, token));
     }
     NotifyChanged();
   }
 
-  private async Task InstallAsync(CancellationToken token)
+  private async Task InstallAsync(bool allowDownload, CancellationToken token, string unavailableStatus = "missing")
   {
-    string temporary = null;
+    string staging = null;
     try
     {
-      Directory.CreateDirectory(Path.GetDirectoryName(_directory));
-      temporary = _directory + ".install-" + Guid.NewGuid().ToString("N");
-      Directory.CreateDirectory(temporary);
-      string archive = Path.Combine(temporary, _platform.TarXz ? "download.tar.xz" : "download.zip");
-      using (var client = _transport == null ? new HttpClient() : new HttpClient(_transport()))
+      using var gate = await AcquireInstallGateAsync(TimeSpan.FromSeconds(allowDownload ? 900 : 5), token)
+        .ConfigureAwait(false);
+      if (gate == null)
       {
-        client.Timeout = TimeSpan.FromMinutes(5);
-        client.DefaultRequestHeaders.UserAgent.ParseAdd("TUFReplay-FFmpeg-Installer/1.0");
-        string expected = null;
-        if (_platform.ChecksumUrl != null)
-        {
-          using var checksum = await client
-            .GetAsync(_platform.ChecksumUrl, HttpCompletionOption.ResponseHeadersRead, token)
-            .ConfigureAwait(false);
-          checksum.EnsureSuccessStatusCode();
-          using var body = await checksum.Content.ReadAsStreamAsync().ConfigureAwait(false);
-          using var buffer = new MemoryStream();
-          await CopyBoundedAsync(body, buffer, 4096, token).ConfigureAwait(false);
-          expected = Encoding.UTF8.GetString(buffer.ToArray()).Trim().Split(' ', '\t', '\r', '\n')[0];
-          if (expected.Length != 64 || expected.Any(c => !Uri.IsHexDigit(c)))
-            throw new InvalidDataException("The download provider returned an invalid checksum. Try installing again.");
-        }
-        using var response = await client
-          .GetAsync(_platform.Url, HttpCompletionOption.ResponseHeadersRead, token)
-          .ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
-        if (response.RequestMessage.RequestUri.Scheme != "https")
-          throw new IOException("The download provider redirected to an insecure address. Try again later.");
-        long? total = response.Content.Headers.ContentLength;
-        if (total > MaximumBytes)
-          throw new InvalidDataException("The FFmpeg download is larger than expected. Try again later.");
-        lock (_gate)
-          _state.TotalBytes = total;
-        using (var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false))
-        using (var output = File.Create(archive))
-          await CopyBoundedAsync(
-              input,
-              output,
-              MaximumBytes,
-              token,
-              bytes =>
-              {
-                lock (_gate)
-                  _state.DownloadedBytes = bytes;
-                NotifyChanged(progress: true);
-              }
-            )
-            .ConfigureAwait(false);
-        if (expected != null && !string.Equals(Hash(archive), expected, StringComparison.OrdinalIgnoreCase))
-          throw new InvalidDataException(
-            "The FFmpeg download did not match the provider's checksum. Try installing again."
+        if (allowDownload)
+          throw new TimeoutException(
+            "Another FFmpeg installation is still running. Wait for it to finish, then retry."
           );
+        Publish(unavailableStatus);
+        return;
       }
-      Publish("extracting");
-      string executable = Path.Combine(temporary, _platform.Executable);
-      if (_platform.TarXz)
-        await ExtractTarAsync(archive, executable, token).ConfigureAwait(false);
-      else
-        await ExtractZipAsync(archive, temporary, _platform.Executable, token).ConfigureAwait(false);
-      if (_platform.Executable != "ffmpeg.exe")
+      var installed = ReadInstalled();
+      if (installed != null)
+      {
+        Publish("ready", installed);
+        return;
+      }
+      if (!allowDownload)
+      {
+        Publish(unavailableStatus);
+        return;
+      }
+      staging = Path.Combine(_installRoot, ".staging-" + Guid.NewGuid().ToString("N"));
+      Directory.CreateDirectory(staging);
+      var executable = Path.Combine(staging, _platform.Executable);
+      await DownloadAsync(staging, token).ConfigureAwait(false);
+      token.ThrowIfCancellationRequested();
+      if (!RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         RunProcess("/bin/chmod", "755 " + Quote(executable), token);
       Publish("validating");
-      string version = VerifyExecutable(executable, token);
-      var receipt = new FfmpegInstallReceipt
-      {
-        SchemaVersion = 1,
-        Platform = _platform.Name,
-        Source = _platform.Url,
-        Sha256 = Hash(executable),
-        Version = version,
-        InstalledAtUtc = DateTime.UtcNow,
-      };
-      File.WriteAllText(
-        Path.Combine(temporary, "installation.json"),
-        JsonConvert.SerializeObject(receipt, Formatting.Indented)
-      );
-      File.WriteAllText(
-        Path.Combine(temporary, "DOWNLOAD-SOURCE.txt"),
-        "Downloaded directly from: "
-          + _platform.Url
-          + "\nUpstream: https://ffmpeg.org/\n"
-          + "This runtime download is excluded from TUFReplay release ZIPs.\n",
-        new UTF8Encoding(false)
-      );
-      File.Delete(archive);
-      token.ThrowIfCancellationRequested();
-      // Publish a complete installation with its receipt, never a partial exe.
-      string old = _directory + ".previous-" + Guid.NewGuid().ToString("N");
-      if (Directory.Exists(_directory))
-        Directory.Move(_directory, old);
-      try
-      {
-        Directory.Move(temporary, _directory);
-        temporary = null;
-      }
-      catch
-      {
-        if (Directory.Exists(old))
-          Directory.Move(old, _directory);
-        throw;
-      }
-      try
-      {
-        if (Directory.Exists(old))
-          Directory.Delete(old, true);
-      }
-      catch (IOException) { }
-      Publish("ready", Path.Combine(_directory, _platform.Executable));
+      installed = PromoteStaging(staging, Hash(executable), token);
+      Publish("ready", installed);
     }
     catch (OperationCanceledException) when (token.IsCancellationRequested)
     {
@@ -265,22 +213,252 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     }
     catch (Exception error)
     {
-      string message =
-        error is UnauthorizedAccessException
-          ? "FFmpeg could not be saved in the TUFReplay folder. Check folder write permission, then retry."
-        : error is HttpRequestException ? "FFmpeg could not be downloaded. Check your internet connection, then retry."
-        : error is TaskCanceledException ? "The FFmpeg download timed out. Check your internet connection, then retry."
-        : error.Message;
-      Publish("failed", error: message);
+      Publish("failed", error: FriendlyError(error));
     }
     finally
     {
-      if (temporary != null)
+      if (staging != null)
+        TryDeleteDirectory(staging);
+    }
+  }
+
+  private async Task<IDisposable> AcquireInstallGateAsync(TimeSpan timeout, CancellationToken token)
+  {
+    Directory.CreateDirectory(_installRoot);
+    var elapsed = Stopwatch.StartNew();
+    var semaphore = InstallGates.GetOrAdd(_installRoot, _ => new SemaphoreSlim(1, 1));
+    if (!await semaphore.WaitAsync(timeout, token).ConfigureAwait(false))
+      return null;
+    try
+    {
+      while (true)
+      {
+        token.ThrowIfCancellationRequested();
         try
         {
-          Directory.Delete(temporary, true);
+          var file = new FileStream(
+            Path.Combine(_installRoot, LockFileName),
+            FileMode.OpenOrCreate,
+            FileAccess.ReadWrite,
+            FileShare.None
+          );
+          try
+          {
+            // Mono only enforces FileShare inside its process on Unix. flock is
+            // held by the open file description, so async thread changes are safe.
+            if (
+              !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+              && Flock(file.SafeFileHandle.DangerousGetHandle().ToInt32(), 2 | 4) != 0
+            )
+            {
+              int error = Marshal.GetLastWin32Error();
+              if (error == 11 || error == 35) // EWOULDBLOCK on Linux / macOS
+                throw new IOException("Another FFmpeg installer holds the file lock.");
+              throw new System.ComponentModel.Win32Exception(
+                error,
+                "FFmpeg could not lock the game folder. Check its permissions, then retry."
+              );
+            }
+          }
+          catch
+          {
+            file.Dispose();
+            throw;
+          }
+          var gate = new InstallGate(file, semaphore);
+          semaphore = null;
+          return gate;
         }
-        catch (Exception) { }
+        catch (IOException)
+        {
+          if (elapsed.Elapsed >= timeout)
+            return null;
+          await Task.Delay(100, token).ConfigureAwait(false);
+        }
+      }
+    }
+    finally
+    {
+      semaphore?.Release();
+    }
+  }
+
+  [DllImport("libc", EntryPoint = "flock", SetLastError = true)]
+  private static extern int Flock(int descriptor, int operation);
+
+  private sealed class InstallGate : IDisposable
+  {
+    private FileStream _file;
+    private readonly SemaphoreSlim _semaphore;
+
+    public InstallGate(FileStream file, SemaphoreSlim semaphore)
+    {
+      _file = file;
+      _semaphore = semaphore;
+    }
+
+    public void Dispose()
+    {
+      var file = Interlocked.Exchange(ref _file, null);
+      if (file == null)
+        return;
+      try
+      {
+        file.Dispose();
+      }
+      finally
+      {
+        _semaphore.Release();
+      }
+    }
+  }
+
+  private string ReadInstalled()
+  {
+    try
+    {
+      var executable = Path.Combine(_directory, _platform.Executable);
+      var receipt = ReadReceipt(_directory);
+      return
+        File.Exists(executable)
+        && new FileInfo(executable).Length > 0
+        && receipt != null
+        && receipt.SchemaVersion == 1
+        && receipt.Platform == _platform.Name
+        && (string.IsNullOrEmpty(receipt.Executable) || receipt.Executable == _platform.Executable)
+        && IsSha256(receipt.Sha256)
+        && receipt.Version?.TrimStart().StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase) == true
+        && string.Equals(Hash(executable), receipt.Sha256, StringComparison.OrdinalIgnoreCase)
+        ? executable
+        : null;
+    }
+    catch (IOException)
+    {
+      return null;
+    }
+    catch (UnauthorizedAccessException)
+    {
+      return null;
+    }
+  }
+
+  private async Task DownloadAsync(string staging, CancellationToken token)
+  {
+    if (string.IsNullOrWhiteSpace(_platform.ChecksumUrl))
+      throw new InvalidDataException(
+        "This FFmpeg provider has no checksum. Update TUFReplay, then retry installation."
+      );
+    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(token);
+    timeout.CancelAfter(TimeSpan.FromMinutes(5));
+    var downloadToken = timeout.Token;
+    using var client = _transport == null ? new HttpClient() : new HttpClient(_transport());
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("TUFReplay-FFmpeg-Installer/2.0");
+    string expected = null;
+    if (_platform.ChecksumUrl != null)
+    {
+      using var checksum = await client
+        .GetAsync(_platform.ChecksumUrl, HttpCompletionOption.ResponseHeadersRead, downloadToken)
+        .ConfigureAwait(false);
+      RequireResponse(checksum);
+      using var body = await checksum.Content.ReadAsStreamAsync().ConfigureAwait(false);
+      using var buffer = new MemoryStream();
+      await CopyBoundedAsync(body, buffer, 65536, downloadToken).ConfigureAwait(false);
+      expected = ParseChecksum(Encoding.UTF8.GetString(buffer.ToArray()), _platform.Url);
+    }
+    var archive = Path.Combine(staging, _platform.TarXz ? "download.tar.xz" : "download.zip");
+    using (
+      var response = await client
+        .GetAsync(_platform.Url, HttpCompletionOption.ResponseHeadersRead, downloadToken)
+        .ConfigureAwait(false)
+    )
+    {
+      RequireResponse(response);
+      var total = response.Content.Headers.ContentLength;
+      if (total > MaximumBytes)
+        throw new InvalidDataException("The FFmpeg download exceeds its size limit.");
+      lock (_gate)
+        _state.TotalBytes = total;
+      using var input = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+      using var output = File.Create(archive);
+      await CopyBoundedAsync(
+          input,
+          output,
+          MaximumBytes,
+          downloadToken,
+          bytes =>
+          {
+            lock (_gate)
+              _state.DownloadedBytes = bytes;
+            NotifyChanged(true);
+          }
+        )
+        .ConfigureAwait(false);
+    }
+    if (expected != null && !string.Equals(Hash(archive), expected, StringComparison.OrdinalIgnoreCase))
+      throw new InvalidDataException("The FFmpeg download did not match the provider's checksum.");
+    Publish("extracting");
+    if (_platform.TarXz)
+      await ExtractTarAsync(archive, Path.Combine(staging, _platform.Executable), token).ConfigureAwait(false);
+    else
+      await ExtractZipAsync(archive, staging, _platform.Executable, token).ConfigureAwait(false);
+    File.Delete(archive);
+  }
+
+  private static void RequireResponse(HttpResponseMessage response)
+  {
+    response.EnsureSuccessStatusCode();
+    if (response.RequestMessage.RequestUri.Scheme != "https")
+      throw new IOException("The provider redirected to an insecure address.");
+  }
+
+  private string PromoteStaging(string staging, string expectedHash, CancellationToken token)
+  {
+    token.ThrowIfCancellationRequested();
+    var backup = _directory + ".previous-" + Guid.NewGuid().ToString("N");
+    bool hadPrevious = Directory.Exists(_directory),
+      published = false;
+    if (hadPrevious)
+      Directory.Move(_directory, backup);
+    try
+    {
+      Directory.Move(staging, _directory);
+      published = true;
+      var executable = Path.Combine(_directory, _platform.Executable);
+      if (!IsSha256(expectedHash) || !string.Equals(Hash(executable), expectedHash, StringComparison.OrdinalIgnoreCase))
+        throw new InvalidDataException("The FFmpeg executable changed during installation. Retry installation.");
+      var version = RunProcess(executable, "-version", token);
+      if (!version.TrimStart().StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase))
+        throw new IOException("The FFmpeg executable could not be verified.");
+      token.ThrowIfCancellationRequested();
+      var receipt = new FfmpegInstallReceipt
+      {
+        SchemaVersion = 1,
+        Platform = _platform.Name,
+        Executable = _platform.Executable,
+        Source = _platform.Url,
+        Sha256 = expectedHash,
+        Version = version,
+        InstalledAtUtc = DateTime.UtcNow,
+      };
+      File.WriteAllText(
+        Path.Combine(_directory, "DOWNLOAD-SOURCE.txt"),
+        "Provider: " + _platform.Url + "\nUpstream: https://ffmpeg.org/\n"
+      );
+      var record = Path.Combine(_directory, ReceiptFileName);
+      File.WriteAllText(record + ".tmp", JsonConvert.SerializeObject(receipt, Formatting.Indented));
+      File.Move(record + ".tmp", record);
+      if (hadPrevious)
+        TryDeleteDirectory(backup);
+      FfmpegApi.NotifyOtherMod(_platform.Name, executable);
+      return executable;
+    }
+    catch
+    {
+      if (published)
+        TryDeleteDirectory(_directory);
+      if (hadPrevious && !Directory.Exists(_directory))
+        Directory.Move(backup, _directory);
+      throw;
     }
   }
 
@@ -322,7 +500,9 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     string list = RunProcess("/usr/bin/tar", "-tJf " + Quote(archive), token);
     string[] entries = list.Split('\n')
       .Select(s => s.TrimEnd('\r'))
-      .Where(s => s.EndsWith("/ffmpeg", StringComparison.Ordinal) || s == "ffmpeg")
+      .Where(s =>
+        s.EndsWith("/" + Path.GetFileName(destination), StringComparison.Ordinal) || s == Path.GetFileName(destination)
+      )
       .ToArray();
     if (
       entries.Length != 1
@@ -355,14 +535,6 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     token.ThrowIfCancellationRequested();
     if (process.ExitCode != 0)
       throw new IOException("FFmpeg could not be extracted. Try again. " + await errors.ConfigureAwait(false));
-  }
-
-  private static string VerifyExecutable(string path, CancellationToken token)
-  {
-    string version = RunProcess(path, "-version", token);
-    if (!version.StartsWith("ffmpeg version", StringComparison.OrdinalIgnoreCase))
-      throw new IOException("The downloaded FFmpeg could not run. Retry installation or check your security software.");
-    return version;
   }
 
   private static string RunProcess(string file, string arguments, CancellationToken token)
@@ -432,10 +604,79 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     return BitConverter.ToString(sha.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
   }
 
+  private static bool IsSha256(string value) => value?.Length == 64 && value.All(Uri.IsHexDigit);
+
+  public static string ParseChecksum(string text, string archiveUrl)
+  {
+    var name = Path.GetFileName(new Uri(archiveUrl).AbsolutePath);
+    var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+    foreach (var line in lines)
+    {
+      var parts = line.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
+      if (parts.Length == 0 || !IsSha256(parts[0]))
+        continue;
+      if ((lines.Length == 1 && parts.Length == 1) || (parts.Length == 2 && parts[1].TrimStart('*') == name))
+        return parts[0];
+    }
+    throw new InvalidDataException("The provider checksum does not contain the selected FFmpeg archive.");
+  }
+
+  private static FfmpegInstallReceipt ReadReceipt(string directory)
+  {
+    var path = Path.Combine(directory, ReceiptFileName);
+    try
+    {
+      return new FileInfo(path).Length <= 65536
+        ? JsonConvert.DeserializeObject<FfmpegInstallReceipt>(File.ReadAllText(path))
+        : null;
+    }
+    catch (IOException)
+    {
+      return null;
+    }
+    catch (UnauthorizedAccessException)
+    {
+      return null;
+    }
+    catch (JsonException)
+    {
+      return null;
+    }
+  }
+
+  private static void TryDeleteDirectory(string directory)
+  {
+    try
+    {
+      Directory.Delete(directory, true);
+    }
+    catch (IOException) { }
+    catch (UnauthorizedAccessException) { }
+  }
+
+  private void NotifyChanged(bool progress = false)
+  {
+    lock (_gate)
+    {
+      if (_disposed)
+        return;
+      if (progress)
+      {
+        long now = Stopwatch.GetTimestamp();
+        if (now < _nextProgressNotification)
+          return;
+        _nextProgressNotification = now + Stopwatch.Frequency / 10;
+      }
+    }
+    Changed?.Invoke();
+  }
+
   private void Publish(string status, string path = null, string error = null)
   {
     lock (_gate)
     {
+      if (_disposed)
+        return;
       _state.Status = status;
       _state.Path = path;
       _state.Error = error;
@@ -443,13 +684,29 @@ public sealed class ManagedFfmpegInstaller : IDisposable
     NotifyChanged();
   }
 
+  private static string FriendlyError(Exception error) =>
+    error switch
+    {
+      UnauthorizedAccessException => "FFmpeg could not be saved. Check the game folder's write permission, then retry.",
+      HttpRequestException => "FFmpeg could not be downloaded. Check your internet connection, then retry.",
+      OperationCanceledException => "The FFmpeg download timed out. Check your internet connection, then retry.",
+      _ => error.Message,
+    };
+
   public void Dispose()
   {
+    CancellationTokenSource cancel;
+    Task work;
     lock (_gate)
     {
+      if (_disposed)
+        return;
       _disposed = true;
-      _cancel?.Cancel();
+      cancel = _cancel;
+      work = Work;
     }
+    cancel.Cancel();
+    _ = work.ContinueWith(_ => cancel.Dispose(), TaskScheduler.Default);
   }
 }
 
@@ -474,6 +731,7 @@ public sealed class FfmpegInstallReceipt
 {
   public int SchemaVersion;
   public string Platform;
+  public string Executable;
   public string Source;
   public string Sha256;
   public string Version;
@@ -497,14 +755,36 @@ public sealed class FfmpegPlatform
     ChecksumUrl = checksumUrl;
   }
 
+  public static string GameDirectory
+  {
+    get
+    {
+      string dataPath = Path.GetFullPath(UnityEngine.Application.dataPath);
+      bool macOS =
+        UnityEngine.Application.platform == UnityEngine.RuntimePlatform.OSXPlayer
+        || UnityEngine.Application.platform == UnityEngine.RuntimePlatform.OSXEditor;
+      return ResolveGameDirectory(dataPath, macOS);
+    }
+  }
+
+  public static string ResolveGameDirectory(string dataPath, bool macOS)
+  {
+    var data = new DirectoryInfo(Path.GetFullPath(dataPath));
+    if (macOS)
+      for (var parent = data; parent != null; parent = parent.Parent)
+        if (parent.Name.EndsWith(".app", StringComparison.OrdinalIgnoreCase))
+          return parent.Parent.FullName;
+    return data.Parent.FullName;
+  }
+
   public static FfmpegPlatform Current()
   {
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows) && Environment.Is64BitOperatingSystem)
       return new FfmpegPlatform(
         "windows-x64",
         "ffmpeg.exe",
-        "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
-        checksumUrl: "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip.sha256"
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-win64-gpl-9.0.zip",
+        checksumUrl: "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256"
       );
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
     {
@@ -530,16 +810,23 @@ public sealed class FfmpegPlatform
         ? new FfmpegPlatform(
           "macos-arm64",
           "ffmpeg",
-          "https://ffmpeg.martin-riedl.de/redirect/latest/macos/arm64/release/ffmpeg.zip"
+          "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip",
+          checksumUrl: "https://ffmpeg.martin-riedl.de/download/macos/arm64/1789931890_9.0.2/ffmpeg.zip.sha256"
         )
-        : new FfmpegPlatform("macos-x64", "ffmpeg", "https://evermeet.cx/ffmpeg/getrelease/zip");
+        : new FfmpegPlatform(
+          "macos-x64",
+          "ffmpeg",
+          "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip",
+          checksumUrl: "https://ffmpeg.martin-riedl.de/download/macos/amd64/1789931006_9.0.2/ffmpeg.zip.sha256"
+        );
     }
     if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux) && RuntimeInformation.OSArchitecture == Architecture.X64)
       return new FfmpegPlatform(
         "linux-x64",
         "ffmpeg",
-        "https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-amd64-static.tar.xz",
-        true
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-n9.0-latest-linux64-gpl-9.0.tar.xz",
+        true,
+        "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/checksums.sha256"
       );
     throw new PlatformNotSupportedException(
       "Automatic FFmpeg installation supports Windows 64-bit, macOS and Linux x64."

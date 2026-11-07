@@ -107,5 +107,31 @@ enum MicrophoneCaptureSelfTest {
     ) == nil else {
       throw CaptureError.message("An invalid sample timestamp was accepted.")
     }
+    try verifyCaptureContinuity()
+  }
+
+  private static func verifyCaptureContinuity() throws {
+    let expected = CMTime(value: 48_000, timescale: 48_000)
+    func at(_ frames: Int64) -> CMTime { CMTime(value: 48_000 + frames, timescale: 48_000) }
+    let contiguous = CaptureBufferTiming.continuity(
+      presentationTime: at(100), expectedTime: expected, sampleRate: 48_000, sampleCount: 1024)
+    guard contiguous.silenceFrames == 0, contiguous.skippedFrames == 0 else {
+      throw CaptureError.message("Timestamp jitter inside the tolerance changed the WAV.")
+    }
+    let lost = CaptureBufferTiming.continuity(
+      presentationTime: at(1024), expectedTime: expected, sampleRate: 48_000, sampleCount: 1024)
+    guard lost.silenceFrames == 1024, lost.skippedFrames == 0 else {
+      throw CaptureError.message("A lost capture buffer was not filled with silence.")
+    }
+    let overlap = CaptureBufferTiming.continuity(
+      presentationTime: at(-512), expectedTime: expected, sampleRate: 48_000, sampleCount: 1024)
+    guard overlap.silenceFrames == 0, overlap.skippedFrames == 512 else {
+      throw CaptureError.message("Overlapping capture frames were written twice.")
+    }
+    let jump = CaptureBufferTiming.continuity(
+      presentationTime: at(10_000_000), expectedTime: expected, sampleRate: 48_000, sampleCount: 1024)
+    guard jump.silenceFrames == CaptureBufferTiming.maximumGapFrames else {
+      throw CaptureError.message("A capture clock jump wrote unbounded silence.")
+    }
   }
 }

@@ -24,7 +24,6 @@ public sealed class MicrophoneCalibrationStatus
   public double PlaybackPositionMs;
   public int ResultRevision;
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
 }
 
 public sealed class MicrophoneCalibrationResult
