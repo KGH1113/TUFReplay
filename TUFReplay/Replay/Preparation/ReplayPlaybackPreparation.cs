@@ -13,6 +13,8 @@ using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Playback;
 using TUFReplay.Microphone.Processing;
 using TUFReplay.Microphone.Repositories;
+using TUFReplay.ModApi.Playback;
+using TUFReplay.ModApi.Repositories;
 using TUFReplay.Replay.Compatibility;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
@@ -20,8 +22,6 @@ using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
-using TUFReplay.RunState.Playback;
-using TUFReplay.RunState.Repositories;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Playback;
@@ -457,7 +457,9 @@ public static partial class ReplayPlaybackCoordinator
     ElementAttempts.EnsureRegistered();
     ReplaySessionService.InstallActiveContext(context);
     // Mods restore the state saved with this run before the level starts.
-    context.RunStates = RunStateReplays.Begin(operation.Run.Id, render: false, operation.RunStates);
+    context.RunStates = ReplaySessions.Begin(operation.Run.Id, render: null, operation.RunStates);
+    // Mods also get the recorded keys through ReplayApi, beside the OS input the replay sends.
+    context.KeyFeed = new ReplayKeyFeed(operation.Inputs);
     ReplaySessionService.ApplyReplayNoFailNow();
     ReplaySessionService.ApplyReplayGameInputOffsetNow();
     ReplaySessionService.ApplyReplayPitchNow();

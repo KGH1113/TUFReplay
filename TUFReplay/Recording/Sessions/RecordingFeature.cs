@@ -6,12 +6,12 @@ using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Microphone.Timing;
+using TUFReplay.ModApi.Recording;
 using TUFReplay.Recording.Input;
 using TUFReplay.Recording.Microphone;
 using TUFReplay.Recording.Patches;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Transport;
-using TUFReplay.RunState.Recording;
 using TUFReplay.Shared.Unity;
 
 namespace TUFReplay.Recording.Sessions;

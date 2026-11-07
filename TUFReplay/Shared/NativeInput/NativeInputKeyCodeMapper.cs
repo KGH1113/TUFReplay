@@ -486,6 +486,16 @@ internal static class NativeInputKeyCodeMapper
     return result;
   }
 
+  /// <summary>
+  /// The Unity key of an input already normalized for playback on this machine
+  /// (<see cref="NormalizeForPlayback"/>), so its native key is this platform's.
+  /// </summary>
+  internal static bool TryGetPlaybackKeyCode(RecordedInput input, out UnityEngine.KeyCode code)
+  {
+    code = UnityEngine.KeyCode.None;
+    return TryGetUnityKeyName(CurrentPlatform(), input, out string name) && Enum.TryParse(name, out code);
+  }
+
   private static string CurrentPlatform()
   {
     if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))

@@ -4,7 +4,7 @@ namespace TUFReplay.Activity.Migrations;
 
 public static partial class ActivitySchema
 {
-  // Mod states saved with each run (RunStateApi). Added after version 1 shipped, so they are
+  // Mod states saved with each run (ReplayApi). Added after version 1 shipped, so they are
   // created in place: older builds still open the file, and their run deletes still cascade
   // here because the foreign key lives in this table.
   private static void EnsureRunStateTables(SqliteConnection connection)

@@ -1,12 +1,32 @@
 # Replay rendering integration
 
-The companion's Render action prepares a recording bundle through TUFReplay and submits
-its manifest to the installed OrbitRender mod through its `orbitrender` ADOFAI IPC
-contract. OrbitRender opens the recorded level, renders the replay, and reports job
-progress and cancellation to the companion. OrbitRender must be installed and enabled
-separately. Its current settings determine the output format and local output folder.
-Camera and microphone inclusion are chosen in the dialog. TUFReplay snapshots their
-calibration and microphone gain when the bundle is prepared.
+The companion's Render action starts a render job in TUFReplay. TUFReplay prepares a
+recording bundle, then hands the job to the installed OrbitRender mod, which reports
+progress and cancellation back. OrbitRender must be installed and enabled separately. Its
+current settings determine the output format and local output folder. Camera and
+microphone inclusion are chosen in the dialog. TUFReplay snapshots their calibration and
+microphone gain when the bundle is prepared.
+
+## Who does what
+
+With OrbitRender's RenderApi 3, TUFReplay leads the render and OrbitRender only renders:
+
+- **TUFReplay** replays the recording as OrbitRender's host (`RenderReplayHost`):
+  - it applies the recorded settings, inputs and hits, clear, death and end
+  - it hands mods the replay through `ReplayApi`: clock, keys, the canvases to capture, and capture calls. See [replay-api.md](replay-api.md).
+- **OrbitRender** opens the level and runs the offline clock and frame loop. It captures frames and audio, encodes them, composes the webcam and microphone, and writes the file.
+
+TUFReplay calls `RenderApi.StartHostedReplay(requestJson, host)`. The request carries only:
+- the level path and file hash
+- the start tile
+- the recorded input offset and clear time
+- the media with absolute paths
+- the render options
+
+OrbitRender does not read the bundle. The bundle below is TUFReplay's own format: the host reads it back.
+
+**Older OrbitRender (RenderApi 2)**: TUFReplay still hands it the bundle's `manifest.json` through `StartReplay`, and OrbitRender replays the recording itself, as before.
+
 ## Export lifecycle
 
 `replay.render-bundle.export` takes `{runId, levelPath?, includeWebcam?, includeMicrophone?}`.
