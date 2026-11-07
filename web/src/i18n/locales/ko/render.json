@@ -113,7 +113,9 @@
     "reload": "다시 불러오기",
     "play": "재생",
     "pause": "일시정지",
-    "seek": "재생 위치"
+    "seek": "재생 위치",
+    "fullscreen": "전체 화면",
+    "exitFullscreen": "전체 화면 종료"
   },
   "start": "영상 만들기",
   "retry": "다시 만들기",

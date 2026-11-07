@@ -1,4 +1,9 @@
-import { PauseIcon, PlayIcon } from "@hugeicons/core-free-icons";
+import {
+  FullScreenIcon,
+  MinimizeScreenIcon,
+  PauseIcon,
+  PlayIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -10,6 +15,7 @@ import {
   previewSkipReason,
 } from "@/models/render/render-preview";
 import type { TransferredFile } from "@/ports/received-file";
+import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { Slider } from "@/shared/ui/slider";
 
@@ -164,10 +170,21 @@ function Player({
   onNoPicture: () => void;
 }) {
   const { t } = useTranslation("render");
+  const frame = useRef<HTMLDivElement>(null);
   const video = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  // Browsers without element full screen, such as Safari on iPhone, get no button.
+  const canFullscreen = typeof document !== "undefined" && document.fullscreenEnabled;
+
+  // Esc and the browser's own controls can leave full screen too, so follow the document.
+  useEffect(() => {
+    const follow = () => setFullscreen(document.fullscreenElement === frame.current);
+    document.addEventListener("fullscreenchange", follow);
+    return () => document.removeEventListener("fullscreenchange", follow);
+  }, []);
 
   // The bar follows the picture every frame while it plays, not four times a second.
   useEffect(() => {
@@ -186,17 +203,27 @@ function Player({
     else element.pause();
   };
 
+  // The whole player goes full screen, so its own controls stay under the picture.
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void frame.current?.requestFullscreen().catch(() => {});
+  };
+
   return (
-    <div>
-      <div className="relative">
+    <div ref={frame} className={cn(fullscreen && "flex h-full flex-col bg-black")}>
+      <div className={cn("relative", fullscreen && "min-h-0 flex-1")}>
         {/* biome-ignore lint/a11y/useMediaCaption: Rendered gameplay videos have no caption tracks. */}
         <video
           ref={video}
           src={url}
           playsInline
           preload="auto"
-          className="aspect-video w-full cursor-pointer bg-black"
+          className={cn(
+            "w-full cursor-pointer bg-black",
+            fullscreen ? "h-full object-contain" : "aspect-video",
+          )}
           onClick={toggle}
+          onDoubleClick={canFullscreen ? toggleFullscreen : undefined}
           onPlay={() => setPlaying(true)}
           onPause={() => setPlaying(false)}
           onEnded={() => setPlaying(false)}
@@ -257,6 +284,22 @@ function Player({
         <span className="shrink-0 text-xs tabular-nums text-white/70">
           {clock(time)} / {clock(duration)}
         </span>
+        {canFullscreen ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={t(fullscreen ? "result.exitFullscreen" : "result.fullscreen")}
+            className="size-8 shrink-0 rounded-full text-white hover:bg-white/10 hover:text-white"
+            onClick={toggleFullscreen}
+          >
+            <HugeiconsIcon
+              aria-hidden="true"
+              icon={fullscreen ? MinimizeScreenIcon : FullScreenIcon}
+              size={16}
+            />
+          </Button>
+        ) : null}
       </div>
     </div>
   );
