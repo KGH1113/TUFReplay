@@ -245,7 +245,7 @@ public sealed class ManagedRendererInstaller : IDisposable
         (string)info["Id"] != ModId
         || string.IsNullOrWhiteSpace(version)
         || !File.Exists(Path.Combine(extracted, ModId + ".dll"))
-        || !File.Exists(Path.Combine(extracted, "LICENSE.md"))
+        || !File.Exists(Path.Combine(extracted, "docs", "LICENSE.md"))
       )
         throw new InstallError(
           "renderer_release_invalid",
