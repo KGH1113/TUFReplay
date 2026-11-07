@@ -77,6 +77,7 @@ WHERE g.id=@id GROUP BY g.id";
     };
   }
 
+  // Visits without runs, such as the open level after its runs are deleted, stay out of history.
   public static List<LevelSessionOverview> ListLevelSessionOverviewsByAppSessions(IReadOnlyList<string> appSessionIds)
   {
     var result = new List<LevelSessionOverview>();
@@ -101,7 +102,7 @@ WHERE g.id=@id GROUP BY g.id";
         Select
         + " WHERE l.app_session_id IN ("
         + string.Join(",", parameterNames)
-        + ") GROUP BY l.id ORDER BY l.app_session_id,l.opened_at_utc ASC";
+        + ") GROUP BY l.id HAVING count(r.id)>0 ORDER BY l.app_session_id,l.opened_at_utc ASC";
       using SqliteDataReader r = q.ExecuteReader();
       while (r.Read())
         result.Add(Read(r));
