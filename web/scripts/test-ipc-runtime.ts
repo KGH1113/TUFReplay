@@ -55,7 +55,7 @@ const handlers: ReplayApiAppHandlers = {
   healthSnapshot: noOp,
   microphoneDevicesChanged: noOp,
   microphoneTimingChanged: noOp,
-  renderBundleStateChanged: noOp,
+  renderStateChanged: noOp,
   replayStateChanged: noOp,
   webcamStateChanged: noOp,
 };

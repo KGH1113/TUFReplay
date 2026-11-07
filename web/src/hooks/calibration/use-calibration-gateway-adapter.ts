@@ -5,7 +5,6 @@ import type { CalibrationStatus } from "@/models/calibration/calibration-model";
 
 export interface LegacyMicrophoneTimingSettings {
   MicrophoneOffsetMs: number;
-  MicrophoneVolumeDb: number;
 }
 
 export interface LegacyCalibrationStatus extends LegacyMicrophoneTimingSettings {
@@ -43,7 +42,6 @@ export interface CalibrationGateway {
     onError?: (cause: unknown) => void,
   ): () => void;
   setMicrophoneOffset(offsetMs: number): Promise<LegacyMicrophoneTimingSettings>;
-  setMicrophoneVolume(volumeDb: number): Promise<LegacyMicrophoneTimingSettings>;
   startMicrophoneCalibration(): Promise<LegacyCalibrationStatus>;
   getMicrophoneCalibrationStatus(operationId: string): Promise<LegacyCalibrationStatus>;
   getMicrophoneCalibrationResult(
@@ -55,10 +53,6 @@ export interface CalibrationGateway {
   setMicrophoneCalibrationOffset(
     operationId: string,
     offsetMs: number,
-  ): Promise<LegacyCalibrationStatus>;
-  setMicrophoneCalibrationVolume(
-    operationId: string,
-    volumeDb: number,
   ): Promise<LegacyCalibrationStatus>;
   closeMicrophoneCalibration(operationId: string): Promise<LegacyCalibrationStatus>;
 }
@@ -87,17 +81,7 @@ export function useCalibrationGatewayAdapter() {
     },
     setMicrophoneOffset: async (offsetMs) => {
       const next = await (await apiPromise).microphone.setOffset(offsetMs);
-      return {
-        MicrophoneOffsetMs: next.microphoneOffsetMs,
-        MicrophoneVolumeDb: next.microphoneVolumeDb,
-      };
-    },
-    setMicrophoneVolume: async (volumeDb) => {
-      const next = await (await apiPromise).microphone.setVolume(volumeDb);
-      return {
-        MicrophoneOffsetMs: next.microphoneOffsetMs,
-        MicrophoneVolumeDb: next.microphoneVolumeDb,
-      };
+      return { MicrophoneOffsetMs: next.microphoneOffsetMs };
     },
     startMicrophoneCalibration: async () =>
       toLegacyStatus(await (await apiPromise).calibration.start()),
@@ -120,8 +104,6 @@ export function useCalibrationGatewayAdapter() {
       toLegacyStatus(await (await apiPromise).calibration.stopPreview(operationId)),
     setMicrophoneCalibrationOffset: async (operationId, offsetMs) =>
       toLegacyStatus(await (await apiPromise).calibration.setOffset(operationId, offsetMs)),
-    setMicrophoneCalibrationVolume: async (operationId, volumeDb) =>
-      toLegacyStatus(await (await apiPromise).calibration.setVolume(operationId, volumeDb)),
     closeMicrophoneCalibration: async (operationId) =>
       toLegacyStatus(await (await apiPromise).calibration.close(operationId)),
   };
@@ -138,6 +120,5 @@ function toLegacyStatus(next: CalibrationStatus) {
     PlaybackPositionMs: next.playbackPositionMs,
     ResultRevision: next.resultRevision,
     MicrophoneOffsetMs: next.microphoneOffsetMs,
-    MicrophoneVolumeDb: next.microphoneVolumeDb,
   };
 }

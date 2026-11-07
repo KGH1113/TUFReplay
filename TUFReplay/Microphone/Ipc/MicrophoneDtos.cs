@@ -31,7 +31,6 @@ public sealed class MicrophoneDevicesResponseDto
   public bool DefaultDeviceBluetooth;
   public string SelectedDeviceId;
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
 
   public static MicrophoneDevicesResponseDto From(MicrophoneDevicesState state)
   {
@@ -46,7 +45,6 @@ public sealed class MicrophoneDevicesResponseDto
       DefaultDeviceBluetooth = state.DefaultDeviceBluetooth,
       SelectedDeviceId = state.SelectedDeviceId,
       MicrophoneOffsetMs = state.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = state.MicrophoneVolumeDb,
     };
   }
 }
@@ -54,12 +52,7 @@ public sealed class MicrophoneDevicesResponseDto
 public sealed class MicrophoneTimingSettingsDto
 {
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
 
   public static MicrophoneTimingSettingsDto From(MicrophoneTimingSettingsState state) =>
-    new MicrophoneTimingSettingsDto
-    {
-      MicrophoneOffsetMs = state.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = state.MicrophoneVolumeDb,
-    };
+    new MicrophoneTimingSettingsDto { MicrophoneOffsetMs = state.MicrophoneOffsetMs };
 }

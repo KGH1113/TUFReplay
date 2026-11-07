@@ -80,7 +80,7 @@ public sealed class MicrophoneCalibrationFeature
       return Error("calibration_assets_missing", "The packaged calibration level, song, or waveform is missing.");
 
     string operationId = Guid.NewGuid().ToString("N");
-    _state.BeginMeasurement(operationId, TUFReplaySettingStore.Current?.MicrophoneVolumeDb ?? 0);
+    _state.BeginMeasurement(operationId);
     if (FeatureRegistry.MicrophoneRecording == null)
       return Error("microphone_unavailable", "The microphone capture feature is unavailable.", operationId);
     if (!FeatureRegistry.MicrophoneRecording.ArmForCalibration(out string error))
@@ -186,15 +186,6 @@ public sealed class MicrophoneCalibrationFeature
       return _state.StaleOperation();
     MicrophoneTimingSettingsState settings = MicrophoneTimingSettingsService.SetOffset(offsetMs);
     _state.SetOffset(settings.MicrophoneOffsetMs);
-    return GetStatus();
-  }
-
-  public MicrophoneCalibrationStatus SetVolume(string operationId, int volumeDb)
-  {
-    if (!_state.IsCurrent(operationId))
-      return _state.StaleOperation();
-    MicrophoneTimingSettingsState settings = MicrophoneTimingSettingsService.SetVolume(volumeDb);
-    _state.SetVolume(settings.MicrophoneVolumeDb);
     return GetStatus();
   }
 

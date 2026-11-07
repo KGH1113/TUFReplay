@@ -12,7 +12,6 @@ public sealed class MicrophoneCalibrationStatusDto
   public double PlaybackPositionMs;
   public int ResultRevision;
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
 
   public static MicrophoneCalibrationStatusDto From(MicrophoneCalibrationStatus status)
   {
@@ -27,7 +26,6 @@ public sealed class MicrophoneCalibrationStatusDto
       PlaybackPositionMs = status.PlaybackPositionMs,
       ResultRevision = status.ResultRevision,
       MicrophoneOffsetMs = status.MicrophoneOffsetMs,
-      MicrophoneVolumeDb = status.MicrophoneVolumeDb,
     };
   }
 }

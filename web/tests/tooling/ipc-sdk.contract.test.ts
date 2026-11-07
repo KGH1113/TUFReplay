@@ -36,7 +36,7 @@ afterEach(() => {
 describe("published IPC SDK build contract", () => {
   test("the installed package verifies without contacting npm or another checkout", () => {
     expect(snapshot().verify()).toMatchObject({
-      version: "2.1.0",
+      version: "2.2.0",
       protocolVersion: 3,
       sourceDirty: false,
     });

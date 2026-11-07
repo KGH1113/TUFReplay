@@ -1,4 +1,23 @@
-import type { DownloadsApi, DownloadsState } from "@/api/downloads/downloads-api";
+import type { DownloadsApi, DownloadsState, InstallState } from "@/api/downloads/downloads-api";
+
+/** `?mock=1&mockRenderer=missing|restart|outdated|failed` starts OrbitRender in that state. */
+const rendererScenarios: Record<string, Partial<InstallState>> = {
+  missing: { Status: "missing", Version: null },
+  restart: { Status: "restart-required" },
+  outdated: { Status: "ready", Version: "2.5.0" },
+  failed: {
+    Status: "failed",
+    Version: null,
+    ErrorCode: "renderer_release_unavailable",
+    Error: "GitHub returned 404 for the latest OrbitRender release.",
+  },
+};
+
+function rendererScenario(): Partial<InstallState> {
+  if (typeof window === "undefined") return {};
+  const name = new URLSearchParams(window.location.search).get("mockRenderer");
+  return (name && rendererScenarios[name]) || {};
+}
 
 export function createDownloadsApiMock(
   changed: (state: DownloadsState) => void = () => {},
@@ -6,14 +25,15 @@ export function createDownloadsApiMock(
   const state: DownloadsState = {
     Renderer: {
       Status: "ready",
-      Version: "0.1.0-beta.1",
-      InstallationDirectory: "Mods/TUFReplay-Renderer",
+      Version: "2.6.2",
+      InstallationDirectory: "Mods/OrbitRender",
       DownloadedBytes: 0,
       TotalBytes: null,
+      ...rendererScenario(),
     },
     Ffmpeg: {
       Status: "missing",
-      InstallationDirectory: "Mods/TUFReplay/FFmpeg/windows-x64",
+      InstallationDirectory: "ffmpeg/windows-x64",
       DownloadedBytes: 0,
       TotalBytes: null,
     },
@@ -41,6 +61,7 @@ export function createDownloadsApiMock(
           if (target.DownloadedBytes >= (target.TotalBytes ?? 0)) {
             clearInterval(tick);
             target.Status = item === "renderer" ? "restart-required" : "ready";
+            if (item === "renderer") target.Version = "2.6.2";
           }
           changed(snapshot());
         }, 500);

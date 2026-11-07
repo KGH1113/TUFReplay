@@ -122,6 +122,7 @@ internal sealed class MicrophoneCalibrationPreview
         DeviceId = source.DeviceId,
         CaptureStartOffsetUs = source.CaptureStartOffsetUs,
         ByteLength = new FileInfo(copyPath).Length,
+        Timeline = source.Timeline,
       };
       Pcm16WaveInfo wave = Pcm16WaveFile.ReadAndValidate(stored);
       UnityMainThread.Post(() => StartPrepared(operationId, levelPath, stored, wave));
@@ -163,8 +164,7 @@ internal sealed class MicrophoneCalibrationPreview
       levelPath,
       recording,
       wave,
-      calibrationStatus.MicrophoneOffsetMs,
-      calibrationStatus.MicrophoneVolumeDb
+      calibrationStatus.MicrophoneOffsetMs
     );
     if (replayStatus.State == ReplayPlaybackStates.Error)
     {

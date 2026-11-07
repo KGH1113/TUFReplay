@@ -17,7 +17,6 @@ export function mapCalibrationStatus(dto: CalibrationStatusDto) {
     playbackPositionMs: dto.PlaybackPositionMs,
     resultRevision: dto.ResultRevision,
     microphoneOffsetMs: dto.MicrophoneOffsetMs,
-    microphoneVolumeDb: dto.MicrophoneVolumeDb,
   };
 }
 

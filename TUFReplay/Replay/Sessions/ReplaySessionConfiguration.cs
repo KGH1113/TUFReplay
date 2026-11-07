@@ -84,8 +84,8 @@ public static partial class ReplaySessionService
     player.UpdateLatency(latencyMs, CreatePlaybackSnapshot(replayTimeUs));
   }
 
-  public static void UpdateActiveMicrophoneVolume(int volumeDb) =>
-    _activeContext?.MicrophonePlayer?.UpdateVolume(volumeDb);
+  public static void UpdateActiveMicrophoneVolume(MicrophoneVolume volume) =>
+    _activeContext?.MicrophonePlayer?.UpdateVolume(volume);
 
   public static void ApplyReplayGameInputOffsetNow()
   {

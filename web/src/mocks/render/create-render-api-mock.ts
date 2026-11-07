@@ -16,8 +16,6 @@ export function createRenderApiMock(
   let currentJob: RenderJob | null = null;
   let renderStep = 0;
   let renderTimer: ReturnType<typeof setInterval> | undefined;
-  let exportCancelled = false;
-  let pickerCancelled = false;
   const settings = (): RenderSettings => ({
     defaults: { ...defaults },
     preferences: { ...preferences },
@@ -48,23 +46,15 @@ export function createRenderApiMock(
       ],
     },
   });
-  const bundle = (runId = "mock-run") => ({
-    jobId: "mock-export",
-    runId,
-    state: exportCancelled ? ("cancelled" as const) : ("completed" as const),
-    progress: 1,
-    manifestPath: exportCancelled ? null : "/mock/manifest.json",
-    errorCode: null,
-    errorMessage: null,
-    errorDetails: null,
-  });
   return {
     async getHealth() {
       return {
         available: true,
         version: "mock",
         schemaVersion: 1,
-        busy: Boolean(currentJob && !["completed", "cancelled"].includes(currentJob.state)),
+        busy: Boolean(
+          currentJob && !["completed", "failed", "cancelled"].includes(currentJob.state),
+        ),
         dmNoteConfigured: true,
         orbitAvailable: true,
       };
@@ -80,48 +70,27 @@ export function createRenderApiMock(
       return state;
     },
     async chooseOutputDirectory() {
-      pickerCancelled = false;
-      setTimeout(
-        () =>
-          emit("renderer.folder.changed", {
-            selectionId: "mock-folder",
-            pending: false,
-            outputDirectory: pickerCancelled ? null : "/Users/example/Videos/TUFReplay",
-          }),
-        10,
-      );
-      return { selectionId: "mock-folder", pending: true, outputDirectory: null };
+      return {
+        selectionId: "mock-folder",
+        pending: false,
+        outputDirectory: "/Users/example/Videos/TUFReplay",
+      };
     },
     async cancelOutputDirectorySelection() {
-      pickerCancelled = true;
       return { cancelled: true };
     },
     async openOutputDirectory() {
       return { opened: true };
     },
-    async exportBundle(runId) {
-      exportCancelled = false;
-      setTimeout(() => emit("render-bundle.changed", bundle(runId)), 10);
-      return { ...bundle(runId), state: "preparing", progress: 0, manifestPath: null };
-    },
-    async getExportStatus() {
-      return bundle();
-    },
-    async cancelExport() {
-      exportCancelled = true;
-      const state = bundle();
-      emit("render-bundle.changed", state);
-      return state;
-    },
-    async start(_manifestPath: string, options: RenderOptions) {
+    async startRender(_runId: string, options: RenderOptions) {
       renderStep = 0;
       const extension =
         options.videoCodec === "ProRes" ? ".mov" : options.videoCodec === "VP9" ? ".webm" : ".mp4";
       currentJob = {
         jobId: "mock-render",
-        state: "preparing",
+        state: "exporting",
+        stage: "exporting_recording",
         waitingForGameFocus: false,
-        waitingForFfmpeg: false,
         progress: 0,
         warnings: [],
         errorCode: null,
@@ -144,24 +113,97 @@ export function createRenderApiMock(
           renderStep >= 4 ? "completed" : renderStep >= 3 ? "compositing" : "rendering";
         currentJob.progress = Math.min(1, renderStep / 4);
         currentJob.canOpenOutput = currentJob.state === "completed";
-        emit("renderer.job.changed", { ...currentJob });
+        emit("render-state.changed", { ...currentJob });
         if (currentJob.state === "completed") clearInterval(renderTimer);
       }, 250);
       return { ...currentJob };
     },
-    async getStatus() {
-      if (!currentJob) throw new Error("Start a mock render first.");
-      return { ...currentJob };
+    async openRenderFile() {
+      return true;
     },
-    async cancel() {
+    async revealRenderFile() {
+      return true;
+    },
+    async readRenderVideo() {
+      // A 4K ProRes render is a QuickTime file of about 10 GB, which most browsers cannot play.
+      if (currentJob?.outputFile?.endsWith(".mov"))
+        return {
+          name: "TUFReplay-mock.mov",
+          type: "video/quicktime",
+          size: 9_951_246_926,
+          stream: () => {
+            throw new Error("The mock ProRes video has no content.");
+          },
+        };
+      const video = await sampleVideo();
+      return {
+        name: "TUFReplay-mock.webm",
+        type: video.type,
+        size: video.size,
+        stream: () => video.stream(),
+        // Stands in for the game's streaming URL.
+        async open() {
+          const url = URL.createObjectURL(video);
+          return { url, close: async () => URL.revokeObjectURL(url) };
+        },
+      };
+    },
+    async readRenderState() {
+      return currentJob ? { ...currentJob } : null;
+    },
+    async cancelRender() {
       if (!currentJob) throw new Error("Start a mock render first.");
       currentJob.state = "cancelled";
       clearInterval(renderTimer);
-      emit("renderer.job.changed", { ...currentJob });
+      emit("render-state.changed", { ...currentJob });
       return { ...currentJob };
     },
     async prepareDownload() {
       return "http://127.0.0.1:32145/ipc/download/mock-render";
     },
   };
+}
+
+/**
+ * A two-second clip drawn in the browser, so the finished-video preview can be
+ * reviewed without a game. Falls back to an error where recording is unsupported.
+ */
+async function sampleVideo(): Promise<Blob> {
+  if (typeof MediaRecorder === "undefined") throw new Error("No video recorder in this browser.");
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("No canvas in this browser.");
+  const recorder = new MediaRecorder(canvas.captureStream(30), { mimeType: "video/webm" });
+  const chunks: Blob[] = [];
+  recorder.ondataavailable = (event) => chunks.push(event.data);
+  const stopped = new Promise<void>((resolve) => {
+    recorder.onstop = () => resolve();
+  });
+  const start = performance.now();
+  recorder.start();
+  await new Promise<void>((resolve) => {
+    const draw = (now: number) => {
+      const t = (now - start) / 1000;
+      context.fillStyle = "#101010";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.fillStyle = "#b8f03c";
+      context.beginPath();
+      context.arc(
+        320 + Math.cos(t * Math.PI * 2) * 120,
+        180 + Math.sin(t * Math.PI * 2) * 120,
+        18,
+        0,
+        Math.PI * 2,
+      );
+      context.fill();
+      if (t < 2) requestAnimationFrame(draw);
+      else resolve();
+    };
+    requestAnimationFrame(draw);
+  });
+  recorder.stop();
+  await stopped;
+  return new Blob(chunks, { type: "video/webm" });
 }

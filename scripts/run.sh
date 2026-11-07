@@ -12,6 +12,8 @@ Usage: ./scripts/run.sh <command>
 Commands:
   build       Build, test, and install the mod
   mod-check   Build and test the mod without installing it
+  renderer-test Test the installer against the latest OrbitRender release
+  ffmpeg-mono-test Verify the built FFmpeg installer lock in standalone Mono
   mod-format  Format changed C# files (use 'mod-format check' to verify)
   camera-copy-bench  Compare camera frame copy paths in standalone Mono
   package     Build the release package and metadata
@@ -41,6 +43,12 @@ case "$command_name" in
     ;;
   mod-check)
     exec "$SCRIPTS_DIR/workflows/build-install.sh" --no-install
+    ;;
+  renderer-test)
+    exec bash "$SCRIPTS_DIR/tasks/test/renderer.sh"
+    ;;
+  ffmpeg-mono-test)
+    exec bash "$SCRIPTS_DIR/tasks/test/ffmpeg-mono.sh"
     ;;
   mod-format)
     shift

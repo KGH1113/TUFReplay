@@ -143,8 +143,7 @@ public static partial class ReplayPlaybackCoordinator
     string levelPath,
     StoredMicrophoneRecording microphoneRecording,
     Pcm16WaveInfo microphoneWave,
-    int microphoneOffsetMs,
-    int microphoneVolumeDb
+    int microphoneOffsetMs
   )
   {
     lock (CommandGate)
@@ -179,7 +178,6 @@ public static partial class ReplayPlaybackCoordinator
           MicrophoneRecording = microphoneRecording,
           MicrophoneWave = microphoneWave,
           MicrophoneOffsetMs = microphoneOffsetMs,
-          MicrophoneVolumeDb = microphoneVolumeDb,
         };
         CancelPendingPreparation();
         CancelCurrentReplayForReplacement(operationId);

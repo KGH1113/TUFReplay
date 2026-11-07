@@ -8,5 +8,4 @@ export interface MicrophoneApi {
   setEnabled(enabled: boolean): Promise<MicrophoneDevicesState>;
   selectDevice(deviceId: string | null): Promise<MicrophoneDevicesState>;
   setOffset(offsetMs: number): Promise<MicrophoneTimingSettings>;
-  setVolume(volumeDb: number): Promise<MicrophoneTimingSettings>;
 }

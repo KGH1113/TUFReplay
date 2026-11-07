@@ -62,4 +62,11 @@ describe("diagnostic error messages", () => {
       "The connection send buffer is full.",
     );
   });
+
+  test("says a wrapped error's sentence only once", () => {
+    const sentence = "The mod and app were generated from different connection contracts.";
+    expect(diagnosticErrorMessage(new Error(sentence, { cause: new Error(sentence) }))).toBe(
+      sentence,
+    );
+  });
 });

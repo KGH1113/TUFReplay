@@ -20,12 +20,8 @@ export const MicrophoneControls = memo(function MicrophoneControls({
     connectionStatus,
     mockEnabled,
     microphones.microphoneOffsetMs,
-    microphones.microphoneVolumeDb,
     (settings) =>
-      microphones.applyTimingSettings({
-        microphoneOffsetMs: settings.MicrophoneOffsetMs,
-        microphoneVolumeDb: settings.MicrophoneVolumeDb,
-      }),
+      microphones.applyTimingSettings({ microphoneOffsetMs: settings.MicrophoneOffsetMs }),
   );
 
   return (
@@ -52,7 +48,6 @@ export const MicrophoneControls = memo(function MicrophoneControls({
         data={microphoneOffset.data}
         phase={microphoneOffset.phase}
         offsetMs={microphoneOffset.offsetMs}
-        microphoneVolumeDb={microphoneOffset.microphoneVolumeDb}
         playing={microphoneOffset.playing}
         playbackPositionMs={microphoneOffset.playbackPositionMs}
         getPlaybackPositionMs={microphoneOffset.getPlaybackPositionMs}
@@ -60,7 +55,6 @@ export const MicrophoneControls = memo(function MicrophoneControls({
         onClose={microphoneOffset.close}
         onStartCalibration={() => void microphoneOffset.start()}
         onCommitOffset={microphoneOffset.commitOffset}
-        onCommitMicrophoneVolume={microphoneOffset.commitMicrophoneVolume}
         onResetOffset={microphoneOffset.resetOffset}
         onTogglePlayback={() => void microphoneOffset.togglePlayback()}
       />

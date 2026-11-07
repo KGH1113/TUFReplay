@@ -25,17 +25,11 @@ import {
   zoomCalibrationTimelineVisibleMs,
 } from "@/models/calibration/microphone-offset";
 import type { MicrophoneOffsetCalibrationData } from "@/models/calibration/microphone-offset-calibration-data";
-import {
-  formatMicrophoneVolumeDb,
-  MAX_MICROPHONE_VOLUME_DB,
-  MIN_MICROPHONE_VOLUME_DB,
-} from "@/models/calibration/microphone-volume";
 import { Button } from "@/shared/ui/button";
 import { DialogTitle } from "@/shared/ui/dialog";
 export function OffsetEditor({
   data,
   offsetMs,
-  microphoneVolumeDb,
   draftOffsetMs,
   dragging,
   playing,
@@ -45,14 +39,12 @@ export function OffsetEditor({
   onDraftOffset,
   onDraggingChange,
   onCommitOffset,
-  onCommitMicrophoneVolume,
   onResetOffset,
   onTogglePlayback,
   onClose,
 }: {
   data: MicrophoneOffsetCalibrationData;
   offsetMs: number;
-  microphoneVolumeDb: number;
   draftOffsetMs: number;
   dragging: boolean;
   playing: boolean;
@@ -62,7 +54,6 @@ export function OffsetEditor({
   onDraftOffset: (offsetMs: number) => void;
   onDraggingChange: (dragging: boolean) => void;
   onCommitOffset: (offsetMs: number) => void;
-  onCommitMicrophoneVolume: (volumeDb: number) => void;
   onResetOffset: () => void;
   onTogglePlayback: () => void;
   onClose: () => void;
@@ -286,10 +277,6 @@ export function OffsetEditor({
                 ? t("calibration.replayTest")
                 : t("calibration.playTest")}
           </Button>
-          <MicrophoneVolumeControl
-            volumeDb={microphoneVolumeDb}
-            onChange={onCommitMicrophoneVolume}
-          />
         </div>
         <Button
           type="button"
@@ -300,49 +287,5 @@ export function OffsetEditor({
         </Button>
       </footer>
     </section>
-  );
-}
-
-export function MicrophoneVolumeControl({
-  volumeDb,
-  onChange,
-}: {
-  volumeDb: number;
-  onChange: (volumeDb: number) => void;
-}) {
-  const { t } = useTranslation("microphone");
-  return (
-    <div className="flex min-w-0 flex-1 items-center gap-2.5 sm:min-w-64 sm:flex-none">
-      <HugeiconsIcon
-        aria-hidden="true"
-        icon={Mic02Icon}
-        size={15}
-        strokeWidth={2}
-        className="shrink-0 text-muted-foreground"
-      />
-      <label
-        htmlFor="microphone-preview-volume"
-        className="shrink-0 text-xs font-medium text-muted-foreground"
-      >
-        {t("calibration.micGain")}
-      </label>
-      <input
-        id="microphone-preview-volume"
-        type="range"
-        min={MIN_MICROPHONE_VOLUME_DB}
-        max={MAX_MICROPHONE_VOLUME_DB}
-        step={1}
-        value={volumeDb}
-        aria-valuetext={formatMicrophoneVolumeDb(volumeDb)}
-        onChange={(event) => onChange(event.currentTarget.valueAsNumber)}
-        className="h-1.5 min-w-20 flex-1 cursor-pointer appearance-none rounded-full bg-muted accent-primary outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background sm:w-28 sm:flex-none"
-      />
-      <output
-        htmlFor="microphone-preview-volume"
-        className="w-14 shrink-0 text-right text-xs font-semibold tabular-nums"
-      >
-        {formatMicrophoneVolumeDb(volumeDb)}
-      </output>
-    </div>
   );
 }

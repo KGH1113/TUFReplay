@@ -8,6 +8,7 @@ using Newtonsoft.Json;
 using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Playback;
 using TUFReplay.Microphone.Processing;
+using TUFReplay.ModApi.Models;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
@@ -48,10 +49,10 @@ public static partial class ReplayPlaybackCoordinator
     public Pcm16WaveInfo MicrophoneWave;
     public string MicrophoneWarning;
     public int? MicrophoneOffsetMs;
-    public int? MicrophoneVolumeDb;
     public bool AllowBackground;
     public WebcamRecordingLease WebcamLease;
     public string WebcamWarning;
+    public IReadOnlyList<StoredRunState> RunStates = Array.Empty<StoredRunState>();
 
     public PendingReplay(
       string operationId,

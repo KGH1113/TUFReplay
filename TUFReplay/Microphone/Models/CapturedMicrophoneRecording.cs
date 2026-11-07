@@ -12,4 +12,5 @@ public sealed class CapturedMicrophoneRecording
   // Runtime-only timestamp of the first WAV sample, in the native input Stopwatch clock.
   public long CaptureStartTimestampTicks;
   public long CaptureStartOffsetUs;
+  public MicrophoneTimeline Timeline;
 }

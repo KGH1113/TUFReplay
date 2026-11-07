@@ -3,7 +3,6 @@ import type { CalibrationStatus } from "@/models/calibration/calibration-model";
 import type { MicrophoneDevicesState } from "@/models/microphone/microphone-model";
 import type {
   OutputDirectorySelection,
-  RenderExportStatus,
   RenderHealth,
   RenderJob,
   RenderSettings,
@@ -16,7 +15,7 @@ export interface AppEventMap {
   "recorder.status.changed": NamespaceStatus;
   "renderer.status.changed": NamespaceStatus;
   "downloads.changed": DownloadsState;
-  "render-bundle.changed": RenderExportStatus;
+  "render-state.changed": RenderJob;
   "renderer.job.changed": RenderJob;
   "renderer.settings.changed": RenderSettings;
   "renderer.folder.changed": OutputDirectorySelection;

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using Microsoft.Data.Sqlite;
+using Newtonsoft.Json;
 using TUFReplay.Activity.Models;
 using TUFReplay.Microphone.Models;
 using AudioDatabase = TUFReplay.Shared.Database.MicrophoneDatabase;
@@ -105,8 +106,9 @@ public static class MicrophoneRecordingRepository
       command.Transaction = transaction;
       command.CommandText =
         @"INSERT OR REPLACE INTO microphone_recordings(
-run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,is_permanent,expires_at_utc
-) VALUES(@run,zeroblob(@length),'wav/pcm16',@rate,@channels,@frames,@device,@offset,0,@expires);
+run_id,audio_wav,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,timeline_json,is_permanent,
+expires_at_utc
+) VALUES(@run,zeroblob(@length),'wav/pcm16',@rate,@channels,@frames,@device,@offset,@timeline,0,@expires);
 SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
       command.Parameters.AddWithValue("@run", recording.RunId);
       command.Parameters.AddWithValue("@length", length);
@@ -115,6 +117,7 @@ SELECT rowid FROM microphone_recordings WHERE run_id=@run;";
       command.Parameters.AddWithValue("@frames", recording.FrameCount);
       command.Parameters.AddWithValue("@device", (object)recording.DeviceId ?? DBNull.Value);
       command.Parameters.AddWithValue("@offset", recording.CaptureStartOffsetUs);
+      command.Parameters.AddWithValue("@timeline", (object)SerializeTimeline(recording.Timeline) ?? DBNull.Value);
       command.Parameters.AddWithValue("@expires", expiresAtUtc);
       rowId = Convert.ToInt64(command.ExecuteScalar());
     }
@@ -283,7 +286,8 @@ WHERE NOT EXISTS(SELECT 1 FROM activity.runs WHERE activity.runs.id=microphone_r
     using (SqliteCommand command = connection.CreateCommand())
     {
       command.CommandText =
-        @"SELECT rowid,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,length(audio_wav)
+        @"SELECT rowid,format,sample_rate,channels,frame_count,device_id,capture_start_offset_us,length(audio_wav),
+timeline_json
 FROM microphone_recordings
 WHERE run_id=@run
 LIMIT 1";
@@ -304,6 +308,7 @@ LIMIT 1";
         DeviceId = reader.IsDBNull(5) ? null : reader.GetString(5),
         CaptureStartOffsetUs = reader.GetInt64(6),
         ByteLength = reader.GetInt64(7),
+        Timeline = DeserializeTimeline(reader, 8),
       };
     }
 
@@ -363,7 +368,7 @@ LIMIT 1";
     using (SqliteCommand command = connection.CreateCommand())
     {
       command.CommandText =
-        @"SELECT rowid,format,sample_rate,channels,frame_count,capture_start_offset_us,length(audio_wav)
+        @"SELECT rowid,format,sample_rate,channels,frame_count,capture_start_offset_us,length(audio_wav),timeline_json
 FROM microphone_recordings
 WHERE run_id=@run
 LIMIT 1";
@@ -382,6 +387,7 @@ LIMIT 1";
         FrameCount = reader.GetInt64(4),
         CaptureStartOffsetUs = reader.GetInt64(5),
         ByteLength = reader.GetInt64(6),
+        Timeline = DeserializeTimeline(reader, 7),
       };
     }
 
@@ -405,6 +411,26 @@ LIMIT 1";
     if (written != recording.ByteLength)
       throw new InvalidDataException("The copied microphone BLOB length is invalid.");
     return recording;
+  }
+
+  private static string SerializeTimeline(MicrophoneTimeline timeline) =>
+    timeline?.Points == null || timeline.Points.Length == 0 ? null : JsonConvert.SerializeObject(timeline);
+
+  // Recordings saved before the timeline column, or by an older build, keep
+  // their single capture offset.
+  private static MicrophoneTimeline DeserializeTimeline(SqliteDataReader reader, int ordinal)
+  {
+    if (reader.IsDBNull(ordinal))
+      return null;
+    try
+    {
+      MicrophoneTimeline timeline = JsonConvert.DeserializeObject<MicrophoneTimeline>(reader.GetString(ordinal));
+      return timeline?.Points != null && timeline.Points.Length > 0 ? timeline : null;
+    }
+    catch (JsonException)
+    {
+      return null;
+    }
   }
 
   private static void DeleteIfExists(string path)

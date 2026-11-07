@@ -9,7 +9,6 @@ namespace TUFReplay.Microphone.Timing;
 public sealed class MicrophoneTimingSettingsState
 {
   public int MicrophoneOffsetMs;
-  public int MicrophoneVolumeDb;
 }
 
 public static class MicrophoneTimingSettingsService
@@ -17,11 +16,7 @@ public static class MicrophoneTimingSettingsService
   public static MicrophoneTimingSettingsState GetState()
   {
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
-    return new MicrophoneTimingSettingsState
-    {
-      MicrophoneOffsetMs = settings?.MicrophoneOffsetMs ?? 0,
-      MicrophoneVolumeDb = settings?.MicrophoneVolumeDb ?? 0,
-    };
+    return new MicrophoneTimingSettingsState { MicrophoneOffsetMs = settings?.MicrophoneOffsetMs ?? 0 };
   }
 
   public static bool TrySetOffset(
@@ -39,21 +34,6 @@ public static class MicrophoneTimingSettingsService
     return true;
   }
 
-  public static bool TrySetVolume(
-    int volumeDb,
-    out MicrophoneTimingSettingsState state,
-    out string errorCode,
-    out string errorMessage
-  )
-  {
-    if (MicrophoneDeviceService.IsToggleLocked())
-      return Locked(out state, out errorCode, out errorMessage);
-    state = SetVolume(volumeDb);
-    errorCode = null;
-    errorMessage = null;
-    return true;
-  }
-
   public static MicrophoneTimingSettingsState SetOffset(int offsetMs)
   {
     TUFReplaySetting settings = TUFReplaySettingStore.Current;
@@ -65,20 +45,6 @@ public static class MicrophoneTimingSettingsService
     );
     TUFReplaySettingStore.Save();
     ReplaySessionService.UpdateActiveMicrophoneLatency(settings.MicrophoneOffsetMs);
-    return GetState();
-  }
-
-  public static MicrophoneTimingSettingsState SetVolume(int volumeDb)
-  {
-    TUFReplaySetting settings = TUFReplaySettingStore.Current;
-    if (settings == null)
-      return GetState();
-    settings.MicrophoneVolumeDb = Math.Max(
-      TUFReplaySetting.MinMicrophoneVolumeDb,
-      Math.Min(TUFReplaySetting.MaxMicrophoneVolumeDb, volumeDb)
-    );
-    TUFReplaySettingStore.Save();
-    ReplaySessionService.UpdateActiveMicrophoneVolume(settings.MicrophoneVolumeDb);
     return GetState();
   }
 

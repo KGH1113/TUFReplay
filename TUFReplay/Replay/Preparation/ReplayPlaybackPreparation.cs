@@ -13,6 +13,9 @@ using TUFReplay.Microphone.Models;
 using TUFReplay.Microphone.Playback;
 using TUFReplay.Microphone.Processing;
 using TUFReplay.Microphone.Repositories;
+using TUFReplay.ModApi.Playback;
+using TUFReplay.ModApi.Repositories;
+using TUFReplay.Replay.Compatibility;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
@@ -32,6 +35,7 @@ public static partial class ReplayPlaybackCoordinator
   {
     ThreadPool.QueueUserWorkItem(_ =>
     {
+      LoadRunStates(operation);
       string path = ReplayMicrophonePlaybackFiles.ForOperation(operation.OperationId);
       try
       {
@@ -78,6 +82,19 @@ public static partial class ReplayPlaybackCoordinator
         UnityMainThread.Post(() => BeginOnMainThread(operation));
       }
     });
+  }
+
+  private static void LoadRunStates(PendingReplay operation)
+  {
+    try
+    {
+      operation.RunStates = RunStateRepository.Load(operation.Run.Id);
+    }
+    catch (Exception exception)
+    {
+      // Mods then see the run as one without saved state; the replay itself still plays.
+      Main.Instance?.Log("[Replay/RunState] Saved mod states unavailable. error=" + exception.Message);
+    }
   }
 
   private static void CancelPendingPreparation()
@@ -371,7 +388,7 @@ public static partial class ReplayPlaybackCoordinator
           operation.MicrophoneRecording,
           operation.MicrophoneWave,
           operation.MicrophoneOffsetMs ?? settings?.MicrophoneOffsetMs ?? 0,
-          operation.MicrophoneVolumeDb ?? settings?.MicrophoneVolumeDb ?? 0
+          MicrophoneVolumeService.Current
         );
         operation.TransferMicrophoneOwnership();
       }
@@ -436,7 +453,13 @@ public static partial class ReplayPlaybackCoordinator
       Meta = operation.Meta,
     };
 
+    // Element checks its rule when editor.Play() below starts the level.
+    ElementAttempts.EnsureRegistered();
     ReplaySessionService.InstallActiveContext(context);
+    // Mods restore the state saved with this run before the level starts.
+    context.RunStates = ReplaySessions.Begin(operation.Run.Id, render: null, operation.RunStates);
+    // Mods also get the recorded keys through ReplayApi, beside the OS input the replay sends.
+    context.KeyFeed = new ReplayKeyFeed(operation.Inputs);
     ReplaySessionService.ApplyReplayNoFailNow();
     ReplaySessionService.ApplyReplayGameInputOffsetNow();
     ReplaySessionService.ApplyReplayPitchNow();

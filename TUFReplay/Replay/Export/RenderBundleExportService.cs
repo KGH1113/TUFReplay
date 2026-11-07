@@ -11,6 +11,8 @@ using Newtonsoft.Json.Linq;
 using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Repositories;
 using TUFReplay.Composition;
+using TUFReplay.Microphone.Models;
+using TUFReplay.Microphone.Processing;
 using TUFReplay.Microphone.Repositories;
 using TUFReplay.Replay.Levels;
 using TUFReplay.Replay.Models;
@@ -29,26 +31,10 @@ namespace TUFReplay.Replay.Export;
 // This module owns only neutral files. No renderer assembly is loaded or referenced.
 public static class RenderBundleExportService
 {
-  public static event Action<RenderBundleState> Changed;
-
-  public static RenderBundleState[] Snapshots()
-  {
-    lock (Gate)
-      return Jobs.Values.Select(StatusLocked).ToArray();
-  }
-
-  private static void Notify(Job job)
-  {
-    RenderBundleState state;
-    lock (Gate)
-      state = StatusLocked(job);
-    Changed?.Invoke(state);
-  }
-
   private static readonly object Gate = new object();
   private static readonly Dictionary<string, Job> Jobs = new Dictionary<string, Job>();
 
-  public static RenderBundleState Start(string runId, string levelPath, bool webcam, bool microphone)
+  public static RenderBundleStatus Start(string runId, string levelPath, bool webcam, bool microphone)
   {
     lock (Gate)
     {
@@ -65,7 +51,8 @@ public static class RenderBundleExportService
         LevelPath = levelPath,
         Settings = settings,
         IncludeWebcam = webcam,
-        IncludeMicrophone = microphone,
+        // An Off microphone volume in ADOFAI's settings leaves it out of renders too.
+        IncludeMicrophone = microphone && !settings.MicrophoneVolumeOff,
         ScreenWidth = Math.Max(1, Screen.width),
         ScreenHeight = Math.Max(1, Screen.height),
       };
@@ -76,7 +63,7 @@ public static class RenderBundleExportService
     }
   }
 
-  public static RenderBundleState GetStatus(string jobId)
+  public static RenderBundleStatus GetStatus(string jobId)
   {
     lock (Gate)
       return Jobs.TryGetValue(jobId, out Job job)
@@ -84,7 +71,7 @@ public static class RenderBundleExportService
         : throw Error("render_export_not_found", "This preparation job has expired. Start rendering again.");
   }
 
-  public static RenderBundleState Cancel(string jobId)
+  public static RenderBundleStatus Cancel(string jobId)
   {
     lock (Gate)
     {
@@ -94,6 +81,52 @@ public static class RenderBundleExportService
         job.Cancellation.Cancel();
       return StatusLocked(job);
     }
+  }
+
+  // The render pipeline owns the bundle until the render reaches a terminal
+  // state. Deleting here keeps webcam copies and CSVs from accumulating.
+  public static void Discard(string jobId)
+  {
+    if (string.IsNullOrEmpty(jobId))
+      return;
+    Job job;
+    lock (Gate)
+    {
+      if (!Jobs.TryGetValue(jobId, out job))
+        return;
+      Jobs.Remove(jobId);
+    }
+    job.Cancellation.Cancel();
+    string directory = job.Directory;
+    Task.Run(() => DeleteDirectory(directory));
+  }
+
+  // Bundles from a previous process cannot be resumed, so drop them at startup.
+  public static void SweepOrphans()
+  {
+    if (Main.Instance == null)
+      return;
+    string root;
+    try
+    {
+      root = Path.Combine(Main.Instance.Path, "RenderBundles");
+    }
+    catch (Exception)
+    {
+      return;
+    }
+    if (!Directory.Exists(root))
+      return;
+    Task.Run(() =>
+    {
+      try
+      {
+        foreach (string directory in Directory.EnumerateDirectories(root))
+          DeleteDirectory(directory);
+      }
+      catch (IOException) { }
+      catch (UnauthorizedAccessException) { }
+    });
   }
 
   public static void Shutdown()
@@ -267,9 +300,10 @@ public static class RenderBundleExportService
       {
         var microphone = MicrophoneRecordingRepository.CopyForPlayback(
           run.Id,
-          Path.Combine(job.Directory, "microphone.wav"),
+          Path.Combine(job.Directory, "microphone.source.wav"),
           token
         );
+        long microphoneFrames = microphone == null ? 0L : PrepareRenderMicrophone(microphone, job.Directory, token);
         if (microphone != null)
           media["microphone"] = JObject.FromObject(
             new
@@ -277,9 +311,11 @@ public static class RenderBundleExportService
               path = "microphone.wav",
               sampleRate = microphone.SampleRate,
               channels = microphone.Channels,
-              frameCount = microphone.FrameCount,
+              frameCount = microphoneFrames,
               captureStartOffsetUs = microphone.CaptureStartOffsetUs,
-              latencyUs = (long)job.Settings.MicrophoneOffsetMs * 1000,
+              // OrbitRender mixes the song from the recorded DSP clock, which runs
+              // the game input offset ahead of the judged timeline, as in game.
+              latencyUs = ((long)job.Settings.MicrophoneOffsetMs + (meta.gameInputOffsetMs ?? 0)) * 1000,
               volume = Math.Pow(10, job.Settings.MicrophoneVolumeDb / 20d),
             }
           );
@@ -366,10 +402,6 @@ public static class RenderBundleExportService
           : "The recording could not be prepared. Check the level file and available disk space, then try again.";
       }
     }
-    finally
-    {
-      Notify(job);
-    }
   }
 
   private static async Task ValidateLevel(Job job, StoredReplayRun run, string target, CancellationToken token)
@@ -430,11 +462,10 @@ public static class RenderBundleExportService
   {
     lock (Gate)
       job.Progress = progress;
-    Notify(job);
   }
 
-  private static RenderBundleState StatusLocked(Job job) =>
-    new RenderBundleState
+  private static RenderBundleStatus StatusLocked(Job job) =>
+    new RenderBundleStatus
     {
       JobId = job.Id,
       RunId = job.RunId,
@@ -507,4 +538,41 @@ public static class RenderBundleExportService
     public ExportException(string code, string message)
       : base(code, message) { }
   }
+
+  // OrbitRender places the microphone with one capture offset. Cut audio recorded
+  // during pauses and silence a frozen-start wait first, so that offset holds.
+  private static long PrepareRenderMicrophone(
+    StoredMicrophoneRecording microphone,
+    string directory,
+    CancellationToken token
+  )
+  {
+    string source = microphone.FilePath;
+    string destination = Path.Combine(directory, "microphone.wav");
+    if (!MicrophoneTimelineTrack.NeedsRewrite(microphone))
+    {
+      File.Move(source, destination);
+      return microphone.FrameCount;
+    }
+    try
+    {
+      return MicrophoneTimelineTrack.Rewrite(microphone, destination, token);
+    }
+    finally
+    {
+      File.Delete(source);
+    }
+  }
+}
+
+public sealed class RenderBundleStatus
+{
+  public string JobId { get; set; }
+  public string RunId { get; set; }
+  public string State { get; set; }
+  public double Progress { get; set; }
+  public string ManifestPath { get; set; }
+  public string ErrorCode { get; set; }
+  public string ErrorMessage { get; set; }
+  public RenderErrorDetails ErrorDetails { get; set; }
 }

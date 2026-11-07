@@ -5,6 +5,7 @@ using TUFReplay.Composition;
 using TUFReplay.Microphone.Permissions;
 using TUFReplay.Microphone.Recording;
 using TUFReplay.Recording.Sessions;
+using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Media;
@@ -53,6 +54,7 @@ public static class FeatureRegistry
       Recording.Enable();
       Replay.Enable();
       MicrophonePermissionWarningCoordinator.Initialize();
+      RenderJobCoordinator.Initialize();
       Ipc.Enable();
     }
     catch
@@ -67,6 +69,7 @@ public static class FeatureRegistry
     // Let held background work run instead of waiting for gameplay that has ended.
     GameplayIdleGate.Release();
     GameplayIdleGate.WorkFailed -= LogDeferredWorkFailure;
+    RenderJobCoordinator.Shutdown();
     Ipc?.Disable();
     MicrophonePermissionWarningCoordinator.Shutdown();
     CameraFirstRunCoordinator.Shutdown();

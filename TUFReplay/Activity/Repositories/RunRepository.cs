@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using TUFReplay.Activity.Models;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Repositories;
+using TUFReplay.ModApi.Repositories;
 using TUFReplay.Replay.Models;
 using TUFReplay.Shared.Database;
 using DatabaseStore = TUFReplay.Shared.Database.Database;
@@ -87,6 +88,7 @@ run_id,engine_id,format_version,input_count,hit_context_count,input_csv,hit_cont
       q.Parameters.AddWithValue("@metadata", artifact.MetadataJson ?? "{}");
       q.ExecuteNonQuery();
     }
+    RunStateRepository.Insert(c, transaction, r.Id, r.RunStates);
     transaction.Commit();
   }
 
