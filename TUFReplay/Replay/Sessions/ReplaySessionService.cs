@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ADOFAI;
 using TUFReplay.Activity.Charts;
+using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Models;
 using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
@@ -124,6 +125,7 @@ public static partial class ReplaySessionService
       context.NativeInputPlayer?.Dispose();
       context.MicrophonePlayer?.Dispose();
       context.WebcamPlayer?.Dispose();
+      context.KeyFeed?.ReleaseAll(ReplaySessions.NowTicks);
       context.RunStates?.End();
     }
     RestoreReplayNoFail();
@@ -450,6 +452,9 @@ public static partial class ReplaySessionService
 
     if (!TryComputeReplayTimeUs(out nowUs, out _))
       return false;
+
+    // Before the pause and focus checks: mods show every recorded key, focused or not.
+    _activeContext.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
 
     if (ADOBase.controller.paused)
     {

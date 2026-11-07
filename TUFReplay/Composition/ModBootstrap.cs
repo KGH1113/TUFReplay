@@ -1,4 +1,4 @@
-using TUFReplay.RunState.Providers;
+using TUFReplay.ModApi.Providers;
 using DatabaseStore = TUFReplay.Shared.Database.Database;
 
 namespace TUFReplay.Composition;
@@ -8,7 +8,7 @@ public static class ModBootstrap
   public static void InitializeRuntime()
   {
     DatabaseStore.Initialize();
-    RunStateProviders.OnDatabaseReady();
+    ReplayProviders.OnDatabaseReady();
   }
 
   public static void UpdateRuntime() { }

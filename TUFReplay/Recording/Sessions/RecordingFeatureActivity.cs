@@ -1,9 +1,9 @@
 using System.Collections.Generic;
 using TUFReplay.Activity.Models;
 using TUFReplay.Composition;
+using TUFReplay.ModApi.Models;
+using TUFReplay.ModApi.Recording;
 using TUFReplay.Recording.Activity;
-using TUFReplay.RunState.Models;
-using TUFReplay.RunState.Recording;
 
 namespace TUFReplay.Recording.Sessions;
 

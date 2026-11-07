@@ -17,6 +17,7 @@ public static class OrbitRenderClient
   private static readonly object Gate = new object();
   private static Type _apiType;
   private static MethodInfo _startReplay;
+  private static MethodInfo _startHostedReplay;
   private static MethodInfo _readStatus;
   private static MethodInfo _cancel;
   private static PropertyInfo _isAvailable;
@@ -49,6 +50,30 @@ public static class OrbitRenderClient
   {
     var capability = type?.GetField("OutputDirectoryOptionVersion", BindingFlags.Public | BindingFlags.Static);
     return capability?.GetValue(null) is int version && version >= 1;
+  }
+
+  /// <summary>
+  /// True when the installed OrbitRender renders with TUFReplay as the replay host (RenderApi 3):
+  /// TUFReplay replays the recording and OrbitRender only captures and encodes it.
+  /// </summary>
+  public static bool SupportsHostedReplay => Resolve() == null && _startHostedReplay != null;
+
+  /// <summary>Starts a render that OrbitRender captures while <paramref name="host"/> replays the recording.</summary>
+  public static OrbitRenderResult StartHostedReplay(string requestJson, object host)
+  {
+    var error = Resolve();
+    if (error != null)
+      return OrbitRenderResult.Failure(error);
+    if (_startHostedReplay == null)
+      return OrbitRenderResult.Failure(
+        new OrbitRenderError
+        {
+          Code = "renderer_hosted_replay_unsupported",
+          Message =
+            "This OrbitRender version can't render with TUFReplay's replay engine. Update OrbitRender and restart ADOFAI.",
+        }
+      );
+    return Invoke(_startHostedReplay, requestJson, host);
   }
 
   public static OrbitRenderResult ReadStatus(string jobId)
@@ -120,10 +145,17 @@ public static class OrbitRenderClient
   {
     const BindingFlags staticFlags = BindingFlags.Public | BindingFlags.Static;
     _startReplay = type.GetMethod("StartReplay", staticFlags, null, new[] { typeof(string), typeof(string) }, null);
+    _startHostedReplay = type.GetMethod(
+      "StartHostedReplay",
+      staticFlags,
+      null,
+      new[] { typeof(string), typeof(object) },
+      null
+    );
     _readStatus = type.GetMethod("ReadStatus", staticFlags, null, new[] { typeof(string) }, null);
     _cancel = type.GetMethod("Cancel", staticFlags, null, new[] { typeof(string) }, null);
     _isAvailable = type.GetProperty("IsAvailable", staticFlags);
-    if (_startReplay == null || _readStatus == null || _cancel == null)
+    if ((_startReplay == null && _startHostedReplay == null) || _readStatus == null || _cancel == null)
       _apiType = null;
   }
 
@@ -175,6 +207,7 @@ public static class OrbitRenderClient
     {
       _apiType = null;
       _startReplay = null;
+      _startHostedReplay = null;
       _readStatus = null;
       _cancel = null;
       _isAvailable = null;
