@@ -190,7 +190,34 @@ internal static class NativeInputKeyCodeMapper
       label = LogicalKeyboardKey.KeypadEnter;
       return true;
     }
+    if (TryGetWindowsPhysicalKeyLabel(input, out label))
+      return true;
     return TryGetWindowsKeyLabel(nativeKey, out label);
+  }
+
+  // Some layouts give a key a virtual key no Unity key names. Korean layouts send Right Alt
+  // and Right Ctrl as the Hangul (0x15) and Hanja (0x19) IME keys, and Num Lock off turns
+  // keypad 5 into Clear (0x0C). The recorded scan code still names the physical key. A
+  // state snapshot records no scan code. These stay source-side only, so converting a label
+  // back to a Windows key still finds VK_RMENU, VK_RCONTROL and VK_NUMPAD5.
+  private static bool TryGetWindowsPhysicalKeyLabel(RecordedInput input, out LogicalKeyboardKey label)
+  {
+    bool extended = input.ExtendedKey || (input.NativeFlags & 0x01UL) != 0;
+    switch (input.Key)
+    {
+      case 0x15 when input.NativeCode < 0 || (input.NativeCode == 0x38 && extended):
+        label = LogicalKeyboardKey.RAlt;
+        return true;
+      case 0x19 when input.NativeCode < 0 || (input.NativeCode == 0x1D && extended):
+        label = LogicalKeyboardKey.RControl;
+        return true;
+      case 0x0C when input.NativeCode < 0 || (input.NativeCode == 0x4C && !extended):
+        label = LogicalKeyboardKey.Keypad5;
+        return true;
+      default:
+        label = LogicalKeyboardKey.Unknown;
+        return false;
+    }
   }
 
   // A neutral export must resolve the recording's platform, never the host's
@@ -399,6 +426,9 @@ internal static class NativeInputKeyCodeMapper
         return true;
       case 0x5C:
         label = LogicalKeyboardKey.RSuper;
+        return true;
+      case 0x5D:
+        label = LogicalKeyboardKey.Menu;
         return true;
       case 0x6A:
         label = LogicalKeyboardKey.KeypadAsterisk;
