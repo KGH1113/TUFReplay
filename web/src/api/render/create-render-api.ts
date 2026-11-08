@@ -24,7 +24,7 @@ function toRenderRequest(options: RenderOptions) {
     height: options.height,
     videoFps: options.videoFps,
     targetFps: options.simulationFps,
-    bitrateMbps: options.bitrateMbps,
+    bitrateKbps: options.bitrateKbps,
     videoCodec: options.videoCodec,
     bitDepth: options.bitDepth,
     // OrbitRender's profile name; the profile replaces bitrate and bit depth for ProRes.
@@ -67,6 +67,7 @@ function unavailableHealth() {
     busy: false,
     dmNoteConfigured: false,
     orbitAvailable: false,
+    takesBitrateKbps: false,
   };
 }
 
@@ -97,6 +98,7 @@ export function createRenderApi(clients: LocalAppChannels): RenderApi {
         busy: job ? !renderJobFinished(job) : false,
         dmNoteConfigured: false,
         orbitAvailable: renderer.status === "ready" && compatibility === "supported",
+        takesBitrateKbps: renderer.takesBitrateKbps === true,
       };
     },
     getSettings: async () => renderSettingsSchema.parse(synthSettings()),

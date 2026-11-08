@@ -121,13 +121,16 @@ namespace ReplayApi {
     status: string; source: string | null; installationDirectory: string | null;
     version: string | null; error: string | null; errorCode: string | null;
     downloadedBytes: safeint; totalBytes: safeint | null;
+    /** The loaded OrbitRender takes the bitrate in Kbps; otherwise it rounds to whole Mbps. */
+    takesBitrateKbps: boolean;
   }
   model DownloadsState { renderer: RendererState; ffmpeg: FfmpegState; cameraNeedsFfmpeg: boolean; }
   model RenderErrorDetails { field: string | null; line: int32 | null; file: string | null; }
   model RenderRequest {
     outputDirectory?: string;
     width: int32; height: int32; videoFps: int32; targetFps: int32;
-    bitrateMbps: int32; videoCodec: string; bitDepth: int32;
+    /** 1,000 to 200,000. */
+    bitrateKbps: int32; videoCodec: string; bitDepth: int32;
     /** OrbitRender's ProRes profile name; only sent with ProRes. */
     proResProfile?: string;
     captureAudio: boolean; audioGainDb: float64; endDelaySeconds: float64;

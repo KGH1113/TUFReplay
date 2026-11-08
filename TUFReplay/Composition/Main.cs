@@ -112,6 +112,7 @@ public sealed class Main
 
   private static void OnGUI(UnityModManager.ModEntry modEntry)
   {
+    WebsiteButton.Draw();
     if (TUFReplayBuildFlavor.Name == "auto-submission")
       return;
     bool receiveBetaUpdates = GUILayout.Toggle(UpdaterSettings.ReceiveBetaUpdates, "Receive beta updates");

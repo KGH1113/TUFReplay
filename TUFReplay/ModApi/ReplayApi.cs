@@ -23,6 +23,7 @@ namespace TUFReplay;
 ///   IEnumerable&lt;Canvas&gt; GetReplayCanvases()                 // or Canvas
 ///   void   OnBeforeFrameCapture()
 ///   void   OnAfterFrameCapture()
+///   void   AddReplayOverlayVideos(Action&lt;string, RectInt, RectInt&gt; add)  // after the last frame
 /// </code>
 /// During a replay, take keys from <c>OnReplayKey</c> and time from <c>OnReplayClock</c> instead
 /// of live input and real time. Every call is on Unity's main thread. See docs/replay-api.md.
@@ -63,6 +64,18 @@ public static class ReplayApi
 
   /// <summary>The video's frames per second while a replay is rendered, otherwise 0.</summary>
   public static int RenderFps => ReplaySessions.Active?.Render?.VideoFps ?? 0;
+
+  /// <summary>
+  /// True while a replay is rendered by a renderer that lays providers' videos over the finished
+  /// video, so <c>AddReplayOverlayVideos</c> will be called. Set from <c>OnReplayBegin</c> on.
+  /// </summary>
+  public static bool RenderTakesOverlayVideos => ReplaySessions.Active?.Render?.TakesOverlayVideos ?? false;
+
+  /// <summary>
+  /// The FFmpeg executable TUFReplay shares with the renderer while a replay is rendered, for
+  /// writing overlay videos. Null outside a render or when FFmpeg is not installed.
+  /// </summary>
+  public static string RenderFfmpegPath => ReplaySessions.Active?.Render?.FfmpegPath;
 
   /// <summary>
   /// Registers <paramref name="provider"/> under <paramref name="id"/>, replacing a provider

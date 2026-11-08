@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isTypedNumber } from "@/components/render/bitrate-setting";
 import { RenderFailureNotice, RenderNotice } from "@/components/render/render-notice";
 import { RenderOptionsForm, RenderSaveLocation } from "@/components/render/render-options-form";
 import { RenderProgress } from "@/components/render/render-progress";
@@ -78,8 +79,10 @@ export function RenderDialog({
         // Nothing is focused on open, so no field shows a selected value or a ring.
         onOpenAutoFocus={(event) => event.preventDefault()}
         onEscapeKeyDown={(event) => {
-          // Esc in a full-screen preview only leaves full screen.
-          if (control.busy || document.fullscreenElement) event.preventDefault();
+          // Esc in a full-screen preview only leaves full screen, and in a typed number only
+          // puts the number back.
+          if (control.busy || document.fullscreenElement || isTypedNumber(event.target))
+            event.preventDefault();
         }}
         onInteractOutside={(event) => {
           if (control.busy) event.preventDefault();

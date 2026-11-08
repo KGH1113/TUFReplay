@@ -13,6 +13,7 @@ internal static class CGEventCaptureRegressionSuite
   internal static void RunAll()
   {
     TestFocusBoundaryAndHeldState();
+    TestHeldKeyAcrossExtendedSlots();
     TestCaptureFaultsPreventPlayback();
     TestCaptureOverflowPreventsPlayback();
   }
@@ -49,6 +50,49 @@ internal static class CGEventCaptureRegressionSuite
       RecordInputTracker.StopCapture(null);
       Assert(RecordInputTracker.CaptureStartTimestampTicks == 0, "Stopped input exposed a stale media boundary.");
     });
+  }
+
+  // Korean layouts send Right Alt as an extended VK_HANGUL, but a state snapshot reads only the
+  // virtual key and holds it under the non-extended slot. Both slots must stay one key.
+  private static void TestHeldKeyAcrossExtendedSlots()
+  {
+    WithSource(
+      new FakeSource(0x15, usesExtendedKeyState: true),
+      source =>
+      {
+        RecordInputTracker.StartCapture();
+        source.Held = true; // The key that started the level is still down.
+        RecordInputTracker.SetCaptureWindowActive(true);
+        var pressed = Drain();
+        Assert(
+          pressed.Length == 1 && pressed[0].Down && !pressed[0].ExtendedKey,
+          "Capture start lost the held Hangul key."
+        );
+        source.Held = false;
+        source.Emit(Stopwatch.GetTimestamp(), false, true, 0x38, 0x81);
+        var released = Drain();
+        Assert(
+          released.Length == 1 && !released[0].Down && !released[0].ExtendedKey && released[0].NativeCode == 0x38,
+          "A Hangul key held when capture began was never released."
+        );
+
+        source.Emit(Stopwatch.GetTimestamp(), true, true, 0x38, 0x01);
+        Assert(Drain().Length == 1, "The hook's extended Hangul press was rejected.");
+        RecordInputTracker.SetCaptureWindowActive(false);
+        source.Held = true;
+        RecordInputTracker.SetCaptureWindowActive(true);
+        Assert(Drain().Length == 0, "Focus resume pressed a key the hook already held under its extended slot.");
+        RecordInputTracker.SetCaptureWindowActive(false);
+        source.Held = false; // Released in another app.
+        RecordInputTracker.SetCaptureWindowActive(true);
+        var away = Drain();
+        Assert(
+          away.Length == 1 && !away[0].Down && away[0].ExtendedKey,
+          "Focus resume did not release the extended slot the hook held."
+        );
+        RecordInputTracker.StopCapture(null);
+      }
+    );
   }
 
   private static void TestCaptureFaultsPreventPlayback()
@@ -110,11 +154,12 @@ internal static class CGEventCaptureRegressionSuite
     return buffer.Take(count).ToArray();
   }
 
-  private static void WithSource(Action<FakeSource> test)
+  private static void WithSource(Action<FakeSource> test) => WithSource(new FakeSource(), test);
+
+  private static void WithSource(FakeSource source, Action<FakeSource> test)
   {
     FieldInfo field = typeof(RecordInputTracker).GetField("EventSource", PrivateStatic);
     var previous = (INativeInputEventSource)field.GetValue(null);
-    var source = new FakeSource();
     field.SetValue(null, source);
     try
     {
@@ -130,14 +175,22 @@ internal static class CGEventCaptureRegressionSuite
 
   private sealed class FakeSource : INativeInputEventSource, INativeInputCaptureHealth
   {
+    private readonly int _key;
     private Action<NativeInputTransition> _callback;
     public bool Held;
     public long Dropped;
     public string Failure;
+
+    public FakeSource(int key = 128, bool usesExtendedKeyState = false)
+    {
+      _key = key;
+      UsesExtendedKeyState = usesExtendedKeyState;
+    }
+
     public string Name => "test-cgevent";
     public bool IsRunning { get; private set; }
-    public bool UsesExtendedKeyState => false;
-    public IReadOnlyList<int> SnapshotKeyCodes => new[] { 128 };
+    public bool UsesExtendedKeyState { get; }
+    public IReadOnlyList<int> SnapshotKeyCodes => new[] { _key };
 
     public void Start(Action<NativeInputTransition> callback)
     {
@@ -174,6 +227,9 @@ internal static class CGEventCaptureRegressionSuite
 
     public NativeInputSourceDiagnostics GetDiagnostics() => default;
 
-    public void Emit(long timestamp, bool down) => _callback(new NativeInputTransition(timestamp, 0, 128, down));
+    public void Emit(long timestamp, bool down) => _callback(new NativeInputTransition(timestamp, 0, _key, down));
+
+    public void Emit(long timestamp, bool down, bool extended, int nativeCode, ulong nativeFlags) =>
+      _callback(new NativeInputTransition(timestamp, 0, _key, down, extended, nativeCode, nativeFlags));
   }
 }

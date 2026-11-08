@@ -2,8 +2,9 @@
   "Id": "TUFReplay",
   "DisplayName": "TUFReplay",
   "Author": "impl",
-  "Version": "1.2.1",
+  "Version": "1.2.2",
   "BuildFlavor": "standard",
   "AssemblyName": "TUFReplay.SdkLauncher.dll",
-  "EntryMethod": "TUFReplay.Bootstrap.Bootstrap.Load"
+  "EntryMethod": "TUFReplay.Bootstrap.Bootstrap.Load",
+  "HomePage": "https://tufreplay.impl1113.dev"
 }

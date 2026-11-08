@@ -15,7 +15,7 @@ type VideoSettings = Pick<
   | "height"
   | "videoFps"
   | "simulationFps"
-  | "bitrateMbps"
+  | "bitrateKbps"
   | "videoCodec"
   | "encoder"
   | "encoding"
@@ -32,12 +32,12 @@ export interface RenderRecommendation {
 }
 
 const profiles = [
-  { width: 1280, height: 720, videoFps: 30, simulationFps: 120, bitrateMbps: 6 },
-  { width: 1280, height: 720, videoFps: 60, simulationFps: 240, bitrateMbps: 10 },
-  { width: 1920, height: 1080, videoFps: 60, simulationFps: 240, bitrateMbps: 18 },
-  { width: 2560, height: 1440, videoFps: 60, simulationFps: 240, bitrateMbps: 32 },
-  { width: 3840, height: 2160, videoFps: 60, simulationFps: 480, bitrateMbps: 60 },
-  { width: 3840, height: 2160, videoFps: 120, simulationFps: 960, bitrateMbps: 100 },
+  { width: 1280, height: 720, videoFps: 30, simulationFps: 120, bitrateKbps: 6_000 },
+  { width: 1280, height: 720, videoFps: 60, simulationFps: 240, bitrateKbps: 10_000 },
+  { width: 1920, height: 1080, videoFps: 60, simulationFps: 240, bitrateKbps: 18_000 },
+  { width: 2560, height: 1440, videoFps: 60, simulationFps: 240, bitrateKbps: 32_000 },
+  { width: 3840, height: 2160, videoFps: 60, simulationFps: 480, bitrateKbps: 60_000 },
+  { width: 3840, height: 2160, videoFps: 120, simulationFps: 960, bitrateKbps: 100_000 },
 ] as const;
 
 // These are conservative starting points, not a frame-time benchmark. Read the
@@ -74,7 +74,7 @@ export function createRenderRecommendations(settings: RenderSettings | null) {
       quality,
       supported,
       // Target bitrate plus a small allowance for audio, before container overhead.
-      megabytesPerMinute: Math.ceil(((profile.bitrateMbps + 0.4) * 60) / 8),
+      megabytesPerMinute: Math.ceil(((profile.bitrateKbps / 1_000 + 0.4) * 60) / 8),
       video: {
         ...profile,
         videoCodec: "H264",

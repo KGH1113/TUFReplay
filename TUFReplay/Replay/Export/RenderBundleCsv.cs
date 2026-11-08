@@ -26,18 +26,25 @@ public static class RenderBundleCsv
     writer.WriteLine(InputHeader);
     long previous = long.MinValue,
       sequence = 0;
+    bool knownPlatform = NativeInputKeyCodeMapper.IsSupportedSourcePlatform(platform);
     foreach (RecordedInput input in inputs)
     {
       cancellation.ThrowIfCancellationRequested();
-      ValidateTime(input.TimeUs, previous, terminalTimeUs, checked((int)sequence + 2), "inputs.csv");
       if (!NativeInputKeyCodeMapper.TryGetUnityKeyName(platform, input, out string name))
-        throw new RenderBundleValidationException(
-          "render_input_key_unsupported",
-          "A recorded key cannot be mapped for rendering. Check the recording's original keyboard platform.",
-          "key",
-          checked((int)sequence + 2),
-          "inputs.csv"
-        );
+      {
+        if (!knownPlatform)
+          throw new RenderBundleValidationException(
+            "render_input_key_unsupported",
+            "A recorded key cannot be mapped for rendering. Check the recording's original keyboard platform.",
+            "key",
+            checked((int)sequence + 2),
+            "inputs.csv"
+          );
+        // No key viewer can show a key Unity has no name for, such as volume, media or
+        // IME-only keys. Judgments come from hits.csv, so leaving it out changes nothing.
+        continue;
+      }
+      ValidateTime(input.TimeUs, previous, terminalTimeUs, checked((int)sequence + 2), "inputs.csv");
       writer.WriteLine(FormattableString.Invariant($"{input.TimeUs},{name},{(input.Down ? 1 : 0)},{sequence++}"));
       previous = input.TimeUs;
     }
