@@ -2,6 +2,7 @@ import { Folder01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { BitrateSetting } from "@/components/render/bitrate-setting";
 import {
   ChoiceCards,
   OptionGroup,
@@ -16,7 +17,6 @@ import {
   formatChoices,
   formatNames,
   maxVideoSize,
-  megabytesPerMinute,
   precisionChoices,
   proResChoices,
   proResNames,
@@ -243,14 +243,10 @@ function FormatSettings({ control, update }: { control: Control; update: Update 
         </div>
       ) : (
         <div className="divide-y divide-border/60">
-          <SliderSetting
-            label={t("format.fileSize")}
-            value={options.bitrateMbps}
-            min={1}
-            max={200}
-            step={1}
-            format={(value) => t("format.fileSizeValue", { size: megabytesPerMinute(value) })}
-            onChange={(bitrateMbps) => update((current) => ({ ...current, bitrateMbps }))}
+          <BitrateSetting
+            value={options.bitrateKbps}
+            stepKbps={control.health?.takesBitrateKbps ? 1 : 1_000}
+            onChange={(bitrateKbps) => update((current) => ({ ...current, bitrateKbps }))}
           />
           <SettingRow label={t("format.colors")}>
             <Segmented

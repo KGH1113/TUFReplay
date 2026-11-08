@@ -299,7 +299,7 @@ internal static class IpcDtoMapper
       Busy = value.Busy,
     };
 
-  public static Api.RendererState Map(TUFReplay.Shared.Downloads.RendererInstallState value) =>
+  public static Api.RendererState Map(TUFReplay.Shared.Downloads.RendererInstallState value, bool takesBitrateKbps) =>
     new Api.RendererState
     {
       Status = value.Status,
@@ -310,5 +310,6 @@ internal static class IpcDtoMapper
       ErrorCode = value.ErrorCode,
       DownloadedBytes = value.DownloadedBytes,
       TotalBytes = value.TotalBytes,
+      TakesBitrateKbps = takesBitrateKbps,
     };
 }

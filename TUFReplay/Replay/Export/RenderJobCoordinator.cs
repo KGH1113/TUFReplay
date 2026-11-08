@@ -319,7 +319,10 @@ public static class RenderJobCoordinator
       ),
       job.RunStates.Result
     );
-    var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptions(job.Options));
+    var result = OrbitRenderClient.StartReplay(
+      manifestPath,
+      BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)
+    );
     if (!result.Ok)
     {
       Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
@@ -378,7 +381,10 @@ public static class RenderJobCoordinator
       ),
       job.RunStates.Result
     );
-    var result = OrbitRenderClient.StartHostedReplay(HostedRequestJson(recording, BuildOptions(job.Options)), host);
+    var result = OrbitRenderClient.StartHostedReplay(
+      HostedRequestJson(recording, BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)),
+      host
+    );
     if (!result.Ok)
     {
       Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
@@ -571,7 +577,8 @@ public static class RenderJobCoordinator
         File = error.File,
       };
 
-  private static OrbitRenderOptions BuildOptions(RenderRequest options) =>
+  // An OrbitRender without Kbps support gets the nearest whole Mbps; the web snaps to it as well.
+  private static OrbitRenderOptions BuildOptions(RenderRequest options, bool takesBitrateKbps) =>
     new OrbitRenderOptions
     {
       NoPreview = true,
@@ -588,7 +595,8 @@ public static class RenderJobCoordinator
       VideoFps = options.VideoFps,
       Width = options.Width,
       Height = options.Height,
-      BitrateMbps = options.BitrateMbps,
+      BitrateKbps = takesBitrateKbps ? options.BitrateKbps : null,
+      BitrateMbps = takesBitrateKbps ? null : WholeMbps(options.BitrateKbps),
       VideoCodec = options.VideoCodec,
       BitDepth = options.BitDepth,
       // The profile replaces bitrate and bit depth, so it belongs only with ProRes.
@@ -618,8 +626,8 @@ public static class RenderJobCoordinator
       throw Domain("render_options_invalid", "Game FPS must be between 15 and 1024.");
     if (options.VideoFps < 15 || options.VideoFps > 240)
       throw Domain("render_options_invalid", "Video FPS must be between 15 and 240.");
-    if (options.BitrateMbps < 1 || options.BitrateMbps > 200)
-      throw Domain("render_options_invalid", "Bitrate must be between 1 and 200 Mbps.");
+    if (options.BitrateKbps < MinBitrateKbps || options.BitrateKbps > MaxBitrateKbps)
+      throw Domain("render_options_invalid", "Bitrate must be between 1,000 and 200,000 Kbps.");
     if (options.BitDepth != 8 && options.BitDepth != 10)
       throw Domain("render_options_invalid", "Bit depth must be 8 or 10.");
     if (
@@ -634,6 +642,12 @@ public static class RenderJobCoordinator
     )
       throw Domain("render_options_invalid", "Choose a ProRes profile: Proxy, LT, Standard, HQ, 4444 or 4444 XQ.");
   }
+
+  private const int MinBitrateKbps = 1_000;
+  private const int MaxBitrateKbps = 200_000;
+
+  private static int WholeMbps(int bitrateKbps) =>
+    Math.Max(1, (int)Math.Round(bitrateKbps / 1000d, MidpointRounding.AwayFromZero));
 
   private static bool IsProRes(RenderRequest options) =>
     string.Equals(options.VideoCodec, "ProRes", StringComparison.OrdinalIgnoreCase);
