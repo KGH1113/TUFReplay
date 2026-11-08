@@ -58,6 +58,18 @@ public static class OrbitRenderClient
   /// </summary>
   public static bool SupportsHostedReplay => Resolve() == null && _startHostedReplay != null;
 
+  /// <summary>
+  /// True when the installed OrbitRender asks the replay host for overlay videos after the last
+  /// frame and lays them over the finished video (<c>OverlayVideoVersion</c> 1).
+  /// </summary>
+  public static bool SupportsOverlayVideos => SupportsHostedReplay && TakesOverlayVideos(_apiType);
+
+  private static bool TakesOverlayVideos(Type type)
+  {
+    var capability = type?.GetField("OverlayVideoVersion", BindingFlags.Public | BindingFlags.Static);
+    return capability?.GetValue(null) is int version && version >= 1;
+  }
+
   /// <summary>Starts a render that OrbitRender captures while <paramref name="host"/> replays the recording.</summary>
   public static OrbitRenderResult StartHostedReplay(string requestJson, object host)
   {

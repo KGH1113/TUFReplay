@@ -1,6 +1,8 @@
 using Newtonsoft.Json.Linq;
+using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Export;
 using TUFReplay.Replay.Rendering;
+using UnityEngine;
 using static TestFixture;
 
 // TUFReplay replays renders as OrbitRender's host: it reads its own recording bundle back and
@@ -12,7 +14,47 @@ internal static class RenderHostSuite
     ReadsTheBundleItWrote(root);
     TellsOrbitRenderAbsoluteMediaPaths(root);
     RefusesMediaOutsideTheBundle(root);
+    GivesOrbitRenderOverlayVideosAsJson();
     Console.WriteLine("TUFReplay render host tests passed.");
+  }
+
+  private static void GivesOrbitRenderOverlayVideosAsJson()
+  {
+    var videos = new[]
+    {
+      new ReplayOverlayVideo(
+        "Mod.Hand",
+        "/cache/hand.mov",
+        new RectInt(30, 30, 585, 180),
+        new RectInt(40, 860, 585, 180)
+      ),
+      new ReplayOverlayVideo("Mod.Foot", "/cache/foot.mov", new RectInt(0, 0, 400, 100), new RectInt(-10, 0, 200, 50)),
+    };
+    JArray json = JArray.Parse(RenderReplayHost.OverlayVideosJson(videos));
+    Assert(json.Count == 2, "Not every overlay video reached OrbitRender.");
+    JObject hand = (JObject)json[0];
+    Assert(
+      (string)hand["path"] == "/cache/hand.mov"
+        && (int)hand["source"]["x"] == 30
+        && (int)hand["source"]["y"] == 30
+        && (int)hand["source"]["width"] == 585
+        && (int)hand["source"]["height"] == 180
+        && (int)hand["target"]["x"] == 40
+        && (int)hand["target"]["y"] == 860
+        && (int)hand["target"]["width"] == 585
+        && (int)hand["target"]["height"] == 180,
+      "An overlay video's path or rectangles did not reach OrbitRender."
+    );
+    Assert(
+      (string)json[1]["path"] == "/cache/foot.mov" && (int)json[1]["target"]["x"] == -10,
+      "Overlay videos lost their order or a target partly outside the video."
+    );
+    Assert(
+      hand.Properties().Select(property => property.Name).SequenceEqual(new[] { "path", "source", "target" }),
+      "OrbitRender was sent overlay video fields it does not read."
+    );
+    Assert(RenderReplayHost.OverlayVideosJson(Array.Empty<ReplayOverlayVideo>()) == "[]", "No videos must be [].");
+    Console.WriteLine("PASS OrbitRender gets overlay videos as paths with source and target pixels");
   }
 
   private static void ReadsTheBundleItWrote(string root)
