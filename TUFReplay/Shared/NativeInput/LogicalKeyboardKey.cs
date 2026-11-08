@@ -123,4 +123,5 @@ internal enum LogicalKeyboardKey
   Mouse2,
   Mouse3,
   Mouse4,
+  Menu,
 }

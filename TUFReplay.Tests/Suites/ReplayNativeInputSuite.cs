@@ -926,6 +926,30 @@ internal static class ReplayNativeInputSuite
       "Cross-platform logical key fallback produced the wrong current-platform key."
     );
     Assert(!normalized[0].HasNativeMetadata, "Foreign-platform scan code or flags leaked into native emission.");
+
+    if (!currentIsMac)
+      return;
+    // Korean layouts record Right Alt as VK_HANGUL; another platform must still press Right Alt.
+    var korean = NativeInputKeyCodeMapper.NormalizeForPlayback(
+      new List<RecordedInput>
+      {
+        new RecordedInput(
+          1,
+          0x15,
+          RecordInputFlags.Async | RecordInputFlags.Down | RecordInputFlags.ExtendedKey,
+          0x38,
+          0x01
+        ),
+      },
+      meta,
+      out int koreanDropped
+    );
+    Assert(
+      koreanDropped == 0
+        && NativeInputKeyCodeMapper.TryConvertLogicalKey(LogicalKeyboardKey.RAlt, out int rightAlt)
+        && korean[0].Key == rightAlt,
+      "A Korean-layout Right Alt was dropped or mapped to another key on macOS."
+    );
   }
 
   private static void TestWindowsNativeModifierNormalization()
