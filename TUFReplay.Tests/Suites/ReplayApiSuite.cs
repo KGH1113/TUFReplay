@@ -54,6 +54,8 @@ internal static class ReplayApiSuite
       DispatchesTheReplayToProviders();
       LimitsLogsFromFailingFrameCalls();
       FeedsRecordedKeysAtTheirTimes();
+      TellsProvidersWhatTheRendererTakes();
+      CollectsOverlayVideosAfterTheLastFrame(root);
     }
     finally
     {
@@ -486,7 +488,13 @@ internal static class ReplayApiSuite
     var unregister = (Action<string>)Delegate.CreateDelegate(typeof(Action<string>), api.GetMethod("Unregister"));
     var replaying =
       (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), api.GetProperty("IsReplaying").GetGetMethod());
+    var takesOverlayVideos =
+      (Func<bool>)
+        Delegate.CreateDelegate(typeof(Func<bool>), api.GetProperty("RenderTakesOverlayVideos").GetGetMethod());
+    var ffmpegPath =
+      (Func<string>)Delegate.CreateDelegate(typeof(Func<string>), api.GetProperty("RenderFfmpegPath").GetGetMethod());
     Reset();
+    Assert(!takesOverlayVideos() && ffmpegPath() == null, "Overlay video support was reported outside a render.");
     Assert(register("Test.Count", new CountProvider()), "Registering through a delegate failed.");
     unregister("Test.Count");
     Assert(!replaying(), "IsReplaying was true outside a replay.");
@@ -533,6 +541,16 @@ internal static class ReplayApiSuite
       "GetReplayCanvases returning int was accepted."
     );
     Assert(!ReplayApi.Register("Test.Begin", new TwoBoolBeginProvider()), "OnReplayBegin(bool, bool) was accepted.");
+    Assert(
+      !ReplayApi.Register("Test.Videos", new RectOverlayVideosProvider()),
+      "AddReplayOverlayVideos(Action<string, Rect, Rect>) was accepted."
+    );
+    Assert(
+      Logged(
+        "RectOverlayVideosProvider.AddReplayOverlayVideos must be void AddReplayOverlayVideos(Action<string, RectInt, RectInt> add)"
+      ),
+      "The overlay video method was not explained."
+    );
     Console.WriteLine("PASS ReplayApi explains replay methods with the wrong signature");
   }
 
@@ -628,6 +646,122 @@ internal static class ReplayApiSuite
     Assert(keyViewer.Keys.Last() == (KeyCode.A, a, false, 70_000L), "The end of a replay left a key held.");
     session.End();
     Console.WriteLine("PASS recorded keys reach mods at their recorded times and seeking releases held keys");
+  }
+
+  private static void TellsProvidersWhatTheRendererTakes()
+  {
+    Reset();
+    var seen = new RendererReadingProvider();
+    ReplayApi.Register("Test.Renderer", seen);
+    ReplaySession render = ReplaySessions.Begin(
+      "run",
+      new ReplayRender(1280, 720, 30, takesOverlayVideos: true, ffmpegPath: "/tools/ffmpeg"),
+      null
+    );
+    Assert(
+      seen.TakesOverlayVideos && seen.FfmpegPath == "/tools/ffmpeg",
+      "OnReplayBegin(render: true) could not read what the renderer takes."
+    );
+    // The renderer settles the video's size later; what it takes stays.
+    ReplaySessions.UpdateRender(new ReplayRender(1920, 1080, 60));
+    Assert(
+      ReplayApi.RenderWidth == 1920
+        && ReplayApi.RenderFps == 60
+        && ReplayApi.RenderTakesOverlayVideos
+        && ReplayApi.RenderFfmpegPath == "/tools/ffmpeg",
+      "Settling the video size forgot what the renderer takes."
+    );
+    render.End();
+    Assert(
+      !ReplayApi.RenderTakesOverlayVideos && ReplayApi.RenderFfmpegPath == null,
+      "Overlay video support outlived the render."
+    );
+
+    ReplaySessions.Begin("run", new ReplayRender(1280, 720, 30), null);
+    Assert(
+      !seen.TakesOverlayVideos && seen.FfmpegPath == null,
+      "A renderer without overlay videos was reported as taking them."
+    );
+    ReplaySessions.Active.End();
+    ReplaySessions.Begin("run", render: null, null);
+    Assert(!seen.TakesOverlayVideos, "An in-game replay was reported as taking overlay videos.");
+    ReplaySessions.Active.End();
+    Console.WriteLine("PASS providers learn in OnReplayBegin whether the renderer takes overlay videos");
+  }
+
+  private static void CollectsOverlayVideosAfterTheLastFrame(string root)
+  {
+    Reset();
+    string directory = Path.Combine(root, "overlay-videos");
+    Directory.CreateDirectory(directory);
+    string hand = Path.Combine(directory, "hand.mov");
+    string foot = Path.Combine(directory, "foot.mov");
+    File.WriteAllText(hand, "video");
+    File.WriteAllText(foot, "video");
+    var source = new RectInt(30, 30, 585, 180);
+    var target = new RectInt(40, 860, 585, 180);
+    var videos = new OverlayVideosProvider
+    {
+      Videos =
+      {
+        (hand, source, target),
+        (Path.Combine(directory, "missing.mov"), source, target),
+        ("", source, target),
+        ("relative.mov", source, target),
+        (foot, new RectInt(0, 0, 0, 180), target),
+        (foot, source, new RectInt(0, 0, 585, -1)),
+        (foot, new RectInt(0, 0, 400, 100), new RectInt(1500, 900, 200, 50)),
+      },
+    };
+    Assert(ReplayApi.Register("Test.Videos", videos), "A provider with overlay videos was refused.");
+    Assert(Logged("Registered Test.Videos (overlay videos)"), "The registration log did not mention overlay videos.");
+    var throwing = new ThrowingOverlayVideosProvider();
+    ReplayApi.Register("Test.ThrowingVideos", throwing);
+
+    var collected = new List<ReplayOverlayVideo>();
+    ReplaySessions.Begin("run", render: null, null);
+    ReplaySessions.CollectOverlayVideos(collected);
+    Assert(videos.Calls == 0 && collected.Count == 0, "An in-game replay asked for overlay videos.");
+    ReplaySessions.Active.End();
+
+    ReplaySession render = ReplaySessions.Begin("run", new ReplayRender(1920, 1080, 60, true, "/tools/ffmpeg"), null);
+    ReplaySessions.CollectOverlayVideos(collected);
+    Assert(videos.Calls == 1 && throwing.Calls == 1, "Providers were not asked for their overlay videos.");
+    Assert(
+      collected
+        .Select(video => (video.ProviderId, video.Path, video.Source, video.Target))
+        .SequenceEqual(
+          new[]
+          {
+            ("Test.Videos", hand, source, target),
+            ("Test.Videos", foot, new RectInt(0, 0, 400, 100), new RectInt(1500, 900, 200, 50)),
+          }
+        ),
+      "Overlay videos were not collected in order with their rectangles."
+    );
+    Assert(Logged("missing.mov was left out: the file does not exist."), "A missing file was not explained.");
+    Assert(Logged("overlay video  was left out: the path is empty."), "An empty path was not explained.");
+    Assert(Logged("relative.mov was left out: the path is not absolute."), "A relative path was not explained.");
+    Assert(Logged("was left out: the source is 0x180 pixels."), "An empty source was not explained.");
+    Assert(Logged("was left out: the target is 585x-1 pixels."), "A negative target was not explained.");
+    Assert(
+      Logged("ThrowingOverlayVideosProvider.AddReplayOverlayVideos threw"),
+      "A provider that threw was not reported."
+    );
+
+    // The callback only takes videos during the call.
+    videos.Late(hand, source, target);
+    Assert(collected.Count == 2, "A video added after the call was collected.");
+    Assert(
+      Logged("was left out: it was added after AddReplayOverlayVideos returned."),
+      "A late video was not explained."
+    );
+    render.End();
+
+    var afterEnd = new List<ReplayOverlayVideo>();
+    ReplaySessions.CollectOverlayVideos(afterEnd);
+    Assert(videos.Calls == 1 && afterEnd.Count == 0, "Overlay videos were collected after the render ended.");
+    Console.WriteLine("PASS renders collect providers' overlay videos once and explain the ones left out");
   }
 
   private static void WaitFor(Func<bool> condition, string message)
@@ -957,6 +1091,51 @@ VALUES('level-session','level','app','2026-11-07T00:00:00Z',NULL);";
   private sealed class ThrowingClockProvider
   {
     public void OnReplayClock(long ticks) => throw new InvalidOperationException("clock");
+  }
+
+  private sealed class RectOverlayVideosProvider
+  {
+    public void AddReplayOverlayVideos(Action<string, Rect, Rect> add) { }
+  }
+
+  private sealed class RendererReadingProvider
+  {
+    public bool TakesOverlayVideos;
+    public string FfmpegPath;
+
+    public void OnReplayBegin(bool render)
+    {
+      TakesOverlayVideos = ReplayApi.RenderTakesOverlayVideos;
+      FfmpegPath = ReplayApi.RenderFfmpegPath;
+    }
+  }
+
+  private sealed class OverlayVideosProvider
+  {
+    public readonly List<(string, RectInt, RectInt)> Videos = new List<(string, RectInt, RectInt)>();
+    public int Calls;
+    private Action<string, RectInt, RectInt> _add;
+
+    public void AddReplayOverlayVideos(Action<string, RectInt, RectInt> add)
+    {
+      Calls++;
+      _add = add;
+      foreach ((string path, RectInt source, RectInt target) in Videos)
+        add(path, source, target);
+    }
+
+    public void Late(string path, RectInt source, RectInt target) => _add(path, source, target);
+  }
+
+  private sealed class ThrowingOverlayVideosProvider
+  {
+    public int Calls;
+
+    public void AddReplayOverlayVideos(Action<string, RectInt, RectInt> add)
+    {
+      Calls++;
+      throw new InvalidOperationException("videos");
+    }
   }
 
   private sealed class SpeedProvider

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using TUFReplay.ModApi.Diagnostics;
 using TUFReplay.ModApi.Models;
@@ -85,12 +86,15 @@ internal static class ReplaySessions
     Clock(session, session.ElapsedTicks);
   }
 
-  /// <summary>The render's actual video size and rate, once the renderer has settled them.</summary>
+  /// <summary>
+  /// The render's actual video size and rate, once the renderer has settled them. What the
+  /// renderer takes, such as overlay videos, stays as the session began.
+  /// </summary>
   public static void UpdateRender(ReplayRender render)
   {
     ReplaySession session = _active;
     if (session != null && session.Render != null && render != null)
-      session.Render = render;
+      session.Render = session.Render.WithVideo(render.Width, render.Height, render.VideoFps);
   }
 
   /// <summary>Sets the session clock, in 100-ns ticks from the session's start, and tells providers.</summary>
@@ -215,6 +219,80 @@ internal static class ReplaySessions
     }
   }
 
+  /// <summary>
+  /// Adds the videos providers want laid over the finished video to <paramref name="into"/>.
+  /// Renders only, once after the last frame. A provider may block here until its videos are
+  /// written. Entries that can't be used are left out and logged.
+  /// </summary>
+  public static void CollectOverlayVideos(List<ReplayOverlayVideo> into)
+  {
+    ReplaySession session = _active;
+    if (session == null || session.Ended || session.Render == null)
+      return;
+    foreach (ReplayProvider provider in session.Begun)
+    {
+      if (provider.OverlayVideos == null || !ReplayProviders.IsCurrent(provider))
+        continue;
+      var collector = new OverlayVideoCollector(provider, into);
+      try
+      {
+        provider.OverlayVideos(collector.Add);
+      }
+      catch (Exception exception)
+      {
+        ModApiLog.ProviderFailed(provider, ReplayProvider.OverlayVideosName, exception);
+      }
+      finally
+      {
+        collector.Close();
+      }
+    }
+  }
+
+  /// <summary>The <c>add</c> callback one provider gets. It takes videos only during the call.</summary>
+  private sealed class OverlayVideoCollector
+  {
+    private readonly ReplayProvider _provider;
+    private readonly List<ReplayOverlayVideo> _into;
+    private bool _closed;
+
+    public OverlayVideoCollector(ReplayProvider provider, List<ReplayOverlayVideo> into)
+    {
+      _provider = provider;
+      _into = into;
+    }
+
+    public void Add(string path, RectInt source, RectInt target)
+    {
+      string problem = Problem(path, source, target);
+      if (problem != null)
+      {
+        ModApiLog.Write("[ReplayApi] " + _provider.Id + ": overlay video " + path + " was left out: " + problem + ".");
+        return;
+      }
+      _into.Add(new ReplayOverlayVideo(_provider.Id, path, source, target));
+    }
+
+    public void Close() => _closed = true;
+
+    private string Problem(string path, RectInt source, RectInt target)
+    {
+      if (_closed)
+        return "it was added after " + ReplayProvider.OverlayVideosName + " returned";
+      if (string.IsNullOrWhiteSpace(path))
+        return "the path is empty";
+      if (!Path.IsPathRooted(path))
+        return "the path is not absolute";
+      if (!File.Exists(path))
+        return "the file does not exist";
+      if (source.width <= 0 || source.height <= 0)
+        return "the source is " + source.width + "x" + source.height + " pixels";
+      if (target.width <= 0 || target.height <= 0)
+        return "the target is " + target.width + "x" + target.height + " pixels";
+      return null;
+    }
+  }
+
   /// <summary>Ends <paramref name="session"/> once. Providers unregistered since it began are not called.</summary>
   public static void End(ReplaySession session)
   {
@@ -287,18 +365,51 @@ internal static class ReplaySessions
   }
 }
 
-/// <summary>The video a render session draws into.</summary>
+/// <summary>The video a render session draws into, and what its renderer takes.</summary>
 internal sealed class ReplayRender
 {
   public readonly int Width;
   public readonly int Height;
   public readonly int VideoFps;
 
-  public ReplayRender(int width, int height, int videoFps)
+  /// <summary>The renderer lays providers' videos over the finished video.</summary>
+  public readonly bool TakesOverlayVideos;
+
+  /// <summary>The FFmpeg executable TUFReplay shares with the renderer, or null.</summary>
+  public readonly string FfmpegPath;
+
+  public ReplayRender(int width, int height, int videoFps, bool takesOverlayVideos = false, string ffmpegPath = null)
   {
     Width = width;
     Height = height;
     VideoFps = videoFps;
+    TakesOverlayVideos = takesOverlayVideos;
+    FfmpegPath = ffmpegPath;
+  }
+
+  /// <summary>The same renderer, drawing a video of this size and rate.</summary>
+  public ReplayRender WithVideo(int width, int height, int videoFps) =>
+    new ReplayRender(width, height, videoFps, TakesOverlayVideos, FfmpegPath);
+}
+
+/// <summary>A provider's video to lay over the finished video. Pixels from the top left.</summary>
+internal readonly struct ReplayOverlayVideo
+{
+  public readonly string ProviderId;
+  public readonly string Path;
+
+  /// <summary>The part of each of the video's frames to use.</summary>
+  public readonly RectInt Source;
+
+  /// <summary>Where that part goes in the rendered video.</summary>
+  public readonly RectInt Target;
+
+  public ReplayOverlayVideo(string providerId, string path, RectInt source, RectInt target)
+  {
+    ProviderId = providerId;
+    Path = path;
+    Source = source;
+    Target = target;
   }
 }
 
