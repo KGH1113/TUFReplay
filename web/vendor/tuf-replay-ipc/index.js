@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "aaab7bdafb51fdfb0a2ffd260731962446aa8675ce420856b1680e91faf998f4",
+    "hash": "ccb4f39e93c084230b26b96774448e51cc472f05a8ad2b738e8a2b6ba42afbdb",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -345,6 +345,7 @@ export const ReplayApiContract = defineContract({
                     "nullable": "string"
                 },
                 "status": "string",
+                "takesBitrateKbps": "boolean",
                 "totalBytes": {
                     "nullable": "safeint"
                 },
@@ -397,7 +398,7 @@ export const ReplayApiContract = defineContract({
                 "audioGainDb": "float64",
                 "bgaMode": "boolean",
                 "bitDepth": "int32",
-                "bitrateMbps": "int32",
+                "bitrateKbps": "int32",
                 "captureAudio": "boolean",
                 "endDelaySeconds": "float64",
                 "height": "int32",

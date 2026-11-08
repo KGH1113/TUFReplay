@@ -57,6 +57,7 @@ export function createRenderApiMock(
         ),
         dmNoteConfigured: true,
         orbitAvailable: true,
+        takesBitrateKbps: true,
       };
     },
     async getSettings() {

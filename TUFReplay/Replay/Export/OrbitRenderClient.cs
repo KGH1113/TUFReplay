@@ -70,6 +70,18 @@ public static class OrbitRenderClient
     return capability?.GetValue(null) is int version && version >= 1;
   }
 
+  /// <summary>
+  /// True when the installed OrbitRender takes the bitrate in Kbps (<c>BitrateKbpsVersion</c> 1).
+  /// Older versions take whole Mbps only.
+  /// </summary>
+  public static bool SupportsBitrateKbps => Resolve() == null && TakesBitrateKbps(_apiType);
+
+  private static bool TakesBitrateKbps(Type type)
+  {
+    var capability = type?.GetField("BitrateKbpsVersion", BindingFlags.Public | BindingFlags.Static);
+    return capability?.GetValue(null) is int version && version >= 1;
+  }
+
   /// <summary>Starts a render that OrbitRender captures while <paramref name="host"/> replays the recording.</summary>
   public static OrbitRenderResult StartHostedReplay(string requestJson, object host)
   {
@@ -325,6 +337,10 @@ public sealed class OrbitRenderOptions
 
   [JsonProperty("bitrateMbps")]
   public int? BitrateMbps { get; set; }
+
+  /// <summary>Sent instead of <see cref="BitrateMbps"/> to OrbitRender with <c>BitrateKbpsVersion</c>.</summary>
+  [JsonProperty("bitrateKbps")]
+  public int? BitrateKbps { get; set; }
 
   [JsonProperty("videoCodec")]
   public string VideoCodec { get; set; }

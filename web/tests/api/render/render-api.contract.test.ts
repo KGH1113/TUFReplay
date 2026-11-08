@@ -50,6 +50,23 @@ describe("TUFReplay render IPC contract", () => {
     expect((await notReady.getHealth()).orbitAvailable).toBe(false);
   });
 
+  test("passes on whether OrbitRender takes the bitrate in Kbps", async () => {
+    for (const takesBitrateKbps of [true, false]) {
+      const api = createRenderApi(
+        scriptedChannels((method) =>
+          method === "readDownloadsState"
+            ? {
+                renderer: { status: "ready", version: "2.9.0", takesBitrateKbps },
+                ffmpeg: {},
+                cameraNeedsFfmpeg: false,
+              }
+            : null,
+        ),
+      );
+      expect((await api.getHealth()).takesBitrateKbps).toBe(takesBitrateKbps);
+    }
+  });
+
   test("marks a running job as busy and a finished job as idle", async () => {
     const running = createRenderApi(clients(() => job, { currentJob: job }));
     expect((await running.getHealth()).busy).toBe(true);
@@ -72,6 +89,7 @@ describe("TUFReplay render IPC contract", () => {
       busy: false,
       dmNoteConfigured: false,
       orbitAvailable: false,
+      takesBitrateKbps: false,
     });
   });
 
@@ -112,7 +130,7 @@ describe("TUFReplay render IPC contract", () => {
             height: 1440,
             targetFps: 480,
             videoFps: defaultRenderOptions.videoFps,
-            bitrateMbps: defaultRenderOptions.bitrateMbps,
+            bitrateKbps: defaultRenderOptions.bitrateKbps,
             videoCodec: defaultRenderOptions.videoCodec,
             bitDepth: defaultRenderOptions.bitDepth,
             captureAudio: defaultRenderOptions.captureAudio,
