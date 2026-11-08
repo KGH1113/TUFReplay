@@ -58,6 +58,11 @@ export function MicrophoneOffsetCalibrationDialog({
               ? "max-w-[32rem]"
               : "max-w-[38rem]",
         )}
+        // The click that brings the browser back from ADOFAI lands on the overlay. Once
+        // calibration has started, only the dialog's own buttons or Esc may end it.
+        onInteractOutside={(event) => {
+          if (!settings) event.preventDefault();
+        }}
       >
         {settings ? (
           <TimingSettingsPanel
