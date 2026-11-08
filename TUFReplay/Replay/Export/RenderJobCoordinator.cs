@@ -12,6 +12,7 @@ using TUFReplay.ModApi.Repositories;
 using TUFReplay.Replay.Rendering;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
+using TUFReplay.Shared.Media;
 
 namespace TUFReplay.Replay.Export;
 
@@ -309,7 +310,13 @@ public static class RenderJobCoordinator
     // Mods restore the state saved with this run before OrbitRender opens the level.
     job.RunStateSession = ReplaySessions.Begin(
       job.RunId,
-      new ReplayRender(job.Options.Width, job.Options.Height, job.Options.VideoFps),
+      new ReplayRender(
+        job.Options.Width,
+        job.Options.Height,
+        job.Options.VideoFps,
+        takesOverlayVideos: false,
+        ffmpegPath: SharedFfmpegPath()
+      ),
       job.RunStates.Result
     );
     var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptions(job.Options));
@@ -323,6 +330,13 @@ public static class RenderJobCoordinator
     job.Stage = StageOpeningLevel;
     job.Progress = Math.Max(job.Progress, PrepareProgress);
     Publish(job);
+  }
+
+  // The FFmpeg TUFReplay shares with OrbitRender, for mods that write overlay videos; null until installed.
+  private static string SharedFfmpegPath()
+  {
+    FfmpegInstallState ffmpeg = FfmpegInstallCoordinator.Status();
+    return ffmpeg.Available && !string.IsNullOrEmpty(ffmpeg.Path) ? ffmpeg.Path : null;
   }
 
   // OrbitRender 3 and later: OrbitRender captures and encodes, TUFReplay replays as its host.
@@ -351,10 +365,17 @@ public static class RenderJobCoordinator
       return;
     }
     job.Host = host;
-    // Mods restore the state saved with this run before OrbitRender opens the level.
+    // Mods restore the state saved with this run before OrbitRender opens the level, and learn
+    // there whether their own videos can go over the finished one.
     job.RunStateSession = ReplaySessions.Begin(
       job.RunId,
-      new ReplayRender(job.Options.Width, job.Options.Height, job.Options.VideoFps),
+      new ReplayRender(
+        job.Options.Width,
+        job.Options.Height,
+        job.Options.VideoFps,
+        OrbitRenderClient.SupportsOverlayVideos,
+        SharedFfmpegPath()
+      ),
       job.RunStates.Result
     );
     var result = OrbitRenderClient.StartHostedReplay(HostedRequestJson(recording, BuildOptions(job.Options)), host);

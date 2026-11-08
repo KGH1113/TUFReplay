@@ -80,6 +80,16 @@ internal static class RenderBundleSuite
         && !(bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) }),
       "OrbitRender output folder capability detection failed."
     );
+    var takesOverlayVideos = typeof(OrbitRenderClient).GetMethod(
+      "TakesOverlayVideos",
+      BindingFlags.NonPublic | BindingFlags.Static
+    );
+    Assert(
+      (bool)takesOverlayVideos.Invoke(null, new object[] { typeof(OverlayVideosSupported) })
+        && !(bool)takesOverlayVideos.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) })
+        && !(bool)takesOverlayVideos.Invoke(null, new object[] { null }),
+      "OrbitRender overlay video capability detection failed."
+    );
     using var windows = new StringWriter();
     RenderBundleCsv.WriteInputs(
       windows,
@@ -259,6 +269,11 @@ internal static class RenderBundleSuite
   }
 
   private sealed class OutputDirectoryUnsupported { }
+
+  private sealed class OverlayVideosSupported
+  {
+    public const int OverlayVideoVersion = 1;
+  }
 
   private static void TestPrematureTerminalRecovery()
   {
