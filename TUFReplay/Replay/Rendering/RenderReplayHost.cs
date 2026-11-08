@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using HarmonyLib;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using TUFReplay.ModApi.Playback;
 using UnityEngine;
 
@@ -17,8 +19,9 @@ namespace TUFReplay.Replay.Rendering;
 /// OrbitRender binds the public members below by name and calls them on Unity's main thread, in
 /// this order: <see cref="PrepareBeforeRender"/>, <see cref="Begin"/>, then per frame
 /// <see cref="BeforeSimulationFrame"/> and <see cref="AfterSimulationFrame"/> around the game's
-/// simulation, <see cref="End"/> and <see cref="RestoreAfterRender"/>. The replay logic follows
-/// TUFReplay-Renderer's recorded replay driver.
+/// simulation, <see cref="GetOverlayVideos"/> once a completed video is written (OrbitRender with
+/// <c>OverlayVideoVersion</c> 1), <see cref="End"/> and <see cref="RestoreAfterRender"/>. The
+/// replay logic follows TUFReplay-Renderer's recorded replay driver.
 /// </remarks>
 internal sealed class RenderReplayHost
 {
@@ -326,6 +329,48 @@ internal sealed class RenderReplayHost
   public void OnBeforeCapture() => ReplaySessions.BeforeCapture();
 
   public void OnAfterCapture() => ReplaySessions.AfterCapture();
+
+  /// <summary>
+  /// The videos mods want laid over the finished video, as OrbitRender's JSON array. OrbitRender
+  /// calls this once, after the last frame and before it composes the video, and only for a
+  /// render that completed. Blocks while mods finish writing their videos.
+  /// </summary>
+  public string GetOverlayVideos()
+  {
+    var videos = new List<ReplayOverlayVideo>();
+    ReplaySessions.CollectOverlayVideos(videos);
+    if (videos.Count > 0)
+      Main.Instance?.Log("[Render] Overlay videos for the finished video: " + videos.Count + ".");
+    return OverlayVideosJson(videos);
+  }
+
+  /// <summary>
+  /// <c>[{"path", "source": {x, y, width, height}, "target": {…}}]</c>: pixels from the top left,
+  /// drawn in order.
+  /// </summary>
+  internal static string OverlayVideosJson(IEnumerable<ReplayOverlayVideo> videos)
+  {
+    var array = new JArray();
+    foreach (ReplayOverlayVideo video in videos)
+      array.Add(
+        new JObject
+        {
+          ["path"] = video.Path,
+          ["source"] = RectJson(video.Source),
+          ["target"] = RectJson(video.Target),
+        }
+      );
+    return array.ToString(Formatting.None);
+  }
+
+  private static JObject RectJson(RectInt rect) =>
+    new JObject
+    {
+      ["x"] = rect.x,
+      ["y"] = rect.y,
+      ["width"] = rect.width,
+      ["height"] = rect.height,
+    };
 
   // ---- End ----
 

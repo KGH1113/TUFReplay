@@ -166,7 +166,7 @@ var request = (Action<string>)Delegate.CreateDelegate(
 request("MyMod.Settings"); // resolve "Release" the same way
 ```
 
-Overlay, key-viewer and other mods take part in recordings and replays through `TUFReplay.ReplayApi`. Resolve it the same way and call its static `Register(string id, object provider)` with an object of your own type; TUFReplay calls its public methods by name. `CaptureRunState()` saves the mod's own typed state with each run, and `OnReplayBegin(state, render)`, `OnReplayClock(ticks)`, `OnReplayKey(key, nativeKey, down, ticks)` and `OnReplayEnd()` run the same way whether a run is played in the game or rendered; renders add `GetReplayCanvases()` and capture calls. [docs/replay-api.md](docs/replay-api.md) has the contract, the supported state types, and an example adapter.
+Overlay, key-viewer and other mods take part in recordings and replays through `TUFReplay.ReplayApi`. Resolve it the same way and call its static `Register(string id, object provider)` with an object of your own type; TUFReplay calls its public methods by name. `CaptureRunState()` saves the mod's own typed state with each run, and `OnReplayBegin(state, render)`, `OnReplayClock(ticks)`, `OnReplayKey(key, nativeKey, down, ticks)` and `OnReplayEnd()` run the same way whether a run is played in the game or rendered; renders add `GetReplayCanvases()` and capture calls, and `AddReplayOverlayVideos(add)` for a mod that writes its own video, which OrbitRender lays over the finished one when `RenderTakesOverlayVideos` is true. [docs/replay-api.md](docs/replay-api.md) has the contract, the supported state types, and an example adapter.
 
 ## Repository Layout
 
