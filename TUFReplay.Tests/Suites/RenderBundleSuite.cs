@@ -86,10 +86,7 @@ internal static class RenderBundleSuite
     }
   }
 
-  private static readonly JsonSerializerSettings IgnoreNulls = new()
-  {
-    NullValueHandling = NullValueHandling.Ignore,
-  };
+  private static readonly JsonSerializerSettings IgnoreNulls = new() { NullValueHandling = NullValueHandling.Ignore };
 
   // Korean layouts send Right Alt and Right Ctrl as the Hangul and Hanja IME keys. A video must
   // still show the physical key, and a key no Unity key names must not stop the render.

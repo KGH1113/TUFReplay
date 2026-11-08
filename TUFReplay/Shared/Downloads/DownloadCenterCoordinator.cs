@@ -50,7 +50,8 @@ internal static class DownloadCenterCoordinator
             ErrorCode = "downloads_unavailable",
           },
         // Only an enabled OrbitRender is looked up, so this stays cheap on the game thread.
-        renderer?.Active == true && OrbitRenderClient.SupportsBitrateKbps
+        renderer?.Active == true
+          && OrbitRenderClient.SupportsBitrateKbps
       ),
       Ffmpeg = IpcDtoMapper.Map(FfmpegInstallCoordinator.Status()),
       CameraNeedsFfmpeg = RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
