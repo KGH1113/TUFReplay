@@ -12,7 +12,7 @@
 - **No reference to TUFReplay.dll.** Your mod finds `TUFReplay.ReplayApi` by name in the loaded assembly named `TUFReplay`.
 - **Your own provider object.** You register an object of your own type. TUFReplay finds its public methods by name and binds them once.
 - **Your own state type.** It stays in your assembly. TUFReplay reads its fields through reflection and never shares a type with you.
-- **Only BCL and Unity types cross the boundary**: `string`, numbers, `bool`, `KeyCode`, `Canvas`. The method names and the provider id are the contract.
+- **Only BCL and Unity types cross the boundary**: `string`, numbers, `bool`, `KeyCode`, `Canvas`, `RectInt`, `Action`. The method names and the provider id are the contract.
 
 Either mod keeps working when the other is missing or turned off.
 
@@ -33,6 +33,8 @@ namespace TUFReplay
         public static int RenderWidth { get; }      // the video while rendering, otherwise 0
         public static int RenderHeight { get; }
         public static int RenderFps { get; }
+        public static bool RenderTakesOverlayVideos { get; } // the renderer lays your videos over the video
+        public static string RenderFfmpegPath { get; }       // FFmpeg shared with the renderer, or null
 
         public static bool Register(string id, object provider);
         public static void Unregister(string id);
@@ -69,6 +71,7 @@ TUFReplay looks up these public instance methods by name. Every method is option
 | `void OnReplayEnd()` | When the replay ends, fails or is replaced | When the render completes, fails or is cancelled |
 | `IEnumerable<Canvas> GetReplayCanvases()` or `Canvas GetReplayCanvases()` | Not called | Once, as the video starts: the canvases to put in the video |
 | `void OnBeforeFrameCapture()` / `void OnAfterFrameCapture()` | Not called | Around each new video frame |
+| `void AddReplayOverlayVideos(Action<string, RectInt, RectInt> add)` | Not called | Once, after the last frame of a completed render: videos to lay over the finished video |
 
 **During a replay**
 - Take the replay's keys from `OnReplayKey` and ignore live input. TUFReplay still presses the keys through the OS during in-game replays, for now, so a mod that also listens to live input counts them twice.
@@ -131,9 +134,31 @@ TUFReplay replays the recording itself, and OrbitRender (RenderApi 3 or later) o
 - `OnReplayBegin(recorded, render: true)` runs before TUFReplay hands the job to OrbitRender, before the level opens. Providers begin one after another, so another provider's state may not be restored yet.
 - `GetReplayCanvases` runs once, after the level is ready and before the first frame. Canvases you create later are not in the video, so create them by then, or in this call. `RenderWidth`, `RenderHeight` and `RenderFps` hold the video's final values from this call on; before it they are the requested values.
 - Every frame: `OnReplayClock` with the video time and `OnReplayKey` for the keys of that frame. `OnBeforeFrameCapture` and `OnAfterFrameCapture` wrap each new video frame; a repeated frame does not call them.
-- `OnReplayEnd` runs when the render completes, fails or is cancelled, after OrbitRender has restored the game. A render that ends before its first frame, such as one cancelled while the level opens, calls `OnReplayEnd` without `GetReplayCanvases`.
+- `AddReplayOverlayVideos` runs once, after the last frame and before OrbitRender composes the finished video. See [Overlay videos](#overlay-videos).
+- `OnReplayEnd` runs when the render completes, fails or is cancelled, after OrbitRender has restored the game and composed the video. A render that ends before its first frame, such as one cancelled while the level opens, calls `OnReplayEnd` without `GetReplayCanvases`.
 
 `IsReplaying` is true from just before `OnReplayBegin` until just before `OnReplayEnd`, so it already reads false inside `OnReplayEnd`. Only one replay or render runs at a time.
+
+### Overlay videos
+
+A mod whose picture is slow to draw, such as a key viewer that runs in another app, can make its own video while the game renders and have OrbitRender lay it over the finished video, the way it adds the webcam. The game then never waits for that mod during the render.
+
+**Whether the renderer takes them**
+- `RenderTakesOverlayVideos` is true when the renderer will call `AddReplayOverlayVideos` (OrbitRender with `OverlayVideoVersion` 1 or later). Read it from `OnReplayBegin(…, render: true)` on.
+- `RenderFfmpegPath` is the FFmpeg executable TUFReplay shares with OrbitRender, for writing your video. It is null outside a render and when FFmpeg is not installed.
+- When either is missing, the renderer can't use your video: draw a canvas instead, or leave your picture out.
+
+**`AddReplayOverlayVideos(add)`**
+- Runs once on Unity's main thread, after the last frame, before OrbitRender composes the video. It may block until your videos are written; the render waits.
+- It is not called when the render fails or is cancelled. Clean up in `OnReplayEnd`, which runs after the video is composed.
+- Call `add(path, source, target)` once per video, during the call. Videos added later are left out.
+  - `path`: an absolute path to a video FFmpeg can read. Use a format with alpha, such as QuickTime Animation (`-c:v qtrle -pix_fmt argb`), for a picture that is not a full rectangle.
+  - `source`: the part of each of the video's frames to use, in its pixels.
+  - `target`: where that part goes in the rendered video, in pixels of `RenderWidth` × `RenderHeight`. A target of another size scales the part; a target partly outside the video is cut off.
+  - Both rectangles count from the top left, with `y` going down.
+- The video's time 0 is the rendered video's first frame. Make it at `RenderFps`, one frame per video frame. A video that ends early holds its last frame.
+- Videos are drawn in the order added, over the game and its canvases and under the webcam.
+- A video whose file is missing, whose path is not absolute, or whose rectangle is empty is left out with a log line.
 
 ## State types
 
@@ -338,4 +363,5 @@ Every message starts with `[ReplayApi]` and names the provider id.
 [ReplayApi] Element.Attempts: 12 saved runs can't be read: AttemptState.Speed was string and is now double. Add UpgradeRunState(the old type) to AttemptStore, or those runs reach OnReplayBegin as null.
 [ReplayApi] Element.KeyCounts: CaptureRunState finished after the run ended, so its value was not saved for that run.
 [ReplayApi] Element.Attempts: AttemptStore.CaptureRunState took 3.2 ms on the main thread, right as a run starts. Return a Task for slow work so ADOFAI does not stutter.
+[ReplayApi] Element.Render: overlay video /tmp/render/hand.mov was left out: the file does not exist.
 ```
