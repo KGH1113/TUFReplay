@@ -1,8 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+  bitrateForMegabytesPerMinute,
   describeFolder,
   megabytesPerMinute,
   qualityOf,
+  readTypedNumber,
+  settleBitrate,
   smoothnessChoices,
   withQuality,
   withVideoCodec,
@@ -46,7 +49,33 @@ describe("render choices", () => {
       expect(renderOptionsSchema.safeParse(withVideoFps(defaultRenderOptions, fps)).success).toBe(
         true,
       );
-    expect(megabytesPerMinute(18)).toBe(135);
+    expect(megabytesPerMinute(18_000)).toBe(135);
+  });
+
+  test("turns a typed file size into the bitrate that makes it", () => {
+    expect(bitrateForMegabytesPerMinute(150)).toBe(20_000);
+    // 100 MB a minute needs 13,333.3 Kbps; it still reads back as 100.
+    const typed = settleBitrate(bitrateForMegabytesPerMinute(100), 1);
+    expect(typed).toBe(13_333);
+    expect(megabytesPerMinute(typed)).toBe(100);
+  });
+
+  test("keeps a typed bitrate in range and on the renderer's steps", () => {
+    expect(settleBitrate(18_500, 1)).toBe(18_500);
+    // An OrbitRender that takes whole Mbps gets the nearest one, as the mod sends it.
+    expect(settleBitrate(18_500, 1_000)).toBe(19_000);
+    expect(settleBitrate(18_499, 1_000)).toBe(18_000);
+    expect(settleBitrate(500, 1)).toBe(1_000);
+    expect(settleBitrate(250_000, 1)).toBe(200_000);
+  });
+
+  test("reads numbers as people type them", () => {
+    expect(readTypedNumber("18,500")).toBe(18_500);
+    expect(readTypedNumber(" 2 500 ")).toBe(2_500);
+    expect(readTypedNumber("12.5")).toBe(12.5);
+    expect(readTypedNumber("")).toBeNull();
+    expect(readTypedNumber("abc")).toBeNull();
+    expect(readTypedNumber("-5")).toBeNull();
   });
 
   test("shows a folder by its own name", () => {

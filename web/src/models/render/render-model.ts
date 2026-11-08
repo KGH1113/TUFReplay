@@ -19,7 +19,7 @@ export const defaultRenderOptions: RenderOptions = {
   height: 1080,
   videoFps: 60,
   simulationFps: 240,
-  bitrateMbps: 18,
+  bitrateKbps: 18_000,
   videoCodec: "H264",
   encoder: "Software",
   encoding: "Balanced",

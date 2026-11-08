@@ -43,11 +43,11 @@ export interface MicrophoneTiming { microphoneOffsetMs: number }
 
 export interface RenderErrorDetails { field: string | null; file: string | null; line: number | null }
 
-export interface RendererState { downloadedBytes: number; error: string | null; errorCode: string | null; installationDirectory: string | null; source: string | null; status: string; totalBytes: number | null; version: string | null }
+export interface RendererState { downloadedBytes: number; error: string | null; errorCode: string | null; installationDirectory: string | null; source: string | null; status: string; takesBitrateKbps: boolean; totalBytes: number | null; version: string | null }
 
 export interface RenderJobState { errorCode: string | null; errorDetails: RenderErrorDetails | null; errorMessage: string | null; jobId: string; outputFile: string | null; progress: number; runId: string; stage: string | null; state: "cancelled" | "completed" | "compositing" | "exporting" | "failed" | "preparing" | "rendering"; waitingForGameFocus: boolean; warnings: Array<string> }
 
-export interface RenderRequest { audioGainDb: number; bgaMode: boolean; bitDepth: number; bitrateMbps: number; captureAudio: boolean; endDelaySeconds: number; height: number; includeMicrophone: boolean; includeWebcam: boolean; outputDirectory?: string; proResProfile?: string; showCountdown: boolean; showHitJudgments: boolean; showPlanetRings: boolean; showResultText: boolean; showSongTitle: boolean; targetFps: number; videoCodec: string; videoFps: number; width: number }
+export interface RenderRequest { audioGainDb: number; bgaMode: boolean; bitDepth: number; bitrateKbps: number; captureAudio: boolean; endDelaySeconds: number; height: number; includeMicrophone: boolean; includeWebcam: boolean; outputDirectory?: string; proResProfile?: string; showCountdown: boolean; showHitJudgments: boolean; showPlanetRings: boolean; showResultText: boolean; showSongTitle: boolean; targetFps: number; videoCodec: string; videoFps: number; width: number }
 
 export interface ReplayState { errorCode: string | null; message: string | null; operationId: string | null; runId: string | null; state: "cancelled" | "completed" | "error" | "idle" | "opening_level" | "playing" | "preparing" | "returning_to_editor" | "starting" | "waiting_for_focus" }
 
@@ -143,7 +143,7 @@ export interface ReplayApiAppHandlers {
 
 export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> = defineContract<ReplayApiMod, ReplayApiAppHandlers>({
   "id": "tuf-replay",
-  "hash": "aaab7bdafb51fdfb0a2ffd260731962446aa8675ce420856b1680e91faf998f4",
+  "hash": "ccb4f39e93c084230b26b96774448e51cc472f05a8ad2b738e8a2b6ba42afbdb",
   "models": {
     "ActivityChanged": {
       "object": {
@@ -486,6 +486,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
           "nullable": "string"
         },
         "status": "string",
+        "takesBitrateKbps": "boolean",
         "totalBytes": {
           "nullable": "safeint"
         },
@@ -538,7 +539,7 @@ export const ReplayApiContract: IpcContract<ReplayApiMod, ReplayApiAppHandlers> 
         "audioGainDb": "float64",
         "bgaMode": "boolean",
         "bitDepth": "int32",
-        "bitrateMbps": "int32",
+        "bitrateKbps": "int32",
         "captureAudio": "boolean",
         "endDelaySeconds": "float64",
         "height": "int32",

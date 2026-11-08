@@ -46,6 +46,8 @@ export const renderHealthSchema = z.object({
   busy: z.boolean(),
   dmNoteConfigured: z.boolean(),
   orbitAvailable: z.boolean(),
+  /** OrbitRender takes the bitrate in Kbps; an older one rounds it to whole Mbps. */
+  takesBitrateKbps: z.boolean().optional().default(false),
 });
 export const renderJobSchema = z.object({
   stage: z.string().nullable().optional().default(null),
@@ -77,7 +79,7 @@ export const renderOptionsSchema = z
     height: z.number().int().min(180).max(2160).multipleOf(2),
     videoFps: z.number().int().min(15).max(240),
     simulationFps: z.number().int().min(15).max(1024),
-    bitrateMbps: z.number().int().min(1).max(200),
+    bitrateKbps: z.number().int().min(1_000).max(200_000),
     videoCodec: videoCodecSchema,
     encoder: videoEncoderSchema,
     encoding: encodingSpeedSchema,
