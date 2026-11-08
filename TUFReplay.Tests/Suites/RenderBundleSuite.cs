@@ -57,6 +57,39 @@ internal static class RenderBundleSuite
     Assert(rejected, "An unknown ProRes profile name was accepted.");
   }
 
+  // Korean layouts send Right Alt and Right Ctrl as the Hangul and Hanja IME keys. A video must
+  // still show the physical key, and a key no Unity key names must not stop the render.
+  private static void AssertLayoutKeys()
+  {
+    const RecordInputFlags down = RecordInputFlags.Down | RecordInputFlags.Async;
+    const RecordInputFlags extendedDown = down | RecordInputFlags.ExtendedKey;
+    using var output = new StringWriter();
+    RenderBundleCsv.WriteInputs(
+      output,
+      new[]
+      {
+        new RecordedInput(0, 0x15, extendedDown, 0x38, 0x01), // Korean Right Alt
+        new RecordedInput(1, 0x15, RecordInputFlags.ExtendedKey, 0x38, 0x81),
+        new RecordedInput(2, 0x19, extendedDown, 0x1D, 0x01), // Korean Right Ctrl
+        new RecordedInput(3, 0xAF, extendedDown, 0, 0x11), // Volume Up from keyboard software
+        new RecordedInput(4, 0x15, down), // Held when capture began: a snapshot has no scan code
+        new RecordedInput(5, 0x15, down, 0x72, 0x00), // A dedicated Hangul key has no Unity key
+        new RecordedInput(6, 0x0C, down, 0x4C, 0x00), // Keypad 5 with Num Lock off
+        new RecordedInput(7, 0x5D, extendedDown, 0x5D, 0x01), // Menu
+        new RecordedInput(8, 65535, down),
+        new RecordedInput(9, 0x41, down, 0x1E, 0x00),
+      },
+      "windows",
+      10
+    );
+    Assert(
+      output.ToString().Replace("\r", "")
+        == "timeUs,key,down,sequence\n0,RightAlt,1,0\n1,RightAlt,0,1\n2,RightControl,1,2\n4,RightAlt,1,3\n"
+          + "6,Keypad5,1,4\n7,Menu,1,5\n9,A,1,6\n",
+      "Korean layout keys were not mapped to their physical keys, or a key without a Unity key stopped the export."
+    );
+  }
+
   internal static void RunAll()
   {
     AssertProResProfiles();
@@ -194,8 +227,13 @@ internal static class RenderBundleSuite
       mac.ToString().Contains("0,Return,1,0") && mac.ToString().Contains("1,LeftCommand,1,1"),
       "macOS native keys used host platform codes."
     );
-    Throws(() =>
-      RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(0, 65535, 0) }, "windows", 1)
+    AssertLayoutKeys();
+    Error(
+      () => RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(0, 0x41, 0) }, "linux", 1),
+      "render_input_key_unsupported",
+      "key",
+      2,
+      "inputs.csv"
     );
     Throws(() =>
       RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(2, 0x41, 0) }, "windows", 1)

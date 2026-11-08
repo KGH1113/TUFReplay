@@ -56,6 +56,7 @@ internal static class WindowsNativeInputKey
       case LogicalKeyboardKey.RAlt:
       case LogicalKeyboardKey.Super:
       case LogicalKeyboardKey.RSuper:
+      case LogicalKeyboardKey.Menu:
       case LogicalKeyboardKey.PrintScreen:
       case LogicalKeyboardKey.Insert:
       case LogicalKeyboardKey.Delete:
