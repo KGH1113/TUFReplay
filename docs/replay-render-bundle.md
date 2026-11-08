@@ -94,6 +94,10 @@ timeUs,key,down,sequence
 
 Keys are symbolic Unity `KeyCode` names resolved from the recording's native platform,
 including aliases such as `Return`, `LeftArrow`, `BackQuote`, `Period`, and `KeypadEnter`.
+Korean Windows layouts record Right Alt and Right Ctrl as the Hangul (`0x15`) and Hanja
+(`0x19`) IME keys; their scan codes name the physical keys, so they export as `RightAlt` and
+`RightControl`. Keypad 5 with Num Lock off (`VK_CLEAR`) exports as `Keypad5`, and the
+Application key as `Menu`.
 `down` is 0 or 1. A monotonically increasing sequence preserves press/release ordering,
 including short pulses with the same timestamp. Conversion never emits OS keyboard events.
 
