@@ -220,8 +220,14 @@ internal static class NativeInputKeyCodeMapper
     }
   }
 
+  /// <summary>Whether recordings from <paramref name="sourcePlatform"/> can name their keys at all.</summary>
+  public static bool IsSupportedSourcePlatform(string sourcePlatform) =>
+    string.Equals(sourcePlatform, "windows", StringComparison.OrdinalIgnoreCase)
+    || string.Equals(sourcePlatform, "macos", StringComparison.OrdinalIgnoreCase);
+
   // A neutral export must resolve the recording's platform, never the host's
-  // current platform. Unsupported keys fail explicitly instead of disappearing.
+  // current platform. False means no Unity key names this key; callers decide
+  // whether that key can be left out.
   public static bool TryGetUnityKeyName(string sourcePlatform, RecordedInput input, out string name)
   {
     name = null;
