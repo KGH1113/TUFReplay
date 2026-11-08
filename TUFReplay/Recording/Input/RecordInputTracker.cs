@@ -298,6 +298,11 @@ public static class RecordInputTracker
       }
       if (KeyStates[stateIndex] == transition.Down)
       {
+        if (!transition.Down && TryReleaseOtherSlot(ref transition))
+        {
+          FilteredDrainBuffer[accepted++] = transition;
+          continue;
+        }
         Interlocked.Increment(ref _duplicates);
         continue;
       }
@@ -306,6 +311,30 @@ public static class RecordInputTracker
       FilteredDrainBuffer[accepted++] = transition;
     }
     return accepted;
+  }
+
+  // A state snapshot reads only virtual keys, so it presses a held key under the slot
+  // WindowsNativeInputKey.IsExtended names. The hook takes the slot from the key's scan code,
+  // which can differ: Korean layouts send Right Alt as an extended VK_HANGUL. That release
+  // then arrives for the other slot, and it must release the snapshot's press.
+  private static bool TryReleaseOtherSlot(ref NativeInputTransition transition)
+  {
+    if (!EventSource.UsesExtendedKeyState)
+      return false;
+    bool otherExtended = !transition.ExtendedKey;
+    if (!TryGetStateIndex(transition.Key, otherExtended, out int otherIndex) || !KeyStates[otherIndex])
+      return false;
+    KeyStates[otherIndex] = false;
+    transition = new NativeInputTransition(
+      transition.CaptureTimestampTicks,
+      transition.TimestampNs,
+      transition.Key,
+      false,
+      otherExtended,
+      transition.NativeCode,
+      transition.NativeFlags
+    );
+    return true;
   }
 
   private static void SynchronizePhysicalStateLocked(bool emitTransitions)
@@ -327,22 +356,54 @@ public static class RecordInputTracker
         continue;
       }
 
-      bool wasDown = KeyStates[stateIndex];
+      // The hook may hold this virtual key under the other slot (see TryReleaseOtherSlot),
+      // so both slots describe one physical state.
+      int otherIndex = -1;
+      if (EventSource.UsesExtendedKeyState && TryGetStateIndex(key, !extendedKey, out int other))
+        otherIndex = other;
+      bool down = KeyStates[stateIndex];
+      bool otherDown = otherIndex >= 0 && KeyStates[otherIndex];
+      bool wasDown = down || otherDown;
       if (!emitTransitions)
-        KeyStates[stateIndex] = isDown;
-      if (!emitTransitions || isDown == wasDown)
+      {
+        if (!isDown)
+        {
+          KeyStates[stateIndex] = false;
+          if (otherIndex >= 0)
+            KeyStates[otherIndex] = false;
+        }
+        else if (!wasDown)
+          KeyStates[stateIndex] = true;
+        continue;
+      }
+      if (isDown == wasDown)
         continue;
 
-      if (!EventQueue.TryEnqueue(new NativeInputTransition(captureTicks, timestampNs, key, isDown, extendedKey)))
+      if (isDown || down)
       {
-        _overflowed = true;
-        _acceptingEvents = false;
-        Interlocked.Increment(ref _dropped);
-        return;
+        if (!TryEnqueueSnapshot(new NativeInputTransition(captureTicks, timestampNs, key, isDown, extendedKey)))
+          return;
       }
-
-      UpdateMaxQueueDepth(EventQueue.Count);
+      if (!isDown && otherDown)
+      {
+        if (!TryEnqueueSnapshot(new NativeInputTransition(captureTicks, timestampNs, key, false, !extendedKey)))
+          return;
+      }
     }
+  }
+
+  private static bool TryEnqueueSnapshot(NativeInputTransition transition)
+  {
+    if (!EventQueue.TryEnqueue(transition))
+    {
+      _overflowed = true;
+      _acceptingEvents = false;
+      Interlocked.Increment(ref _dropped);
+      return false;
+    }
+
+    UpdateMaxQueueDepth(EventQueue.Count);
+    return true;
   }
 
   private static bool EnsureEventSourceRunning()
