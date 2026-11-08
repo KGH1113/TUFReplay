@@ -5,5 +5,6 @@
   "Version": "1.2.1",
   "BuildFlavor": "standard",
   "AssemblyName": "TUFReplay.SdkLauncher.dll",
-  "EntryMethod": "TUFReplay.Bootstrap.Bootstrap.Load"
+  "EntryMethod": "TUFReplay.Bootstrap.Bootstrap.Load",
+  "HomePage": "https://tufreplay.impl1113.dev"
 }
