@@ -57,6 +57,11 @@ except (OSError, ValueError) as error:
 
 info["Version"] = version
 info["BuildFlavor"] = flavor
+# Unity Mod Manager shows a link icon for HomePage. Keep in sync with TUFReplayBuildFlavor.WebsiteUrl.
+info["HomePage"] = {
+    "standard": "https://tufreplay.impl1113.dev",
+    "auto-submission": "https://tufreplay-auto.impl1113.dev",
+}[flavor]
 if entrypoint_mode == "launcher":
     info["AssemblyName"] = f"Runtime/launchers/{version}/TUFReplay.SdkLauncher.dll"
 with open(destination_path, "w", encoding="utf-8", newline="\n") as destination:
