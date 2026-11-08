@@ -173,6 +173,7 @@ export interface RendererState {
     installationDirectory: string | null;
     source: string | null;
     status: string;
+    takesBitrateKbps: boolean;
     totalBytes: number | null;
     version: string | null;
 }
@@ -193,7 +194,7 @@ export interface RenderRequest {
     audioGainDb: number;
     bgaMode: boolean;
     bitDepth: number;
-    bitrateMbps: number;
+    bitrateKbps: number;
     captureAudio: boolean;
     endDelaySeconds: number;
     height: number;

@@ -7,7 +7,7 @@ const fields = [
   "height",
   "videoFps",
   "simulationFps",
-  "bitrateMbps",
+  "bitrateKbps",
   "videoCodec",
   "bitDepth",
   "captureAudio",
@@ -27,10 +27,34 @@ export function readLastRenderOptions(defaults: RenderOptions): RenderOptions {
     for (const field of fields) {
       if (field in values) Object.assign(options, { [field]: values[field] });
     }
+    // Saved before the bitrate moved to Kbps.
+    if (!("bitrateKbps" in values) && typeof values.bitrateMbps === "number")
+      options.bitrateKbps = values.bitrateMbps * 1_000;
     const result = renderOptionsSchema.safeParse(options);
     return result.success ? result.data : defaults;
   } catch {
     return defaults;
+  }
+}
+
+/** How the file size row shows the bitrate: as megabytes each minute, or in Kbps. */
+export type BitrateView = "fileSize" | "bitrate";
+
+const bitrateViewKey = "tufreplay.render-bitrate-view.v1";
+
+export function readBitrateView(): BitrateView {
+  try {
+    return localStorage.getItem(bitrateViewKey) === "bitrate" ? "bitrate" : "fileSize";
+  } catch {
+    return "fileSize";
+  }
+}
+
+export function saveBitrateView(view: BitrateView): void {
+  try {
+    localStorage.setItem(bitrateViewKey, view);
+  } catch {
+    // The row still switches; it just starts as file size next time.
   }
 }
 

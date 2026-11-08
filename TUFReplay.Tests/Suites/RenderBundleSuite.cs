@@ -30,13 +30,13 @@ internal static class RenderBundleSuite
         Height = 1080,
         VideoFps = 60,
         TargetFps = 240,
-        BitrateMbps = 18,
+        BitrateKbps = 18_500,
         VideoCodec = codec,
         BitDepth = 10,
         ProResProfile = profile,
       };
-    var proRes = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("ProRes", "4444 XQ") });
-    var h264 = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("H264", "HQ") });
+    var proRes = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("ProRes", "4444 XQ"), true });
+    var h264 = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("H264", "HQ"), true });
     Assert(
       proRes.ProResProfile == "4444 XQ" && h264.ProResProfile == null,
       "The ProRes profile must go to OrbitRender with ProRes only."
@@ -55,7 +55,41 @@ internal static class RenderBundleSuite
       rejected = true;
     }
     Assert(rejected, "An unknown ProRes profile name was accepted.");
+
+    // OrbitRender with Kbps support gets the exact bitrate; an older one gets the nearest whole Mbps.
+    var exact = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(h264, IgnoreNulls));
+    Assert(
+      (int?)exact["bitrateKbps"] == 18_500 && exact["bitrateMbps"] == null,
+      "OrbitRender with Kbps support must get bitrateKbps only."
+    );
+    var whole = Newtonsoft.Json.Linq.JObject.Parse(
+      JsonConvert.SerializeObject(build.Invoke(null, new object[] { Request("H264", "HQ"), false }), IgnoreNulls)
+    );
+    Assert(
+      (int?)whole["bitrateMbps"] == 19 && whole["bitrateKbps"] == null,
+      "Older OrbitRender must get the nearest whole Mbps only."
+    );
+    foreach (int kbps in new[] { 999, 200_001 })
+    {
+      var outOfRange = Request("H264", "HQ");
+      outOfRange.BitrateKbps = kbps;
+      bool refused = false;
+      try
+      {
+        validate.Invoke(null, new object[] { outOfRange });
+      }
+      catch (TargetInvocationException)
+      {
+        refused = true;
+      }
+      Assert(refused, kbps + " Kbps was accepted.");
+    }
   }
+
+  private static readonly JsonSerializerSettings IgnoreNulls = new()
+  {
+    NullValueHandling = NullValueHandling.Ignore,
+  };
 
   // Korean layouts send Right Alt and Right Ctrl as the Hangul and Hanja IME keys. A video must
   // still show the physical key, and a key no Unity key names must not stop the render.

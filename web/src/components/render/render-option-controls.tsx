@@ -83,7 +83,7 @@ export function SettingRow({
   labelId,
   children,
 }: {
-  label: string;
+  label: ReactNode;
   hint?: string;
   labelId?: string;
   children: ReactNode;
