@@ -26,6 +26,7 @@ internal sealed class ReplayProvider
   internal const string CanvasesName = "GetReplayCanvases";
   internal const string BeforeCaptureName = "OnBeforeFrameCapture";
   internal const string AfterCaptureName = "OnAfterFrameCapture";
+  internal const string OverlayVideosName = "AddReplayOverlayVideos";
 
   private static readonly string[] KnownMembers =
   {
@@ -38,6 +39,7 @@ internal sealed class ReplayProvider
     CanvasesName,
     BeforeCaptureName,
     AfterCaptureName,
+    OverlayVideosName,
   };
 
   public readonly string Id;
@@ -65,6 +67,9 @@ internal sealed class ReplayProvider
   internal readonly Func<Canvas> SingleCanvas;
   internal readonly Action BeforeCapture;
   internal readonly Action AfterCapture;
+
+  /// <summary>Hands the provider an <c>add(path, source, target)</c> callback once, after a render's last frame.</summary>
+  internal readonly Action<Action<string, RectInt, RectInt>> OverlayVideos;
 
   internal bool WarnedSlowCapture;
   internal int ReportedCaptureFailures;
@@ -98,6 +103,7 @@ internal sealed class ReplayProvider
     SingleCanvas = bound.SingleCanvas;
     BeforeCapture = bound.BeforeCapture;
     AfterCapture = bound.AfterCapture;
+    OverlayVideos = bound.OverlayVideos;
   }
 
   public bool Captures => _capture != null;
@@ -110,7 +116,8 @@ internal sealed class ReplayProvider
     || Canvases != null
     || SingleCanvas != null
     || BeforeCapture != null
-    || AfterCapture != null;
+    || AfterCapture != null
+    || OverlayVideos != null;
   public bool ProvidesCanvases => Canvases != null || SingleCanvas != null;
 
   /// <summary>What the provider takes part in, for the registration log.</summary>
@@ -129,6 +136,8 @@ internal sealed class ReplayProvider
       parts.Add("render canvases");
     if (BeforeCapture != null || AfterCapture != null)
       parts.Add("frame capture");
+    if (OverlayVideos != null)
+      parts.Add("overlay videos");
     return string.Join(", ", parts);
   }
 
@@ -317,6 +326,7 @@ internal sealed class ReplayProvider
     public Func<Canvas> SingleCanvas;
     public Action BeforeCapture;
     public Action AfterCapture;
+    public Action<Action<string, RectInt, RectInt>> OverlayVideos;
   }
 
   private static Bound BindReplayMembers(MethodInfo[] methods, object instance, string typeName)
@@ -363,6 +373,20 @@ internal sealed class ReplayProvider
           typeName + "." + CanvasesName + " must take no parameters and return a Canvas or IEnumerable<Canvas>."
         );
     }
+
+    MethodInfo overlayVideos = Single(methods, OverlayVideosName, typeName);
+    if (overlayVideos != null)
+      bound.OverlayVideos =
+        (Action<Action<string, RectInt, RectInt>>)
+          Delegate.CreateDelegate(typeof(Action<Action<string, RectInt, RectInt>>), instance, overlayVideos, false)
+        ?? throw new RunStateModelException(
+          typeName
+            + "."
+            + OverlayVideosName
+            + " must be void "
+            + OverlayVideosName
+            + "(Action<string, RectInt, RectInt> add)."
+        );
     return bound;
   }
 

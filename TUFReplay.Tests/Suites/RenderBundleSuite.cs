@@ -30,13 +30,13 @@ internal static class RenderBundleSuite
         Height = 1080,
         VideoFps = 60,
         TargetFps = 240,
-        BitrateMbps = 18,
+        BitrateKbps = 18_500,
         VideoCodec = codec,
         BitDepth = 10,
         ProResProfile = profile,
       };
-    var proRes = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("ProRes", "4444 XQ") });
-    var h264 = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("H264", "HQ") });
+    var proRes = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("ProRes", "4444 XQ"), true });
+    var h264 = (OrbitRenderOptions)build.Invoke(null, new object[] { Request("H264", "HQ"), true });
     Assert(
       proRes.ProResProfile == "4444 XQ" && h264.ProResProfile == null,
       "The ProRes profile must go to OrbitRender with ProRes only."
@@ -55,6 +55,70 @@ internal static class RenderBundleSuite
       rejected = true;
     }
     Assert(rejected, "An unknown ProRes profile name was accepted.");
+
+    // OrbitRender with Kbps support gets the exact bitrate; an older one gets the nearest whole Mbps.
+    var exact = Newtonsoft.Json.Linq.JObject.Parse(JsonConvert.SerializeObject(h264, IgnoreNulls));
+    Assert(
+      (int?)exact["bitrateKbps"] == 18_500 && exact["bitrateMbps"] == null,
+      "OrbitRender with Kbps support must get bitrateKbps only."
+    );
+    var whole = Newtonsoft.Json.Linq.JObject.Parse(
+      JsonConvert.SerializeObject(build.Invoke(null, new object[] { Request("H264", "HQ"), false }), IgnoreNulls)
+    );
+    Assert(
+      (int?)whole["bitrateMbps"] == 19 && whole["bitrateKbps"] == null,
+      "Older OrbitRender must get the nearest whole Mbps only."
+    );
+    foreach (int kbps in new[] { 999, 200_001 })
+    {
+      var outOfRange = Request("H264", "HQ");
+      outOfRange.BitrateKbps = kbps;
+      bool refused = false;
+      try
+      {
+        validate.Invoke(null, new object[] { outOfRange });
+      }
+      catch (TargetInvocationException)
+      {
+        refused = true;
+      }
+      Assert(refused, kbps + " Kbps was accepted.");
+    }
+  }
+
+  private static readonly JsonSerializerSettings IgnoreNulls = new() { NullValueHandling = NullValueHandling.Ignore };
+
+  // Korean layouts send Right Alt and Right Ctrl as the Hangul and Hanja IME keys. A video must
+  // still show the physical key, and a key no Unity key names must not stop the render.
+  private static void AssertLayoutKeys()
+  {
+    const RecordInputFlags down = RecordInputFlags.Down | RecordInputFlags.Async;
+    const RecordInputFlags extendedDown = down | RecordInputFlags.ExtendedKey;
+    using var output = new StringWriter();
+    RenderBundleCsv.WriteInputs(
+      output,
+      new[]
+      {
+        new RecordedInput(0, 0x15, extendedDown, 0x38, 0x01), // Korean Right Alt
+        new RecordedInput(1, 0x15, RecordInputFlags.ExtendedKey, 0x38, 0x81),
+        new RecordedInput(2, 0x19, extendedDown, 0x1D, 0x01), // Korean Right Ctrl
+        new RecordedInput(3, 0xAF, extendedDown, 0, 0x11), // Volume Up from keyboard software
+        new RecordedInput(4, 0x15, down), // Held when capture began: a snapshot has no scan code
+        new RecordedInput(5, 0x15, down, 0x72, 0x00), // A dedicated Hangul key has no Unity key
+        new RecordedInput(6, 0x0C, down, 0x4C, 0x00), // Keypad 5 with Num Lock off
+        new RecordedInput(7, 0x5D, extendedDown, 0x5D, 0x01), // Menu
+        new RecordedInput(8, 65535, down),
+        new RecordedInput(9, 0x41, down, 0x1E, 0x00),
+      },
+      "windows",
+      10
+    );
+    Assert(
+      output.ToString().Replace("\r", "")
+        == "timeUs,key,down,sequence\n0,RightAlt,1,0\n1,RightAlt,0,1\n2,RightControl,1,2\n4,RightAlt,1,3\n"
+          + "6,Keypad5,1,4\n7,Menu,1,5\n9,A,1,6\n",
+      "Korean layout keys were not mapped to their physical keys, or a key without a Unity key stopped the export."
+    );
   }
 
   internal static void RunAll()
@@ -79,6 +143,16 @@ internal static class RenderBundleSuite
       (bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectorySupported) })
         && !(bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) }),
       "OrbitRender output folder capability detection failed."
+    );
+    var takesOverlayVideos = typeof(OrbitRenderClient).GetMethod(
+      "TakesOverlayVideos",
+      BindingFlags.NonPublic | BindingFlags.Static
+    );
+    Assert(
+      (bool)takesOverlayVideos.Invoke(null, new object[] { typeof(OverlayVideosSupported) })
+        && !(bool)takesOverlayVideos.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) })
+        && !(bool)takesOverlayVideos.Invoke(null, new object[] { null }),
+      "OrbitRender overlay video capability detection failed."
     );
     using var windows = new StringWriter();
     RenderBundleCsv.WriteInputs(
@@ -194,8 +268,13 @@ internal static class RenderBundleSuite
       mac.ToString().Contains("0,Return,1,0") && mac.ToString().Contains("1,LeftCommand,1,1"),
       "macOS native keys used host platform codes."
     );
-    Throws(() =>
-      RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(0, 65535, 0) }, "windows", 1)
+    AssertLayoutKeys();
+    Error(
+      () => RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(0, 0x41, 0) }, "linux", 1),
+      "render_input_key_unsupported",
+      "key",
+      2,
+      "inputs.csv"
     );
     Throws(() =>
       RenderBundleCsv.WriteInputs(new StringWriter(), new[] { new RecordedInput(2, 0x41, 0) }, "windows", 1)
@@ -259,6 +338,11 @@ internal static class RenderBundleSuite
   }
 
   private sealed class OutputDirectoryUnsupported { }
+
+  private sealed class OverlayVideosSupported
+  {
+    public const int OverlayVideoVersion = 1;
+  }
 
   private static void TestPrematureTerminalRecovery()
   {

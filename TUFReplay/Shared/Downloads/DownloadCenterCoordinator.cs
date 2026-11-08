@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Runtime.InteropServices;
+using TUFReplay.Replay.Export;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Media;
@@ -47,7 +48,10 @@ internal static class DownloadCenterCoordinator
             Status = "failed",
             Error = _error ?? "Enable TUFReplay and restart the game.",
             ErrorCode = "downloads_unavailable",
-          }
+          },
+        // Only an enabled OrbitRender is looked up, so this stays cheap on the game thread.
+        renderer?.Active == true
+          && OrbitRenderClient.SupportsBitrateKbps
       ),
       Ffmpeg = IpcDtoMapper.Map(FfmpegInstallCoordinator.Status()),
       CameraNeedsFfmpeg = RuntimeInformation.IsOSPlatform(OSPlatform.Windows),

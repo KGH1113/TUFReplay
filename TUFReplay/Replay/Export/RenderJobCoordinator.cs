@@ -12,6 +12,7 @@ using TUFReplay.ModApi.Repositories;
 using TUFReplay.Replay.Rendering;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
+using TUFReplay.Shared.Media;
 
 namespace TUFReplay.Replay.Export;
 
@@ -309,10 +310,19 @@ public static class RenderJobCoordinator
     // Mods restore the state saved with this run before OrbitRender opens the level.
     job.RunStateSession = ReplaySessions.Begin(
       job.RunId,
-      new ReplayRender(job.Options.Width, job.Options.Height, job.Options.VideoFps),
+      new ReplayRender(
+        job.Options.Width,
+        job.Options.Height,
+        job.Options.VideoFps,
+        takesOverlayVideos: false,
+        ffmpegPath: SharedFfmpegPath()
+      ),
       job.RunStates.Result
     );
-    var result = OrbitRenderClient.StartReplay(manifestPath, BuildOptions(job.Options));
+    var result = OrbitRenderClient.StartReplay(
+      manifestPath,
+      BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)
+    );
     if (!result.Ok)
     {
       Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
@@ -323,6 +333,13 @@ public static class RenderJobCoordinator
     job.Stage = StageOpeningLevel;
     job.Progress = Math.Max(job.Progress, PrepareProgress);
     Publish(job);
+  }
+
+  // The FFmpeg TUFReplay shares with OrbitRender, for mods that write overlay videos; null until installed.
+  private static string SharedFfmpegPath()
+  {
+    FfmpegInstallState ffmpeg = FfmpegInstallCoordinator.Status();
+    return ffmpeg.Available && !string.IsNullOrEmpty(ffmpeg.Path) ? ffmpeg.Path : null;
   }
 
   // OrbitRender 3 and later: OrbitRender captures and encodes, TUFReplay replays as its host.
@@ -351,13 +368,23 @@ public static class RenderJobCoordinator
       return;
     }
     job.Host = host;
-    // Mods restore the state saved with this run before OrbitRender opens the level.
+    // Mods restore the state saved with this run before OrbitRender opens the level, and learn
+    // there whether their own videos can go over the finished one.
     job.RunStateSession = ReplaySessions.Begin(
       job.RunId,
-      new ReplayRender(job.Options.Width, job.Options.Height, job.Options.VideoFps),
+      new ReplayRender(
+        job.Options.Width,
+        job.Options.Height,
+        job.Options.VideoFps,
+        OrbitRenderClient.SupportsOverlayVideos,
+        SharedFfmpegPath()
+      ),
       job.RunStates.Result
     );
-    var result = OrbitRenderClient.StartHostedReplay(HostedRequestJson(recording, BuildOptions(job.Options)), host);
+    var result = OrbitRenderClient.StartHostedReplay(
+      HostedRequestJson(recording, BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)),
+      host
+    );
     if (!result.Ok)
     {
       Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
@@ -550,7 +577,8 @@ public static class RenderJobCoordinator
         File = error.File,
       };
 
-  private static OrbitRenderOptions BuildOptions(RenderRequest options) =>
+  // An OrbitRender without Kbps support gets the nearest whole Mbps; the web snaps to it as well.
+  private static OrbitRenderOptions BuildOptions(RenderRequest options, bool takesBitrateKbps) =>
     new OrbitRenderOptions
     {
       NoPreview = true,
@@ -567,7 +595,8 @@ public static class RenderJobCoordinator
       VideoFps = options.VideoFps,
       Width = options.Width,
       Height = options.Height,
-      BitrateMbps = options.BitrateMbps,
+      BitrateKbps = takesBitrateKbps ? options.BitrateKbps : null,
+      BitrateMbps = takesBitrateKbps ? null : WholeMbps(options.BitrateKbps),
       VideoCodec = options.VideoCodec,
       BitDepth = options.BitDepth,
       // The profile replaces bitrate and bit depth, so it belongs only with ProRes.
@@ -597,8 +626,8 @@ public static class RenderJobCoordinator
       throw Domain("render_options_invalid", "Game FPS must be between 15 and 1024.");
     if (options.VideoFps < 15 || options.VideoFps > 240)
       throw Domain("render_options_invalid", "Video FPS must be between 15 and 240.");
-    if (options.BitrateMbps < 1 || options.BitrateMbps > 200)
-      throw Domain("render_options_invalid", "Bitrate must be between 1 and 200 Mbps.");
+    if (options.BitrateKbps < MinBitrateKbps || options.BitrateKbps > MaxBitrateKbps)
+      throw Domain("render_options_invalid", "Bitrate must be between 1,000 and 200,000 Kbps.");
     if (options.BitDepth != 8 && options.BitDepth != 10)
       throw Domain("render_options_invalid", "Bit depth must be 8 or 10.");
     if (
@@ -613,6 +642,12 @@ public static class RenderJobCoordinator
     )
       throw Domain("render_options_invalid", "Choose a ProRes profile: Proxy, LT, Standard, HQ, 4444 or 4444 XQ.");
   }
+
+  private const int MinBitrateKbps = 1_000;
+  private const int MaxBitrateKbps = 200_000;
+
+  private static int WholeMbps(int bitrateKbps) =>
+    Math.Max(1, (int)Math.Round(bitrateKbps / 1000d, MidpointRounding.AwayFromZero));
 
   private static bool IsProRes(RenderRequest options) =>
     string.Equals(options.VideoCodec, "ProRes", StringComparison.OrdinalIgnoreCase);

@@ -43,10 +43,12 @@ included so the consumer can reject a level that changes after export. Level ass
 at their original paths; a bundle is local to this installation, not a portable level archive.
 
 The exporter accepts current replay-engine recordings with explicit origin, terminal,
-pitch, calibration, and judgment data. It rejects unsupported native keys, missing accepted
-hit judgments, nonfinite values, events beyond the terminal time, and out-of-order timelines.
-It never guesses a missing calibration or drops an unidentified key. Legacy records may
-remain playable by other paths while being unavailable to this export contract.
+pitch, calibration, and judgment data. It rejects keys from an unsupported keyboard platform,
+missing accepted hit judgments, nonfinite values, events beyond the terminal time, and
+out-of-order timelines. It never guesses a missing calibration. A key that no Unity `KeyCode`
+names, such as a volume, media or IME-only key, is left out of `inputs.csv`: no key viewer can
+show it, and judgments come from `hits.csv`. Legacy records may remain playable by other paths
+while being unavailable to this export contract.
 
 Bundles are written below the mod's `RenderBundles/<jobId>` directory. Only one preparation
 job runs at once. A webcam storage lease pins the original MP4 until the owned copy finishes;
@@ -94,6 +96,10 @@ timeUs,key,down,sequence
 
 Keys are symbolic Unity `KeyCode` names resolved from the recording's native platform,
 including aliases such as `Return`, `LeftArrow`, `BackQuote`, `Period`, and `KeypadEnter`.
+Korean Windows layouts record Right Alt and Right Ctrl as the Hangul (`0x15`) and Hanja
+(`0x19`) IME keys; their scan codes name the physical keys, so they export as `RightAlt` and
+`RightControl`. Keypad 5 with Num Lock off (`VK_CLEAR`) exports as `Keypad5`, and the
+Application key as `Menu`.
 `down` is 0 or 1. A monotonically increasing sequence preserves press/release ordering,
 including short pulses with the same timestamp. Conversion never emits OS keyboard events.
 
@@ -127,8 +133,8 @@ Missing recordings are omitted even when the inclusion checkbox is enabled.
 
 ## Validation boundary
 
-Missing metadata fields, malformed CSV values, unsupported keys or judgments, out-of-order
-events, and events beyond terminal time have distinct error codes. The web shows localized
+Missing metadata fields, malformed CSV values, an unsupported keyboard platform or judgment,
+out-of-order events, and events beyond terminal time have distinct error codes. The web shows localized
 recovery guidance and the affected field or row when available. CSV export validation counts
 the neutral header as line one; errors encountered while reading native replay payloads
 refer to their original payload row.

@@ -70,9 +70,33 @@ export const formatNames: Record<RenderOptions["videoCodec"], string> = {
   ProRes: "ProRes",
 };
 
-/** A bitrate (megabits each second) as the file it makes: megabytes each minute. */
-export function megabytesPerMinute(bitrateMbps: number) {
-  return Math.round((bitrateMbps * 60) / 8);
+/** The bitrates OrbitRender takes, in kilobits each second. */
+export const bitrateRangeKbps = { min: 1_000, max: 200_000 } as const;
+
+/** A bitrate (kilobits each second) as the file it makes: megabytes each minute. */
+export function megabytesPerMinute(bitrateKbps: number) {
+  return Math.round((bitrateKbps * 60) / 8 / 1_000);
+}
+
+/** The bitrate (kilobits each second) that makes this many megabytes each minute. */
+export function bitrateForMegabytesPerMinute(megabytes: number) {
+  return (megabytes * 1_000 * 8) / 60;
+}
+
+/** A number as people type it, with or without digit grouping; null when it is not one. */
+export function readTypedNumber(text: string): number | null {
+  const plain = text.replace(/[\s,]/g, "");
+  if (!/^\d+(\.\d*)?$|^\.\d+$/.test(plain)) return null;
+  return Number(plain);
+}
+
+/**
+ * A bitrate kept in range and on the steps the renderer takes: every Kbps, or
+ * whole Mbps for an OrbitRender that rounds to them.
+ */
+export function settleBitrate(bitrateKbps: number, stepKbps: number) {
+  const stepped = Math.round(bitrateKbps / stepKbps) * stepKbps;
+  return Math.min(bitrateRangeKbps.max, Math.max(bitrateRangeKbps.min, stepped));
 }
 
 /** Switches the video format and keeps the other encoding settings valid for it. */
