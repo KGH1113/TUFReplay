@@ -77,10 +77,10 @@ A new countdown starts a fresh payload when the previous capture already reached
 - Serves each run's non-perfect judgments and their timeline positions to the companion through `readRunJudgmentTimelines`, read from the stored hit payload with the same length the replay timeline uses (the clear time, otherwise the recorded end). Requests decode payloads only after ADOFAI stops judging input, accept up to 100 runs, and the companion batches the rows it shows into one request.
 - Aggregates overlapping timeline judgments into display columns, preserving the most severe visible judgment and keeping dense replays below Unity's UI vertex limit. The progress fill rebuilds only after a visible half-pixel change while the playhead continues to track replay time. Outside replays, the HUD hides itself once and then does no per-frame UI work.
 - Guides replay handoff from the web UI into ADOFAI with an acknowledged, persistent focus prompt; blocks duplicate replay launches, protects the editor play command during preparation, and waits briefly after focus stabilizes before playback starts.
-- Optionally identifies TUFHelperLite-downloaded levels through TUFHelperLite's integration resolver for future TUF submission workflows.
+- Optionally identifies levels downloaded with TUFHelperLite or TUFHelper by their public TUF level ID, for future TUF submission workflows. Both mods can publish `LevelContextResolver.ResolveTufLevelId(string)`, which TUFReplay finds by name: TUFHelperLite does, and TUFHelper does from the release that includes coyami-ke/TUFHelper#12. Each mod has its own resolver cache, so a mod that loads later is still found. TUFHelper 3.1.1 and older do not publish the method, so TUFReplay reads `LevelSaveFolder` from TUFHelper's `Settings.json`, again only when the file changes, and takes the ID from the level folder TUFHelper names `{artist} - {song} {id}`.
 - Provides the project foundation for replay playback and TUF clear submission.
 - Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
-- Groups revisions of the same `.adofai` path into one level entry, keeping different files in one TUFHelperLite download separate. A day's levels are listed under the selected day in the sidebar, ordered by the last time each level was opened, newest first. The level header shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by a hover card with the level's details.
+- Groups revisions of the same `.adofai` path into one level entry, keeping different files in one TUFHelperLite or TUFHelper download separate. A day's levels are listed under the selected day in the sidebar, ordered by the last time each level was opened, newest first. The level header shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by a hover card with the level's details.
 - Counts a run as a clear when it starts at tile zero and reaches the clear terminal state. A No-Fail run counts only when it has no Miss and no Overload, the judgments that would have ended a normal run.
 - Lists days in a calendar-style sidebar grouped under sticky month headers. Each day shows its weekday and date, with run, level, and clear counts; today's date and nonzero clears are highlighted, and a lock count appears on days that hold locked runs. Below the large breakpoint the sidebar becomes a drawer.
 
@@ -95,7 +95,7 @@ Required at runtime:
 - ADOFAI-IPC 2.2.0 bundled DLLs (included; no separate IPC mod installation)
 - TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
 
-TUFHelperLite is optional. When installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on it.
+TUFHelperLite and TUFHelper are optional. When either is installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on them.
 
 ### Camera recording, live preview, and replay
 
@@ -485,7 +485,7 @@ it does not open a browser MediaStream or a second camera device.
 - **UnityModManager**: ADOFAI mod loading.
 - **AdofaiIpc / TypeSpec**: generated C# and TS contracts, app sessions, shared localhost transport, and streaming file delivery.
 - **Harmony**: game method patching for recording hooks.
-- **TUFHelperLite**: optional public TUF level ID resolution for downloaded charts.
+- **TUFHelperLite / TUFHelper**: optional public TUF level ID resolution for downloaded charts.
 - **SQLite / Microsoft.Data.Sqlite**: local play record storage.
 - **Newtonsoft.Json**: metadata and API JSON serialization.
 - **Bun / React / Vite**: companion activity explorer and embedded chart bridge.
