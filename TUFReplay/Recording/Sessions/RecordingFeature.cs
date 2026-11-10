@@ -29,8 +29,9 @@ public partial class RecordingFeature
   public bool Active { get; private set; }
 
   private bool _clearReached;
+
+  // Like a clear, a failed run keeps recording through the fail screen and is saved when it ends.
   private bool _failed;
-  private bool _failedRunWaitingForHit;
   private bool _runSaved;
   private RunRecord _currentRun;
   private Task<bool> _runPersistence = Task.FromResult(false);
@@ -68,13 +69,6 @@ public partial class RecordingFeature
 
   public void OnHitPostfixCompleted()
   {
-    if (_failedRunWaitingForHit)
-    {
-      _failedRunWaitingForHit = false;
-      CompleteFailedRun();
-      return;
-    }
-
     if (!_calibrationRun || !_clearReached || _runSaved || !Session.IsRecording)
       return;
 
@@ -89,33 +83,16 @@ public partial class RecordingFeature
     Main.Instance.Log("[Recording] Calibration clear captured without activity persistence.");
   }
 
-  public void OnRunFailed(bool hitInProgress)
+  public void OnRunFailed()
   {
     if (!Session.IsRecording || _runSaved || _failed)
       return;
 
     _failed = true;
-    Session.MarkTerminal();
-    ObserveWebcamFailure();
-    Session.StopInputCapture("failed");
-    if (hitInProgress)
-    {
-      // Fail can be raised inside scrPlayer.Hit before the game's margin counter advances.
-      // Wait for the Hit postfix to resolve the final context before persisting the run.
-      _failedRunWaitingForHit = true;
-      return;
-    }
-
-    CompleteFailedRun();
-  }
-
-  private void CompleteFailedRun()
-  {
-    if (!Session.IsRecording || _runSaved)
-      return;
-
     if (_calibrationRun)
     {
+      Session.MarkTerminal();
+      Session.StopInputCapture("failed");
       _runSaved = true;
       EndMicrophoneRun(recording =>
         UnityMainThread.Post(() =>
@@ -125,10 +102,26 @@ public partial class RecordingFeature
       Main.Instance.Log("[Recording] Calibration attempt failed; waiting for retry.");
       return;
     }
+
+    Session.MarkFailed();
+    ObserveWebcamFailure();
+    ObserveMicrophoneFailure();
+    Main.Instance.Log(
+      "[Recording] Run failed; input, camera and microphone capture continue until editor return or retry."
+    );
+  }
+
+  // Saves a failed run with what it recorded on the fail screen, then ends its camera and
+  // microphone. Editor return, a retry and a session stop end the fail screen.
+  internal void FinishFailedRun()
+  {
+    if (!_failed || _runSaved || !Session.IsRecording)
+      return;
+
+    Session.MarkTerminal();
+    Session.StopInputCapture("failed");
     bool saved = SaveActivityRun("failed", Session.GetLastReachedTile());
-    _persistFailedWebcam = saved;
-    EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved), endWebcam: false);
-    Main.Instance.Log("[Recording] Run failed.");
+    EndMicrophoneRun(recording => RecordingMicrophoneDisposition.Complete(recording, saved), persistWebcam: saved);
   }
 
   public void OnReturnedToEditor()
@@ -136,13 +129,7 @@ public partial class RecordingFeature
     if (!Session.IsRecording)
       return;
 
-    if (_failedRunWaitingForHit)
-    {
-      _failedRunWaitingForHit = false;
-      Main.Instance.Log("[Recording] Failed hit did not finish before editor return; saving the available capture.");
-      CompleteFailedRun();
-    }
-
+    FinishFailedRun();
     Session.MarkTerminal();
     Session.StopInputCapture("editor");
     if (_calibrationRun)
@@ -173,11 +160,6 @@ public partial class RecordingFeature
       else
         EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));
     }
-    else
-      EndMicrophoneRun(
-        recording => FeatureRegistry.MicrophoneRecording?.Discard(recording),
-        persistWebcam: _persistFailedWebcam
-      );
     StopSession();
 
     if (_clearReached && !_failed && Session.HasRecordableData)
@@ -316,7 +298,7 @@ public partial class RecordingFeature
     // A transient fail may have ended capture before an activity draft existed.
     // Reusing that payload would retain its terminal boundary and clamp the new
     // countdown's inputs to it, even though the later gameplay keeps recording.
-    if (!_runSaved && !Session.Data.TerminalTimeUs.HasValue)
+    if (!_runSaved && !_failed && !Session.Data.TerminalTimeUs.HasValue)
       return true;
 
     int? tufLevelId = Session.TufLevelId;
@@ -354,13 +336,6 @@ public partial class RecordingFeature
 
   public void StopSession()
   {
-    if (_failedRunWaitingForHit)
-    {
-      _failedRunWaitingForHit = false;
-      Main.Instance.Log("[Recording] Failed hit did not finish before session stop; saving the available capture.");
-      CompleteFailedRun();
-    }
-
     if (_calibrationRun)
     {
       EndMicrophoneRun(recording => FeatureRegistry.MicrophoneRecording?.Discard(recording));
@@ -369,7 +344,8 @@ public partial class RecordingFeature
       _calibrationRun = false;
       return;
     }
-    bool persistWebcam = _persistFailedWebcam;
+    FinishFailedRun();
+    bool persistWebcam = false;
     if (Session.IsRecording && _clearReached && !_runSaved)
     {
       Session.MarkTerminal();
@@ -416,12 +392,11 @@ public partial class RecordingFeature
   private void ResetRunState()
   {
     // A retry can start directly from the fail screen without an editor return.
-    // Finish its camera against the old run's persistence before resetting IDs.
-    EndWebcamRun(_persistFailedWebcam);
+    // Save the failed run before resetting IDs.
+    FinishFailedRun();
     DiscardPendingEditorRecording();
     _clearReached = false;
     _failed = false;
-    _failedRunWaitingForHit = false;
     _runSaved = false;
     _currentRun = null;
     DiscardRunStates();
@@ -430,6 +405,5 @@ public partial class RecordingFeature
     _microphoneTimeline = null;
     _webcamCaptureStarted = false;
     _webcamTimeline = null;
-    _persistFailedWebcam = false;
   }
 }

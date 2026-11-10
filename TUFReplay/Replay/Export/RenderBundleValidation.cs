@@ -61,6 +61,11 @@ public static class RenderBundleValidation
         || (metadata.wonTimeUs.Value >= 0 && metadata.wonTimeUs.Value <= metadata.terminalTimeUs.Value),
       "wonTimeUs"
     );
+    Valid(
+      !metadata.failedTimeUs.HasValue
+        || (metadata.failedTimeUs.Value >= 0 && metadata.failedTimeUs.Value <= metadata.terminalTimeUs.Value),
+      "failedTimeUs"
+    );
   }
 
   public static long ResolveTerminalTimeUs(

@@ -244,6 +244,8 @@ public static class RecordingPatches
     {
       case States.Countdown:
       case States.Checkpoint:
+        // A retry from the fail screen saves the failed run before this one starts.
+        recording.FinishFailedRun();
         recording.Session.BreakInputTimeline(newState.ToString().ToLowerInvariant());
         if (!recording.Session.IsRecording)
           return;
@@ -273,8 +275,7 @@ public static class RecordingPatches
 
       case States.Fail:
       case States.Fail2:
-        recording.Session.BreakInputTimeline("fail");
-        RecordingFeature.Instance.OnRunFailed(_pendingHitMarginCapture);
+        RecordingFeature.Instance.OnRunFailed();
         break;
     }
   }
@@ -310,12 +311,15 @@ public static class RecordingPatches
     _lastCaptureAllowed = captureAllowed;
   }
 
+  // A failed run keeps recording keys on the fail screen until editor return or retry.
   private static bool IsNativeInputCaptureState(States state)
   {
     return state == States.Countdown
       || state == States.Checkpoint
       || state == States.PlayerControl
-      || state == States.Won;
+      || state == States.Won
+      || state == States.Fail
+      || state == States.Fail2;
   }
 
   [HarmonyPatch(typeof(scrController), "TogglePauseGame")]

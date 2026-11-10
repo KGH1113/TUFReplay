@@ -370,17 +370,17 @@ internal static class ReplayNativeInputSuite
     }
 
     context.RunStarted = true;
-    context.WonClockStarted = true;
-    context.WonClockStartedAt = 1.25d;
-    context.WonClockStartTimeUs = 87_000_000L;
+    context.RealTimeClockStarted = true;
+    context.RealTimeClockStartedAt = 1.25d;
+    context.RealTimeClockStartTimeUs = 87_000_000L;
     ReplayRunController.MarkRestartPrepared(context);
     Assert(
       !context.ReplayClockOffsetInitialized && context.ReplayClockOffsetUs == 0L,
       "A full retry did not clear both runtime origin fields."
     );
     Assert(
-      !context.WonClockStarted && context.WonClockStartedAt == 0d && context.WonClockStartTimeUs == 0L,
-      "A full retry retained the prior won-clock state."
+      !context.RealTimeClockStarted && context.RealTimeClockStartedAt == 0d && context.RealTimeClockStartTimeUs == 0L,
+      "A full retry retained the prior real-time clock state."
     );
     Assert(
       ReplayRunController.ShouldAlignPlayerControlOrigin(context),
@@ -589,6 +589,30 @@ internal static class ReplayNativeInputSuite
     Assert(
       ReplaySessionService.TimelineDurationTimeUs(failed) == 12_000_000L,
       "Failed timeline did not use terminalTimeUs."
+    );
+    Assert(
+      ReplayPlaybackCoordinator.ResolveReplayEndTimeUs(
+        new ReplayMetadata { failedTimeUs = 9_000_000L, terminalTimeUs = 12_000_000L },
+        "failed",
+        11_000_000L
+      ) == 9_000_000L,
+      "A failed replay did not end at the death before its fail screen."
+    );
+    Assert(
+      ReplayPlaybackCoordinator.ResolveReplayEndTimeUs(
+        new ReplayMetadata { terminalTimeUs = 9_000_000L },
+        "failed",
+        9_500_000L
+      ) == 9_500_000L,
+      "An older failed replay did not end at its recorded end."
+    );
+    Assert(
+      ReplayPlaybackCoordinator.ResolveReplayEndTimeUs(
+        new ReplayMetadata { wonTimeUs = 8_000_000L, terminalTimeUs = 12_000_000L },
+        "cleared",
+        11_000_000L
+      ) == 12_000_000L,
+      "A cleared replay did not keep its recorded end."
     );
     Assert(
       ReplaySessionService.ClampTimelineSeekTime(-1L, 8_000_000L) == 0L,

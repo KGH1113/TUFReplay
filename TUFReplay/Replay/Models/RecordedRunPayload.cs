@@ -14,6 +14,9 @@ public class RecordedRunPayload
   public string EndedAtUtc;
   public double? GameplayStartSongPosition;
   public long? WonTimeUs;
+
+  // The death of a failed run. Like a clear, recording continues after it until editor return or retry.
+  public long? FailedTimeUs;
   public long? TerminalTimeUs;
   public string InputTimeBase = ReplayInputTimeBases.Hybrid;
   public string InputCapture = "unsupported";
@@ -70,6 +73,7 @@ public class RecordedRunPayload
       endedAtUtc = EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,
       wonTimeUs = WonTimeUs,
+      failedTimeUs = FailedTimeUs,
       terminalTimeUs = TerminalTimeUs,
       noFailMode = NoFailMode,
       gameInputOffsetMs = GameInputOffsetMs,

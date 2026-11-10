@@ -14,6 +14,7 @@ internal static class RenderHostSuite
     ReadsTheBundleItWrote(root);
     TellsOrbitRenderAbsoluteMediaPaths(root);
     RefusesMediaOutsideTheBundle(root);
+    FailedRunsRecordTheFailScreen(root);
     GivesOrbitRenderOverlayVideosAsJson();
     Console.WriteLine("TUFReplay render host tests passed.");
   }
@@ -61,7 +62,7 @@ internal static class RenderHostSuite
   {
     RecordingBundle bundle = RecordingBundle.Load(WriteBundle(root, "read", media: null));
     Assert(
-      bundle.Inputs.Length == 2 && bundle.Inputs[0].Key == "A" && bundle.Inputs[0].Down,
+      bundle.Inputs.Length == 3 && bundle.Inputs[0].Key == "A" && bundle.Inputs[0].Down,
       "Recorded keys were not read."
     );
     Assert(bundle.Hits.Length == 1 && bundle.Hits[0].Margin == "Perfect", "Recorded hits were not read.");
@@ -116,13 +117,62 @@ internal static class RenderHostSuite
     Console.WriteLine("PASS media paths outside the bundle are refused");
   }
 
-  private static string WriteBundle(string root, string name, JObject media)
+  // A failed run dies at failedTimeUs and records the fail screen up to terminalTimeUs. Older
+  // failed recordings end at the death.
+  private static void FailedRunsRecordTheFailScreen(string root)
+  {
+    RecordingBundle failed = RecordingBundle.Load(
+      WriteBundle(root, "failed", media: null, replay => Fail(replay, failedTimeUs: 600_000))
+    );
+    Assert(
+      failed.Manifest.Replay.DeathTimeUs == 600_000 && failed.Manifest.Replay.GameplayEndTimeUs == 600_000,
+      "A failed run did not die at its recorded fail time."
+    );
+    Assert(failed.Inputs.Last().TimeUs == 1_500_000, "Keys recorded on the fail screen were not read.");
+    JObject request = JObject.Parse(RenderJobCoordinator.HostedRequestJson(failed, new OrbitRenderOptions()));
+    Assert((long)request["wonTimeUs"] == 600_000, "OrbitRender did not follow real time after the death.");
+
+    RecordingBundle older = RecordingBundle.Load(
+      WriteBundle(root, "failed-older", media: null, replay => Fail(replay, failedTimeUs: null))
+    );
+    Assert(
+      older.Manifest.Replay.DeathTimeUs == 2_000_000 && older.Manifest.Replay.GameplayEndTimeUs == null,
+      "An older failed recording did not die at its end."
+    );
+
+    AssertThrows<RecordingFormatException>(
+      () => RecordingBundle.Load(WriteBundle(root, "cleared-fail", media: null, replay => replay["failedTimeUs"] = 1)),
+      "A cleared run with a fail time was accepted."
+    );
+    AssertThrows<RecordingFormatException>(
+      () => RecordingBundle.Load(WriteBundle(root, "late-fail", media: null, replay => Fail(replay, 2_500_000))),
+      "A fail time after the end of the recording was accepted."
+    );
+
+    var timeline = new RenderTimeline(1_000_000, 1.5, 600_000);
+    Assert(
+      timeline.ReplayToOutput(600_000) == 1_400_000 && timeline.ReplayToOutput(1_600_000) == 2_400_000,
+      "The video did not follow real time after the death."
+    );
+    Assert(timeline.OutputToReplay(2_400_000) == 1_600_000, "Video time did not map back past the death.");
+    Console.WriteLine("PASS failed runs die at the fail time and keep the fail screen");
+  }
+
+  private static void Fail(JObject replay, long? failedTimeUs)
+  {
+    replay["result"] = "failed";
+    replay.Remove("wonTimeUs");
+    if (failedTimeUs.HasValue)
+      replay["failedTimeUs"] = failedTimeUs.Value;
+  }
+
+  private static string WriteBundle(string root, string name, JObject media, Action<JObject> replay = null)
   {
     string directory = Path.Combine(root, "render-host-" + name);
     Directory.CreateDirectory(directory);
     File.WriteAllText(
       Path.Combine(directory, "inputs.csv"),
-      RecordingCsvReader.InputsHeader + "\n-1000,A,1,0\n500000,A,0,1\n"
+      RecordingCsvReader.InputsHeader + "\n-1000,A,1,0\n500000,A,0,1\n1500000,A,1,2\n"
     );
     File.WriteAllText(
       Path.Combine(directory, "hits.csv"),
@@ -148,6 +198,7 @@ internal static class RenderHostSuite
       ["inputsFile"] = "inputs.csv",
       ["hitsFile"] = "hits.csv",
     };
+    replay?.Invoke((JObject)manifest["replay"]);
     if (media != null)
       manifest["media"] = media;
     string path = Path.Combine(directory, "manifest.json");

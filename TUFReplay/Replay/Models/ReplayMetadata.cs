@@ -8,6 +8,7 @@ public class ReplayMetadata
   public string endedAtUtc;
   public double? gameplayStartSongPosition;
   public long? wonTimeUs;
+  public long? failedTimeUs;
   public long? terminalTimeUs;
   public bool? noFailMode;
   public int? gameInputOffsetMs;

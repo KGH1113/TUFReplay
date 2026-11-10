@@ -345,6 +345,7 @@ public static class RenderBundleExportService
             startTile = run.StartTile,
             result = run.Result?.ToLowerInvariant(),
             wonTimeUs = meta.wonTimeUs,
+            failedTimeUs = meta.failedTimeUs,
             terminalTimeUs,
           },
           inputsFile = "inputs.csv",

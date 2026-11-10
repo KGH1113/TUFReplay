@@ -264,6 +264,7 @@
     "gameInputOffsetMs": "Game input offset",
     "terminalTimeUs": "Recording end time",
     "wonTimeUs": "Clear time",
+    "failedTimeUs": "Fail time",
     "judgmentSystem": "Judgment system",
     "noFailMode": "No-Fail mode",
     "startTile": "Starting tile",

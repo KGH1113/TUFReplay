@@ -123,6 +123,10 @@ internal sealed class ReplayManifest
   [JsonProperty("wonTimeUs")]
   public long? WonTimeUs { get; set; }
 
+  /// <summary>When a failed run died. Older recordings end at the death and leave this out.</summary>
+  [JsonProperty("failedTimeUs")]
+  public long? FailedTimeUs { get; set; }
+
   [JsonProperty("terminalTimeUs", Required = Required.Always)]
   public long TerminalTimeUs { get; set; }
 
@@ -138,6 +142,8 @@ internal sealed class ReplayManifest
       throw Invalid("result");
     if (Result == "failed" && WonTimeUs.HasValue)
       throw Invalid("result");
+    if (Result != "failed" && FailedTimeUs.HasValue)
+      throw Invalid("failedTimeUs");
     if (!IsFinite(GameplayStartSongPosition))
       throw Invalid("gameplayStartSongPosition");
     if (!IsFinite(EffectivePitch) || EffectivePitch <= 0)
@@ -158,7 +164,15 @@ internal sealed class ReplayManifest
       );
     if (TerminalTimeUs < 0 || (WonTimeUs.HasValue && (WonTimeUs.Value < 0 || WonTimeUs.Value > TerminalTimeUs)))
       throw Invalid(TerminalTimeUs < 0 ? "terminalTimeUs" : "wonTimeUs");
+    if (FailedTimeUs.HasValue && (FailedTimeUs.Value < 0 || FailedTimeUs.Value > TerminalTimeUs))
+      throw Invalid("failedTimeUs");
   }
+
+  /// <summary>The death of a failed run: its recorded time, or the end of an older recording.</summary>
+  public long? DeathTimeUs => Result == "failed" ? FailedTimeUs ?? TerminalTimeUs : null;
+
+  /// <summary>After the clear or the death, the recording follows real time instead of the song.</summary>
+  public long? GameplayEndTimeUs => WonTimeUs ?? FailedTimeUs;
 
   private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 
