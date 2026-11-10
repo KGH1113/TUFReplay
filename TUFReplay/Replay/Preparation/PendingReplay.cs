@@ -69,9 +69,19 @@ public static partial class ReplayPlaybackCoordinator
       PlaybackLevelPath = playbackLevelPath;
       Meta = meta;
       Inputs = inputs;
-      InputScheduler = new ReplayInputScheduler(inputs);
+      // The game gets the keys up to the replay's end. Keys pressed on the fail screen would
+      // restart the level there; mods still get them through ReplayApi.
+      InputScheduler = new ReplayInputScheduler(InputsUntil(inputs, terminalTimeUs));
       HitContexts = hitContexts;
       TerminalTimeUs = terminalTimeUs;
+    }
+
+    private static List<RecordedInput> InputsUntil(List<RecordedInput> inputs, long endTimeUs)
+    {
+      for (int i = 0; i < inputs.Count; i++)
+        if (inputs[i].TimeUs > endTimeUs)
+          return inputs.FindAll(input => input.TimeUs <= endTimeUs);
+      return inputs;
     }
 
     public void TransferMicrophoneOwnership()

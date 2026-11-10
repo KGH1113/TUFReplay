@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 namespace TUFReplay.Replay.Rendering;
 
-// Replay time follows the original pitch until clear, then advances at wall-clock speed.
+// Replay time follows the original pitch until the clear or the death, then advances at wall-clock speed.
 internal sealed class RenderTimeline
 {
   public double GameplayStartUs { get; }
   public double GameplayRate { get; }
-  public long? WonTimeUs { get; }
+  public long? GameplayEndTimeUs { get; }
 
-  public RenderTimeline(double gameplayStartUs, double gameplayRate, long? wonTimeUs)
+  public RenderTimeline(double gameplayStartUs, double gameplayRate, long? gameplayEndTimeUs)
   {
     if (
       double.IsNaN(gameplayStartUs)
@@ -22,26 +22,26 @@ internal sealed class RenderTimeline
       throw new ArgumentOutOfRangeException(nameof(gameplayRate));
     GameplayStartUs = gameplayStartUs;
     GameplayRate = gameplayRate;
-    WonTimeUs = wonTimeUs;
+    GameplayEndTimeUs = gameplayEndTimeUs;
   }
 
   public double ReplayToOutput(double replayUs) =>
     GameplayStartUs
     + (
-      WonTimeUs.HasValue && replayUs >= WonTimeUs.Value
-        ? WonTimeUs.Value / GameplayRate + replayUs - WonTimeUs.Value
+      GameplayEndTimeUs.HasValue && replayUs >= GameplayEndTimeUs.Value
+        ? GameplayEndTimeUs.Value / GameplayRate + replayUs - GameplayEndTimeUs.Value
         : replayUs / GameplayRate
     );
 
   public double OutputToReplay(double outputUs)
   {
     double elapsed = outputUs - GameplayStartUs;
-    double wonOutput = WonTimeUs.HasValue ? WonTimeUs.Value / GameplayRate : double.PositiveInfinity;
-    return elapsed >= wonOutput ? WonTimeUs.Value + elapsed - wonOutput : elapsed * GameplayRate;
+    double endOutput = GameplayEndTimeUs.HasValue ? GameplayEndTimeUs.Value / GameplayRate : double.PositiveInfinity;
+    return elapsed >= endOutput ? GameplayEndTimeUs.Value + elapsed - endOutput : elapsed * GameplayRate;
   }
 
   public double RateAtOutput(double outputUs) =>
-    WonTimeUs.HasValue && outputUs >= ReplayToOutput(WonTimeUs.Value) ? 1 : GameplayRate;
+    GameplayEndTimeUs.HasValue && outputUs >= ReplayToOutput(GameplayEndTimeUs.Value) ? 1 : GameplayRate;
 
   public object[] ToSegments()
   {
@@ -54,12 +54,12 @@ internal sealed class RenderTimeline
         rate = GameplayRate,
       },
     };
-    if (WonTimeUs.HasValue)
+    if (GameplayEndTimeUs.HasValue)
       segments.Add(
         new
         {
-          outputTimeUs = (long)Math.Round(ReplayToOutput(WonTimeUs.Value)),
-          replayTimeUs = WonTimeUs.Value,
+          outputTimeUs = (long)Math.Round(ReplayToOutput(GameplayEndTimeUs.Value)),
+          replayTimeUs = GameplayEndTimeUs.Value,
           rate = 1d,
         }
       );

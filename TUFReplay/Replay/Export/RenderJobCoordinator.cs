@@ -413,7 +413,8 @@ public static class RenderJobCoordinator
       ["levelFileSha256"] = manifest.Level.FileSha256,
       ["startTile"] = manifest.Replay.StartTile,
       ["gameInputOffsetMs"] = manifest.Replay.GameInputOffsetMs,
-      ["wonTimeUs"] = manifest.Replay.WonTimeUs,
+      // OrbitRender follows real time after this point. A death starts the same real-time tail as a clear.
+      ["wonTimeUs"] = manifest.Replay.GameplayEndTimeUs,
       ["media"] = media,
       ["warnings"] = JArray.FromObject(manifest.Warnings ?? Array.Empty<string>()),
       ["options"] = JObject.FromObject(options ?? new OrbitRenderOptions(), serializer),

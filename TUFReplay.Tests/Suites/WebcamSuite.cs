@@ -7,8 +7,11 @@ using TUFReplay;
 using TUFReplay.Activity.Models;
 using TUFReplay.Activity.Tracking;
 using TUFReplay.Composition;
+using TUFReplay.Microphone.Capture;
 using TUFReplay.Microphone.Models;
+using TUFReplay.Microphone.Recording;
 using TUFReplay.Recording.Sessions;
+using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Shared.Capture;
 using TUFReplay.Shared.Settings;
@@ -27,7 +30,7 @@ internal static class WebcamSuite
     StoreDownloadCancellationReleasesItsLease(root);
     TimelineSkipsRecordedPausesAndHandlesRateChanges();
     AttachingAnEarlierCameraFrameKeepsReplaySynchronized();
-    CameraTailSurvivesMicrophoneCompletionUntilEditorOrRetry();
+    FailedRunCaptureSurvivesUntilEditorOrRetry();
     FailureCameraTailUsesRealTime();
     CameraCompletionKeepsHealthyCaptureArmed(root);
     EncoderFailureDoesNotReopenHealthyCamera(root);
@@ -74,10 +77,14 @@ internal static class WebcamSuite
     Check(recording.Timeline.Last().GameplayRate == 1, "Failure camera tail retained the gameplay pitch.");
   }
 
-  private static void CameraTailSurvivesMicrophoneCompletionUntilEditorOrRetry()
+  // A failed run keeps recording the fail screen. Editor return or a retry saves it and ends
+  // its camera and microphone together, once.
+  private static void FailedRunCaptureSurvivesUntilEditorOrRetry()
   {
     PropertyInfo cameraProperty = typeof(FeatureRegistry).GetProperty(nameof(FeatureRegistry.WebcamRecording));
-    WebcamRecordingFeature previous = FeatureRegistry.WebcamRecording;
+    PropertyInfo microphoneProperty = typeof(FeatureRegistry).GetProperty(nameof(FeatureRegistry.MicrophoneRecording));
+    WebcamRecordingFeature previousCamera = FeatureRegistry.WebcamRecording;
+    MicrophoneRecordingFeature previousMicrophone = FeatureRegistry.MicrophoneRecording;
     try
     {
       foreach (bool retry in new[] { false, true })
@@ -89,41 +96,106 @@ internal static class WebcamSuite
         SetCameraField(camera, "_armed", true);
         SetCameraField(camera, "_recording", true);
         cameraProperty.SetValue(null, camera);
+        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var microphoneBackend = new CountingMicrophoneBackend();
+        var microphone = new MicrophoneRecordingFeature();
+        typeof(MicrophoneRecordingFeature).GetField("_backend", flags).SetValue(microphone, microphoneBackend);
+        microphoneProperty.SetValue(null, microphone);
         var feature = (RecordingFeature)
           System.Runtime.CompilerServices.RuntimeHelpers.GetUninitializedObject(typeof(RecordingFeature));
-        const BindingFlags flags = BindingFlags.Instance | BindingFlags.NonPublic;
+        var session = new RecordingSession();
+        typeof(RecordingSession).GetField("<IsRecording>k__BackingField", flags).SetValue(session, true);
+        // A committed terminal and a reached tile keep this off the game's clock and level.
+        session.Data.TerminalTimeUs = 1_000_000L;
+        session.Data.HitContexts.Add(new RecordedHitContext { CurrentFloorID = 3 });
+        typeof(RecordingFeature).GetProperty(nameof(RecordingFeature.Session)).SetValue(feature, session);
         typeof(RecordingFeature).GetField("_webcamCaptureStarted", flags).SetValue(feature, true);
         typeof(RecordingFeature).GetField("_webcamTimeline", flags).SetValue(feature, new WebcamCaptureTimeline());
+        typeof(RecordingFeature).GetField("_microphoneCaptureStarted", flags).SetValue(feature, true);
         typeof(RecordingFeature).GetField("_runPersistence", flags).SetValue(feature, Task.FromResult(false));
-        typeof(RecordingFeature).GetField("_persistFailedWebcam", flags).SetValue(feature, true);
-        int completions = 0;
-        Action<CapturedMicrophoneRecording> completed = _ => completions++;
-        MethodInfo end = typeof(RecordingFeature).GetMethod("EndMicrophoneRun", flags);
-        end.Invoke(feature, new object[] { completed, false, false });
-        Check(completions == 1 && backend.EndCalls == 0, "Microphone completion stopped the failure camera tail.");
+        feature.FinishFailedRun();
+        Check(
+          backend.EndCalls == 0 && microphoneBackend.EndCalls == 0,
+          "A run that did not fail ended its capture as a failed run."
+        );
+        typeof(RecordingFeature).GetField("_failed", flags).SetValue(feature, true);
         if (retry)
           typeof(RecordingFeature).GetMethod("ResetRunState", flags).Invoke(feature, null);
         else
-          end.Invoke(feature, new object[] { completed, true, true });
+          feature.FinishFailedRun();
         Task work = (Task)typeof(WebcamRecordingFeature).GetField("_work", flags).GetValue(camera);
         Check(work.Wait(TimeSpan.FromSeconds(5)), "Camera tail finalization did not finish.");
         Check(
           backend.EndCalls == 1 && backend.DisarmCalls == 0,
           "Editor or retry failed to detach exactly one camera run."
         );
-        end.Invoke(feature, new object[] { completed, false, true });
-        Check(backend.EndCalls == 1, "Session cleanup finalized the same camera tail twice.");
+        Check(microphoneBackend.EndCalls == 1, "Editor or retry failed to end exactly one microphone run.");
+        Action<CapturedMicrophoneRecording> completed = _ => { };
+        typeof(RecordingFeature)
+          .GetMethod("EndMicrophoneRun", flags)
+          .Invoke(feature, new object[] { completed, false });
+        Check(
+          backend.EndCalls == 1 && microphoneBackend.EndCalls == 1,
+          "Session cleanup finalized the same failure tail twice."
+        );
         if (retry)
           Check(
-            !(bool)typeof(RecordingFeature).GetField("_persistFailedWebcam", flags).GetValue(feature),
-            "A failed run's camera disposition leaked into its retry."
+            !(bool)typeof(RecordingFeature).GetField("_failed", flags).GetValue(feature),
+            "A failed run's state leaked into its retry."
           );
       }
     }
     finally
     {
-      cameraProperty.SetValue(null, previous);
+      cameraProperty.SetValue(null, previousCamera);
+      microphoneProperty.SetValue(null, previousMicrophone);
     }
+  }
+
+  private sealed class CountingMicrophoneBackend : IMicrophoneCaptureBackend
+  {
+    public int EndCalls;
+
+    public event Action<string> RunCaptureFailed
+    {
+      add { }
+      remove { }
+    }
+
+    public void RequestPermission() { }
+
+    public void RefreshPermissionStatus() { }
+
+    public MicrophonePermissionStatus GetPermissionStatus() =>
+      new MicrophonePermissionStatus { State = MicrophonePermissionState.Authorized };
+
+    public List<MicrophoneDeviceInfo> ListDevices() => new List<MicrophoneDeviceInfo>();
+
+    public bool Arm(string deviceId, out string error)
+    {
+      error = null;
+      return true;
+    }
+
+    public MicrophoneArmStatus GetArmStatus() => new MicrophoneArmStatus();
+
+    public bool BeginRun(string runId, string tempPath, out string error)
+    {
+      error = null;
+      return true;
+    }
+
+    public Task<CapturedMicrophoneRecording> EndRunAsync()
+    {
+      EndCalls++;
+      return Task.FromResult<CapturedMicrophoneRecording>(null);
+    }
+
+    public void Tick() { }
+
+    public void Disarm() { }
+
+    public void Dispose() { }
   }
 
   private static string FindTestFfmpeg() =>

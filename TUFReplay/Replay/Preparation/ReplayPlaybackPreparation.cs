@@ -202,9 +202,17 @@ public static partial class ReplayPlaybackCoordinator
     // input-versus-hit timing measures frame processing delay, not calibration.
 
     long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
-    long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
+    long terminalTimeUs = ResolveReplayEndTimeUs(meta, run.Result, fallbackTerminal);
     pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs);
     return true;
+  }
+
+  // A failed run's replay ends at the death; its later keys were pressed on the fail screen.
+  internal static long ResolveReplayEndTimeUs(ReplayMetadata meta, string result, long lastInputTimeUs)
+  {
+    if (string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase) && meta?.failedTimeUs is long failedTimeUs)
+      return Math.Max(0L, failedTimeUs);
+    return Math.Max(lastInputTimeUs, meta?.terminalTimeUs ?? lastInputTimeUs);
   }
 
   internal static bool ValidateReplayArtifact(StoredReplayRun run, out string errorCode, out string errorMessage)
