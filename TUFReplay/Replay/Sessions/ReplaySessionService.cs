@@ -432,7 +432,10 @@ public static partial class ReplaySessionService
     )
       return;
     if (ReplayClock.TryComputeReplayTimeUs(context, out long nowUs, out _))
+    {
+      ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
       context.KeyFeed.AdvanceTo(nowUs, ReplaySessions.NowTicks);
+    }
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)
@@ -474,7 +477,8 @@ public static partial class ReplaySessionService
     if (!TryComputeReplayTimeUs(out nowUs, out _))
       return false;
 
-    // Before the pause and focus checks: mods show every recorded key, focused or not.
+    // Before the pause and focus checks: mods get every recorded value and key, focused or not.
+    ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
     _activeContext.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
 
     if (ADOBase.controller.paused)

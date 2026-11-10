@@ -13,13 +13,15 @@ namespace TUFReplay.ModApi.Providers;
 /// <summary>
 /// A registered provider object and the <see cref="ReplayApi"/> members found on it by name.
 /// Every member is optional, but a provider needs at least one. Members that run every frame
-/// are bound once to delegates.
+/// are bound once to delegates. The state type comes from <c>CaptureRunState</c>'s result or
+/// <c>OnReplayEvent</c>'s value, which must be the same type.
 /// </summary>
 internal sealed class ReplayProvider
 {
   internal const string CaptureName = "CaptureRunState";
   internal const string UpgradeName = "UpgradeRunState";
   internal const string BeginName = "OnReplayBegin";
+  internal const string EventName = "OnReplayEvent";
   internal const string EndName = "OnReplayEnd";
   internal const string ClockName = "OnReplayClock";
   internal const string KeyName = "OnReplayKey";
@@ -33,6 +35,7 @@ internal sealed class ReplayProvider
     CaptureName,
     UpgradeName,
     BeginName,
+    EventName,
     EndName,
     ClockName,
     KeyName,
@@ -51,8 +54,8 @@ internal sealed class ReplayProvider
   private readonly MethodInfo _capture;
   private readonly PropertyInfo _captureResult;
   private readonly MethodInfo _begin;
-  private readonly bool _beginTakesState;
   private readonly bool _beginTakesRender;
+  private readonly MethodInfo _event;
   private readonly Action _end;
   private readonly RunStateUpgrade[] _upgrades;
   private readonly ConcurrentDictionary<string, RunStateReadPlan> _plans = new ConcurrentDictionary<
@@ -80,8 +83,8 @@ internal sealed class ReplayProvider
     RunStateModel model,
     MethodInfo capture,
     MethodInfo begin,
-    bool beginTakesState,
     bool beginTakesRender,
+    MethodInfo replayEvent,
     RunStateUpgrade[] upgrades,
     Bound bound
   )
@@ -91,8 +94,8 @@ internal sealed class ReplayProvider
     Model = model;
     _capture = capture;
     _begin = begin;
-    _beginTakesState = beginTakesState;
     _beginTakesRender = beginTakesRender;
+    _event = replayEvent;
     _upgrades = upgrades;
     if (capture != null && IsTaskOfState(capture.ReturnType))
       _captureResult = capture.ReturnType.GetProperty("Result");
@@ -108,8 +111,13 @@ internal sealed class ReplayProvider
 
   public bool Captures => _capture != null;
   public bool CapturesAsync => _captureResult != null;
+
+  /// <summary>Takes the run's start value and recorded values back through <c>OnReplayEvent</c>.</summary>
+  public bool TakesEvents => _event != null;
+
   public bool FollowsReplays =>
     _begin != null
+    || _event != null
     || _end != null
     || Clock != null
     || Key != null
@@ -128,6 +136,8 @@ internal sealed class ReplayProvider
       parts.Add("state " + RunStateTypeNames.Of(Model.ClrType));
     if (_begin != null || _end != null)
       parts.Add("replay begin/end");
+    if (_event != null)
+      parts.Add("replay events");
     if (Key != null)
       parts.Add("keys");
     if (Clock != null)
@@ -166,12 +176,10 @@ internal sealed class ReplayProvider
 
     MethodInfo capture = Single(methods, CaptureName, typeName);
     MethodInfo begin = Single(methods, BeginName, typeName);
+    MethodInfo replayEvent = Single(methods, EventName, typeName);
     Type captured = capture == null ? null : CapturedType(capture, typeName);
-    Type replayed = null;
-    bool beginTakesState = false;
-    bool beginTakesRender = false;
-    if (begin != null)
-      ReadBegin(begin, typeName, out replayed, out beginTakesState, out beginTakesRender);
+    bool beginTakesRender = begin != null && BeginTakesRender(begin, typeName);
+    Type replayed = replayEvent == null ? null : EventType(replayEvent, typeName);
     if (captured != null && replayed != null && captured != replayed)
       throw new RunStateModelException(
         typeName
@@ -180,7 +188,7 @@ internal sealed class ReplayProvider
           + " returns "
           + RunStateTypeNames.Of(captured)
           + " but "
-          + BeginName
+          + EventName
           + " takes "
           + RunStateTypeNames.Of(replayed)
           + ". Use the same state type in both."
@@ -190,7 +198,7 @@ internal sealed class ReplayProvider
     RunStateModel model = stateType == null ? null : RunStateModel.For(stateType);
     RunStateUpgrade[] upgrades = BindUpgrades(methods, model, typeName);
     Bound bound = BindReplayMembers(methods, instance, typeName);
-    return new ReplayProvider(id, instance, model, capture, begin, beginTakesState, beginTakesRender, upgrades, bound);
+    return new ReplayProvider(id, instance, model, capture, begin, beginTakesRender, replayEvent, upgrades, bound);
   }
 
   private static MethodInfo Single(MethodInfo[] methods, string name, string typeName)
@@ -215,41 +223,52 @@ internal sealed class ReplayProvider
     return returned;
   }
 
-  private static void ReadBegin(
-    MethodInfo begin,
-    string typeName,
-    out Type state,
-    out bool takesState,
-    out bool takesRender
-  )
+  private static bool BeginTakesRender(MethodInfo begin, string typeName)
   {
-    Type[] parameters = begin.GetParameters().Select(parameter => parameter.ParameterType).ToArray();
-    state = null;
-    takesState = false;
-    takesRender = false;
-    switch (parameters.Length)
+    ParameterInfo[] parameters = begin.GetParameters();
+    if (begin.ReturnType == typeof(void))
     {
-      case 0:
-        return;
-      case 1 when parameters[0] == typeof(bool):
-        takesRender = true;
-        return;
-      case 1:
-        state = parameters[0];
-        takesState = true;
-        return;
-      case 2 when parameters[1] == typeof(bool) && parameters[0] != typeof(bool):
-        state = parameters[0];
-        takesState = true;
-        takesRender = true;
-        return;
+      if (parameters.Length == 0)
+        return false;
+      if (parameters.Length == 1 && parameters[0].ParameterType == typeof(bool))
+        return true;
     }
+    bool takesState = parameters.Length > 0 && parameters[0].ParameterType != typeof(bool);
     throw new RunStateModelException(
       typeName
         + "."
         + BeginName
-        + " must take (), (bool render), (YourState recorded) or (YourState recorded, bool render)."
+        + " must be void "
+        + BeginName
+        + "() or void "
+        + BeginName
+        + "(bool render)."
+        + (
+          takesState
+            ? " The run's state no longer comes with it: take it in void "
+              + EventName
+              + "("
+              + RunStateTypeNames.Of(parameters[0].ParameterType)
+              + " value, long ticks), which runs right after it."
+            : ""
+        )
     );
+  }
+
+  private static Type EventType(MethodInfo replayEvent, string typeName)
+  {
+    ParameterInfo[] parameters = replayEvent.GetParameters();
+    if (
+      replayEvent.ReturnType != typeof(void)
+      || parameters.Length != 2
+      || parameters[1].ParameterType != typeof(long)
+      || parameters[0].ParameterType == typeof(long)
+      || parameters[0].ParameterType == typeof(bool)
+    )
+      throw new RunStateModelException(
+        typeName + "." + EventName + " must be void " + EventName + "(YourState value, long ticks)."
+      );
+    return parameters[0].ParameterType;
   }
 
   private static bool IsTaskOfState(Type type) =>
@@ -268,8 +287,8 @@ internal sealed class ReplayProvider
             + " has no state to upgrade to. Add "
             + CaptureName
             + " or "
-            + BeginName
-            + "(YourState recorded), or remove it."
+            + EventName
+            + "(YourState value, long ticks), or remove it."
         );
       ParameterInfo[] parameters = method.GetParameters();
       if (parameters.Length != 1 || method.ReturnType != model.ClrType)
@@ -405,16 +424,17 @@ internal sealed class ReplayProvider
 
   public object ReadCaptureResult(Task task) => _captureResult.GetValue(task);
 
-  public void InvokeBegin(object recorded, bool render)
+  public void InvokeBegin(bool render)
   {
-    if (_begin == null)
-      return;
-    object[] arguments =
-      _beginTakesState && _beginTakesRender ? new[] { recorded, render }
-      : _beginTakesState ? new[] { recorded }
-      : _beginTakesRender ? new object[] { render }
-      : null;
-    Invoke(_begin, arguments);
+    if (_begin != null)
+      Invoke(_begin, _beginTakesRender ? new object[] { render } : null);
+  }
+
+  /// <summary>Hands the provider a value of its state type, or null, at <paramref name="ticks"/>.</summary>
+  public void InvokeEvent(object value, long ticks)
+  {
+    if (_event != null)
+      Invoke(_event, new[] { value, ticks });
   }
 
   public void InvokeEnd()

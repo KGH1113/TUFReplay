@@ -44,9 +44,13 @@ internal static class ReplayApiSuite
       ChecksProviderContracts();
       CapturesWhenARunStarts();
       CapturesThatFinishLateAreDropped();
+      RecordsValuesDuringARun();
+      LimitsWhatOneRunRecords();
       SavesAndCascadesWithTheRun(root);
+      SavesRecordedValuesWithTheRun(root);
       ExistingDatabaseGainsRunStateTables(root);
       HandsStatesBackDuringReplays(root);
+      HandsRecordedValuesBackAtTheirTimes();
       ReportsUnreadableRunsAtRegistration(root);
       PublicApiMatchesTheContract();
       BindsProvidersWithoutAState();
@@ -69,6 +73,7 @@ internal static class ReplayApiSuite
   {
     ReplayProviders.ResetForTests();
     ReplaySessions.ResetForTests();
+    RunStateCapture.ResetForTests();
     lock (Messages)
       Messages.Clear();
   }
@@ -301,7 +306,7 @@ internal static class ReplayApiSuite
     );
     Assert(!ReplayApi.Register("Test.Mismatch", new MismatchProvider()), "Mismatched state types were registered.");
     Assert(
-      Logged("MismatchProvider.CaptureRunState returns CountState but OnReplayBegin takes MaybeCountState"),
+      Logged("MismatchProvider.CaptureRunState returns CountState but OnReplayEvent takes MaybeCountState"),
       "Mismatched state types were not explained."
     );
     Assert(
@@ -340,7 +345,7 @@ internal static class ReplayApiSuite
     counter.LastReturned.Count = 99; // Changing the object later must not change what is saved.
     pending.Source.SetResult(new CountState { Count = 8 });
     WaitFor(() => capture.PendingCount == 0, "The async capture did not finish.");
-    RunStateRecord[] records = capture.Close().OrderBy(record => record.StateId).ToArray();
+    RunStateRecord[] records = capture.Close().States.OrderBy(record => record.StateId).ToArray();
 
     Assert(
       string.Join(",", records.Select(record => record.StateId)) == "Test.Async,Test.Count",
@@ -361,11 +366,102 @@ internal static class ReplayApiSuite
     var pending = new AsyncProvider();
     ReplayApi.Register("Test.Async", pending);
     RunStateCapture capture = RunStateCapture.Begin("run-late");
-    Assert(capture.Close().Count == 0, "An unfinished capture was saved.");
+    Assert(capture.Close().IsEmpty, "An unfinished capture was saved.");
     pending.Source.SetResult(new CountState { Count = 1 });
     WaitFor(() => capture.PendingCount == 0, "The late capture did not finish.");
     Assert(Logged("finished after the run ended"), "A late capture was not reported.");
     Console.WriteLine("PASS run state captures that finish after the run are dropped");
+  }
+
+  private static void RecordsValuesDuringARun()
+  {
+    Reset();
+    ReplayApi.Register("Test.Settings", new SettingsProvider { Start = 1 });
+    ReplayApi.Register("Test.Count", new RecordOnlyProvider());
+    ReplayApi.Register("Test.KeyViewer", new KeyViewerProvider());
+    Assert(!ReplayApi.RecordRunEvent("Test.Settings", new CountState()), "A value was recorded outside a run.");
+    Assert(!Logged("RecordRunEvent"), "Recording outside a run was reported as a problem.");
+
+    long now = 0;
+    RunStateCapture capture = RunStateCapture.Begin("run-events", () => now);
+    now = 1_000;
+    var changed = new CountState { Count = 2 };
+    Assert(ReplayApi.RecordRunEvent("Test.Settings", changed), "A value during the run was refused.");
+    changed.Count = 99; // Changing the object later must not change what is saved.
+    now = 2_000;
+    Assert(ReplayApi.RecordRunEvent("Test.Settings", new CountState { Count = 3 }), "A second value was refused.");
+    // Several values at one moment, such as while the game is paused, keep the last.
+    Assert(
+      ReplayApi.RecordRunEvent("Test.Settings", new CountState { Count = 4 }),
+      "A value at the same time was refused."
+    );
+    Assert(ReplayApi.RecordRunEvent("Test.Count", new CountState { Count = 7 }), "A record-only provider was refused.");
+    now = 1_500; // A clock that steps back counts as the same moment, never an earlier one.
+    Assert(ReplayApi.RecordRunEvent("Test.Count", new CountState { Count = 8 }), "A value was refused.");
+
+    Assert(!ReplayApi.RecordRunEvent("Test.Settings", new MaybeCountState()), "A value of another type was recorded.");
+    Assert(
+      Logged("Test.Settings: RecordRunEvent got MaybeCountState, but the state type is CountState."),
+      "A value of another type was not explained."
+    );
+    Assert(!ReplayApi.RecordRunEvent("Test.Missing", new CountState()), "A value for an unknown id was recorded.");
+    Assert(
+      Logged("RecordRunEvent got the id \"Test.Missing\", which has no registered provider"),
+      "It was not explained."
+    );
+    Assert(!ReplayApi.RecordRunEvent("Test.KeyViewer", new CountState()), "A provider without a state recorded one.");
+    Assert(Logged("Test.KeyViewer: RecordRunEvent needs a state type."), "A missing state type was not explained.");
+    Assert(!ReplayApi.RecordRunEvent("Test.Settings", null), "Null was recorded.");
+
+    CapturedRunStates captured = capture.Close();
+    Assert(
+      captured.States.Single().StateId == "Test.Settings",
+      "The start value was not captured beside the recorded ones."
+    );
+    Assert(
+      string.Join(
+        ",",
+        captured.Events.Select(recorded => recorded.StateId + "=" + recorded.ValueJson + "@" + recorded.TimeUs)
+      ) == "Test.Settings={\"Count\":2}@1000,Test.Settings={\"Count\":4}@2000,Test.Count={\"Count\":8}@2000",
+      "Recorded values were not kept in order with their times: "
+        + string.Join(
+          ",",
+          captured.Events.Select(recorded => recorded.StateId + "=" + recorded.ValueJson + "@" + recorded.TimeUs)
+        )
+    );
+    Assert(!ReplayApi.RecordRunEvent("Test.Settings", new CountState()), "A value was recorded after the run ended.");
+
+    RunStateCapture discarded = RunStateCapture.Begin("run-discarded", () => 5);
+    ReplayApi.RecordRunEvent("Test.Settings", new CountState { Count = 5 });
+    discarded.Discard();
+    Assert(discarded.Close().IsEmpty, "A discarded run kept its recorded values.");
+    Assert(!ReplayApi.RecordRunEvent("Test.Settings", new CountState()), "A value was recorded after a discard.");
+    Console.WriteLine("PASS values recorded during a run are kept with their times on the run's timeline");
+  }
+
+  private static void LimitsWhatOneRunRecords()
+  {
+    Reset();
+    ReplayApi.Register("Test.Settings", new SettingsProvider());
+    ReplayApi.Register("Test.Other", new SettingsProvider());
+    long now = 0;
+    RunStateCapture capture = RunStateCapture.Begin("run-limit", () => now);
+    for (int index = 0; index < RunStateCapture.MaxEventsPerRun + 5; index++)
+    {
+      now = index * 10;
+      ReplayApi.RecordRunEvent("Test.Settings", new CountState { Count = index });
+    }
+    Assert(ReplayApi.RecordRunEvent("Test.Other", new CountState()), "One provider's limit stopped another.");
+    CapturedRunStates captured = capture.Close();
+    Assert(
+      captured.Events.Count(recorded => recorded.StateId == "Test.Settings") == RunStateCapture.MaxEventsPerRun,
+      "A run kept more recorded values than its limit."
+    );
+    int reported;
+    lock (Messages)
+      reported = Messages.Count(message => message.Contains("the most one run keeps", StringComparison.Ordinal));
+    Assert(reported == 1, "Reaching the limit was reported " + reported + " times instead of once.");
+    Console.WriteLine("PASS one provider can record a limited number of values per run");
   }
 
   private static void SavesAndCascadesWithTheRun(string root)
@@ -376,15 +472,47 @@ internal static class ReplayApiSuite
     SaveRun("first", 0, RunStateCapture.Begin("first").Close());
     SaveRun("second", 1, RunStateCapture.Begin("second").Close());
 
-    List<StoredRunState> stored = RunStateRepository.Load("first");
+    IReadOnlyList<StoredRunState> stored = RunStateRepository.Load("first").States;
     Assert(stored.Count == 1 && stored[0].ValueJson == "{\"Count\":5}", "A saved state was not read back.");
     Assert(Count("run_state_shapes") == 1, "Runs with the same shape stored the shape twice.");
     Assert(RunStateRepository.ListShapes("Test.Count").Single().RunCount == 2, "Shape usage was not counted.");
 
     Assert(RunRepository.Delete("first"), "The run could not be deleted.");
-    Assert(RunStateRepository.Load("first").Count == 0, "Deleting a run kept its states.");
+    Assert(RunStateRepository.Load("first").States.Count == 0, "Deleting a run kept its states.");
     Assert(Count("run_states") == 1, "Deleting one run removed another run's states.");
     Console.WriteLine("PASS run states save with their run and are deleted with it");
+  }
+
+  private static void SavesRecordedValuesWithTheRun(string root)
+  {
+    Reset();
+    Open(root, "run-state-events.sqlite");
+    ReplayApi.Register("Test.Settings", new SettingsProvider { Start = 1 });
+    long now = 0;
+    RunStateCapture capture = RunStateCapture.Begin("with-events", () => now);
+    now = 3_000;
+    ReplayApi.RecordRunEvent("Test.Settings", new CountState { Count = 2 });
+    now = 1_000_000;
+    ReplayApi.RecordRunEvent("Test.Settings", new CountState { Count = 3 });
+    SaveRun("with-events", 0, capture.Close());
+    SaveRun("start-only", 1, RunStateCapture.Begin("start-only").Close());
+
+    StoredRunStates stored = RunStateRepository.Load("with-events");
+    Assert(stored.States.Single().ValueJson == "{\"Count\":1}", "The start value was not read back.");
+    Assert(
+      string.Join(",", stored.Events.Select(recorded => recorded.ValueJson + "@" + recorded.TimeUs))
+        == "{\"Count\":2}@3000,{\"Count\":3}@1000000",
+      "Recorded values were not read back in time order."
+    );
+    Assert(Count("run_state_shapes") == 1, "Recorded values stored their shape again.");
+    Assert(
+      RunStateRepository.ListShapes("Test.Settings").Single().RunCount == 2,
+      "Shape usage counted recorded values as extra runs."
+    );
+    Assert(RunRepository.Delete("with-events"), "The run could not be deleted.");
+    Assert(Count("run_state_events") == 0, "Deleting a run kept its recorded values.");
+    Assert(RunStateRepository.Load("start-only").Events.Count == 0, "A run without recorded values got some.");
+    Console.WriteLine("PASS values recorded during a run save with it and are deleted with it");
   }
 
   private static void ExistingDatabaseGainsRunStateTables(string root)
@@ -392,12 +520,12 @@ internal static class ReplayApiSuite
     Open(root, "run-state-upgrade.sqlite");
     using SqliteConnection connection = Database.OpenConnection();
     using SqliteCommand command = connection.CreateCommand();
-    command.CommandText = "DROP TABLE run_states; DROP TABLE run_state_shapes;";
+    command.CommandText = "DROP TABLE run_state_events; DROP TABLE run_states; DROP TABLE run_state_shapes;";
     command.ExecuteNonQuery();
     ActivitySchema.Ensure(connection);
     command.CommandText =
-      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('run_states','run_state_shapes')";
-    Assert(Convert.ToInt32(command.ExecuteScalar()) == 2, "An existing database did not gain the run state tables.");
+      "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name IN ('run_states','run_state_shapes','run_state_events')";
+    Assert(Convert.ToInt32(command.ExecuteScalar()) == 3, "An existing database did not gain the run state tables.");
     command.CommandText = "PRAGMA user_version;";
     Assert(
       Convert.ToInt32(command.ExecuteScalar()) == ActivitySchema.Version,
@@ -412,7 +540,7 @@ internal static class ReplayApiSuite
     Open(root, "run-state-replay.sqlite");
     var follower = new FollowingProvider();
     ReplayApi.Register("Test.Follow", follower);
-    ReplayApi.Register("Test.Begin", new BeginOnlyProvider());
+    ReplayApi.Register("Test.Begin", new EventOnlyProvider());
     follower.Next = 11;
     SaveRun("recorded", 0, RunStateCapture.Begin("recorded").Close());
 
@@ -421,10 +549,17 @@ internal static class ReplayApiSuite
       render: new ReplayRender(1920, 1080, 60),
       RunStateRepository.Load("recorded")
     );
-    Assert(follower.Recorded?.Count == 11 && follower.Render, "OnReplayBegin did not get the saved value.");
+    Assert(follower.Recorded?.Count == 11 && follower.Render, "OnReplayEvent did not get the saved value.");
+    Assert(
+      follower.Calls.SequenceEqual(new[] { "begin", "event 11 at 0" }),
+      "The start value did not follow OnReplayBegin: " + string.Join(", ", follower.Calls)
+    );
     Assert(ReplayApi.IsReplaying && ReplayApi.IsRendering, "The API did not report the render.");
     Assert(ReplayApi.ReplayRunId == "recorded", "The API did not report the run.");
-    Assert(BeginOnlyProvider.LastRecorded == null, "A provider without a saved value got one.");
+    Assert(
+      EventOnlyProvider.Calls == 1 && EventOnlyProvider.LastRecorded == null,
+      "A provider without a saved value did not get null once."
+    );
 
     session.End();
     session.End();
@@ -432,10 +567,10 @@ internal static class ReplayApiSuite
     Assert(!follower.ReplayingDuringEnd, "IsReplaying was still true inside OnReplayEnd.");
     Assert(!ReplayApi.IsReplaying, "The API still reported a replay.");
 
-    ReplaySession first = ReplaySessions.Begin("missing", render: null, Array.Empty<StoredRunState>());
+    ReplaySession first = ReplaySessions.Begin("missing", render: null, StoredRunStates.Empty);
     Assert(
       follower.Recorded == null && !follower.Render,
-      "A run without a saved value did not reach OnReplayBegin as null."
+      "A run without a saved value did not reach OnReplayEvent as null."
     );
     ReplaySessions.Begin("recorded", render: null, RunStateRepository.Load("recorded"));
     Assert(follower.Ends == 2, "Beginning another replay did not end the previous one.");
@@ -453,10 +588,108 @@ internal static class ReplayApiSuite
       ShapeJson = RunStateModel.For(typeof(SpeedText)).ShapeJson,
       ValueJson = "{\"Speed\":\"1x\"}",
     };
-    ReplaySessions.Begin("damaged", render: null, new[] { damaged }).End();
-    Assert(BeginOnlyProvider.LastRecorded == null, "An unreadable value reached OnReplayBegin.");
+    EventOnlyProvider.Calls = 0;
+    ReplaySessions.Begin("damaged", render: null, new StoredRunStates(new[] { damaged }, null)).End();
+    Assert(
+      EventOnlyProvider.Calls == 1 && EventOnlyProvider.LastRecorded == null,
+      "An unreadable value did not reach OnReplayEvent as null."
+    );
     Assert(Logged("Test.Begin: this run's saved value can't be read"), "An unreadable value was not reported.");
     Console.WriteLine("PASS run states are handed back while a run is replayed or rendered");
+  }
+
+  private static void HandsRecordedValuesBackAtTheirTimes()
+  {
+    Reset();
+    var settings = new SettingsProvider();
+    var keyViewer = new KeyViewerProvider();
+    ReplayApi.Register("Test.Settings", settings);
+    ReplayApi.Register("Test.KeyViewer", keyViewer);
+    string shapeId = RunStateModel.For(typeof(CountState)).ShapeId;
+    string shapeJson = RunStateModel.For(typeof(CountState)).ShapeJson;
+    StoredRunEvent At(long timeUs, string valueJson) =>
+      new StoredRunEvent
+      {
+        StateId = "Test.Settings",
+        ShapeId = shapeId,
+        ShapeJson = shapeJson,
+        ValueJson = valueJson,
+        TimeUs = timeUs,
+      };
+    var saved = new StoredRunStates(
+      new[]
+      {
+        new StoredRunState
+        {
+          StateId = "Test.Settings",
+          ShapeId = shapeId,
+          ShapeJson = shapeJson,
+          ValueJson = "{\"Count\":1}",
+        },
+      },
+      new[]
+      {
+        At(1_000, "{\"Count\":2}"),
+        At(2_000, "{\"Count\":\"broken\"}"),
+        At(3_000, "{\"Count\":3}"),
+        new StoredRunEvent
+        {
+          StateId = "Test.Removed",
+          ShapeId = shapeId,
+          ShapeJson = shapeJson,
+          ValueJson = "{\"Count\":9}",
+          TimeUs = 1_500,
+        },
+      }
+    );
+
+    ReplaySession session = ReplaySessions.Begin("run", render: null, saved);
+    Assert(settings.Events.SequenceEqual(new (int?, long)[] { (1, 0L) }), "The start value did not arrive at 0.");
+    ReplaySessions.AdvanceEvents(500, 10_000);
+    Assert(settings.Events.Count == 1, "A value arrived before its time.");
+    ReplaySessions.AdvanceEvents(1_500, 20_000);
+    Assert(settings.Events.Last() == (2, 15_000L), "A late value did not get its recorded time.");
+    ReplaySessions.AdvanceEvents(3_000, 40_000);
+    Assert(
+      settings.Events.Skip(2).SequenceEqual(new (int?, long)[] { (3, 40_000L) }),
+      "An unreadable value was handed over or a value was missed: " + string.Join(", ", settings.Events)
+    );
+    Assert(
+      Logged("Test.Settings: a value recorded in this run can't be read"),
+      "An unreadable value was not reported."
+    );
+
+    // A seek hands over the value in effect there, only when it changed.
+    ReplaySessions.SeekEvents(3_500, 50_000);
+    Assert(settings.Events.Count == 3, "A seek repeated the value already in effect.");
+    ReplaySessions.SeekEvents(1_200, 60_000);
+    Assert(settings.Events.Last() == (2, 60_000L), "A seek back did not hand over the value in effect.");
+    ReplaySessions.SeekEvents(100, 70_000);
+    Assert(settings.Events.Last() == (1, 70_000L), "A seek before the first value did not restore the start value.");
+    ReplaySessions.AdvanceEvents(1_000, 80_000);
+    Assert(settings.Events.Last() == (2, 80_000L), "The values after a seek were not handed over again.");
+    session.End();
+    ReplaySessions.AdvanceEvents(5_000, 90_000);
+    Assert(settings.Events.Count == 6, "A value arrived after the replay ended.");
+
+    // Renders hand values over at their video time.
+    settings.Events.Clear();
+    ReplaySession render = ReplaySessions.Begin("run", new ReplayRender(1, 1, 60), saved);
+    ReplaySessions.AdvanceEvents(3_000, replayTimeUs => replayTimeUs * 20);
+    Assert(
+      settings.Events.SequenceEqual(new (int?, long)[] { (1, 0L), (2, 20_000L), (3, 60_000L) }),
+      "A render did not hand values over at their video times: " + string.Join(", ", settings.Events)
+    );
+    render.End();
+
+    // A provider unregistered since the replay began gets nothing more.
+    settings.Events.Clear();
+    ReplaySessions.Begin("run", render: null, saved);
+    ReplayApi.Unregister("Test.Settings");
+    ReplaySessions.AdvanceEvents(5_000, 10_000);
+    Assert(settings.Events.Count == 1, "An unregistered provider got recorded values.");
+    ReplaySessions.Active.End();
+    Console.WriteLine("PASS recorded values reach mods at their times, and seeking hands over the value in effect");
   }
 
   private static void ReportsUnreadableRunsAtRegistration(string root)
@@ -481,7 +714,10 @@ internal static class ReplayApiSuite
       .CurrentDomain.GetAssemblies()
       .First(assembly => assembly.GetName().Name == "TUFReplay")
       .GetType("TUFReplay.ReplayApi", throwOnError: true);
-    Assert(api.GetField("ApiVersion").GetValue(null) is 1, "The API version changed.");
+    Assert(api.GetField("ApiVersion").GetValue(null) is 2, "The API version changed.");
+    var record =
+      (Func<string, object, bool>)
+        Delegate.CreateDelegate(typeof(Func<string, object, bool>), api.GetMethod("RecordRunEvent"));
     var register =
       (Func<string, object, bool>)
         Delegate.CreateDelegate(typeof(Func<string, object, bool>), api.GetMethod("Register"));
@@ -496,6 +732,7 @@ internal static class ReplayApiSuite
     Reset();
     Assert(!takesOverlayVideos() && ffmpegPath() == null, "Overlay video support was reported outside a render.");
     Assert(register("Test.Count", new CountProvider()), "Registering through a delegate failed.");
+    Assert(!record("Test.Count", new CountState()), "A value was recorded outside a run.");
     unregister("Test.Count");
     Assert(!replaying(), "IsReplaying was true outside a replay.");
     Console.WriteLine("PASS ReplayApi binds by reflection like other optional mod APIs");
@@ -512,7 +749,7 @@ internal static class ReplayApiSuite
       Logged("Registered Test.KeyViewer (replay begin/end, keys, clock, render canvases, frame capture)"),
       "The registration log did not say what the provider takes part in."
     );
-    Assert(RunStateCapture.Begin("stateless").Close().Count == 0, "A provider without a state saved one.");
+    Assert(RunStateCapture.Begin("stateless").Close().IsEmpty, "A provider without a state saved one.");
     Assert(
       !ReplayApi.Register("Test.Upgrade", new UpgradeWithoutStateProvider()),
       "An upgrade without a state was accepted."
@@ -541,6 +778,21 @@ internal static class ReplayApiSuite
       "GetReplayCanvases returning int was accepted."
     );
     Assert(!ReplayApi.Register("Test.Begin", new TwoBoolBeginProvider()), "OnReplayBegin(bool, bool) was accepted.");
+    Assert(
+      !ReplayApi.Register("Test.StateBegin", new StateBeginProvider()),
+      "OnReplayBegin(CountState, bool) was accepted."
+    );
+    Assert(
+      Logged(
+        "StateBeginProvider.OnReplayBegin must be void OnReplayBegin() or void OnReplayBegin(bool render). The run's state no longer comes with it: take it in void OnReplayEvent(CountState value, long ticks)"
+      ),
+      "A begin that takes the state was not explained."
+    );
+    Assert(!ReplayApi.Register("Test.Event", new TicklessEventProvider()), "OnReplayEvent without ticks was accepted.");
+    Assert(
+      Logged("TicklessEventProvider.OnReplayEvent must be void OnReplayEvent(YourState value, long ticks)"),
+      "The event method was not explained."
+    );
     Assert(
       !ReplayApi.Register("Test.Videos", new RectOverlayVideosProvider()),
       "AddReplayOverlayVideos(Action<string, Rect, Rect>) was accepted."
@@ -791,7 +1043,7 @@ VALUES('level-session','level','app','2026-11-07T00:00:00Z',NULL);";
     command.ExecuteNonQuery();
   }
 
-  private static void SaveRun(string id, int index, IReadOnlyList<RunStateRecord> states)
+  private static void SaveRun(string id, int index, CapturedRunStates states)
   {
     RunRepository.Save(
       new RunRecord
@@ -1088,6 +1340,18 @@ VALUES('level-session','level','app','2026-11-07T00:00:00Z',NULL);";
     public void OnReplayBegin(bool render, bool again) { }
   }
 
+  private sealed class StateBeginProvider
+  {
+    public CountState CaptureRunState() => new CountState();
+
+    public void OnReplayBegin(CountState recorded, bool render) { }
+  }
+
+  private sealed class TicklessEventProvider
+  {
+    public void OnReplayEvent(CountState value) { }
+  }
+
   private sealed class ThrowingClockProvider
   {
     public void OnReplayClock(long ticks) => throw new InvalidOperationException("clock");
@@ -1181,7 +1445,7 @@ VALUES('level-session','level','app','2026-11-07T00:00:00Z',NULL);";
   {
     public CountState CaptureRunState() => new CountState();
 
-    public void OnReplayBegin(MaybeCountState recorded) { }
+    public void OnReplayEvent(MaybeCountState value, long ticks) { }
   }
 
   private sealed class CaptureWithArgumentProvider
@@ -1233,13 +1497,21 @@ VALUES('level-session','level','app','2026-11-07T00:00:00Z',NULL);";
     public bool Render;
     public int Ends;
     public bool ReplayingDuringEnd;
+    public readonly List<string> Calls = new List<string>();
 
     public CountState CaptureRunState() => new CountState { Count = Next };
 
-    public void OnReplayBegin(CountState recorded, bool render)
+    public void OnReplayBegin(bool render)
     {
-      Recorded = recorded;
+      Calls.Clear();
+      Calls.Add("begin");
       Render = render;
+    }
+
+    public void OnReplayEvent(CountState value, long ticks)
+    {
+      Calls.Add("event " + (value?.Count.ToString() ?? "null") + " at " + ticks);
+      Recorded = value;
     }
 
     public void OnReplayEnd()
@@ -1249,10 +1521,32 @@ VALUES('level-session','level','app','2026-11-07T00:00:00Z',NULL);";
     }
   }
 
-  private sealed class BeginOnlyProvider
+  private sealed class EventOnlyProvider
   {
     public static SpeedNumber LastRecorded;
+    public static int Calls;
 
-    public void OnReplayBegin(SpeedNumber recorded) => LastRecorded = recorded;
+    public void OnReplayEvent(SpeedNumber value, long ticks)
+    {
+      Calls++;
+      LastRecorded = value;
+    }
+  }
+
+  // Records a value during the run and takes the start value and recorded values back.
+  private sealed class SettingsProvider
+  {
+    public int Start;
+    public readonly List<(int? Count, long Ticks)> Events = new List<(int? Count, long Ticks)>();
+
+    public CountState CaptureRunState() => new CountState { Count = Start };
+
+    public void OnReplayEvent(CountState value, long ticks) => Events.Add((value?.Count, ticks));
+  }
+
+  // Records values but takes nothing back, so only the type comes from CaptureRunState.
+  private sealed class RecordOnlyProvider
+  {
+    public CountState CaptureRunState() => null;
   }
 }

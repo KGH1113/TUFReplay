@@ -483,7 +483,7 @@ public static class RenderJobCoordinator
     Publish(job);
   }
 
-  private static IReadOnlyList<StoredRunState> LoadRunStates(string runId)
+  private static StoredRunStates LoadRunStates(string runId)
   {
     try
     {
@@ -493,7 +493,7 @@ public static class RenderJobCoordinator
     {
       // Mods then see the run as one without saved state; the render itself goes on.
       Main.Instance?.Log("[Render/RunState] Saved mod states unavailable. error=" + exception.Message);
-      return Array.Empty<StoredRunState>();
+      return StoredRunStates.Empty;
     }
   }
 
@@ -680,7 +680,7 @@ public static class RenderJobCoordinator
     public RenderErrorDetails ErrorDetails;
     public bool CancelRequested;
     public DateTime FinishedAtUtc;
-    public Task<IReadOnlyList<StoredRunState>> RunStates;
+    public Task<StoredRunStates> RunStates;
     public ReplaySession RunStateSession;
     public Task<RecordingBundle> Recording;
     public RenderReplayHost Host;
