@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using TUFReplay.ModApi.Diagnostics;
 using TUFReplay.ModApi.Models;
@@ -36,41 +37,38 @@ internal static class ReplaySessions
   }
 
   /// <summary>
-  /// Begins a session and calls each provider's <c>OnReplayBegin</c> with the state saved for
-  /// it. <paramref name="render"/> is null for a replay played in the game.
+  /// Begins a session: calls each provider's <c>OnReplayBegin</c>, then hands it the run's start
+  /// value through <c>OnReplayEvent</c>. The values recorded during the run follow through
+  /// <see cref="AdvanceEvents(long, long)"/>. <paramref name="render"/> is null for a replay
+  /// played in the game.
   /// </summary>
-  public static ReplaySession Begin(string runId, ReplayRender render, IReadOnlyList<StoredRunState> saved)
+  public static ReplaySession Begin(string runId, ReplayRender render, StoredRunStates saved)
   {
     End(_active);
+    saved ??= StoredRunStates.Empty;
     var session = new ReplaySession(runId, render);
     _active = session;
 
-    var byId = new Dictionary<string, StoredRunState>(StringComparer.Ordinal);
-    if (saved != null)
-      foreach (StoredRunState state in saved)
-        byId[state.StateId] = state;
+    var startValues = new Dictionary<string, StoredRunState>(StringComparer.Ordinal);
+    foreach (StoredRunState state in saved.States)
+      startValues[state.StateId] = state;
 
-    var begun = new List<ReplayProvider>();
-    foreach (ReplayProvider provider in ReplayProviders.All)
+    ReplayProvider[] begun = ReplayProviders.All.Where(provider => provider.FollowsReplays).ToArray();
+    session.Begun = begun;
+    session.Failures = new int[begun.Length];
+    session.Events = ReplayRunEvents.For(session, begun, startValues, saved.Events);
+    foreach (ReplayProvider provider in begun)
     {
-      if (!provider.FollowsReplays)
-        continue;
-      object recorded =
-        provider.Model != null && byId.TryGetValue(provider.Id, out StoredRunState state)
-          ? ReadOrNull(provider, state)
-          : null;
-      begun.Add(provider);
       try
       {
-        provider.InvokeBegin(recorded, render != null);
+        provider.InvokeBegin(render != null);
       }
       catch (Exception exception)
       {
         ModApiLog.ProviderFailed(provider, ReplayProvider.BeginName, exception);
       }
+      session.Events.GiveStartValue(provider);
     }
-    session.Begun = begun.ToArray();
-    session.Failures = new int[session.Begun.Length];
     return session;
   }
 
@@ -125,6 +123,39 @@ internal static class ReplaySessions
         ReportFrameFailure(session, index, ReplayProvider.ClockName, exception);
       }
     }
+  }
+
+  /// <summary>
+  /// Hands providers the values recorded up to <paramref name="replayTimeUs"/> on the run's
+  /// timeline. In the game: a late value gets its time measured back from <paramref name="nowTicks"/>.
+  /// </summary>
+  public static void AdvanceEvents(long replayTimeUs, long nowTicks)
+  {
+    ReplaySession session = _active;
+    if (session != null && !session.Ended)
+      session.Events?.AdvanceTo(replayTimeUs, nowTicks);
+  }
+
+  /// <summary>
+  /// Hands providers the values recorded up to <paramref name="replayTimeUs"/>, each at the
+  /// session time <paramref name="ticksAt"/> gives for its replay time. Renders only.
+  /// </summary>
+  public static void AdvanceEvents(long replayTimeUs, Func<long, long> ticksAt)
+  {
+    ReplaySession session = _active;
+    if (session != null && !session.Ended)
+      session.Events?.AdvanceTo(replayTimeUs, ticksAt);
+  }
+
+  /// <summary>
+  /// A timeline seek to <paramref name="replayTimeUs"/>: the values in between are skipped, and a
+  /// provider whose value in effect there changed gets it at <paramref name="nowTicks"/>.
+  /// </summary>
+  public static void SeekEvents(long replayTimeUs, long nowTicks)
+  {
+    ReplaySession session = _active;
+    if (session != null && !session.Ended)
+      session.Events?.SeekTo(replayTimeUs, nowTicks);
   }
 
   /// <summary>A recorded key, at <paramref name="ticks"/> on the session clock.</summary>
@@ -316,24 +347,34 @@ internal static class ReplaySessions
     }
   }
 
-  private static void ReportFrameFailure(ReplaySession session, int index, string member, Exception exception)
+  internal static void ReportFrameFailure(ReplaySession session, int index, string member, Exception exception)
   {
     if (++session.Failures[index] > MaxReportedFailures)
       return;
     ModApiLog.ProviderFailed(session.Begun[index], member, exception);
   }
 
-  private static object ReadOrNull(ReplayProvider provider, StoredRunState state)
+  /// <summary>
+  /// Reads a saved value into the provider's state type, or null when it can't be read. A start
+  /// value that can't be read reaches the provider as null; a <paramref name="recorded"/> one is skipped.
+  /// </summary>
+  internal static object ReadOrNull(
+    ReplayProvider provider,
+    string shapeId,
+    string shapeJson,
+    string valueJson,
+    bool recorded
+  )
   {
-    RunStateReadPlan plan = provider.PlanFor(state.ShapeId, state.ShapeJson);
+    RunStateReadPlan plan = provider.PlanFor(shapeId, shapeJson);
     if (!plan.IsReadable)
     {
-      ReportOnce(provider, state.ShapeId, "this run's saved value can't be read: " + plan.Problem);
+      ReportOnce(provider, shapeId, plan.Problem, recorded);
       return null;
     }
     try
     {
-      return provider.Read(plan, state.ValueJson);
+      return provider.Read(plan, valueJson);
     }
     catch (ReplayProviderException exception)
     {
@@ -342,19 +383,29 @@ internal static class ReplaySessions
     }
     catch (RunStateValueException exception)
     {
-      ReportOnce(provider, state.ShapeId, "this run's saved value can't be read: " + exception.Message);
+      ReportOnce(provider, shapeId, exception.Message, recorded);
       return null;
     }
   }
 
   private static readonly HashSet<string> Reported = new HashSet<string>(StringComparer.Ordinal);
 
-  private static void ReportOnce(ReplayProvider provider, string shapeId, string problem)
+  private static void ReportOnce(ReplayProvider provider, string shapeId, string problem, bool recorded)
   {
-    if (!Reported.Add(provider.Id + "/" + shapeId))
+    if (!Reported.Add(provider.Id + "/" + shapeId + (recorded ? "/recorded" : "/start")))
       return;
     ModApiLog.Write(
-      "[ReplayApi] " + provider.Id + ": " + problem + " " + ReplayProvider.BeginName + " gets null instead."
+      "[ReplayApi] "
+        + provider.Id
+        + (
+          recorded
+            ? ": a value recorded in this run can't be read: " + problem + " " + ReplayProvider.EventName + " skips it."
+            : ": this run's saved value can't be read: "
+              + problem
+              + " "
+              + ReplayProvider.EventName
+              + " gets null instead."
+        )
     );
   }
 
@@ -425,6 +476,9 @@ internal sealed class ReplaySession
 
   internal ReplayProvider[] Begun = Array.Empty<ReplayProvider>();
   internal int[] Failures = Array.Empty<int>();
+
+  /// <summary>The values providers recorded during the run, handed back at their times.</summary>
+  internal ReplayRunEvents Events;
   internal bool Ended;
 
   public ReplaySession(string runId, ReplayRender render)

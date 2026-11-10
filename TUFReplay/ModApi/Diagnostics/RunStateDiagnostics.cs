@@ -52,9 +52,9 @@ internal static class RunStateDiagnostics
         + ReplayProvider.UpgradeName
         + "(the old type) to "
         + provider.ProviderTypeName
-        + ", or those runs reach "
-        + ReplayProvider.BeginName
-        + " as null.";
+        + ", or those runs' values reach "
+        + ReplayProvider.EventName
+        + " as null or are skipped.";
 
     RunStateCompatibility conversion = plan.Conversion;
     if (plan.Upgrade == null && conversion != null && conversion.Dropped.Count > 0 && conversion.Defaulted.Count > 0)

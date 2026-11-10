@@ -331,6 +331,16 @@ public class RecordingSession
     }
   }
 
+  /// <summary>
+  /// The run's timeline now, for values other mods record (ReplayApi.RecordRunEvent): the same
+  /// clock as hits, never before the last recorded input or hit. Call on the main thread.
+  /// </summary>
+  internal long CurrentModEventTimeUs()
+  {
+    lock (_lock)
+      return Math.Max(0L, _timeline.Clamp(CurrentTimelineTimeUsLocked()));
+  }
+
   public void AddHitContext(RecordedHitContext hitContext)
   {
     lock (_lock)
