@@ -96,7 +96,7 @@ internal static class ActivityDatabaseSuite
       Assert(version == ActivitySchema.Version, "Fresh activity database schema version is incorrect.");
       Assert(
         string.Join(",", ReadUserTables(connection))
-          == "app_sessions,level_sessions,levels,replay_artifacts,run_state_shapes,run_states,runs",
+          == "app_sessions,level_sessions,levels,replay_artifacts,run_state_events,run_state_shapes,run_states,runs",
         "Fresh activity database contains an unexpected table."
       );
       InsertParents(connection);

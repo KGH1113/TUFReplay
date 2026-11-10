@@ -1,6 +1,7 @@
 using TUFReplay.ModApi.Mapping;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.ModApi.Providers;
+using TUFReplay.ModApi.Recording;
 
 namespace TUFReplay;
 
@@ -10,11 +11,13 @@ namespace TUFReplay;
 /// methods by name, so neither mod references the other. Every method is optional:
 /// <code>
 ///   // Recording: a state saved with each run, typed by the mod's own class.
-///   TState CaptureRunState()                                   // or Task&lt;TState&gt;
+///   TState CaptureRunState()                                   // or Task&lt;TState&gt;; the value as the run starts
 ///   TState UpgradeRunState(TOldState old)                      // any number; reads older runs
+///   // During the run: ReplayApi.RecordRunEvent(id, value) records a TState at that time.
 ///
 ///   // Replay: the same calls whether a run is played in the game or rendered to video.
-///   void   OnReplayBegin(TState recorded, bool render)         // or (TState), (bool) or ()
+///   void   OnReplayBegin(bool render)                          // or ()
+///   void   OnReplayEvent(TState value, long ticks)             // the start value, then each recorded one
 ///   void   OnReplayClock(long ticks)                           // every frame
 ///   void   OnReplayKey(KeyCode key, int? nativeKey, bool down, long ticks)
 ///   void   OnReplayEnd()
@@ -31,8 +34,12 @@ namespace TUFReplay;
 /// </summary>
 public static class ReplayApi
 {
-  /// <summary>Changes only when an existing member or provider method changes its meaning.</summary>
-  public const int ApiVersion = 1;
+  /// <summary>
+  /// Changes only when an existing member or provider method changes its meaning or is removed.
+  /// 2: <c>OnReplayBegin</c> no longer takes the state; <c>OnReplayEvent</c> and
+  /// <see cref="RecordRunEvent"/> were added.
+  /// </summary>
+  public const int ApiVersion = 2;
 
   /// <summary>The largest state saved for one run, in UTF-8 bytes of JSON.</summary>
   public const int MaxStateBytes = RunStateValueWriter.MaxBytes;
@@ -76,6 +83,19 @@ public static class ReplayApi
   /// writing overlay videos. Null outside a render or when FFmpeg is not installed.
   /// </summary>
   public static string RenderFfmpegPath => ReplaySessions.Active?.Render?.FfmpegPath;
+
+  /// <summary>
+  /// Records <paramref name="value"/> for the provider registered under <paramref name="id"/>,
+  /// at this moment on the run's timeline: the same clock as its keys and hits. When the run is
+  /// replayed or rendered, the provider gets it back through <c>OnReplayEvent</c> at that time.
+  /// Use it for what changes during a run for other reasons than keys and judgments, such as
+  /// settings or data from outside the game. <paramref name="value"/> must be exactly the
+  /// provider's state type, and is written to JSON now. Values recorded at the same moment, as
+  /// in one frame or while the game is paused, keep only the last. Call on Unity's main thread.
+  /// Returns false when no run is recording, which is normal, and when the value can't be saved;
+  /// that reason is written to the mod log.
+  /// </summary>
+  public static bool RecordRunEvent(string id, object value) => RunStateCapture.RecordEvent(id, value);
 
   /// <summary>
   /// Registers <paramref name="provider"/> under <paramref name="id"/>, replacing a provider

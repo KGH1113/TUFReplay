@@ -316,6 +316,7 @@ public static partial class ReplaySessionService
 
     context.NativeInputPlayer?.SkipTo(targetTimeUs);
     context.KeyFeed?.SkipTo(targetTimeUs, ReplaySessions.NowTicks);
+    ReplaySessions.SeekEvents(targetTimeUs, ReplaySessions.NowTicks);
     context.MicrophonePlayer?.Stop();
     context.WebcamPlayer?.Stop();
     ResetReplayHeldInputState();

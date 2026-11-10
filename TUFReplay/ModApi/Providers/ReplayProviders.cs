@@ -68,7 +68,18 @@ internal static class ReplayProviders
       Volatile.Write(ref _providers, _providers.Where(provider => provider.Id != id).ToArray());
   }
 
-  public static bool IsRegistered(string id) => !string.IsNullOrEmpty(id) && All.Any(provider => provider.Id == id);
+  public static bool IsRegistered(string id) => Find(id) != null;
+
+  /// <summary>The provider registered under <paramref name="id"/>, or null.</summary>
+  public static ReplayProvider Find(string id)
+  {
+    if (string.IsNullOrEmpty(id))
+      return null;
+    foreach (ReplayProvider provider in All)
+      if (provider.Id == id)
+        return provider;
+    return null;
+  }
 
   /// <summary>True while <paramref name="provider"/> is still the one registered under its id.</summary>
   public static bool IsCurrent(ReplayProvider provider) => Array.IndexOf(All, provider) >= 0;
