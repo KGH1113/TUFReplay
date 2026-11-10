@@ -23,7 +23,7 @@ public partial class RecordingFeature
       ? CalibrationRunDraftFactory.Create(Session.Data, startTile, levelTileCount)
       : _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
     // Other mods save their state as the run starts, before its first recorded input, and
-    // record values on the run's timeline until it is saved.
+    // add events on the run's timeline until it is saved.
     if (_currentRun != null && !_calibrationRun)
       _runStates = RunStateCapture.Begin(_currentRun.Id, Session.CurrentModEventTimeUs);
     return _currentRun != null;

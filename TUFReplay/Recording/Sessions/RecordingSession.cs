@@ -332,7 +332,7 @@ public class RecordingSession
   }
 
   /// <summary>
-  /// The run's timeline now, for values other mods record (ReplayApi.RecordRunEvent): the same
+  /// The run's timeline now, for events other mods add (ReplayEventStore.AddEvent): the same
   /// clock as hits, never before the last recorded input or hit. Call on the main thread.
   /// </summary>
   internal long CurrentModEventTimeUs()

@@ -43,9 +43,9 @@ internal static class RunStateValueWriter
       RunStateTypeNames.Of(type.ClrType)
         + " is "
         + (bytes.HasValue ? (bytes.Value / 1024 + 1) + " KiB" : "over " + MaxBytes / 1024 + " KiB")
-        + "; a run state can hold up to "
+        + "; one saved value can hold up to "
         + MaxBytes / 1024
-        + " KiB. Save less, such as totals instead of every event."
+        + " KiB. Save less."
     );
   }
 

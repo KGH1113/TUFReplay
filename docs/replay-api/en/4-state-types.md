@@ -1,10 +1,15 @@
-# 4. State types
+# 4. State and event types
 
-The class you save under an id is its state type. `CaptureRunState` returns it, `RecordRunEvent` takes it, and `OnReplayEvent` and `UpgradeRunState` use it. If a provider has both `CaptureRunState` and `OnReplayEvent`, they must use the same type.
+Your id saves two kinds of classes:
 
-## What a state type can hold
+- **The state type**: `CaptureRunState` returns it, and `OnReplayState` and `UpgradeRunState` use it. If a provider has both `CaptureRunState` and `OnReplayState`, they must use the same type.
+- **Event types**: `AddEvent` takes them, and `OnReplayEvent` and `UpgradeRunEvent` use them. Each has its own `OnReplayEvent` overload.
 
-A state type is a class with a parameterless constructor. The constructor can be private.
+Both follow the same rules.
+
+## What a saved class can hold
+
+A saved class is a class with a parameterless constructor. The constructor can be private.
 
 **Saved members**
 - Public instance fields.
@@ -46,7 +51,7 @@ Member types can be:
 - TUFReplay checks the type when you register and reports the first member it can't store, with how to fix it.
 - It checks values when they are saved.
 
-## Changing a state type
+## Changing a type
 
 Every run keeps the exact shape its values were saved with. When your type changes, TUFReplay reads older runs this way.
 
@@ -57,10 +62,10 @@ Every run keeps the exact shape its values were saved with. When your type chang
 - A value becomes nullable.
 - An enum gains members.
 
-**Needs `UpgradeRunState`**
+**Needs an upgrade method**
 - A changed type, such as `string` to `double`, `long` to `int`, or `int?` to `int`.
 - A removed enum member.
-- Keep the old class with the members it had, and add `TState UpgradeRunState(TOldState old)` to the provider. TUFReplay uses the upgrade whose old type matches the saved run. A provider can have any number of them.
+- Keep the old class with the members it had, and add an upgrade method to the provider: `TState UpgradeRunState(TOldState old)` for the state type, `TEvent UpgradeRunEvent(TOldEvent old)` for an event type. TUFReplay uses the upgrade whose old type matches the saved run. A provider can have any number of them.
 
 ```csharp
 // Saved by earlier versions of the mod.
@@ -85,8 +90,12 @@ public AttemptState UpgradeRunState(AttemptStateV1 old) =>
 - A rename looks like one removed member and one added member, so it would read without error and lose the value.
 - An upgrade whose old type matches the saved run exactly is preferred over the automatic reading. Add one for the old class to keep the value.
 
+**Renaming an event type**
+- Events are saved under their class's namespace and name. A class moved to another namespace is still found by its name.
+- A renamed class is not found: those events are skipped. Keep the name of an event type once runs use it.
+
 **Checks at registration**
 - When you register, TUFReplay checks every shape your id was saved with.
-- It writes a log line for runs it can't read without an upgrade, and for runs that look renamed.
+- It writes a log line for runs it can't read without an upgrade, for runs that look renamed, and for events of a type the provider no longer takes.
 
 Next: [5. Render to video](5-render.md)

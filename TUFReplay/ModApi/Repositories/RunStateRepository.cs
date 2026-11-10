@@ -8,9 +8,9 @@ using DatabaseStore = TUFReplay.Shared.Database.Database;
 namespace TUFReplay.ModApi.Repositories;
 
 /// <summary>
-/// Saves mod states with their run and reads them back. States are written in the run's own
-/// transaction, and <c>run_states</c> and <c>run_state_events</c> cascade from <c>runs</c>, so
-/// deleting or locking a run covers its states.
+/// Saves mods' start values and events with their run and reads them back. They are written in
+/// the run's own transaction, and <c>run_states</c> and <c>run_events</c> cascade from
+/// <c>runs</c>, so deleting or locking a run covers them.
 /// </summary>
 internal static class RunStateRepository
 {
@@ -71,12 +71,13 @@ VALUES(@run,@state,@shape,@value,@at)";
       using SqliteCommand recorded = connection.CreateCommand();
       recorded.Transaction = transaction;
       recorded.CommandText =
-        @"INSERT OR REPLACE INTO run_state_events(run_id,state_id,seq,time_us,shape_id,value_json)
-VALUES(@run,@state,@seq,@time,@shape,@value)";
+        @"INSERT OR REPLACE INTO run_events(run_id,state_id,seq,time_us,event_type,shape_id,value_json)
+VALUES(@run,@state,@seq,@time,@type,@shape,@value)";
       recorded.Parameters.AddWithValue("@run", runId);
       SqliteParameter eventState = recorded.Parameters.Add("@state", SqliteType.Text);
       SqliteParameter sequence = recorded.Parameters.Add("@seq", SqliteType.Integer);
       SqliteParameter time = recorded.Parameters.Add("@time", SqliteType.Integer);
+      SqliteParameter eventType = recorded.Parameters.Add("@type", SqliteType.Text);
       SqliteParameter eventShape = recorded.Parameters.Add("@shape", SqliteType.Text);
       SqliteParameter eventValue = recorded.Parameters.Add("@value", SqliteType.Text);
       var nextSeq = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -88,6 +89,7 @@ VALUES(@run,@state,@seq,@time,@shape,@value)";
         eventState.Value = record.StateId;
         sequence.Value = seq;
         time.Value = record.TimeUs;
+        eventType.Value = record.EventType;
         eventShape.Value = record.ShapeId;
         eventValue.Value = record.ValueJson;
         recorded.ExecuteNonQuery();
@@ -125,8 +127,8 @@ WHERE s.run_id=@run";
     using (SqliteCommand command = connection.CreateCommand())
     {
       command.CommandText =
-        @"SELECT e.state_id,e.shape_id,h.shape_json,e.value_json,e.time_us
-FROM run_state_events e
+        @"SELECT e.state_id,e.event_type,e.shape_id,h.shape_json,e.value_json,e.time_us
+FROM run_events e
 JOIN run_state_shapes h ON h.shape_id=e.shape_id
 WHERE e.run_id=@run
 ORDER BY e.time_us,e.state_id,e.seq";
@@ -137,40 +139,45 @@ ORDER BY e.time_us,e.state_id,e.seq";
           new StoredRunEvent
           {
             StateId = reader.GetString(0),
-            ShapeId = reader.GetString(1),
-            ShapeJson = reader.GetString(2),
-            ValueJson = reader.GetString(3),
-            TimeUs = reader.GetInt64(4),
+            EventType = reader.GetString(1),
+            ShapeId = reader.GetString(2),
+            ShapeJson = reader.GetString(3),
+            ValueJson = reader.GetString(4),
+            TimeUs = reader.GetInt64(5),
           }
         );
     }
     return new StoredRunStates(states, events);
   }
 
-  /// <summary>Every shape <paramref name="stateId"/> was saved with, as a start value or a recorded value.</summary>
+  /// <summary>
+  /// Every shape <paramref name="stateId"/> was saved with: one row per start value shape, and one
+  /// per event type and shape.
+  /// </summary>
   internal static List<StoredRunStateShape> ListShapes(string stateId)
   {
     var shapes = new List<StoredRunStateShape>();
     using SqliteConnection connection = DatabaseStore.OpenConnection();
     using SqliteCommand command = connection.CreateCommand();
     command.CommandText =
-      @"SELECT u.shape_id,h.shape_json,COUNT(DISTINCT u.run_id)
+      @"SELECT u.event_type,u.shape_id,h.shape_json,COUNT(DISTINCT u.run_id)
 FROM (
-  SELECT run_id,shape_id FROM run_states WHERE state_id=@state
+  SELECT run_id,NULL AS event_type,shape_id FROM run_states WHERE state_id=@state
   UNION ALL
-  SELECT run_id,shape_id FROM run_state_events WHERE state_id=@state
+  SELECT run_id,event_type,shape_id FROM run_events WHERE state_id=@state
 ) u
 JOIN run_state_shapes h ON h.shape_id=u.shape_id
-GROUP BY u.shape_id,h.shape_json";
+GROUP BY u.event_type,u.shape_id,h.shape_json";
     command.Parameters.AddWithValue("@state", stateId);
     using SqliteDataReader reader = command.ExecuteReader();
     while (reader.Read())
       shapes.Add(
         new StoredRunStateShape
         {
-          ShapeId = reader.GetString(0),
-          ShapeJson = reader.GetString(1),
-          RunCount = reader.GetInt32(2),
+          EventType = reader.IsDBNull(0) ? null : reader.GetString(0),
+          ShapeId = reader.GetString(1),
+          ShapeJson = reader.GetString(2),
+          RunCount = reader.GetInt32(3),
         }
       );
     return shapes;

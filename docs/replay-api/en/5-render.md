@@ -33,9 +33,9 @@ public static string RenderFfmpegPath { get; }       // FFmpeg shared with the r
 
 ## A render, step by step
 
-- `OnReplayBegin(render: true)` runs before TUFReplay hands the job to OrbitRender, before the level opens, and `OnReplayEvent` with the start value follows right away.
+- `OnReplayBegin(render: true)` runs before TUFReplay hands the job to OrbitRender, before the level opens, and `OnReplayState` with the start value follows right away.
 - `GetReplayCanvases` runs once, after the level is ready and before the first frame. Canvases you create later are not in the video, so create them by then, or in this call. `RenderWidth`, `RenderHeight` and `RenderFps` hold the video's final values from this call on; before it they are the requested values.
-- Every frame: `OnReplayClock` with the video time, then `OnReplayEvent` for the values and `OnReplayKey` for the keys of that frame, at their video times. `OnBeforeFrameCapture` and `OnAfterFrameCapture` wrap each new video frame; a repeated frame does not call them.
+- Every frame: `OnReplayClock` with the video time, then `OnReplayEvent` for the events and `OnReplayKey` for the keys of that frame, at their video times. `OnBeforeFrameCapture` and `OnAfterFrameCapture` wrap each new video frame; a repeated frame does not call them.
 - `AddReplayOverlayVideos` runs once, after the last frame and before OrbitRender composes the finished video.
 - `OnReplayEnd` runs when the render completes, fails or is cancelled, after OrbitRender has restored the game and composed the video. A render that ends before its first frame, such as one cancelled while the level opens, calls `OnReplayEnd` without `GetReplayCanvases`.
 

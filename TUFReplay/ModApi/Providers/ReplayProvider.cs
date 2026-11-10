@@ -14,13 +14,16 @@ namespace TUFReplay.ModApi.Providers;
 /// A registered provider object and the <see cref="ReplayApi"/> members found on it by name.
 /// Every member is optional, but a provider needs at least one. Members that run every frame
 /// are bound once to delegates. The state type comes from <c>CaptureRunState</c>'s result or
-/// <c>OnReplayEvent</c>'s value, which must be the same type.
+/// <c>OnReplayState</c>'s state, which must be the same type. Each <c>OnReplayEvent</c>
+/// overload takes one event type.
 /// </summary>
 internal sealed class ReplayProvider
 {
   internal const string CaptureName = "CaptureRunState";
   internal const string UpgradeName = "UpgradeRunState";
+  internal const string EventUpgradeName = "UpgradeRunEvent";
   internal const string BeginName = "OnReplayBegin";
+  internal const string StateName = "OnReplayState";
   internal const string EventName = "OnReplayEvent";
   internal const string EndName = "OnReplayEnd";
   internal const string ClockName = "OnReplayClock";
@@ -34,7 +37,9 @@ internal sealed class ReplayProvider
   {
     CaptureName,
     UpgradeName,
+    EventUpgradeName,
     BeginName,
+    StateName,
     EventName,
     EndName,
     ClockName,
@@ -48,20 +53,18 @@ internal sealed class ReplayProvider
   public readonly string Id;
   public readonly object Instance;
 
-  /// <summary>The state type saved with each run, or null for a provider that saves none.</summary>
-  public readonly RunStateModel Model;
+  /// <summary>The state saved with each run, or null for a provider that saves none.</summary>
+  public readonly RunValueTarget State;
+
+  /// <summary>One per <c>OnReplayEvent</c> overload: the event types the provider adds and takes back.</summary>
+  public readonly RunEventHandler[] Events;
 
   private readonly MethodInfo _capture;
   private readonly PropertyInfo _captureResult;
   private readonly MethodInfo _begin;
   private readonly bool _beginTakesRender;
-  private readonly MethodInfo _event;
+  private readonly MethodInfo _state;
   private readonly Action _end;
-  private readonly RunStateUpgrade[] _upgrades;
-  private readonly ConcurrentDictionary<string, RunStateReadPlan> _plans = new ConcurrentDictionary<
-    string,
-    RunStateReadPlan
-  >(StringComparer.Ordinal);
 
   // Per-frame members, bound once.
   internal readonly Action<long> Clock;
@@ -80,23 +83,23 @@ internal sealed class ReplayProvider
   private ReplayProvider(
     string id,
     object instance,
-    RunStateModel model,
+    RunValueTarget state,
+    RunEventHandler[] events,
     MethodInfo capture,
     MethodInfo begin,
     bool beginTakesRender,
-    MethodInfo replayEvent,
-    RunStateUpgrade[] upgrades,
+    MethodInfo replayState,
     Bound bound
   )
   {
     Id = id;
     Instance = instance;
-    Model = model;
+    State = state;
+    Events = events;
     _capture = capture;
     _begin = begin;
     _beginTakesRender = beginTakesRender;
-    _event = replayEvent;
-    _upgrades = upgrades;
+    _state = replayState;
     if (capture != null && IsTaskOfState(capture.ReturnType))
       _captureResult = capture.ReturnType.GetProperty("Result");
     _end = bound.End;
@@ -109,15 +112,25 @@ internal sealed class ReplayProvider
     OverlayVideos = bound.OverlayVideos;
   }
 
+  /// <summary>The state type, or null for a provider that saves none.</summary>
+  public RunStateModel Model => State?.Model;
+
   public bool Captures => _capture != null;
   public bool CapturesAsync => _captureResult != null;
 
-  /// <summary>Takes the run's start value and recorded values back through <c>OnReplayEvent</c>.</summary>
-  public bool TakesEvents => _event != null;
+  /// <summary>Takes the run's start value back through <c>OnReplayState</c>.</summary>
+  public bool TakesState => _state != null;
+
+  /// <summary>Adds events during a run and takes them back through <c>OnReplayEvent</c>.</summary>
+  public bool TakesEvents => Events.Length > 0;
+
+  /// <summary>Has a state or events, so runs may hold values saved with older types.</summary>
+  public bool SavesValues => State != null || Events.Length > 0;
 
   public bool FollowsReplays =>
     _begin != null
-    || _event != null
+    || _state != null
+    || Events.Length > 0
     || _end != null
     || Clock != null
     || Key != null
@@ -136,8 +149,10 @@ internal sealed class ReplayProvider
       parts.Add("state " + RunStateTypeNames.Of(Model.ClrType));
     if (_begin != null || _end != null)
       parts.Add("replay begin/end");
-    if (_event != null)
-      parts.Add("replay events");
+    if (_state != null)
+      parts.Add("replay state");
+    if (Events.Length > 0)
+      parts.Add("events " + string.Join("/", Events.Select(handler => handler.Name)));
     if (Key != null)
       parts.Add("keys");
     if (Clock != null)
@@ -152,6 +167,37 @@ internal sealed class ReplayProvider
   }
 
   public string ProviderTypeName => RunStateTypeNames.Of(Instance.GetType());
+
+  /// <summary>The <c>OnReplayEvent</c> overload that takes exactly <paramref name="type"/>, or null.</summary>
+  public RunEventHandler EventFor(Type type)
+  {
+    foreach (RunEventHandler handler in Events)
+      if (handler.ClrType == type)
+        return handler;
+    return null;
+  }
+
+  /// <summary>
+  /// The <c>OnReplayEvent</c> overload for events saved as <paramref name="savedName"/>: the same
+  /// qualified name, or else the only one with the same type name, so a class moved to another
+  /// namespace still reads its old runs. Null when none or several match.
+  /// </summary>
+  public RunEventHandler EventNamed(string savedName)
+  {
+    foreach (RunEventHandler handler in Events)
+      if (handler.SavedName == savedName)
+        return handler;
+    string name = RunStateTypeNames.Short(savedName);
+    RunEventHandler found = null;
+    foreach (RunEventHandler handler in Events)
+      if (handler.Name == name)
+      {
+        if (found != null)
+          return null;
+        found = handler;
+      }
+    return found;
+  }
 
   public static ReplayProvider Bind(string id, object instance)
   {
@@ -176,10 +222,10 @@ internal sealed class ReplayProvider
 
     MethodInfo capture = Single(methods, CaptureName, typeName);
     MethodInfo begin = Single(methods, BeginName, typeName);
-    MethodInfo replayEvent = Single(methods, EventName, typeName);
+    MethodInfo replayState = Single(methods, StateName, typeName);
     Type captured = capture == null ? null : CapturedType(capture, typeName);
     bool beginTakesRender = begin != null && BeginTakesRender(begin, typeName);
-    Type replayed = replayEvent == null ? null : EventType(replayEvent, typeName);
+    Type replayed = replayState == null ? null : ReplayedStateType(replayState, typeName);
     if (captured != null && replayed != null && captured != replayed)
       throw new RunStateModelException(
         typeName
@@ -188,7 +234,7 @@ internal sealed class ReplayProvider
           + " returns "
           + RunStateTypeNames.Of(captured)
           + " but "
-          + EventName
+          + StateName
           + " takes "
           + RunStateTypeNames.Of(replayed)
           + ". Use the same state type in both."
@@ -196,9 +242,13 @@ internal sealed class ReplayProvider
 
     Type stateType = captured ?? replayed;
     RunStateModel model = stateType == null ? null : RunStateModel.For(stateType);
-    RunStateUpgrade[] upgrades = BindUpgrades(methods, model, typeName);
+    RunStateUpgrade[] upgrades = BindStateUpgrades(methods, model, typeName);
+    RunValueTarget state = model == null ? null : new RunValueTarget(model, upgrades);
+    RunEventHandler[] events = BindEvents(methods, typeName);
+    if (events.Length > 0 && replayState == null)
+      throw new RunStateModelException(MissingStateProblem(typeName, stateType, events));
     Bound bound = BindReplayMembers(methods, instance, typeName);
-    return new ReplayProvider(id, instance, model, capture, begin, beginTakesRender, replayEvent, upgrades, bound);
+    return new ReplayProvider(id, instance, state, events, capture, begin, beginTakesRender, replayState, bound);
   }
 
   private static MethodInfo Single(MethodInfo[] methods, string name, string typeName)
@@ -246,35 +296,59 @@ internal sealed class ReplayProvider
         + (
           takesState
             ? " The run's state no longer comes with it: take it in void "
-              + EventName
+              + StateName
               + "("
               + RunStateTypeNames.Of(parameters[0].ParameterType)
-              + " value, long ticks), which runs right after it."
+              + " state, long ticks), which runs right after it."
             : ""
         )
     );
   }
 
-  private static Type EventType(MethodInfo replayEvent, string typeName)
+  private static Type ReplayedStateType(MethodInfo replayState, string typeName)
   {
-    ParameterInfo[] parameters = replayEvent.GetParameters();
-    if (
-      replayEvent.ReturnType != typeof(void)
-      || parameters.Length != 2
-      || parameters[1].ParameterType != typeof(long)
-      || parameters[0].ParameterType == typeof(long)
-      || parameters[0].ParameterType == typeof(bool)
-    )
+    ParameterInfo[] parameters = replayState.GetParameters();
+    if (replayState.ReturnType != typeof(void) || parameters.Length != 2 || parameters[1].ParameterType != typeof(long))
       throw new RunStateModelException(
-        typeName + "." + EventName + " must be void " + EventName + "(YourState value, long ticks)."
+        typeName + "." + StateName + " must be void " + StateName + "(YourState state, long ticks)."
       );
     return parameters[0].ParameterType;
+  }
+
+  private static string MissingStateProblem(string typeName, Type stateType, RunEventHandler[] events)
+  {
+    // The shape ApiVersion 2 had before events got their own types: one OnReplayEvent that took
+    // the start value as well as each value recorded later.
+    if (stateType != null && events.Any(handler => handler.ClrType == stateType))
+    {
+      string state = RunStateTypeNames.Of(stateType);
+      return typeName
+        + "."
+        + EventName
+        + "("
+        + state
+        + " e, long ticks) no longer gets the run's start value. Take it in void "
+        + StateName
+        + "("
+        + state
+        + " state, long ticks), which runs right after "
+        + BeginName
+        + " and after each seek.";
+    }
+    return typeName
+      + " takes events but has no "
+      + StateName
+      + ". Add void "
+      + StateName
+      + "("
+      + (stateType == null ? "YourState" : RunStateTypeNames.Of(stateType))
+      + " state, long ticks): a seek starts the replay over from the run's start value, then hands over the events up to there again.";
   }
 
   private static bool IsTaskOfState(Type type) =>
     type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Task<>);
 
-  private static RunStateUpgrade[] BindUpgrades(MethodInfo[] methods, RunStateModel model, string typeName)
+  private static RunStateUpgrade[] BindStateUpgrades(MethodInfo[] methods, RunStateModel model, string typeName)
   {
     var upgrades = new List<RunStateUpgrade>();
     foreach (MethodInfo method in methods.Where(method => method.Name == UpgradeName))
@@ -287,11 +361,10 @@ internal sealed class ReplayProvider
             + " has no state to upgrade to. Add "
             + CaptureName
             + " or "
-            + EventName
-            + "(YourState value, long ticks), or remove it."
+            + StateName
+            + "(YourState state, long ticks), or remove it."
         );
-      ParameterInfo[] parameters = method.GetParameters();
-      if (parameters.Length != 1 || method.ReturnType != model.ClrType)
+      if (method.GetParameters().Length != 1 || method.ReturnType != model.ClrType)
         throw new RunStateModelException(
           typeName
             + "."
@@ -304,36 +377,136 @@ internal sealed class ReplayProvider
             + UpgradeName
             + "(MyStateV1 old)."
         );
-      Type source = parameters[0].ParameterType;
-      RunStateModel sourceModel;
+      upgrades.Add(BindUpgrade(method, UpgradeName, model, upgrades, typeName, RunStateModel.For));
+    }
+    return upgrades.ToArray();
+  }
+
+  private static RunEventHandler[] BindEvents(MethodInfo[] methods, string typeName)
+  {
+    var methodsByType = new List<(MethodInfo Method, RunStateModel Model)>();
+    foreach (MethodInfo method in methods.Where(method => method.Name == EventName))
+    {
+      ParameterInfo[] parameters = method.GetParameters();
+      if (
+        method.ReturnType != typeof(void)
+        || method.IsGenericMethodDefinition
+        || parameters.Length != 2
+        || parameters[1].ParameterType != typeof(long)
+      )
+        throw new RunStateModelException(
+          typeName
+            + "."
+            + EventName
+            + " must be void "
+            + EventName
+            + "(YourEvent e, long ticks), one for each event type."
+        );
+      Type eventType = parameters[0].ParameterType;
+      RunStateModel model;
       try
       {
-        sourceModel = RunStateModel.For(source);
+        model = RunStateModel.ForEvent(eventType);
       }
       catch (RunStateModelException exception)
       {
         throw new RunStateModelException(
-          typeName + "." + UpgradeName + "(" + RunStateTypeNames.Of(source) + "): " + exception.Message
+          typeName + "." + EventName + "(" + RunStateTypeNames.Of(eventType) + "): " + exception.Message
         );
       }
-      if (sourceModel.ShapeId == model.ShapeId)
+      string savedName = RunStateTypeNames.Qualified(eventType);
+      if (methodsByType.Any(other => RunStateTypeNames.Qualified(other.Model.ClrType) == savedName))
+        throw new RunStateModelException(
+          typeName + "." + EventName + " takes two event types named " + savedName + ". Rename one."
+        );
+      methodsByType.Add((method, model));
+    }
+
+    var upgrades = methodsByType.ToDictionary(entry => entry.Model.ClrType, _ => new List<RunStateUpgrade>());
+    foreach (MethodInfo method in methods.Where(method => method.Name == EventUpgradeName))
+    {
+      if (methodsByType.Count == 0)
         throw new RunStateModelException(
           typeName
             + "."
-            + UpgradeName
-            + " takes "
-            + RunStateTypeNames.Of(source)
-            + ", which has the same members as "
-            + RunStateTypeNames.Of(model.ClrType)
-            + ", so it can never be used. Give the old type the members it was saved with."
+            + EventUpgradeName
+            + " has no event type to upgrade to. Add "
+            + EventName
+            + "(YourEvent e, long ticks), or remove it."
         );
-      if (upgrades.Any(upgrade => upgrade.Source.ShapeId == sourceModel.ShapeId))
+      if (
+        method.GetParameters().Length != 1
+        || !upgrades.TryGetValue(method.ReturnType, out List<RunStateUpgrade> list)
+      )
+      {
+        string first = RunStateTypeNames.Of(methodsByType[0].Model.ClrType);
         throw new RunStateModelException(
-          typeName + " has two " + UpgradeName + " methods for types with the same members. Keep one."
+          typeName
+            + "."
+            + EventUpgradeName
+            + " must take one older event and return a type "
+            + EventName
+            + " takes ("
+            + string.Join(", ", methodsByType.Select(entry => RunStateTypeNames.Of(entry.Model.ClrType)))
+            + "), such as: "
+            + first
+            + " "
+            + EventUpgradeName
+            + "("
+            + first
+            + "V1 old)."
         );
-      upgrades.Add(new RunStateUpgrade(sourceModel, method));
+      }
+      RunStateModel target = methodsByType.First(entry => entry.Model.ClrType == method.ReturnType).Model;
+      list.Add(BindUpgrade(method, EventUpgradeName, target, list, typeName, RunStateModel.ForEvent));
     }
-    return upgrades.ToArray();
+
+    return methodsByType
+      .Select(entry => new RunEventHandler(
+        entry.Method,
+        new RunValueTarget(entry.Model, upgrades[entry.Model.ClrType].ToArray())
+      ))
+      .ToArray();
+  }
+
+  /// <summary>Checks one upgrade method that turns an older type into <paramref name="target"/>.</summary>
+  private static RunStateUpgrade BindUpgrade(
+    MethodInfo method,
+    string name,
+    RunStateModel target,
+    List<RunStateUpgrade> existing,
+    string typeName,
+    Func<Type, RunStateModel> map
+  )
+  {
+    Type source = method.GetParameters()[0].ParameterType;
+    RunStateModel sourceModel;
+    try
+    {
+      sourceModel = map(source);
+    }
+    catch (RunStateModelException exception)
+    {
+      throw new RunStateModelException(
+        typeName + "." + name + "(" + RunStateTypeNames.Of(source) + "): " + exception.Message
+      );
+    }
+    if (sourceModel.ShapeId == target.ShapeId)
+      throw new RunStateModelException(
+        typeName
+          + "."
+          + name
+          + " takes "
+          + RunStateTypeNames.Of(source)
+          + ", which has the same members as "
+          + RunStateTypeNames.Of(target.ClrType)
+          + ", so it can never be used. Give the old type the members it was saved with."
+      );
+    if (existing.Any(upgrade => upgrade.Source.ShapeId == sourceModel.ShapeId))
+      throw new RunStateModelException(
+        typeName + " has two " + name + " methods for types with the same members. Keep one."
+      );
+    return new RunStateUpgrade(sourceModel, method);
   }
 
   private struct Bound
@@ -430,12 +603,15 @@ internal sealed class ReplayProvider
       Invoke(_begin, _beginTakesRender ? new object[] { render } : null);
   }
 
-  /// <summary>Hands the provider a value of its state type, or null, at <paramref name="ticks"/>.</summary>
-  public void InvokeEvent(object value, long ticks)
+  /// <summary>Hands the provider its start value, or null, at <paramref name="ticks"/>.</summary>
+  public void InvokeState(object state, long ticks)
   {
-    if (_event != null)
-      Invoke(_event, new[] { value, ticks });
+    if (_state != null)
+      Invoke(_state, new[] { state, ticks });
   }
+
+  /// <summary>Hands the provider one event through the overload for its type.</summary>
+  public void InvokeEvent(RunEventHandler handler, object e, long ticks) => Invoke(handler.Method, new[] { e, ticks });
 
   public void InvokeEnd()
   {
@@ -461,19 +637,44 @@ internal sealed class ReplayProvider
     }
   }
 
-  /// <summary>How a value saved with <paramref name="shapeId"/> is read. Cached per shape.</summary>
-  public RunStateReadPlan PlanFor(string shapeId, string shapeJson)
+  /// <summary>Reads a saved value into the plan's type, upgrading it when the plan says so.</summary>
+  public object Read(RunStateReadPlan plan, string valueJson)
   {
-    if (Model == null)
-      return RunStateReadPlan.Unreadable("this provider saves no state.");
-    return _plans.GetOrAdd(shapeId, _ => CreatePlan(shapeId, shapeJson));
+    if (plan.Upgrade == null)
+      return RunStateValueReader.Read(plan.Into, valueJson);
+    object old = RunStateValueReader.Read(plan.Upgrade.Source.Type, valueJson);
+    return Invoke(plan.Upgrade.Method, new[] { old });
   }
+}
+
+/// <summary>
+/// A type saved values are read back into: the provider's state type or one of its event types,
+/// with the upgrade methods that return it. How each saved shape is read is worked out once.
+/// </summary>
+internal sealed class RunValueTarget
+{
+  public readonly RunStateModel Model;
+  public readonly RunStateUpgrade[] Upgrades;
+  private readonly ConcurrentDictionary<string, RunStateReadPlan> _plans = new ConcurrentDictionary<
+    string,
+    RunStateReadPlan
+  >(StringComparer.Ordinal);
+
+  public RunValueTarget(RunStateModel model, RunStateUpgrade[] upgrades)
+  {
+    Model = model;
+    Upgrades = upgrades;
+  }
+
+  /// <summary>How a value saved with <paramref name="shapeId"/> is read. Cached per shape.</summary>
+  public RunStateReadPlan PlanFor(string shapeId, string shapeJson) =>
+    _plans.GetOrAdd(shapeId, _ => CreatePlan(shapeId, shapeJson));
 
   private RunStateReadPlan CreatePlan(string shapeId, string shapeJson)
   {
     if (shapeId == Model.ShapeId)
-      return RunStateReadPlan.Direct(null);
-    foreach (RunStateUpgrade upgrade in _upgrades)
+      return RunStateReadPlan.Direct(Model.Type, null);
+    foreach (RunStateUpgrade upgrade in Upgrades)
       if (shapeId == upgrade.Source.ShapeId)
         return RunStateReadPlan.ViaUpgrade(upgrade, null);
 
@@ -489,8 +690,8 @@ internal sealed class ReplayProvider
 
     RunStateCompatibility direct = RunStateCompatibility.Check(saved, Model.Shape, RunStateTypeNames.Of(Model.ClrType));
     if (direct.IsReadable)
-      return RunStateReadPlan.Direct(direct);
-    foreach (RunStateUpgrade upgrade in _upgrades)
+      return RunStateReadPlan.Direct(Model.Type, direct);
+    foreach (RunStateUpgrade upgrade in Upgrades)
     {
       RunStateCompatibility viaUpgrade = RunStateCompatibility.Check(
         saved,
@@ -502,15 +703,29 @@ internal sealed class ReplayProvider
     }
     return RunStateReadPlan.Unreadable(direct.Problem);
   }
+}
 
-  /// <summary>Reads a saved value into the current state type, upgrading it when the plan says so.</summary>
-  public object Read(RunStateReadPlan plan, string valueJson)
+/// <summary>One <c>OnReplayEvent</c> overload: the event type it takes, and how saved events of that type are read.</summary>
+internal sealed class RunEventHandler
+{
+  public readonly MethodInfo Method;
+  public readonly RunValueTarget Target;
+
+  /// <summary>The name events of this type are saved under.</summary>
+  public readonly string SavedName;
+
+  public RunEventHandler(MethodInfo method, RunValueTarget target)
   {
-    if (plan.Upgrade == null)
-      return RunStateValueReader.Read(Model.Type, valueJson);
-    object old = RunStateValueReader.Read(plan.Upgrade.Source.Type, valueJson);
-    return Invoke(plan.Upgrade.Method, new[] { old });
+    Method = method;
+    Target = target;
+    SavedName = RunStateTypeNames.Qualified(target.Model.ClrType);
   }
+
+  public RunStateModel Model => Target.Model;
+  public Type ClrType => Target.Model.ClrType;
+
+  /// <summary>The event type as the mod's code writes it, for messages.</summary>
+  public string Name => RunStateTypeNames.Of(ClrType);
 }
 
 internal sealed class RunStateUpgrade
@@ -527,6 +742,9 @@ internal sealed class RunStateUpgrade
 
 internal sealed class RunStateReadPlan
 {
+  /// <summary>The type the saved value is read into directly, or null when an upgrade reads it.</summary>
+  public RunStateType Into { get; private set; }
+
   public RunStateUpgrade Upgrade { get; private set; }
 
   /// <summary>Why the value can't be read, or null.</summary>
@@ -537,8 +755,8 @@ internal sealed class RunStateReadPlan
 
   public bool IsReadable => Problem == null;
 
-  public static RunStateReadPlan Direct(RunStateCompatibility conversion) =>
-    new RunStateReadPlan { Conversion = conversion };
+  public static RunStateReadPlan Direct(RunStateType into, RunStateCompatibility conversion) =>
+    new RunStateReadPlan { Into = into, Conversion = conversion };
 
   public static RunStateReadPlan ViaUpgrade(RunStateUpgrade upgrade, RunStateCompatibility conversion) =>
     new RunStateReadPlan { Upgrade = upgrade, Conversion = conversion };
