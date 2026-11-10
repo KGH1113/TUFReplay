@@ -2,494 +2,119 @@
 
 ![TUFReplay](https://capsule-render.vercel.app/api?type=waving&height=220&color=0:050505,45:101827,100:5eead4&text=TUFReplay&fontColor=e6fffb&fontAlignY=38&desc=Clear,%20Record,%20Edit,%20Upload,%20Submit,%20Wait%20->%20Clear,%20Submit%20&descAlignY=58&animation=fadeIn)
 
-[![Runtime](https://img.shields.io/badge/runtime-ADOFAI%20%2F%20Unity-111827?style=for-the-badge&logo=unity&logoColor=white)](https://store.steampowered.com/app/977950/A_Dance_of_Fire_and_Ice/)
-[![Mod Loader](https://img.shields.io/badge/mod%20loader-UnityModManager-7c3aed?style=for-the-badge)](https://www.nexusmods.com/site/mods/21)
-[![Patching](https://img.shields.io/badge/patching-Harmony-f43f5e?style=for-the-badge)](https://github.com/pardeike/Harmony)
-[![Build](https://img.shields.io/badge/build-.NET%20SDK-512BD4?style=for-the-badge&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![Target](https://img.shields.io/badge/target-netstandard2.1-2563eb?style=for-the-badge)](https://learn.microsoft.com/dotnet/standard/net-standard)
-[![Database](https://img.shields.io/badge/database-SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)](https://sqlite.org/)
-[![API](https://img.shields.io/badge/api-AdofaiIpc-f97316?style=for-the-badge)](#typed-adofaiipc-api)
-
-<br />
-
 ![Tech stack](https://skillicons.dev/icons?i=cs,dotnet,unity,sqlite,bash)
 
-**ADOFAI will now automatically records your clear, and you can use it for submitting to TUF**
+**ADOFAI now records your clears automatically, ready to submit to TUF.**
+
+[Website](https://tufreplay.impl1113.dev) · [Download](https://github.com/KGH1113/TUFReplay/releases/latest)
 
 </div>
 
-<div align="center">
-  <img
-    src="docs/media/showcase.gif"
-    alt="showcase-gif"
-    width="900"
-  />
-  <br />
-</div>
+## What it does
 
-## Overview
+- **Records every custom level run**: key presses, judgments and X-Accuracy, saved on your computer.
+- **Web companion** at [tufreplay.impl1113.dev](https://tufreplay.impl1113.dev): browse runs by day and level, see where you missed, lock runs you want to keep, export recordings and delete the rest. In English and Korean.
+- **API for other mods**: key viewers and overlays can save their state with each run and show the recorded keys in replays and videos.
 
-TUFReplay is a UnityModManager mod for **A Dance of Fire and Ice**. It records OS-native keyboard state changes for replay keyviewer/display output, records CReplay-style hit contexts for game playback, stores play records in a local SQLite database, exposes those records through AdofaiIpc, and plays saved runs directly from the companion web UI.
+### Replay a run inside ADOFAI
 
-Replay engine v2 preserves OS-native input, the resolved margin of every accepted hit, and its recorded timeline timestamp. Replays from the previous Skyhook-based engine remain visible as activity history after upgrading but are not playable. When automatic recording is enabled, TUFReplay can also capture a run's microphone audio as 48 kHz mono PCM16 WAV data.
+Pause and seek on the timeline. Any `.adofai` file with the same gameplay works, so you can replay with different effects.
 
-New recordings keep hit timestamps nondecreasing even when the game song clock moves backward. Buffered native inputs retain their independently mapped timestamps and input ordering; recording a hit does not push an earlier buffered input forward. Clear and terminal times include both recorded inputs and hits. The song-relative time base and game input offset remain unchanged.
+https://github.com/user-attachments/assets/f9688270-67d9-4521-b60c-fed4f32c02b5
 
-A new countdown starts a fresh payload when the previous capture already reached a terminal state, even if that attempt never obtained an activity draft. Final capture draining includes buffered inputs and the finishing hit in the terminal boundary without adding later idle time. A failed run stores its death as `failedTimeUs` and its recording end as `terminalTimeUs`; its attempt duration still ends at the death. Render export can recover the specific older pre-start zero-terminal defect from its retained event timeline; it leaves the database unchanged and warns that pre-start key timestamps already saved as zero cannot be reconstructed. Other events after the recording boundary still fail validation.
+### Record your microphone and hand cam
 
-## Features
+Turn them on and they are recorded with each run, then play in sync in the replay.
 
-- Records OS-native input state changes and hit contexts for custom `.adofai` runs. Runs with forward progress and an input capture failure are retained as activity history with a specific reason and cannot be replayed, even when no input was collected.
-- On macOS, a passive CGEvent session tap records keyboard and mouse-button transitions after OS remapping. It excludes mouse motion, dragging, and scrolling. A dedicated native RunLoop queues fixed-size events without calling managed code or waiting for the game thread; a separate bridge drains them. Devices are merged, mouse buttons use native codes 128–159, and existing keyboard codes and replay CSV format remain compatible. Input Monitoring permission is required. See [macOS CGEvent recording](docs/macos-cgevent-recording.md) for the capture contract, verification, and installation.
-- On Windows, `TUFReplayNative.dll` installs the low-level keyboard hook on a dedicated native thread at above-normal priority. The hook procedure only timestamps and queues fixed-size events. Mono GC pauses and managed work therefore no longer delay the system's serialized hook chain, which ADOFAI's async input shares, and Windows cannot silently remove the hook for a slow response. On a test laptop, `SendInput` reached the hook in about 40 µs (p50) and under 0.6 ms worst case. A managed bridge converts each raw `QueryPerformanceCounter` stamp to Mono's `Stopwatch` clock, which Unity counts from game launch rather than from boot, and applies the existing key normalization. The previous managed hook remains as a fallback if the library cannot load. See [TUFReplay.Native.Windows](TUFReplay.Native.Windows/README.md).
-- Focus loss suspends input recording; focus return discards earlier input backlog and synchronizes held keys and buttons. Queue overflow, tap timeout/disablement, capture-thread failure, and events arriving over one second late make the run unavailable for replay. Activity history explains the failure in English or Korean. The recorder attempts recovery for later runs without treating a partial run as complete.
-- Suspends native input recording and replay emission while the UnityModManager window is open or another mod asks for a pause through `NativeInputPause`, for example while its own settings window takes the keyboard.
-- Gives overlay and key-viewer mods one API, `ReplayApi`: each mod can save its own typed state with every run, and gets a replay's clock and recorded keys the same way whether the run is played in the game or rendered to video. Mods that do not use it get no replay keys in renders.
-- Keeps replay playback out of Element's attempt counter. Before a replay starts, TUFReplay gives Element a rule that reads whether a replay is playing, so normal plays count again as soon as the replay ends. Versions from before Element's rename (ImplResourcePack) get the same rule. Without either mod this does nothing.
-- Schedules replay input on a dedicated worker without making Unity wait for native input emission. Pause, focus loss, seek, and stop commands invalidate pending input; accepted key presses are released by the worker before it restores a new playback state. Shutdown completes asynchronously so Windows keyboard hooks can continue receiving game-thread messages.
-- Keeps optional background work out of judged gameplay. While ADOFAI is in countdown, checkpoint, or player control (outside the level-select worlds and the editor's edit mode, which keeps the last play state after Esc), copying microphone recordings into SQLite, hourly microphone and camera retention scans (including the one-time microphone database rebuild), and activity-change notifications to the companion wait until the attempt ends; activity changes made during an attempt are announced once afterward. ADOFAI's async input timestamps keys on a Mono-attached thread, so GC pauses and contention from this work could otherwise shift judgments. Pending microphone copies are still recovered on the next launch.
-- Captures each hit context from ADOFAI's own input-event check inside `Hit`, after the game's reunification and pause checks, so recording never fires extra SetInputEvent effects or applies another target's ignoreInput.
-- Stores ADOFAI's final X-Accuracy for each run so clients can display it without replaying judgment calculations.
-- Stores each run's judgment difficulty and judgment system. Legacy and non-competitive runs keep the classic Perfect bucket, while modern competitive runs preserve Perfect−, X-Perfect, and Perfect+ separately.
-- Captures the gameplay hit limit (None, PerfectsOnly, or PurePerfectOnly) with new replay artifacts, restores it during in-game playback, and includes it in render bundles for renderers that support the setting.
-- Stores lean activity records, replay payloads, immutable level revisions, and recorder timezone context in SQLite. Level files themselves are never copied into the database; visits point to a shared level row containing its source, local path, and gameplay hash. New replay CSV blobs are stored gzip-compressed, typically several times smaller; rows written by earlier versions stay raw and load unchanged, and the replay payload format version is unaffected. Startup validation uses SQLite `quick_check` and the foreign-key check, so its cost stays proportional to the database size without the full index cross-check.
-- Finalizes game-derived recording state on the game thread, then serializes replay payloads and writes activity sessions/runs on an ordered background queue. Serialization formats numbers on the stack into pooled UTF-8 chunks, so only the stored CSV bytes are allocated, and the run draft releases them once the database write finishes. Retries retain their own completed input buffers, and microphone retention waits for the activity transaction to succeed. Normal quit and mod unload allow up to five seconds to drain pending activity writes.
-- Prepares held-key checkpoints before replay startup so seeking a long recording restores input state with a binary search and at most 2,047 transitions, preserving chord order and native key metadata.
-- Keeps the native recording input source ready between runs; retries change the capture boundary instead of joining and reopening the platform hook. Disabling the mod releases the source asynchronously.
-- Snapshots song, chart creator, and artist metadata from each local `.adofai` file for activity history.
-- Removes level and app sessions that close without any saved runs.
-- Exposes local IPC methods for activity browsing and health checks through AdofaiIpc.
-- Serves chart text to the companion web UI only while the local file still exists, decodes successfully, and matches the recorded gameplay hash. A file whose size and last-write time are unchanged reuses its verified gameplay hash instead of decoding the level again, and the companion keeps a loaded chart when a new run is saved because a logical level's chart never changes.
-- Wipes ADOFAI to black and verifies a chosen replay level with the game's own level decoder before opening it; mismatches restore the previous screen and keep the web chooser open, while verified levels open with path editing locked and continue directly into replay from the run's recorded start tile. During playback, state changes reuse the verified gameplay hash while the same level stays open without editor edits, instead of hashing the whole level again.
-- Stores SHA-256 gameplay hash v4 so replays can use a visually different `.adofai` file with the same tiles, timing settings, and judgment-affecting events. Imported activity resolves its current hash lazily when the original level file is still available.
-- Lets the web UI launch ADOFAI's native level picker without uploading local level contents to the browser.
-- Keeps recording input after a clear until the editor returns so post-clear keyviewer input is preserved. A failed run also keeps recording input on the fail screen until editor return or a retry from the fail screen, and is saved then; as after a clear, that time follows the real clock instead of the song. The game is given only the keys up to the death, because any key on the fail screen restarts the level, while mods get the fail-screen keys through `ReplayApi`: in game during the death animation, and in rendered videos until the recording ends. Older recordings end their input at the death, so replays and renders let go of every key still held then.
-- Captures microphone audio from countdown through the clear or fail screen until editor return or a retry from the fail screen, or until abort, and temporarily saves it for each valid run. Like the camera and input, a failed run keeps recording the fail screen, so the reaction after a death is in the replay's death animation and in rendered videos until the recording ends. Microphone input is enabled by default, but the web menu can turn it off completely; while off, TUFReplay does not request permission, enumerate devices, launch the macOS helper, or arm capture. Opening a Bluetooth headset microphone switches the headset to its call mode and can lower game audio quality. The microphone menu marks Bluetooth inputs, warns when the selected or system-default input is one, and the game shows a one-time notice per session when it arms one. macOS reads the transport from AVFoundation; Windows follows the endpoint's device topology to a `BTHENUM`, `BTHHFENUM`, or `BTHLE` adapter in `TUFReplayNative.dll`.
-- Streams microphone WAV files into a separate `tufreplay.microphones.sqlite` database without loading the full recording into memory; this isolates large BLOB writes from activity-run writes. The `timeline_json` column holding each recording's timeline map is added to existing databases in place, so the schema stays at version 1 and older builds can still open the file. Temporary recordings expire after three days unless the web UI keeps them permanently, and recordings can be deleted without deleting their runs. A deleted recording frees its space: the database uses SQLite full auto-vacuum, so each delete shrinks the file by what it removed instead of leaving it at the size of the most audio it ever held. A file created by an earlier version is rebuilt once with `VACUUM` during the idle retention scan, which copies only the recordings that remain; the setting lives in the file, so older builds can still open it. The `-wal` file is trimmed back to 8 MB after a long recording passes through it.
-- Lets the web activity menu delete an entire run, including its replay payload and microphone recording, while pruning closed activity sessions that no longer contain runs. The level played last stays open in the database until another level opens or the game quits, so history lists only levels and days that still hold a run: deleting every run of that level removes it and its day from the list at once, and its next run brings it back.
-- Lets the web UI lock a run from its attempt row or its actions and right-click menus. A locked run cannot be deleted, alone or with its day, and locking makes its microphone and camera recordings permanent; a recording that finishes saving after the lock is kept too. Deleting a locked run's recordings asks you to unlock it first. The `locked` column is added to existing activity databases in place, so the schema stays at version 1 and older builds can still open the file.
-- Lets the web UI delete every run of a day from the day's actions menu, its right-click menu, or the Delete key. The web sends the day's app-session ids, because days are grouped in the browser's time zone. The recorder deletes the unlocked runs in one transaction, skips the run playing as a replay, removes emptied closed sessions, and keeps the open session, so Today stays while the game runs. The confirmation shows exact counts, including runs from older level versions the sidebar hides, and offers "Keep clears" (on by default), which locks the day's clears before deleting. The delete waits while ADOFAI is judging input and runs once the player leaves the attempt.
-- Streams saved microphone audio alongside replay playback with pitch-aware timing, pause, retry, and terminal-state synchronization. New recordings store a timeline map from gameplay time to WAV time. ADOFAI's song position only advances once per audio buffer, so a single conductor update is stale by a random part of one buffer (up to about 45 ms); the map averages every update of each two-second window instead, so that error no longer changes from run to run. A pause or rate change starts a new map section, so audio recorded while gameplay stood still, including a focus-loss pause, is skipped in the replay. After an EnhancedCountdown frozen start, audio from the wait for the first input is muted, except for the last 100 ms that hold the first input's sound. Recordings saved before the map keep their single capture offset. Replay playback follows the DSP clock that ADOFAI schedules the song on: a silent carrier source keeps Unity mixing, and an audio filter writes the recording into each block at the WAV frame for that block's DSP time, so the first sample lands on its scheduled time and playback follows any jump of the clock. Unity's streamed clips did not reliably apply a start position on Windows and played the 800 ms of silence they had read ahead instead, which put middle-of-level replays almost a second behind. The schedule moves when the replay timeline maps more than 30 ms away from it. ADOFAI judges input against song audio mixed one input offset earlier, so playback also moves by the replay's game input offset: a key sound is heard at the song position where its input was judged, whatever the input offset setting. Render bundles add the recorded game input offset to the microphone latency for the same reason; OrbitRender then delays all rendered audio by that offset so it plays with the planets (imnyang/OrbitRender#8). On macOS the helper supplies the first written sample's host timestamp and fills a lost capture buffer with silence, so later audio keeps its capture time; other platforms anchor Unity's microphone cursor to the same monotonic clock and use the tightest of the cursor readings from the first five seconds, because one reading can trail the first sample by a whole capture block. Because alignment uses that timestamp, the macOS countdown does not wait for the helper's begin command; it is sent from the helper worker ahead of the run's end, a failure still shows the in-game microphone notice, and a lost helper connection makes later runs fail fast until the next play arms the microphone again. On other platforms, a backlog longer than half a second is drained in one pass, so low frame rates cannot let the 10-second device loop overwrite unread audio, and replaying the same armed input does not reopen the device.
-- Optionally records H.264 camera video alongside each run and plays it inside the game during replay. Camera recording starts disabled. Its switch is the labeled row at the top of the camera dialog, with the current camera status. Camera selection uses the companion's shadcn Select. Setting help is available beside each section title on hover or keyboard focus; sync correction expands below retention without resizing the dialog, whose content scrolls within a fixed viewport. The sidebar's Camera row configures capture, crop, visibility, mirroring, synchronization, quality, per-recording size limits, and retention. Position and size are adjusted directly in the game.
-- Each saved run's **Make a video** action turns it into a video with [OrbitRender](https://github.com/imnyang/OrbitRender) 2.6.2 or later (RenderApi version 2). TUFReplay owns bundle preparation, progress, cancellation, and cleanup, and calls OrbitRender through reflection and JSON. With an OrbitRender that offers RenderApi 3 (imnyang/OrbitRender#9), TUFReplay replays the run itself and OrbitRender only captures and encodes it, so mods that use `ReplayApi` show their saved state and recorded keys in the video. Older OrbitRender versions keep rendering with their own replay engine. Like **Play replay**, it first asks which level file to use: the recorded level, or another file with the same gameplay, which the game verifies before the render settings open. Every setting fits on one screen: quality and frame rate as large choices, the recordings to include, the video format with its own settings (file size and colors, or a ProRes profile, which needs OrbitRender with ProRes profiles from imnyang/OrbitRender#6), where pressing the file size label shows the bitrate in Kbps instead and the number beside the slider can be typed, game precision and how long the result screen stays. The save folder sits beside the Make video button. Progress, stopping and a preview of the finished video stay in the same dialog. When OrbitRender is not ready (not installed, installing, waiting for an ADOFAI restart, failed, or older than 2.6.2), **Make a video** opens the download center's OrbitRender dialog instead of the level choice and render settings; restart ADOFAI and enable it after installation. See [rendering integration](docs/replay-render-bundle.md).
-- Replays restore the recorded game input offset when available. Older records without that value keep the current game setting; input/hit timestamp differences are not used to guess calibration.
-- Shows an in-game replay timeline HUD from countdown until replay termination, using the recorded terminal time for progress and ADOFAI's native pause path for pause and resume. Its linear timeline, transport controls, and separate elapsed/duration readouts live in a draggable floating panel whose position is retained for the current game session. The HUD loads from a platform AssetBundle and falls back safely if the bundle is unavailable.
-- Serves each run's non-perfect judgments and their timeline positions to the companion through `readRunJudgmentTimelines`, read from the stored hit payload with the same length the replay timeline uses (the clear time, otherwise the recorded end). Requests decode payloads only after ADOFAI stops judging input, accept up to 100 runs, and the companion batches the rows it shows into one request.
-- Aggregates overlapping timeline judgments into display columns, preserving the most severe visible judgment and keeping dense replays below Unity's UI vertex limit. The progress fill rebuilds only after a visible half-pixel change while the playhead continues to track replay time. Outside replays, the HUD hides itself once and then does no per-frame UI work.
-- Guides replay handoff from the web UI into ADOFAI with an acknowledged, persistent focus prompt; blocks duplicate replay launches, protects the editor play command during preparation, and waits briefly after focus stabilizes before playback starts.
-- Optionally identifies levels downloaded with TUFHelperLite or TUFHelper by their public TUF level ID, for future TUF submission workflows. Both mods can publish `LevelContextResolver.ResolveTufLevelId(string)`, which TUFReplay finds by name: TUFHelperLite does, and TUFHelper does from the release that includes coyami-ke/TUFHelper#12. Each mod has its own resolver cache, so a mod that loads later is still found. TUFHelper 3.1.1 and older do not publish the method, so TUFReplay reads `LevelSaveFolder` from TUFHelper's `Settings.json`, again only when the file changes, and takes the ID from the level folder TUFHelper names `{artist} - {song} {id}`.
-- Provides the project foundation for replay playback and TUF clear submission.
-- Supports English and Korean throughout the companion web UI, using the saved language choice first and the browser language on first visit.
-- Groups revisions of the same `.adofai` path into one level entry, keeping different files in one TUFHelperLite or TUFHelper download separate. A day's levels are listed under the selected day in the sidebar, ordered by the last time each level was opened, newest first. The level header shows the file path relative to the downloaded level folder, or the file name when that folder cannot be identified. Only runs compatible with the most recently played gameplay revision can be opened; incompatible runs remain stored, keep their historical counts, and are explained by a hover card with the level's details.
-- Counts a run as a clear when it starts at tile zero and reaches the clear terminal state. A No-Fail run counts only when it has no Miss and no Overload, the judgments that would have ended a normal run.
-- Lists days in a calendar-style sidebar grouped under sticky month headers. Each day shows its weekday and date, with run, level, and clear counts; today's date and nonzero clears are highlighted, and a lock count appears on days that hold locked runs. Below the large breakpoint the sidebar becomes a drawer.
+https://github.com/user-attachments/assets/3f516781-16d8-4dbb-806e-d28e161f12f5
 
-## Runtime
+### Make a video
 
-TUFReplay runs inside ADOFAI through UnityModManager.
+Turn a run into a video with [OrbitRender](https://github.com/imnyang/OrbitRender).
 
-Required at runtime:
+https://github.com/user-attachments/assets/4ff8e560-0aed-4fb5-8450-0f57c5941387
 
-- A Dance of Fire and Ice
-- UnityModManager
-- ADOFAI-IPC 2.2.0 bundled DLLs (included; no separate IPC mod installation)
-- TUFReplay installed under the ADOFAI `Mods/TUFReplay` directory
+## Install
 
-TUFHelperLite and TUFHelper are optional. When either is installed, TUFReplay resolves its downloaded level paths to public TUF forum IDs; recording itself does not depend on them.
+1. Install [UnityModManager](https://www.nexusmods.com/site/mods/21) for ADOFAI.
+2. Download `TUFReplay.zip` from the [latest release](https://github.com/KGH1113/TUFReplay/releases/latest) and install it with UnityModManager, or extract it into ADOFAI's `Mods` folder.
+3. Start ADOFAI and open [tufreplay.impl1113.dev](https://tufreplay.impl1113.dev), or press **Open TUFReplay website** in TUFReplay's UnityModManager settings.
 
-### Camera recording, live preview, and replay
+TUFReplay updates itself. Turn on **Receive beta updates** in the same settings to get prereleases.
 
-Turn on **Camera** in the companion and choose a device. While enabled, capture stays open throughout the game, including between runs, so the operating system continues to show camera access. Only runs save video, and automatic recording must also be enabled. The first custom-level run after opening the game shows a uGUI camera check before play starts when both camera capture and **Show live camera** are enabled. If either option is off, play starts without the check; disabling either option while the check is open also resumes play. Skipping a hidden camera does not confirm a future run with live camera enabled. Its preview starts concealed behind **Click to reveal / 클릭해서 보기** and displays camera frames only after an explicit click or keyboard activation. Reopening the check or turning the camera off and on conceals it again. It offers camera capture, a live preview while playing, and starting without the camera; while live camera is enabled, the first frame must arrive before starting. The check appears once per game launch after confirmation. Calibration and TUFReplay-owned replays do not trigger it.
+- **macOS**: allow A Dance of Fire and Ice in System Settings → Privacy & Security → **Input Monitoring**. For the microphone and camera, allow **TUFReplay Microphone Capture**.
+- **Windows camera**: needs FFmpeg. The web companion asks before downloading it.
+- **Linux**: camera recording is not supported.
+- **Videos**: need OrbitRender 2.6.2 or later; the web companion's **Downloads** installs it. With 2.8.1 or later, key viewers and overlays that use the API also appear in the video.
+- **TUF level IDs**: install TUFHelperLite or TUFHelper, and runs of levels downloaded with them are linked to their TUF level.
 
-Capture also prepares one empty video writer in the background before a run. Input capture starts camera recording from countdown or checkpoint, using the native-input recorder's exact monotonic start boundary. That boundary is carried through the background queue and converted to the native host clock on macOS; encoder attachment time does not redefine it. The writer can reuse the latest complete frame if it is no more than 250 ms old and was captured at or after the input boundary. Earlier frames are excluded, and the first accepted frame keeps its real capture timestamp for synchronization. Idle frames are replaced in memory and never appended to the video; there is no continuously saved recording to trim afterward. Ending a run detaches its writer and prepares the next one while the previous MP4 finishes. Unused writers and their unique `.mp4.partial` destinations are removed when capture stops. Enabling the camera for the first time still requires device and writer preparation, and an unusually fast retry can wait for preparation already in progress.
+## For mod developers
 
-The default **Balanced / 균형** profile fits within 1280 × 720 at 30 fps and 1.2 Mbps (about 9 MB/min). **Compact / 용량 절약** fits within 640 × 480 at 30 fps and 600 kbps (about 4.5 MB/min). **Quality / 고화질** fits within 1920 × 1080 at 60 fps and 6 Mbps (about 45 MB/min). Existing saved quality selections are preserved. Recording preserves the camera's source aspect ratio without upscaling: for example, a 16:9 camera uses 640 × 360 in Compact, and a 4:3 camera uses 960 × 720 in Balanced. These are approximate sizes; actual bitrate and available camera modes vary. MP4 files and small synchronization sidecars live in `Mods/TUFReplay/Data/Webcam`, outside SQLite. Each recording has its own configurable 64–8192 MB limit, defaulting to 128 MB. There is no aggregate video storage limit. Reaching the limit finalizes the footage recorded so far while microphone and replay capture continue. Retention defaults to seven days; the slider's last position keeps videos forever. Video continues through both clear and failure screens until the user returns to the editor with Esc. A direct retry seals the previous run's video at its end and attaches a writer to the new input capture boundary without waiting for that video to finish saving; stopping the session also finalizes pending footage. Failure footage waits for the original activity transaction before being retained, and failure-tail timeline segments use real time at rate 1. Microphone audio remains a separate recording with its existing failure behavior. See [camera input boundaries and editor return](docs/camera-input-boundaries-2026-10-06.md).
+Other mods use these by name, without referencing TUFReplay.dll:
 
-Retention removes camera videos older than the selected number of days, except videos individually marked for permanent retention. Selecting **Forever / 영구 보관** disables age pruning. Run history and input replays remain available. Cleanup runs before capture and hourly afterward, and preserves footage currently being replayed. Deleting a run also deletes its camera footage. Each run's menu uses **Microphone and Camera / 마이크 및 카메라**, regardless of which recordings are saved, and disables the item when neither file is available. The recordings dialog disables tabs without a saved file and selects the remaining tab after a recording is deleted. Each tab lets you review the recording's size and retention, keep it forever, export a microphone WAV or camera MP4, or delete the file independently. Deletion needs confirmation and is unavailable while that run is replaying; it keeps the run and the other recording.
+- `TUFReplay.ReplayApi`: save your mod's state with each run, and get the replay's clock and recorded keys in game and in rendered videos.
+- `TUFReplay.ReplayRuntime.IsPlaybackActive`: whether a TUFReplay replay is running.
+- `TUFReplay.NativeInputPause`: pause TUFReplay's input recording while your UI takes the keyboard.
 
-Camera files are retained only after their activity run commits, without making the next capture wait for the activity database. Releasing playback footage queues storage cleanup in the background, so the game thread does not wait for a retention scan or file deletion.
+See [docs/replay-api.md](docs/replay-api.md). Renderers read the bundle described in [docs/replay-render-bundle.md](docs/replay-render-bundle.md).
 
-On macOS, the existing `TUFReplayMicrophoneCapture.app` helper keeps an AVFoundation capture session open and prepares AVAssetWriter before H.264 frames are appended during a run. Its video session starts at the first attached sample's presentation timestamp, and synchronization uses that sample's native host timestamp. It requests camera permission when capture is enabled and explains that access continues while the game is open. Allow **TUFReplay Microphone Capture** in **System Settings → Privacy & Security → Camera** if access was denied. The helper accepts every recording preset, including Quality's 1080p60 at 6 Mbps; a camera without a 60 fps mode in its native aspect ratio records at 30 fps, and the encoder's expected frame rate follows the fallback. The helper is built for both Apple silicon and Intel, with a macOS 12 deployment target. No FFmpeg installation is needed on macOS.
+## Development
 
-Windows keeps one FFmpeg DirectShow capture process open, and the camera relay in `TUFReplayNative.dll` drains its frames continuously on native threads. It reads the camera's supported modes before opening it and preserves their frame intervals through FFmpeg's bounded rational parser, including fractional capture rates. Modes meeting the profile's target frame rate are tried first, followed by supported 30 fps modes when Quality's 60 fps is unavailable. This can select a smaller 30/60 fps mode ahead of a larger low-frame-rate mode. Equivalent MJPEG modes are preferred to reduce USB bandwidth. Selection tries up to eight smooth modes, the device's default, and up to three slower fallback modes, with a shared 30-second startup wait budget after device discovery. A lower negotiated frame rate is reported in a notification without preventing recording. Logs include the FFmpeg version, advertised modes, exact frame-rate arguments, and negotiated input frame rate for troubleshooting.
-
-Windows probes NVIDIA NVENC, Intel Quick Sync, AMD AMF, then software H.264 by actually encoding test frames at the selected recording size and nominal frame rate. Each probe may take up to 30 s, because Quick Sync took over 8 s to open while the game was loading and a timed-out probe would record with software encoding for the session. Successful preparation is cached. Recording uses low-latency settings without B-frames or lookahead; software fallback uses `libx264 ultrafast` with two threads. A hardware encoder opens its session only when it receives a frame, which can take seconds: on a test laptop (Iris Xe), Quick Sync took 5–10 s while ADOFAI was running, and every video used to start with a freeze. So when a custom level loads, in the editor or from the custom level list, the next run's encoder process starts with the selected file-size limit, and the relay sends it one black warm-up frame. The encoder drops that frame's packet, starts the video on an IDR frame, and rebases timestamps, so the saved video still begins with the run's first frame. Because a run's video continues through the fail screen until the retry starts, the next run's encoder already warms up while the current run records; a retry then starts without the delay unless it comes within about 10 s of the previous run's start, which in game was how long a warming Quick Sync encoder needed. A level therefore holds up to two encoder sessions during a run. An encoder that starts while another run records runs at idle CPU priority until its own run begins, which kept that run's capture free of the 90–110 ms stalls seen at below-normal priority. Leaving the editor scene closes the warm encoder, so menus and other scenes hold no GPU encoder session. A run starts a new encoder instead when the file-size limit changed or the warm encoder exited, and without an open level or with automatic recording off the encoder starts when the run attaches. On the test laptop, a warm Quick Sync encoder saved all 299 frames of a 10 s run with no gap, where a cold start lost the first 3 s. If hardware encoding fails after a successful probe, subsequent runs use software until the camera is rearmed.
-
-The relay's capture, preview and recording share a fixed pool of eight native YUV frames allocated while arming (about 25 MB at 1080p), without copying a full frame to enqueue it. Camera frames never pass through managed memory: the game's Mono runtime only starts the FFmpeg processes, hands their pipes to the relay, and reads its counters, so capture adds no garbage collection work to the process ADOFAI's async input shares. The recording queue retains at most three pending frames; overload replaces stale pending frames instead of failing the whole recording. Each retained frame carries its original capture timestamp, read from FFmpeg's wall-clock `showinfo` log, through a streaming Matroska pipe to a variable-frame-rate MP4, preserving gaps and replay synchronization. Preview conversion runs on its own relay thread, at most 30 times per second, with one pending frame, writing straight into shared memory. Recording is scaled once in the capture process. Windows capture/encoder processes and the relay threads use below-normal CPU priority to favor gameplay under contention. On a test laptop (1280 × 720 at 30 fps MJPEG, Quick Sync), the relay reduced the game process's camera allocations from about 62 KiB/s to none while idle and from 77 to 13 KiB/s while recording, and live-preview CPU use from 41% to 5% of one core. This still transfers raw frames through CPU memory and process pipes; hardware encoding does not make the entire capture path GPU-only. `[Webcam]` logs report the chosen capture mode/encoder, probe failures, and encoded/dropped frame counts. Size-limited recordings read their final duration from the saved MP4 video header rather than encoder progress, which can include packets the muxer did not save.
-
-When the Windows camera is first enabled without FFmpeg, the companion web dialog asks for consent before downloading the platform build into `ffmpeg/<platform>/` in the game folder. The web download center in the sidebar shares the same consent, progress, cancellation and retry controls. Opening camera settings or the download center alone does not download anything. The Unity runtime bundle has no FFmpeg installation modal. TUFReplay uses this installation for Windows camera capture. OrbitRender can adopt this location and receipt contract, but released OrbitRender 2.7.0 still manages its own FFmpeg installation; installing TUFReplay's copy does not configure that renderer. Existing per-mod `FFmpeg` folders and executables directly under `ffmpeg/` are left untouched. TUFReplay does not copy them at startup or trust binaries whose receipt is missing. Camera capture on Linux is currently unsupported. Replay rendering is handled by the independent OrbitRender mod.
-
-FFmpeg downloads are separate from release ZIPs and survive TUFReplay runtime updates. The installer keeps vendor notices and a receipt containing the provider URL, version/build configuration and executable SHA-256. Windows and Linux download the FFmpeg 9.0 release builds from BtbN's GitHub releases, selecting the exact archive from `checksums.sha256`. macOS uses Martin Riedl's pinned 9.0.2 builds and their archive SHA-256 files on both architectures. Every download must match its provider checksum before any executable runs. Downloading, hashing, extraction and executable checks run off the game thread. The installation is staged under the game's `ffmpeg` folder; its final-path checksum and `-version` check must pass before a completion receipt is written. A failed or cancelled download never becomes ready. macOS camera capture continues to use the native helper. The web download center uses the generated `requestFfmpegDownload`, `confirmFfmpegDownload`, and `cancelFfmpegDownload` methods; installation changes are pushed through `ffmpegStateChanged` and `downloadsStateChanged`.
-
-FFmpeg resolves the game folder from the installed mod's `Mods` parent, including outside the `.app` bundle on macOS. An in-process semaphore and an exclusive `.install.lock` file serialize installation across asynchronous continuations. Unix additionally uses `flock` on that open file because Mono's `FileShare.None` alone does not exclude other processes. Compatible peers must use the same locking protocol and can send `FfmpegApi.NotifyInstallationCompleted(platform, executablePath)` notifications. The receiver treats a matching notification as a hint and checks the receipt and executable SHA-256 in a background task before completing pending consent. Startup also verifies the checksum; routine status snapshots use the cached result and do no file I/O. No periodic checks or metadata repairs run. Failed verification restores the previous installation, while successful installation attempts to remove its backup (a backup locked by another process is retained). TUFReplay cancels its work on disposal and raises state callbacks outside its state lock. Installer fixtures, concurrent approvals, cross-thread lock release, checksum rejection and rollback are covered by `./scripts/run.sh mod-check` without installing into the game. After that check, `./scripts/run.sh ffmpeg-mono-test` exercises the built installer's cross-process exclusion, timeout, cancellation and cross-thread release in standalone Unity Mono, using temporary folders only.
-
-TUFReplay exposes `readDownloadsState` and `requestRendererDownload`, `confirmRendererDownload`, and `cancelRendererDownload`. The sidebar's Downloads row opens the download center, which lists FFmpeg and OrbitRender. Installation consent, progress, errors and restart instructions appear in a separate web dialog after the dropdown closes. For OrbitRender this dialog shows three steps (install, restart ADOFAI, make a video), ticks the finished ones and offers the current step's action; the same dialog opens from a run's **Make a video** action, with a sentence saying videos need OrbitRender. A version older than 2.6.2 links to the latest release, because the installer never replaces an existing folder. The center installs `OrbitRender.zip` from the latest stable release of `imnyang/OrbitRender` after explicit consent. The installer checks the package size and SHA-256 digest supplied by GitHub's release asset metadata, verifies the mod identity, version metadata, DLL and license, rejects unsafe ZIP paths and user-data entries, and publishes a staged folder atomically. It never overwrites an existing OrbitRender folder or hot-loads the DLL; fully restart ADOFAI and enable the mod after installation. A missing release or incomplete existing folder has a specific recovery message. No release lookup or download happens until installation is approved.
-
-The Windows relay reuses its pooled YUV frame buffers across runs, and the encoder limits both filter workers and encoder workers to two threads. RGB preview conversion/rendering runs only while the game overlay or camera check consumes it; the first frame is always published for readiness. Busy preview writes are skipped by game-thread readers while the last complete texture remains displayed. These optimizations preserve capture rate, aspect ratio, colors, and recording presets.
-
-Both backends share only the latest, uncompressed RGBA preview, fitting within 960 × 720 at up to 30 fps with the source aspect ratio preserved (960 × 540 for 16:9). Preview quality is independent of the recording preset: capture retains enough source resolution for the preview where the device supports it, while the encoder fits the saved video within the selected preset's budget. A fixed-size memory mapping uses at most about 2.64 MiB and carries the actual frame dimensions, including portrait cameras. macOS uses CPU Lanczos downscaling on a separate worker so preview rendering does not wait for the game's GPU or block capture and encoding. The worker holds only its current frame and the latest pending frame, replacing stale pending frames when it falls behind. It renders into a reusable private buffer before briefly copying the completed frame into shared memory. It converts NV12's video range and YCbCr matrix while preserving the camera's non-linear RGB values, avoiding an additional Rec.709-to-sRGB transfer that would brighten midtones. Windows uses area averaging with cached sampling coefficients in the relay. On Windows, the mapping's temporary file is shared for writing with the relay and marked temporary so it stays in the file cache. Preview pixels use Unity's bottom-up row order; the mirror setting affects only the horizontal direction. Unity copies each complete frame with one bulk memory copy, avoiding Mono's per-byte `ReadArray<byte>` path. It uploads a new preview frame only when the live overlay or camera check is visible and keeps the last complete texture while the next frame is being written, including resolution changes. No preview images accumulate on disk, and capture and encoding stay off the game thread. Increasing preview resolution does not increase recorded video storage.
-
-For synthetic performance checks without opening the game or camera, run `./scripts/run.sh camera-copy-bench 100` to compare mapped-buffer `ReadArray`/`WriteArray` against native bulk reads/writes in standalone Mono. It uses an installed Mono toolchain, including Unity Editor's bundled toolchain when available; this is not a measurement inside the running game's Mono. `./scripts/run.sh windows-native` runs the relay's native tests on the build host: frame ownership and overload, capture-log parsing, and preview and Matroska output against golden hashes. It also builds a host copy of the relay, so `./scripts/run.sh mod-check` feeds synthetic capture output through real pipes into the production C# session and recording classes. `mod-check` also exercises device/encoder selection policies, and synthetic MP4 encoding when FFmpeg is available in the test environment (`TUFREPLAY_TEST_FFMPEG` can select the test executable). Run `TUFREPLAY_CAMERA_PREVIEW_BENCHMARK=1 ./scripts/run.sh mac-helper` to also report preview render timings during the helper self-test.
-
-`./scripts/run.sh mod-check` validates native writer preparation, attachment, MP4 decoding, idle-writer cleanup, bounded frame reuse, and capture-clock alignment. To additionally exercise the FFmpeg recording writer with synthetic frames, set `TUFREPLAY_CAMERA_TEST_FFMPEG` to a local FFmpeg executable when running `mod-check`. This optional check uses no camera and decodes the resulting MP4 to verify that only the twelve submitted frames were saved.
-
-Version 1.0.1 removes automatic camera and input measurement logs, per-frame rendering/engine profiling, input lateness histograms, and the macOS helper JSONL log writer. Camera and replay failures still reach the existing user notifications and error logs. Capture timestamps, recording boundaries, prepared writers, and replay synchronization remain active. Historical diagnostic documents describe earlier versions.
-
-Synchronization maps the first encoded frame's native timestamp to the same monotonic input clock used by microphone capture. Runs ending before a game-clock anchor is available, or with an invalid capture timestamp, discard their unsynchronized video without disarming the camera or showing an unavailable warning. Pause gaps and gameplay-rate changes are stored as sparse timeline segments. Unity's `VideoPlayer` follows replay time for pause, resume, retry, seek, speed changes, and the post-clear tail. An additional −1000…+1000 ms correction compensates for device latency: positive values display the video earlier, matching microphone offset settings. Pause near a visible key press to compare the image with replay input.
-
-The camera overlay uses a persistent uGUI Canvas and RawImage for both live gameplay and replay video; it has no OnGUI renderer or IMGUI mouse handling. The existing texture is reused as new frames arrive, and layout, UVs, and texture bindings change only when their values change. Hidden camera canvases and raycasters are inactive. It defaults to the bottom-right corner at 22% of the game-window width. Live gameplay visibility and replay visibility are separate settings. Drag the image in the game during live play or replay to move it; its center uses a move cursor. Drag any edge or corner to resize while preserving the cropped image's aspect ratio; the cursor shows the resize direction. uGUI retains pointer capture outside the image during a drag. Positions can extend beyond the screen with no safe-area margin, and position and size are saved when a gesture finishes. The companion no longer includes placement, corner presets, or size controls.
-
-The companion camera dialog includes a live source preview, concealed behind **Click to reveal / 클릭해서 보기** until explicitly opened. Drag the crop rectangle's corners to change both dimensions, its edges to crop along one axis, or its center to move that region; the excluded area is shaded. Arrow keys also adjust the focused crop control, with Shift for larger steps. Crop coordinates use the original source, so mirroring does not change the selected region. The crop is applied to live gameplay, replay video, and the first-run camera check; recorded MP4 files keep the complete source frame so the crop can be changed later.
-
-The companion shows frames from the game's existing camera after **Click to reveal**. It never opens a second camera device or asks for browser camera permission. The generated `readWebcamPreview({ deviceId })` method returns `null` while warming up or `{ width, height, file }` with a single-use `ReceivedFile`; the SDK streams frame bytes outside control messages. A sequential, cancellable preview session requests at most eight BMP frames per second, bounded to 640 × 480 with the source aspect preserved. The game reuses two bitmap buffers instead of allocating one per frame. While ADOFAI judges input, the game pauses this preview; the page keeps the last image, explains the pause, checks once per second, and resumes after the attempt. Copying and bitmap conversion run on IPC workers, independent of the game's preview reader. Hide, close, camera change, tab hiding, page exit, connection loss, and unmount stop requests and release image URLs; the capture-side preview demand expires within one second. Camera capture and run recording stay active. Horizontal and vertical flip buttons beside the crop apply to the web preview, game overlays, and the updated Renderer composition, while original footage and source crop coordinates remain unchanged. See [shared camera preview and recording recovery](docs/camera-shared-preview-2026-10-06.md).
-
-When replay camera visibility is enabled, decoder preparation starts as soon as the recording is acquired, before gameplay playback begins. The player can seek to the first frame while the replay clock is still before the video's start, keeping the image concealed until its timestamp is reached. Disabling replay camera visibility stops preparation and decoding; showing it again prepares the decoder and seeks to the current replay clock before displaying a frame.
-
-### Optional mod integration
-
-Other mods can detect a TUFReplay-owned replay operation without taking a compile-time dependency on TUFReplay. Resolve the public type `TUFReplay.ReplayRuntime` from the loaded TUFReplay assembly and read its static `IsPlaybackActive` property. The property is true throughout replay preparation, level loading, playback, and the return to the editor. `ReplayRuntime.ApiVersion` is `1` for this contract.
-
-Reflection consumers should cache the resolved type and property getter, query the value only at relevant lifecycle boundaries, and treat a missing type, property, or assembly as an inactive replay.
-
-Other mods can also pause TUFReplay's native input while their own UI takes the keyboard away from the game. Resolve `TUFReplay.NativeInputPause` the same way, call its static `Request(string owner)` when the UI takes the keyboard, and call `Release(string owner)` when it gives the keyboard back and when the mod is disabled. While any owner holds a request, recording ignores native keyboard and mouse-button input and replay sends none, as while the UnityModManager window is open; input resumes 0.2 s after the last release. Requests are keyed by owner, so repeating one is harmless and a single release ends it. Use a stable id such as `MyMod.Settings`; a null or blank owner throws `ArgumentException`. Both methods can be called from any thread. The static `IsPaused` property reports whether the UMM window or any request currently pauses input. `NativeInputPause.ApiVersion` is `1` and changes only when an existing member changes its signature or meaning.
-
-Request a pause only while ADOFAI itself does not receive those keys. TUFReplay must keep recording input the game judges, or the replay will not match the run.
-
-```csharp
-Type pause = AppDomain.CurrentDomain.GetAssemblies()
-  .FirstOrDefault(assembly => assembly.GetName().Name == "TUFReplay")
-  ?.GetType("TUFReplay.NativeInputPause");
-var request = (Action<string>)Delegate.CreateDelegate(
-  typeof(Action<string>),
-  pause.GetMethod("Request", new[] { typeof(string) })
-);
-request("MyMod.Settings"); // resolve "Release" the same way
-```
-
-Overlay, key-viewer and other mods take part in recordings and replays through `TUFReplay.ReplayApi`. Resolve it the same way and call its static `Register(string id, object provider)` with an object of your own type; TUFReplay calls its public methods by name. `CaptureRunState()` saves the mod's own typed state with each run, and `OnReplayBegin(state, render)`, `OnReplayClock(ticks)`, `OnReplayKey(key, nativeKey, down, ticks)` and `OnReplayEnd()` run the same way whether a run is played in the game or rendered; renders add `GetReplayCanvases()` and capture calls, and `AddReplayOverlayVideos(add)` for a mod that writes its own video, which OrbitRender lays over the finished one when `RenderTakesOverlayVideos` is true. [docs/replay-api.md](docs/replay-api.md) has the contract, the supported state types, and an example adapter.
-
-## Repository Layout
-
-- `TUFReplay/`: UnityModManager mod source, organized first by feature and then by concrete role.
-  - `Activity/`: `Models`, `Queries`, `Tracking`, `Repositories`, `Management` (run locks and day deletion), `Migrations`, `Charts`, and `Ipc`.
-  - `Replay/`: `Models`, `Sessions`, `Preparation`, `Transport`, `Playback`, `NativeInput`, `Levels`, `Timeline`, `Patches`, `Export` (render jobs), `Rendering` (the host that replays a recording while OrbitRender renders it), and `Ipc`.
-  - `Recording/`: `Models`, `Sessions`, `Input`, `Activity`, `Microphone`, and `Patches`.
-  - `Microphone/`: `Models`, `Devices`, `Capture`, `Playback`, `Processing`, `Timing`, `Recording`, `Repositories`, and `Ipc`.
-  - `Webcam/`: `Models`, `Capture`, `Timing`, `Recording`, `Repositories`, `Playback`, and `Ipc`.
-  - `Calibration/`: `Models`, `Sessions`, `Analysis`, `Playback`, `Levels`, and `Ipc`.
-  - `ModApi/`: the public `ReplayApi` for overlay and key-viewer mods, with `Models`, `Mapping` (state types to stored shapes and JSON), `Providers`, `Recording`, `Playback` (replay sessions), `Repositories`, and `Diagnostics`.
-  - `Composition/`: the mod composition root and feature registry. This is separate from the fixed launcher assembly in `TUFReplay.Bootstrap/`.
-  - `Shared/`: database, IPC, settings, native-input, and Unity primitives shared by multiple features.
-- `TUFReplay.Bootstrap/`: fixed launcher that selects and loads a versioned TUFReplay runtime.
-- `TUFReplay.UpdateEngine/`: versioned update and package installation engine.
-- `TUFReplay.Tests/`: executable C# test harness, grouped into activity/database, microphone/calibration, webcam, and replay/native-input suites.
-- `TUFReplay.UpdateTests/`: updater test suite linked into the main C# test harness.
-- `TUFReplay.Unity/`: Unity 6.3 project for the replay timeline and first-run camera-check prefabs, Canvas graphics, shader, and platform AssetBundle builder. **Tools → TUFReplay → Preview Camera Setup Modal** opens the saved `Assets/Scenes/CameraSetupPreview.unity` scene. Its editor-only driver restores the dialog after scene reloads, recompilation, and Play mode changes. **Build Runtime UI Bundles** includes the dialog in all platform bundles and returns to the previously open scenes afterward.
-- `ipc/main.tsp`: source of the recorder's typed C# and TS IPC contract.
-- `web/`: Bun/Vite companion web UI, including the pinned generated `@tuf-replay/ipc` package.
-- `TUFReplay.MicrophoneCapture.Mac/`: Xcode project for the AVFoundation helper used for macOS microphone/camera permission and capture.
-- `TUFReplay.Native.Windows/`: zig-built `TUFReplayNative.dll` for the Windows keyboard hook, camera relay, and audio endpoint queries.
-- `scripts/run.sh`: single entry point for build, package, helper, and shell validation workflows.
-- `scripts/workflows/`, `scripts/tasks/`, `scripts/lib/`: workflow orchestration, independently runnable tasks, and shared shell utilities.
-
-## Build
-
-Copy the environment template and adjust paths if your setup differs from the macOS Steam default:
+You need the .NET SDK and [Bun](https://bun.sh). Packaging also needs zig (`brew install zig`) for the Windows native DLL, the macOS helper needs Xcode, and `unity-ui` needs Unity 6000.3.10f1.
 
 ```bash
-cp .env.example .env
-```
-
-Build and install the mod:
-
-```bash
-./scripts/run.sh build
-```
-
-The build script:
-
-- Builds the fixed launcher, versioned update engine, and TUFReplay payload.
-- Installs DLLs, native libraries, helpers, and assets under `Runtime/versions/<version>` while keeping settings and `Data/` at the mod root.
-- Copies the bundled microphone calibration chart, `calibration_old.ogg`, and its precomputed waveform into `Assets/calibration`; packaging fails if any calibration asset is missing.
-- Cross-compiles `TUFReplayNative.dll` for Windows with zig when it is installed (`brew install zig`); release packaging requires it. `./scripts/run.sh windows-native` builds it alone.
-- On macOS, builds the helper's Xcode Release scheme, verifies its self-test and universal arm64/x86_64 executable, ad-hoc signs it, and installs the app with microphone and camera usage descriptions. Synthetic webcam self-tests encode and decode H.264 without opening a camera.
-- Runs the C# WAV, schema-generation/reset, incremental BLOB, and replay-contract tests on macOS.
-- Installs the mod into `Mods/TUFReplay` by default.
-
-TUFReplay bundles Contracts and Loader at the mod root and the runtime/manifest under `ipc/`. Builds verify the committed `vendor/adofai-ipc-runtime/SHA256SUMS`; the game does not download or enable an IPC dependency automatically. The loader selects one compatible process runtime, and disabling TUFReplay disposes its typed mod registration, app sessions, and pending operations. The TUFReplay updater validates and copies its candidate bundle before loading its own payload; an already selected IPC host stays active until game restart.
-
-The single `TUFReplay.zip` supports clean manual installs and automatic upgrades from the actually published v0.2.0-beta.4 package. Its versioned runtime retains the genuine v1 control files for old updater validation and stages the SDK plus a distinct `Runtime/launchers/<version>/TUFReplay.SdkLauncher.dll` before entering SDK code. Once initialization succeeds, it commits the root runtime state and entrypoint; future launches never enter the old IPC installer. Launcher updates select a new versioned path instead of replacing the currently loaded DLL. Failed downloads and incomplete bundles preserve the previous runtime and entrypoint. Keep this compatibility payload for the next several releases so users can skip the first SDK release. Settings, `UpdateSettings.json`, and `Data/` stay at the mod root.
-
-Version 1.0.0 is the first stable GitHub Latest release. This also reaches existing users with beta updates disabled: earlier published packages were prereleases, while their default updater uses the stable Latest download URLs. The separate IPC 0.4.2 transition release silently retires the standalone IPC mod only when installed consumers have committed the SDK entrypoints. Actual game initialization, load order, and Windows file locking still require the supplied game E2E scenarios.
-
-The Unity Mod Manager GUI has an **Open TUFReplay website / TUFReplay 웹사이트 열기** button, labeled in ADOFAI's language, and, for standard builds, the `Receive beta updates` toggle. `Info.json` also sets `HomePage`, so the mod list shows a link icon next to TUFReplay. Both open the companion site for the build flavor: `https://tufreplay.impl1113.dev` for standard builds and `https://tufreplay-auto.impl1113.dev` for auto-submission builds. `TUFReplayBuildFlavor.WebsiteUrl` and `scripts/lib/build-metadata.sh` hold these addresses. The mod copies its runtime `Info.json` to the mod root on every launch, so an auto-update adds the icon from the following launch. Camera settings remain in the web companion. Auto-submission builds use their isolated update feed and do not expose the beta toggle. Beta updates are disabled by default and saved to `UpdateSettings.json`; changes apply on the next game launch. The beta channel selects the highest compatible stable or prerelease SemVer from GitHub Releases. Disabling the channel never automatically downgrades an installed beta build.
-
-Important environment variables:
-
-- `ADOFAI_DIR`: ADOFAI install directory.
-- `ADOFAI_MODS_DIR`: ADOFAI Mods directory.
-- `ADOFAI_MANAGED`: Unity managed assembly directory.
-- `DOTNET_EXE`: .NET SDK executable.
-- `ADOFAI_IPC_BUNDLE`: optional override for the committed IPC 2.2.0 bundle directory.
-- `TUFREPLAY_INSTALL_DIR`: install output override.
-- `TUFREPLAY_BUILD_FLAVOR`: `standard` (default) or `auto-submission`.
-- `TUFREPLAY_BUILD_VERSION`: explicit package version; required for auto-submission builds.
-
-Create a clean shareable package:
-
-```bash
-./scripts/run.sh package
-```
-
-The package script creates an optimized Release build in `build/TUFReplay.zip` without copying data from an installed `Mods/TUFReplay` directory. It also creates `build/TUFReplay.update.json`, containing the version, package size, SHA-256, and packaged runtime path. For standard builds, both files are attached to a GitHub release. Auto-submission builds publish their package and manifest to the isolated home-server update channel. The script verifies every packaged managed dependency, includes the Windows x64 SQLite native library from the `SourceGear.sqlite3` NuGet package, and excludes debug symbols and local database/log data.
-
-Build only the macOS helper or validate the shell layer with:
-
-```bash
-./scripts/run.sh unity-ui
-./scripts/run.sh mac-helper
-./scripts/run.sh check
-./scripts/run.sh mod-check
-```
-
-`mod-check` builds and runs the C# checks without installing the result into the game.
-
-`unity-ui` rebuilds the replay timeline, camera setup, and generic runtime notification prefabs with Unity 6000.3.10f1 and writes `tufreplay_ui.bundle` files to `TUFReplay/Assets/mac`, `win`, and `linux`. The bundle contains the TUFHelperLite-style linear transport panel, first-run camera check, uGUI toast/persistent-error UI, and MapleStory TMP font assets, without redistributing extracted ADOFAI images.
-
-The entry point dispatches to workflows, workflows only sequence tasks, and tasks use the shared context, validation, dependency, and artifact libraries. Individual task scripts under `scripts/tasks` can also be run directly while diagnosing one build stage.
-
-Beta releases use the same two assets and must be marked as a prerelease on GitHub. Version 0.2.0-beta.1 introduces replay engine `tufreplay.replay.v2`, payload format 1, and a one-time web notice for records from the previous engine. The new activity database uses application ID `0x54554652` and schema version 1, while gameplay identity uses hash v4. Schema v15 activity and microphone records are imported while the source is preserved as `tufreplay.pre-0.2.sqlite`; replay payloads recorded by the previous engine are intentionally not imported. Schema v14 and earlier databases log a warning and are replaced with a fresh current database. App SemVer, activity schema, replay engine, replay payload, and gameplay hash versions are independent compatibility boundaries.
-
-## Web Development
-
-Install the Bun workspace dependencies from the repository root:
-
-```bash
+cp .env.example .env    # adjust paths if ADOFAI is not in the macOS Steam default location
 bun install
+./scripts/run.sh build  # build, test and install into ADOFAI
 ```
 
-Run the companion web UI:
+| `./scripts/run.sh` | What it does |
+| --- | --- |
+| `build` | Build, test and install the mod into ADOFAI |
+| `mod-check` | Build and test without installing |
+| `package` | Make `build/TUFReplay.zip` and `build/TUFReplay.update.json` for a release |
+| `web-dev` | Run the web companion |
+| `web-check` | Web tests, type check, Biome and build |
+| `ipc-generate` | Regenerate the C# and TS code after editing `ipc/main.tsp` |
+| `mod-format`, `web-format` | Format C# (CSharpier) and web (Biome) |
+
+`./scripts/run.sh help` lists every command.
+
+Run the web companion against the game:
 
 ```bash
 VITE_WEB_ADOFAI_EMBED_URL=http://127.0.0.1:5173/embed/chart ./scripts/run.sh web-dev
 ```
 
-The mod accepts the companion only from listed origins, matched exactly including the port. Besides the deployed sites, it allows `localhost` and `127.0.0.1` on Vite's dev ports (5173, 5174) and preview port (4173); serve the web UI on another port and the game rejects it with `origin_not_allowed`.
+- The game accepts the web companion only from the deployed sites and from `localhost` or `127.0.0.1` on ports 5173, 5174 and 4173.
+- Add `?mock=1` to the URL to use mock data without the game.
 
-The web UI bundles English and Korean translation resources under `web/src/i18n/locales`. The language menu stores the explicit selection in `localStorage`; without a saved selection, Korean browser locales use Korean and all other locales use English.
+### Repository layout
 
-The companion keeps discovering the game when opened before ADOFAI starts and reconnects after a game restart. WebSocket connectivity and TUFReplay readiness are separate: activity reads recover on recorder readiness, including after a previous readiness timeout, while retained records stay read-only during disconnection. The SDK validates idle connections with ping/pong and releases the old page's socket on navigation; focus, visibility return, network return and restored pages check the retained session. Reconnection never replays user actions. Browser storage and unrelated site caches are preserved.
+- `TUFReplay/`: the mod, grouped by feature (`Activity`, `Replay`, `Recording`, `Microphone`, `Webcam`, `Calibration`, `ModApi`).
+- `TUFReplay.Bootstrap/`, `TUFReplay.UpdateEngine/`: the launcher and the self-updater.
+- `TUFReplay.Tests/`, `TUFReplay.UpdateTests/`: C# tests.
+- `TUFReplay.Native.Windows/`: the Windows native DLL (keyboard hook, camera relay). See [its README](TUFReplay.Native.Windows/README.md).
+- `TUFReplay.MicrophoneCapture.Mac/`: the macOS microphone and camera helper app.
+- `TUFReplay.Unity/`: Unity project for the in-game UI bundles.
+- `ipc/main.tsp`: the typed contract between the mod and the web companion.
+- `web/`: the web companion (Bun, React, Vite).
+- `scripts/`: `run.sh` and its tasks.
+- `deploy/`: home server deployment.
 
-Discovery uses an eight-second handshake allowance and retries the last successful port first. Chromium can delay new WebSocket handshakes by up to five seconds after failures in a renderer process; the previous 500 ms deadline could repeatedly abort those delayed attempts, including after a page reload in the same process.
+### Release and deployment
 
-A run's Render action starts a TUFReplay-owned job through `startRender`, with `readRenderState`, `cancelRender`, and `renderStateChanged` providing status and cancellation. TUFReplay exports the recording bundle. When OrbitRender offers `RenderApi.StartHostedReplay` (RenderApi 3), TUFReplay reads the bundle off the game thread and starts the render with itself as the replay host (`TUFReplay/Replay/Rendering`); otherwise it calls `StartReplay` with the bundle's manifest. These calls, `ReadStatus`, and `Cancel` run on Unity's main thread; the browser communicates only with TUFReplay. Active OrbitRender status is checked at most four times per second, and terminal jobs discard their temporary recording bundles. Output folder selection happens on the game computer; custom folders require OrbitRender's `OutputDirectoryOptionVersion` capability. The bitrate travels in Kbps: OrbitRender with `BitrateKbpsVersion` (imnyang/OrbitRender#17) takes it exactly, an older one gets the nearest whole Mbps, and the browser snaps typed values to whole Mbps when the game reports such an OrbitRender. Completed videos can be previewed in the browser or opened/revealed on the game computer. The preview opens the video with ADOFAI-IPC's `file.open()`, so the player streams only the byte ranges it shows from the game, and a long 4K video uses no page memory. A format the browser cannot play, such as ProRes in Chrome, shows a notice instead of loading. With an IPC runtime older than 2.2.0, videos up to 1 GiB are copied into the page instead. The browser remembers the last render options locally.
+- Run `package` and attach both files to a GitHub release. Mark betas as prereleases.
+- Auto-submission builds (`TUFREPLAY_BUILD_FLAVOR=auto-submission` with `TUFREPLAY_BUILD_VERSION`) go to the home server feed instead of GitHub Releases.
+- GitHub Actions deploys the web companion. See [deploy/README.md](deploy/README.md).
 
-The render dialog uses the app's own controls throughout (choice cards, segmented buttons, switches, sliders and a custom video player), so it looks the same in every browser. Opening it focuses nothing, and it shows the level, the chosen file when it is not the recorded one, and the run's progress and accuracy rather than its internal number.
+| Branch | Website |
+| --- | --- |
+| `main` | https://tufreplay.impl1113.dev |
+| `dev` | https://tufreplay-dev.impl1113.dev |
+| `feat/auto-submission` | https://tufreplay-auto.impl1113.dev |
 
-New runs refresh the current day's list in the background while retaining the start-tile filter, the selected run, and the chart's current view. When scrolled below the top of the attempts list, new rows preserve the visible row's position. Refresh failures keep the existing chart and list available with a retry action; changing the day or gameplay revision resets the selection for that scope.
-
-`VITE_WEB_ADOFAI_EMBED_URL` is required. When it is missing or invalid, the chart area shows a configuration warning instead of loading a hardcoded fallback URL.
-
-To run the UI against the bundled activity, chart, run, and replay mock data instead of AdofaiIpc, open the development URL with `?mock=1` (for example, `http://localhost:5174/?mock=1`) or start Vite with `VITE_USE_MOCK_ACTIVITY=true`. Add `mockRenderer=missing`, `restart`, `outdated` or `failed` (for example, `?mock=1&mockRenderer=missing`) to start the mock OrbitRender in that state.
-
-The companion has one screen. The sidebar shows whether ADOFAI is connected, lists days; clicking a day shows or hides its levels without changing what is open, and clicking a level opens it (hover a level for its details), and ends with Microphone, Camera, Downloads and Language rows that say what each setting is doing. When more days are below the visible part of the list, it fades out and offers an "Earlier days" button. The main area shows the selected level's header (TUF link, artist, chart creator, file path, attempts, clears, best progress from the start, last played), the embedded chart, and an attempts table below it, split evenly by default; drag the divider to resize them, and the split is remembered per browser. The table lists every attempt of the level with its progress range, X-Accuracy, pitch, start time, judgments, a judgment timeline, judgment difficulty, No-Fail, saved media and lock. The judgment timeline draws the attempt from its start to its end like the in-game replay timeline, but without Perfect, Perfect−, X-Perfect and Perfect+ marks, so only mistakes remain; each column keeps its most severe judgment. Above it, a timeline from the level's start to its end places a marker, labeled with its attempt count, wherever attempts began; pick a marker (or the matching chart marker) to show only those attempts, and pick it again to show them all. Filter narrows the list to clears, locked runs, runs with recordings, without No-Fail, or by pitch and judgment difficulty. The Progress, X-Acc, Pitch and Started headers sort the list; pressing the active header again reverses it. Selecting a row highlights the attempt's range on the chart. Each row's play button starts its replay (its tooltip explains a replay that can't start), and its actions and right-click menus hold Recordings (microphone and camera export, keep and delete), Render, Submit, Lock and Delete. Arrow keys move through attempts, Enter opens the replay dialog and Escape clears the selection. Narrow windows wrap rows onto two or three lines and move the timeline onto its own line.
-
-The mock data includes a long practice day (64 attempts from several start tiles with clears, locked and unplayable runs, and mixed judgment systems) for reviewing busy layouts.
-
-The web source uses a one-way layered architecture. Each layer is subdivided by domain where applicable:
-
-```text
-shared clients/UI → schemas → models → api → state/mocks → hooks
-                  → components → sections → pages → app
-```
-
-High-level application services depend on the generated `ReplayApiMod` methods through application-owned ports in `web/src/ports`. The adapter registers the generated app callbacks before discovery; only the adapter and composition layers use the IPC runtime. The SDK validates the TypeSpec contract on both sides. Explicit typed mappings adapt its lowerCamelCase models to the existing application DTOs, where Zod retains feature-specific validation and defaults. File consumers use `ReceivedFile` capabilities through narrow ports, without handling transfer tickets or URLs. Feature messages update TanStack Query caches; calibration editing state stays in its feature reducer. Hooks act as page/component ViewModels: they own application state, derived display values, and commands, while pages and components focus on composition and rendering. The app composition root is the only place that selects the production or mock `AppApi` bundle. Canonical shadcn primitives live in `web/src/shared/ui` and cannot import domain code.
-
-Tests live separately under `web/tests`, mirror the source domains, and use purpose-specific suffixes such as `*.unit.test.ts`, `*.contract.test.ts`, and `*.integration.test.tsx`. The architecture contract test enforces the allowed import direction.
-
-Test, type-check, or build the web workspace:
-
-```bash
-./scripts/run.sh web-check
-./scripts/run.sh web-format
-```
-
-The web UI is built and deployed independently. The `build` and `package` workflows continue to build and package only the ADOFAI mod.
-
-The browser reads TUF metadata through the same-origin `/api/tuf/*` path to avoid CORS failures. The Vite development and preview servers proxy that path to `https://api.tuforums.com`; production hosting must configure the equivalent rewrite while preserving the remaining path (for example, `/api/tuf/v2/database/levels/byId/871` → `https://api.tuforums.com/v2/database/levels/byId/871`).
-
-## Web and API Deployment
-
-GitHub Actions deploys each branch to a separate Compose project on the home server:
-
-| Branch | Website | Build flavor | Host loopback port |
-| --- | --- | --- | --- |
-| `main` | https://tufreplay.impl1113.dev | `standard` | 4174 |
-| `dev` | https://tufreplay-dev.impl1113.dev | `standard` | 4175 |
-| `feat/auto-submission` | https://tufreplay-auto.impl1113.dev | `auto-submission` | 4176 |
-
-Main and dev serve the companion web UI. The auto-submission environment also runs the Rust API, worker, scheduler, PostgreSQL, Redis, and artifact storage. Separate deployment Compose files live under `deploy/`; the root `docker-compose.yml` remains available for local development. Each website exposes `/deployment.json` with its environment, build flavor, and deployed commit.
-
-Web and API deployments run through GitHub Actions. Mod packages are built locally and uploaded by the operator. The workflows use Tailscale to reach the home server and require `TS_OAUTH_CLIENT_ID` and `TS_OAUTH_SECRET`. See [deployment setup and recovery](deploy/README.md) for the protected environment file, one-time routing bootstrap, and persistent data paths.
-
-Standard mod releases use GitHub Releases. Auto-submission builds use the separate home-server feed at `https://tufreplay-auto.impl1113.dev/updates/auto-submission/latest.json`; they are not published as GitHub Releases. Installing a different flavor requires installing that flavor's package. The auto-submission website requires an auto-submission mod with matching submission protocol support before enabling submission features.
-
-## Formatting
-
-The repository uses separate deterministic formatters for each source tree:
-
-- C# uses [CSharpier](https://csharpier.com/) 1.3.0 with a 120-character print width.
-- Web TypeScript, JavaScript, JSON, and CSS use Biome 2.5.3 with a 100-character print width.
-
-Format or check changed C# sources through the workflow entry point (restores the repository-local CSharpier tool automatically):
-
-```bash
-./scripts/run.sh mod-format
-./scripts/run.sh mod-format check
-```
-
-Format or check the web workspace:
-
-```bash
-./scripts/run.sh web-format
-./scripts/run.sh web-check
-```
-
-The checked-in VS Code settings select CSharpier for C# and Biome for web files, with format-on-save enabled for both. Install the `csharpier.csharpier-vscode` and `biomejs.biome` extensions to use those settings.
-
-## Typed AdofaiIpc API
-
-TUFReplay uses **ADOFAI-IPC 2.2.0**, WebSocket wire protocol **3**, and TUFReplay
-health compatibility version **16**. Its source contract, [`ipc/main.tsp`](ipc/main.tsp),
-defines 56 typed mod methods and 10 typed app callbacks. Generated calls replace
-the recorder's previous named-command/correlated-event protocol. The SDK owns
-request correlation, contract validation, app identity, file transport, and errors.
-
-The contract belongs to this mod repository. [`adofai-ipc.config.json`](adofai-ipc.config.json)
-generates C# into `TUFReplay/Shared/Ipc/Generated` (compiled with the mod) and the
-private TS package `@tuf-replay/ipc` into `web/vendor/tuf-replay-ipc` (pinned with
-a relative file dependency). Both outputs are committed. The TypeSpec generator
-is pinned by the committed package under `vendor/adofai-ipc-typespec`; no sibling
-checkout, absolute developer path, or external symlink is required to build.
-
-The companion installs the published `adofai-ipc@2.2.0` npm package with an exact
-version and frozen Bun lockfile. `web/vendor/adofai-ipc/source.json` records its
-clean upstream revision, npm tarball integrity, and SHA-256 inventory. That
-directory contains provenance and license documentation, not imported SDK source.
-Production builds verify the installed package and emit `/adofai-ipc.json`.
-CI and Docker check the same package and generated-contract inventory before deployment.
-
-After installing dependencies with `bun install --frozen-lockfile`, use:
-
-```bash
-./scripts/run.sh ipc-generate
-./scripts/run.sh ipc-check
-./scripts/run.sh ipc-test
-./scripts/run.sh mod-check
-./scripts/run.sh migration-check
-./scripts/run.sh web-check
-```
-
-`ipc-generate` refreshes both generated packages after a contract edit. The companion's Vite config excludes `@tuf-replay/ipc` from dependency pre-bundling, so a running dev server serves the regenerated contract instead of a cached one that the mod would reject as a contract mismatch.
-`ipc-check` checks that the generated files are current and that the installed
-npm SDK matches its pinned provenance. `ipc-test` connects the bundled real IPC
-runtime to the installed TS SDK for bidirectional calls, app-targeted delivery,
-file reads, reconnect snapshots, and cancellation without starting ADOFAI.
-`mod-check` builds and tests without installing anything in the game; `build`
-retains its explicit build-and-install behavior.
-After `package`, `migration-check` verifies the pinned, actually published beta.4 ZIP,
-executes its old updater against the new local package, and verifies SDK promotion
-and next-launch state without changing the installed game Mods folder.
-
-| Feature | Generated mod methods | App callback |
-| --- | --- | --- |
-| Health and activity | `readHealth`, `listAppSessions`, `readLegacyReplayStatus`, level/session/run/chart readers, `readRunJudgmentTimelines`, `removeRun` | `healthSnapshot`, `activityChanged` |
-| Replay and native picker | `startReplay`, `readReplayState`, `chooseLevelFile` | `replayStateChanged` |
-| Microphone | device/access/timing changes, recording export/remove/retain | `microphoneDevicesChanged`, `microphoneTimingChanged` |
-| Calibration | start/state/result/preview/timing/close methods | `calibrationStateChanged` |
-| Camera | `refreshWebcamState`, `changeWebcamSettings`, `readWebcamPreview`, recording export/remove/retain | `webcamStateChanged` |
-| Dependencies and rendering | FFmpeg/download actions, `startRender`, `readRenderState`, `cancelRender`, `chooseRenderOutputDirectory`, `readRenderVideo`, `openRenderFile`, `revealRenderFile` | `ffmpegStateChanged`, `downloadsStateChanged`, `renderStateChanged` |
-
-App callbacks preserve broadcast state changes and responses or notifications
-targeted to the requesting app. Initial registration and each new session receive
-fresh snapshots. The web adapter captures callbacks before the first subscriber,
-retains bundle states by job identity, and clears stale snapshots when the session
-becomes unavailable. Reconnection refreshes application caches without replaying
-user actions. Native picker disconnection cancels the owning app's pending selection;
-mod disable disposes registration and its pending work.
-
-The generated contract uses concrete models, arrays, nullable values, optional
-fields, string literals, float64 values, and exact `safeint` counters/byte lengths.
-C# optional patches use `IpcOptional<T>`: omission retains a setting, while an
-explicit nullable field can clear it. The native level picker selects a file on
-the game computer; there is no app-to-mod file upload.
-
-### File consumption
-
-Chart files, saved microphone WAVs, camera MP4s, and BMP preview frames are
-`ipc.File` values. The mod provides `IpcFile.FromPath`, `FromStream`, or
-`FromWriter`; the companion receives `ReceivedFile`. File bytes never enter
-the control-message payload, and business code never interprets transfer tickets
-or switches between HTTP and WebSocket itself.
-
-Each received file can be consumed once. Reading or handing it to the browser
-must start within 60 seconds and within the session that issued it. After expiry,
-cancellation, or disconnection, request a fresh file rather than retrying the old
-handle. File responses are consumed immediately and are not kept in snapshot caches.
-
-- Chart reads return `{ levelSessionId, floorCount, file }`. The application
-  streams the file through its strict UTF-8 decoder, verifies the byte count,
-  cancels obsolete reads, and passes the resulting text to the existing chart
-  consumer. Large charts remain separate from the 2 MiB control-message limit.
-- Camera preview returns `null` during warmup or `{ width, height, file }`.
-  A single sequential reader validates the bounded BMP length and header before
-  presenting it. Preview cancellation stops pending reads without stopping recording.
-- Recording save actions call `await file.download()` immediately. The SDK hands
-  the transfer to the browser's native download manager without buffering the
-  complete recording in JavaScript. Resolution means **handoff**, not download
-  completion. The browser's download settings determine the destination folder
-  and whether it asks for a location.
-
-The microphone timing dialog retains global offset editing, transient
-calibration waveforms, and game preview playback. Calibration recordings are not
-written into activity history. Every calibration starts from raw uncorrected
-capture timing. The saved offset remains applied to stored microphone playback.
-
-The microphone volume is set only in ADOFAI, under Settings → Audio →
-**TUFReplay Microphone / TUFReplay 마이크**, the row after **Interface Volume**;
-the companion no longer has a volume control. In-game replays, the calibration
-preview, and renders all use it. It goes from `-30 dB` to `+30 dB` (arrow keys
-move 5 dB, Shift moves 1 dB), one step below `-30 dB` is **Off / 끔**, and a
-volume saved earlier from the companion is kept. It works like OBS Studio's Gain
-filter: a plain `10^(dB/20)` multiplier, hard-clipped at full scale in game and
-passed to OrbitRender as the same multiplier. Off leaves the microphone out of
-replays and renders without changing capture. A change applies at once to the
-playing replay, so it can be tuned from the pause menu; a render uses the value
-saved when it starts. In-game playback ignores ADOFAI's own volume settings:
-ADOFAI applies its master volume through `AudioListener.volume` (half at the
-default of 10), and renders mix the microphone without it, so the replay
-microphone sits against the game exactly as in a render. If an ADOFAI update
-changes the settings menu, the row is left out and the menu works as before. Calibration
-preview clock callbacks remain limited to 20 Hz and the UI interpolates between
-samples. Installer progress callbacks remain limited to ten per second.
-
-Camera discovery stays explicit and uses its existing cache. Capture state,
-completed discovery, and saved in-game layout changes publish `webcamStateChanged`.
-The companion's crop preview reads the game's shared camera through typed files;
-it does not open a browser MediaStream or a second camera device.
-
-## Tech Stack
-
-- **C# / .NET SDK**: mod implementation and build tooling.
-- **netstandard2.1**: target framework for Unity compatibility.
-- **UnityModManager**: ADOFAI mod loading.
-- **AdofaiIpc / TypeSpec**: generated C# and TS contracts, app sessions, shared localhost transport, and streaming file delivery.
-- **Harmony**: game method patching for recording hooks.
-- **TUFHelperLite / TUFHelper**: optional public TUF level ID resolution for downloaded charts.
-- **SQLite / Microsoft.Data.Sqlite**: local play record storage.
-- **Newtonsoft.Json**: metadata and API JSON serialization.
-- **Bun / React / Vite**: companion activity explorer and embedded chart bridge.
-- **Bash / .env**: local build and install configuration.
+Production hosting must rewrite `/api/tuf/*` to `https://api.tuforums.com/*`. Vite does this during development.
 
 ## Special Thanks
 
