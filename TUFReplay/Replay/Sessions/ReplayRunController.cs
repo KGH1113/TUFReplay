@@ -24,9 +24,9 @@ public static class ReplayRunController
     context.NativeInputPlayer?.ReleaseAll();
     context.Phase = ReplayPlaybackPhase.Prepared;
     context.RunStarted = false;
-    context.WonClockStarted = false;
-    context.WonClockStartedAt = 0d;
-    context.WonClockStartTimeUs = 0L;
+    context.RealTimeClockStarted = false;
+    context.RealTimeClockStartedAt = 0d;
+    context.RealTimeClockStartTimeUs = 0L;
     if (!preserveClockOrigin)
     {
       context.ReplayClockOffsetInitialized = false;

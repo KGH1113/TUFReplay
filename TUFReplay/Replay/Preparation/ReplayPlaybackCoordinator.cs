@@ -171,7 +171,7 @@ public static partial class ReplayPlaybackCoordinator
         List<ReplayHitContext> hitContexts = ReplayHitContextParser.Parse(run.HitContextCsv);
         if (hitContexts.Count == 0)
           throw new InvalidDataException("The calibration replay has no hit contexts.");
-        long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
+        long terminalTimeUs = ResolveReplayEndTimeUs(meta, run.Result, fallbackTerminal);
         var pending = new PendingReplay(operationId, run, levelPath, meta, inputs, hitContexts, terminalTimeUs)
         {
           AllowBackground = true,

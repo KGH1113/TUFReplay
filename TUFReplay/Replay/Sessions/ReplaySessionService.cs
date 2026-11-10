@@ -190,7 +190,13 @@ public static partial class ReplaySessionService
 
       case States.Fail:
       case States.Fail2:
-        _activeContext.MicrophonePlayer?.Stop();
+        // The game takes no input after the death, so the keys sent to it are let go. Mods keep
+        // getting the keys recorded on the fail screen; older recordings end their keys here.
+        // The microphone plays on: it records the fail screen too.
+        ReplayClock.EnterFailed(_activeContext);
+        if (_activeContext.Meta?.failedTimeUs == null)
+          _activeContext.KeyFeed?.ReleaseAll(ReplaySessions.NowTicks);
+        _activeContext.NativeInputPlayer?.ReleaseAll();
         _activeContext.WebcamPlayer?.Stop();
         break;
 
@@ -412,6 +418,21 @@ public static partial class ReplaySessionService
       && TryComputeReplayTimeUs(out long nowUs, out _)
     )
       _activeContext.WebcamPlayer.Tick(CreatePlaybackSnapshot(nowUs));
+  }
+
+  // Mods keep showing the keys recorded on the fail screen during the death animation.
+  public static void TickFailScreenKeys()
+  {
+    ActiveReplayContext context = _activeContext;
+    if (
+      context?.KeyFeed == null
+      || !context.RealTimeClockStarted
+      || !TryGetControllerState(out States state)
+      || state != States.Fail
+    )
+      return;
+    if (ReplayClock.TryComputeReplayTimeUs(context, out long nowUs, out _))
+      context.KeyFeed.AdvanceTo(nowUs, ReplaySessions.NowTicks);
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)
@@ -660,7 +681,7 @@ public static partial class ReplaySessionService
   private static double CurrentTimelineDspTime()
   {
     scrConductor conductor = ADOBase.conductor;
-    if (_activeContext == null || _activeContext.WonClockStarted || conductor == null || conductor.song == null)
+    if (_activeContext == null || _activeContext.RealTimeClockStarted || conductor == null || conductor.song == null)
       return double.NaN;
     if (GCS.d_oldConductor || GCS.d_webglConductor)
       return double.NaN;
