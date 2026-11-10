@@ -6,7 +6,7 @@ Your mod talks to TUFReplay without referencing TUFReplay.dll. It finds `TUFRepl
 
 - **No reference to TUFReplay.dll.** Find `TUFReplay.ReplayApi` by name in the loaded assembly named `TUFReplay`.
 - **Your own types.** Providers and the classes you save stay in your assembly. TUFReplay binds a provider's methods once and reads your classes' fields through reflection.
-- **Only BCL and Unity types cross the boundary**: `string`, numbers, `bool`, `KeyCode`, `Canvas`, `RectInt`, `Action`. The method names and the ids are the contract.
+- **Only BCL and Unity types cross the boundary**: `string`, numbers, `bool`, `KeyCode`, `Canvas`, `RectInt`, `Action`, and your event store, which you bind by name like the API. The method names and the ids are the contract.
 
 Either mod keeps working when the other is missing or turned off.
 
@@ -22,7 +22,7 @@ internal static class TUFReplayAPI
     private const int RequiredApiVersion = 2;
     private static Func<string, object, bool> _register;
     private static Action<string> _unregister;
-    private static Func<string, object, bool> _record;
+    private static Func<object, bool> _addEvent;
     private static bool _registered;
 
     public static void TryRegister()
@@ -38,7 +38,7 @@ internal static class TUFReplayAPI
     }
 
     // Used in step 3. False outside a recorded run.
-    public static bool Record(string id, object value) => _record != null && _record(id, value);
+    public static bool AddEvent(object e) => _addEvent != null && _addEvent(e);
 
     private static bool Resolve()
     {
@@ -52,8 +52,11 @@ internal static class TUFReplayAPI
                 typeof(Func<string, object, bool>), api.GetMethod("Register"));
             _unregister = (Action<string>)Delegate.CreateDelegate(
                 typeof(Action<string>), api.GetMethod("Unregister"));
-            _record = (Func<string, object, bool>)Delegate.CreateDelegate(
-                typeof(Func<string, object, bool>), api.GetMethod("RecordRunEvent"));
+            var getEventStore = (Func<string, object>)Delegate.CreateDelegate(
+                typeof(Func<string, object>), api.GetMethod("GetEventStore"));
+            object eventStore = getEventStore(Id);
+            _addEvent = (Func<object, bool>)Delegate.CreateDelegate(
+                typeof(Func<object, bool>), eventStore, eventStore.GetType().GetMethod("AddEvent"));
             return true;
         }
         return false;
@@ -89,11 +92,11 @@ public static bool IsRegistered(string id);
 
 ## Ids
 
-An id names a provider and the value saved under it with each run (step 3).
+An id names a provider and what it saves with each run (step 3).
 
 - Keep it stable: saved values are found by it.
-- Use letters, digits, `.`, `_` and `-`, up to 64 characters, such as `"MyOverlay"` or `"MyOverlay.Layout"`.
-- A mod can register several ids: one that follows replays, and one for each value it saves.
+- Use letters, digits, `.`, `_` and `-`, up to 64 characters, such as `"MyOverlay"` or `"MyOverlay.Chat"`.
+- One id is enough for most mods. Register more when parts of your mod come and go on their own.
 
 ## Version
 

@@ -13,10 +13,13 @@ internal sealed class RunStateRecord
   public string SavedAtUtc;
 }
 
-/// <summary>A value a mod recorded during a run, waiting to be saved with it.</summary>
+/// <summary>An event a mod added during a run, waiting to be saved with it.</summary>
 internal sealed class RunEventRecord
 {
   public string StateId;
+
+  /// <summary>The event type's saved name, from <c>RunStateTypeNames.Qualified</c>.</summary>
+  public string EventType;
   public string ShapeId;
   public string ShapeJson;
   public string ValueJson;
@@ -25,7 +28,7 @@ internal sealed class RunEventRecord
   public long TimeUs;
 }
 
-/// <summary>What the providers saved for one run: start values and values recorded during it.</summary>
+/// <summary>What the providers saved for one run: start values and events added during it.</summary>
 internal sealed class CapturedRunStates
 {
   public static readonly CapturedRunStates Empty = new CapturedRunStates(
@@ -35,7 +38,7 @@ internal sealed class CapturedRunStates
 
   public readonly IReadOnlyList<RunStateRecord> States;
 
-  /// <summary>In the order they were recorded, so by time.</summary>
+  /// <summary>In the order they were added, so by time.</summary>
   public readonly IReadOnlyList<RunEventRecord> Events;
 
   public CapturedRunStates(IReadOnlyList<RunStateRecord> states, IReadOnlyList<RunEventRecord> events)
@@ -56,10 +59,11 @@ internal sealed class StoredRunState
   public string ValueJson;
 }
 
-/// <summary>A value recorded during a run, read back for a replay.</summary>
+/// <summary>An event added during a run, read back for a replay.</summary>
 internal sealed class StoredRunEvent
 {
   public string StateId;
+  public string EventType;
   public string ShapeId;
   public string ShapeJson;
   public string ValueJson;
@@ -76,7 +80,7 @@ internal sealed class StoredRunStates
 
   public readonly IReadOnlyList<StoredRunState> States;
 
-  /// <summary>By time, then in the order they were recorded.</summary>
+  /// <summary>By time, then in the order they were added.</summary>
   public readonly IReadOnlyList<StoredRunEvent> Events;
 
   public StoredRunStates(IReadOnlyList<StoredRunState> states, IReadOnlyList<StoredRunEvent> events)
@@ -86,9 +90,11 @@ internal sealed class StoredRunStates
   }
 }
 
-/// <summary>One shape a state id was saved with, and how many runs use it.</summary>
+/// <summary>One shape a provider id was saved with, and how many runs use it.</summary>
 internal sealed class StoredRunStateShape
 {
+  /// <summary>The event type's saved name, or null for start values.</summary>
+  public string EventType;
   public string ShapeId;
   public string ShapeJson;
   public int RunCount;

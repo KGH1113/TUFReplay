@@ -6,35 +6,41 @@ using TUFReplay.ModApi.Providers;
 namespace TUFReplay.ModApi.Playback;
 
 /// <summary>
-/// Hands providers the values they recorded during a run, at their times on the run's timeline,
-/// through <c>OnReplayEvent</c>. A value is read from JSON only when it is handed over, so a
-/// frame without one allocates nothing. After a seek, each provider gets the value in effect at
-/// the new time if it differs from the last one it got.
+/// Plays back what providers saved with a run. Right after its <c>OnReplayBegin</c>, a provider
+/// gets the run's start value through <c>OnReplayState</c>; then each event it added reaches the
+/// <c>OnReplayEvent</c> overload for its type, at its time on the run's timeline. A seek starts
+/// each provider over: the start value again, then every event up to the new time, all at the
+/// seek's time. An event is read from JSON only when it is handed over, so a frame without one
+/// allocates nothing.
 /// </summary>
 internal sealed class ReplayRunEvents
 {
-  /// <summary>The provider's start value, as opposed to one of the recorded values.</summary>
-  private const int StartValue = -1;
-
   private readonly ReplaySession _session;
-  private readonly Track[] _tracks;
+  private readonly Follower[] _followers;
   private readonly StoredRunEvent[] _events;
-  private readonly int[] _trackOf;
-  private readonly int[] _inEffect;
+  private readonly int[] _followerOf;
+  private readonly RunEventHandler[] _handlerOf;
   private int _next;
 
-  private ReplayRunEvents(ReplaySession session, Track[] tracks, StoredRunEvent[] events, int[] trackOf)
+  private ReplayRunEvents(
+    ReplaySession session,
+    Follower[] followers,
+    StoredRunEvent[] events,
+    int[] followerOf,
+    RunEventHandler[] handlerOf
+  )
   {
     _session = session;
-    _tracks = tracks;
+    _followers = followers;
     _events = events;
-    _trackOf = trackOf;
-    _inEffect = new int[tracks.Length];
+    _followerOf = followerOf;
+    _handlerOf = handlerOf;
   }
 
   /// <summary>
-  /// The recorded values of <paramref name="begun"/> providers that take events, in time order.
-  /// <paramref name="startValues"/> holds each provider's start value by id.
+  /// The start values and events of <paramref name="begun"/> providers that take them back.
+  /// <paramref name="startValues"/> holds each provider's start value by id; <paramref name="events"/>
+  /// are in time order. Events no <c>OnReplayEvent</c> overload takes are left out and reported once.
   /// </summary>
   internal static ReplayRunEvents For(
     ReplaySession session,
@@ -43,35 +49,45 @@ internal sealed class ReplayRunEvents
     IReadOnlyList<StoredRunEvent> events
   )
   {
-    var tracks = new List<Track>();
-    var trackById = new Dictionary<string, int>(StringComparer.Ordinal);
+    var followers = new List<Follower>();
+    var followerById = new Dictionary<string, int>(StringComparer.Ordinal);
     for (int index = 0; index < begun.Length; index++)
     {
       ReplayProvider provider = begun[index];
-      if (!provider.TakesEvents || provider.Model == null)
+      if (!provider.TakesState && !provider.TakesEvents)
         continue;
       startValues.TryGetValue(provider.Id, out StoredRunState start);
-      trackById[provider.Id] = tracks.Count;
-      tracks.Add(new Track(provider, index, start));
+      followerById[provider.Id] = followers.Count;
+      followers.Add(new Follower(provider, index, start));
     }
 
     var kept = new List<StoredRunEvent>();
-    var trackOf = new List<int>();
+    var followerOf = new List<int>();
+    var handlerOf = new List<RunEventHandler>();
     if (events != null)
-      foreach (StoredRunEvent recorded in events)
-        if (trackById.TryGetValue(recorded.StateId, out int track))
+      foreach (StoredRunEvent saved in events)
+      {
+        if (!followerById.TryGetValue(saved.StateId, out int follower))
+          continue;
+        ReplayProvider provider = followers[follower].Provider;
+        RunEventHandler handler = provider.EventNamed(saved.EventType);
+        if (handler == null)
         {
-          kept.Add(recorded);
-          trackOf.Add(track);
+          ReplaySessions.ReportMissingEventHandler(provider, saved.EventType);
+          continue;
         }
-    return new ReplayRunEvents(session, tracks.ToArray(), kept.ToArray(), trackOf.ToArray());
+        kept.Add(saved);
+        followerOf.Add(follower);
+        handlerOf.Add(handler);
+      }
+    return new ReplayRunEvents(session, followers.ToArray(), kept.ToArray(), followerOf.ToArray(), handlerOf.ToArray());
   }
 
-  /// <summary>Recorded values still to hand over, for tests.</summary>
+  /// <summary>Events still to hand over, for tests.</summary>
   internal int Remaining => _events.Length - _next;
 
   /// <summary>
-  /// Hands over every value recorded up to <paramref name="replayTimeUs"/>. A late value arrives
+  /// Hands over every event added up to <paramref name="replayTimeUs"/>. A late event arrives
   /// with the session time it should have had, measured back from <paramref name="nowTicks"/>.
   /// </summary>
   public void AdvanceTo(long replayTimeUs, long nowTicks)
@@ -85,7 +101,7 @@ internal sealed class ReplayRunEvents
   }
 
   /// <summary>
-  /// Hands over every value recorded up to <paramref name="replayTimeUs"/>, each at the session
+  /// Hands over every event added up to <paramref name="replayTimeUs"/>, each at the session
   /// time <paramref name="ticksAt"/> gives for its replay time. Renders map replay time to video time.
   /// </summary>
   public void AdvanceTo(long replayTimeUs, Func<long, long> ticksAt)
@@ -98,77 +114,80 @@ internal sealed class ReplayRunEvents
   }
 
   /// <summary>
-  /// Moves to <paramref name="replayTimeUs"/> without handing over the values in between. A
-  /// provider whose value in effect there differs from the last one it got gets it now.
+  /// Moves to <paramref name="replayTimeUs"/>. Each provider starts over: its start value, then
+  /// every one of its events up to there, in order, all at <paramref name="nowTicks"/>.
   /// </summary>
   public void SeekTo(long replayTimeUs, long nowTicks)
   {
-    for (int track = 0; track < _inEffect.Length; track++)
-      _inEffect[track] = StartValue;
     int next = 0;
     while (next < _events.Length && _events[next].TimeUs <= replayTimeUs)
-    {
-      _inEffect[_trackOf[next]] = next;
       next++;
-    }
     _next = next;
-    for (int track = 0; track < _tracks.Length; track++)
-      if (_inEffect[track] != _tracks[track].Given)
-        Give(track, _inEffect[track], nowTicks);
+    for (int follower = 0; follower < _followers.Length; follower++)
+    {
+      GiveStartValue(follower, nowTicks);
+      for (int index = 0; index < next; index++)
+        if (_followerOf[index] == follower)
+          Hand(index, nowTicks);
+    }
   }
 
-  /// <summary>Hands every provider its start value, right after its <c>OnReplayBegin</c>.</summary>
+  /// <summary>Hands <paramref name="provider"/> its start value, right after its <c>OnReplayBegin</c>.</summary>
   internal void GiveStartValue(ReplayProvider provider)
   {
-    for (int track = 0; track < _tracks.Length; track++)
-      if (_tracks[track].Provider == provider)
+    for (int follower = 0; follower < _followers.Length; follower++)
+      if (_followers[follower].Provider == provider)
       {
-        Give(track, StartValue, 0);
+        GiveStartValue(follower, 0);
         return;
       }
   }
 
-  private void Hand(int index, long ticks) => Give(_trackOf[index], index, ticks);
-
-  private void Give(int track, int index, long ticks)
+  private void GiveStartValue(int follower, long ticks)
   {
-    Track target = _tracks[track];
-    target.Given = index;
-    if (!ReplayProviders.IsCurrent(target.Provider))
+    Follower target = _followers[follower];
+    ReplayProvider provider = target.Provider;
+    if (!provider.TakesState || !ReplayProviders.IsCurrent(provider))
       return;
 
-    object value;
-    if (index == StartValue)
-    {
-      // A run without a readable start value still tells the provider so, as null.
-      value =
-        target.Start == null
-          ? null
-          : ReplaySessions.ReadOrNull(
-            target.Provider,
-            target.Start.ShapeId,
-            target.Start.ShapeJson,
-            target.Start.ValueJson,
-            recorded: false
-          );
-    }
-    else
-    {
-      StoredRunEvent recorded = _events[index];
-      value = ReplaySessions.ReadOrNull(
-        target.Provider,
-        recorded.ShapeId,
-        recorded.ShapeJson,
-        recorded.ValueJson,
-        recorded: true
-      );
-      if (value == null)
-        return;
-    }
-
+    // A run without a readable start value still tells the provider so, as null.
+    StoredRunState start = target.Start;
+    object state =
+      start == null
+        ? null
+        : ReplaySessions.ReadOrNull(provider, provider.State, null, start.ShapeId, start.ShapeJson, start.ValueJson);
     try
     {
-      target.Provider.InvokeEvent(value, ticks);
+      provider.InvokeState(state, ticks);
+    }
+    catch (Exception exception)
+    {
+      ReplaySessions.ReportFrameFailure(_session, target.BegunIndex, ReplayProvider.StateName, exception);
+    }
+  }
+
+  private void Hand(int index, long ticks)
+  {
+    Follower target = _followers[_followerOf[index]];
+    ReplayProvider provider = target.Provider;
+    if (!ReplayProviders.IsCurrent(provider))
+      return;
+
+    StoredRunEvent saved = _events[index];
+    RunEventHandler handler = _handlerOf[index];
+    object e = ReplaySessions.ReadOrNull(
+      provider,
+      handler.Target,
+      handler.Name,
+      saved.ShapeId,
+      saved.ShapeJson,
+      saved.ValueJson
+    );
+    if (e == null)
+      return;
+    try
+    {
+      provider.InvokeEvent(handler, e, ticks);
     }
     catch (Exception exception)
     {
@@ -176,16 +195,13 @@ internal sealed class ReplayRunEvents
     }
   }
 
-  private sealed class Track
+  private sealed class Follower
   {
     public readonly ReplayProvider Provider;
     public readonly int BegunIndex;
     public readonly StoredRunState Start;
 
-    /// <summary>The value the provider got last: <see cref="StartValue"/> or an index into the events.</summary>
-    public int Given = StartValue;
-
-    public Track(ReplayProvider provider, int begunIndex, StoredRunState start)
+    public Follower(ReplayProvider provider, int begunIndex, StoredRunState start)
     {
       Provider = provider;
       BegunIndex = begunIndex;

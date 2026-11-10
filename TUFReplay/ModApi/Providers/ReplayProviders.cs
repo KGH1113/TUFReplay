@@ -55,7 +55,7 @@ internal static class ReplayProviders
       check = _databaseReady;
     }
     ModApiLog.Write("[ReplayApi] Registered " + id + " (" + provider.Describe() + ").");
-    if (check && provider.Model != null)
+    if (check && provider.SavesValues)
       RunStateDiagnostics.CheckLater(provider);
     return true;
   }
@@ -94,7 +94,7 @@ internal static class ReplayProviders
       providers = _providers;
     }
     foreach (ReplayProvider provider in providers)
-      if (provider.Model != null)
+      if (provider.SavesValues)
         RunStateDiagnostics.CheckLater(provider);
   }
 

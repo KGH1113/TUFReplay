@@ -6,7 +6,7 @@
 
 - **TUFReplay.dll을 참조하지 않습니다.** 로드된 어셈블리 중 이름이 `TUFReplay`인 것에서 `TUFReplay.ReplayApi`를 이름으로 찾습니다.
 - **타입은 모드의 것입니다.** 프로바이더와 저장하는 클래스는 모드의 어셈블리에 둡니다. TUFReplay는 프로바이더의 메서드를 한 번 바인딩하고, 클래스의 필드는 리플렉션으로 읽습니다.
-- **경계를 넘는 건 BCL과 Unity 타입뿐입니다**: `string`, 숫자, `bool`, `KeyCode`, `Canvas`, `RectInt`, `Action`. 메서드 이름과 id가 계약입니다.
+- **경계를 넘는 건 BCL과 Unity 타입뿐입니다**: `string`, 숫자, `bool`, `KeyCode`, `Canvas`, `RectInt`, `Action`, 그리고 API처럼 이름으로 바인딩하는 이벤트 저장소. 메서드 이름과 id가 계약입니다.
 
 어느 한쪽 모드가 없거나 꺼져 있어도 다른 쪽은 그대로 동작합니다.
 
@@ -22,7 +22,7 @@ internal static class TUFReplayAPI
     private const int RequiredApiVersion = 2;
     private static Func<string, object, bool> _register;
     private static Action<string> _unregister;
-    private static Func<string, object, bool> _record;
+    private static Func<object, bool> _addEvent;
     private static bool _registered;
 
     public static void TryRegister()
@@ -38,7 +38,7 @@ internal static class TUFReplayAPI
     }
 
     // 3단계에서 씁니다. 기록 중인 판이 없으면 false.
-    public static bool Record(string id, object value) => _record != null && _record(id, value);
+    public static bool AddEvent(object e) => _addEvent != null && _addEvent(e);
 
     private static bool Resolve()
     {
@@ -52,8 +52,11 @@ internal static class TUFReplayAPI
                 typeof(Func<string, object, bool>), api.GetMethod("Register"));
             _unregister = (Action<string>)Delegate.CreateDelegate(
                 typeof(Action<string>), api.GetMethod("Unregister"));
-            _record = (Func<string, object, bool>)Delegate.CreateDelegate(
-                typeof(Func<string, object, bool>), api.GetMethod("RecordRunEvent"));
+            var getEventStore = (Func<string, object>)Delegate.CreateDelegate(
+                typeof(Func<string, object>), api.GetMethod("GetEventStore"));
+            object eventStore = getEventStore(Id);
+            _addEvent = (Func<object, bool>)Delegate.CreateDelegate(
+                typeof(Func<object, bool>), eventStore, eventStore.GetType().GetMethod("AddEvent"));
             return true;
         }
         return false;
@@ -89,11 +92,11 @@ public static bool IsRegistered(string id);
 
 ## id
 
-id는 프로바이더의 이름이자, 그 id로 판마다 저장되는 값의 이름입니다(3단계).
+id는 프로바이더의 이름이자, 그 id로 판마다 저장하는 것의 이름입니다(3단계).
 
 - 바꾸지 마세요. 저장된 값을 id로 찾습니다.
-- 영문자, 숫자, `.`, `_`, `-`로 64자까지 씁니다. 예: `"MyOverlay"`, `"MyOverlay.Layout"`.
-- 모드 하나가 id를 여러 개 등록할 수 있습니다. 리플레이를 따라가는 id 하나와, 저장하는 값마다 id 하나씩입니다.
+- 영문자, 숫자, `.`, `_`, `-`로 64자까지 씁니다. 예: `"MyOverlay"`, `"MyOverlay.Chat"`.
+- 대부분의 모드는 id 하나면 충분합니다. 모드의 일부가 따로 켜지고 꺼진다면 id를 더 등록하세요.
 
 ## 버전
 

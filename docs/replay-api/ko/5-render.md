@@ -33,9 +33,9 @@ public static string RenderFfmpegPath { get; }       // 렌더러와 같이 쓰�
 
 ## 렌더 순서
 
-- `OnReplayBegin(render: true)`는 TUFReplay가 작업을 OrbitRender에 넘기기 전, 레벨이 열리기 전에 불립니다. 바로 이어서 시작 값과 함께 `OnReplayEvent`가 불립니다.
+- `OnReplayBegin(render: true)`는 TUFReplay가 작업을 OrbitRender에 넘기기 전, 레벨이 열리기 전에 불립니다. 바로 이어서 시작 값과 함께 `OnReplayState`가 불립니다.
 - `GetReplayCanvases`는 레벨이 준비된 뒤 첫 프레임 전에 한 번 불립니다. 그 뒤에 만든 캔버스는 영상에 들어가지 않으니, 그 전이나 이 호출 안에서 만드세요. `RenderWidth`, `RenderHeight`, `RenderFps`는 이 호출부터 영상의 최종 값이고, 그 전에는 요청한 값입니다.
-- 매 프레임: 영상 시간으로 `OnReplayClock`, 그다음 그 프레임의 값에 대한 `OnReplayEvent`와 키에 대한 `OnReplayKey`가 각자의 영상 시간으로 불립니다. `OnBeforeFrameCapture`와 `OnAfterFrameCapture`는 새 영상 프레임의 앞뒤로 불리고, 반복된 프레임에서는 불리지 않습니다.
+- 매 프레임: 영상 시간으로 `OnReplayClock`, 그다음 그 프레임의 이벤트에 대한 `OnReplayEvent`와 키에 대한 `OnReplayKey`가 각자의 영상 시간으로 불립니다. `OnBeforeFrameCapture`와 `OnAfterFrameCapture`는 새 영상 프레임의 앞뒤로 불리고, 반복된 프레임에서는 불리지 않습니다.
 - `AddReplayOverlayVideos`는 마지막 프레임 뒤, OrbitRender가 완성된 영상을 합치기 전에 한 번 불립니다.
 - `OnReplayEnd`는 렌더가 완료되거나, 실패하거나, 취소될 때 불립니다. OrbitRender가 게임을 되돌리고 영상을 합친 뒤입니다. 첫 프레임 전에 끝난 렌더(예: 레벨이 열리는 중에 취소)는 `GetReplayCanvases` 없이 `OnReplayEnd`만 부릅니다.
 

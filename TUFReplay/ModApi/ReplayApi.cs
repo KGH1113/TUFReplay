@@ -1,7 +1,9 @@
+using System;
+using System.Collections.Concurrent;
+using TUFReplay.ModApi.Diagnostics;
 using TUFReplay.ModApi.Mapping;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.ModApi.Providers;
-using TUFReplay.ModApi.Recording;
 
 namespace TUFReplay;
 
@@ -10,14 +12,16 @@ namespace TUFReplay;
 /// A mod registers a provider object from its own assembly, and TUFReplay calls its public
 /// methods by name, so neither mod references the other. Every method is optional:
 /// <code>
-///   // Recording: a state saved with each run, typed by the mod's own class.
+///   // Recording: a state as each run starts and events during it, typed by the mod's own classes.
 ///   TState CaptureRunState()                                   // or Task&lt;TState&gt;; the value as the run starts
 ///   TState UpgradeRunState(TOldState old)                      // any number; reads older runs
-///   // During the run: ReplayApi.RecordRunEvent(id, value) records a TState at that time.
+///   TEvent UpgradeRunEvent(TOldEvent old)                      // any number; reads older runs' events
+///   // During the run: ReplayApi.GetEventStore(id).AddEvent(e) adds an event at that time.
 ///
 ///   // Replay: the same calls whether a run is played in the game or rendered to video.
 ///   void   OnReplayBegin(bool render)                          // or ()
-///   void   OnReplayEvent(TState value, long ticks)             // the start value, then each recorded one
+///   void   OnReplayState(TState state, long ticks)             // the start value, after begin and each seek
+///   void   OnReplayEvent(TEvent e, long ticks)                 // one per event type, at the event's time
 ///   void   OnReplayClock(long ticks)                           // every frame
 ///   void   OnReplayKey(KeyCode key, int? nativeKey, bool down, long ticks)
 ///   void   OnReplayEnd()
@@ -36,13 +40,18 @@ public static class ReplayApi
 {
   /// <summary>
   /// Changes only when an existing member or provider method changes its meaning or is removed.
-  /// 2: <c>OnReplayBegin</c> no longer takes the state; <c>OnReplayEvent</c> and
-  /// <see cref="RecordRunEvent"/> were added.
+  /// 2: <c>OnReplayBegin</c> no longer takes the state; <c>OnReplayState</c>,
+  /// <c>OnReplayEvent</c>, <c>UpgradeRunEvent</c> and <see cref="GetEventStore"/> were added.
   /// </summary>
   public const int ApiVersion = 2;
 
-  /// <summary>The largest state saved for one run, in UTF-8 bytes of JSON.</summary>
+  /// <summary>The largest start value or event saved with a run, in UTF-8 bytes of JSON.</summary>
   public const int MaxStateBytes = RunStateValueWriter.MaxBytes;
+
+  private static readonly ConcurrentDictionary<string, ReplayEventStore> EventStores = new ConcurrentDictionary<
+    string,
+    ReplayEventStore
+  >(StringComparer.Ordinal);
 
   /// <summary>
   /// True between <c>OnReplayBegin</c> and <c>OnReplayEnd</c>: while TUFReplay plays a run in the
@@ -85,17 +94,23 @@ public static class ReplayApi
   public static string RenderFfmpegPath => ReplaySessions.Active?.Render?.FfmpegPath;
 
   /// <summary>
-  /// Records <paramref name="value"/> for the provider registered under <paramref name="id"/>,
-  /// at this moment on the run's timeline: the same clock as its keys and hits. When the run is
-  /// replayed or rendered, the provider gets it back through <c>OnReplayEvent</c> at that time.
-  /// Use it for what changes during a run for other reasons than keys and judgments, such as
-  /// settings or data from outside the game. <paramref name="value"/> must be exactly the
-  /// provider's state type, and is written to JSON now. Values recorded at the same moment, as
-  /// in one frame or while the game is paused, keep only the last. Call on Unity's main thread.
-  /// Returns false when no run is recording, which is normal, and when the value can't be saved;
-  /// that reason is written to the mod log.
+  /// The event store of the provider registered under <paramref name="id"/>: the mod's own place
+  /// in each recorded run, where it adds events while the run records. Ask once and keep it; the
+  /// same id always gives the same store, and the provider may register before or after.
+  /// Returns null if the id is invalid; the reason is written to the mod log.
   /// </summary>
-  public static bool RecordRunEvent(string id, object value) => RunStateCapture.RecordEvent(id, value);
+  public static ReplayEventStore GetEventStore(string id)
+  {
+    if (id != null && EventStores.TryGetValue(id, out ReplayEventStore store))
+      return store;
+    string problem = ReplayProviders.IdProblem(id);
+    if (problem != null)
+    {
+      ModApiLog.Write("[ReplayApi] No event store was given: " + problem);
+      return null;
+    }
+    return EventStores.GetOrAdd(id, key => new ReplayEventStore(key));
+  }
 
   /// <summary>
   /// Registers <paramref name="provider"/> under <paramref name="id"/>, replacing a provider
@@ -103,11 +118,11 @@ public static class ReplayApi
   /// is written to the mod log. Register from Unity's main thread, and retry when TUFReplay
   /// loads after your mod.
   /// </summary>
-  /// <param name="id">A stable id, saved with every run when the provider has a state, such as <c>"MyMod"</c>.</param>
+  /// <param name="id">A stable id, saved with every run when the provider has a state or events, such as <c>"MyMod"</c>.</param>
   /// <param name="provider">An object with any of the methods above.</param>
   public static bool Register(string id, object provider) => ReplayProviders.Register(id, provider);
 
-  /// <summary>Removes the provider registered under <paramref name="id"/>. Saved runs keep its states.</summary>
+  /// <summary>Removes the provider registered under <paramref name="id"/>. Saved runs keep its states and events.</summary>
   public static void Unregister(string id) => ReplayProviders.Unregister(id);
 
   public static bool IsRegistered(string id) => ReplayProviders.IsRegistered(id);

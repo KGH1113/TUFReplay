@@ -28,6 +28,35 @@ internal static class RunStateTypeNames
     return name + "<" + string.Join(", ", type.GetGenericArguments().Select(Of)) + ">";
   }
 
+  /// <summary>
+  /// The name an event type is saved under: its namespace, outer classes and name as C# writes
+  /// them, without the assembly, so a new build of the mod still finds it.
+  /// </summary>
+  public static string Qualified(Type type)
+  {
+    string name = Of(type);
+    for (Type outer = type.DeclaringType; outer != null; outer = outer.DeclaringType)
+      name = Of(outer) + "." + name;
+    return string.IsNullOrEmpty(type.Namespace) ? name : type.Namespace + "." + name;
+  }
+
+  /// <summary>The last part of a <see cref="Qualified"/> name: the type as the mod's code writes it.</summary>
+  public static string Short(string qualified)
+  {
+    int depth = 0;
+    for (int index = qualified.Length - 1; index >= 0; index--)
+    {
+      char character = qualified[index];
+      if (character == '>')
+        depth++;
+      else if (character == '<')
+        depth--;
+      else if (character == '.' && depth == 0)
+        return qualified.Substring(index + 1);
+    }
+    return qualified;
+  }
+
   public static string Of(RunStateShape shape)
   {
     string name = shape.Kind switch
