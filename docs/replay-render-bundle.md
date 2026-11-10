@@ -13,7 +13,7 @@ With OrbitRender's RenderApi 3, TUFReplay leads the render and OrbitRender only 
 
 - **TUFReplay** replays the recording as OrbitRender's host (`RenderReplayHost`):
   - it applies the recorded settings, inputs and hits, clear, death and end
-  - it hands mods the replay through `ReplayApi`: clock, keys, the canvases to capture, and capture calls. See [replay-api.md](replay-api.md).
+  - it hands mods the replay through `ReplayApi`: clock, keys, the canvases to capture, and capture calls. See [replay-api](replay-api/README.md).
 - **OrbitRender** opens the level and runs the offline clock and frame loop. It captures frames and audio, encodes them, composes the webcam and microphone, and writes the file.
 
 TUFReplay calls `RenderApi.StartHostedReplay(requestJson, host)`. The request carries only:

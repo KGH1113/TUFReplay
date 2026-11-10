@@ -56,7 +56,7 @@ Other mods use these by name, without referencing TUFReplay.dll:
 - `TUFReplay.ReplayRuntime.IsPlaybackActive`: whether a TUFReplay replay is running.
 - `TUFReplay.NativeInputPause`: pause TUFReplay's input recording while your UI takes the keyboard.
 
-See [docs/replay-api.md](docs/replay-api.md). Renderers read the bundle described in [docs/replay-render-bundle.md](docs/replay-render-bundle.md).
+See [docs/replay-api](docs/replay-api/README.md). Renderers read the bundle described in [docs/replay-render-bundle.md](docs/replay-render-bundle.md).
 
 ## Development
 
