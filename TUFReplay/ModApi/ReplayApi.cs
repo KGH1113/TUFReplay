@@ -29,7 +29,7 @@ namespace TUFReplay;
 ///   void   AddReplayOverlayVideos(Action&lt;string, RectInt, RectInt&gt; add)  // after the last frame
 /// </code>
 /// During a replay, take keys from <c>OnReplayKey</c> and time from <c>OnReplayClock</c> instead
-/// of live input and real time. Every call is on Unity's main thread. See docs/replay-api.md.
+/// of live input and real time. Every call is on Unity's main thread. See docs/replay-api/.
 /// Consumers resolve this type by reflection instead of referencing TUFReplay.dll.
 /// </summary>
 public static class ReplayApi

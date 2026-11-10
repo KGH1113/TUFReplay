@@ -9,7 +9,7 @@
 - If something in README.md is outdated, fix that part and keep it short.
 - docs/ is only for work in progress: investigations, plans, and test logs. When a feature's implementation is finished, delete its docs.
 - Only these docs stay, because other mods or ongoing work use them. Update them when their contract changes:
-  - `docs/replay-api.md`: the API for other mods (ReplayApi, ReplayRuntime, NativeInputPause).
+  - `docs/replay-api/`: the API for other mods (ReplayApi, ReplayRuntime, NativeInputPause), explained step by step in `en/` and `ko/`. Change both languages together.
   - `docs/replay-render-bundle.md`: the render bundle that OrbitRender reads.
   - `docs/i18n-game-terms.md`: the Korean game terms for the UI.
 
