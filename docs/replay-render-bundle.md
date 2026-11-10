@@ -73,6 +73,9 @@ Version 1 exports runs from tile 0 and recorded mid-level/checkpoint starts. The
 restores the native checkpoint state and music position. Negative start tiles are invalid;
 the renderer also checks that the tile exists in the loaded level. `result` preserves
 `cleared`, `failed` or `aborted` so failed runs without an accepted final hit still show death.
+New failed runs add `failedTimeUs`, the death, and keep recording keys on the fail screen up to
+`terminalTimeUs`. After `wonTimeUs` or `failedTimeUs`, recording time follows real time instead of
+the song. Older failed runs omit `failedTimeUs` and die at `terminalTimeUs`.
 All event times are signed integer microseconds in the recorded replay timeline. Inputs
 during countdown may be negative; export preserves those times and their stable sequence
 instead of clamping or rejecting them. Negative time alone does not imply missing timing

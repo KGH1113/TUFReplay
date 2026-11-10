@@ -15,7 +15,6 @@ public partial class RecordingFeature
   private bool _webcamCaptureStarted;
   private WebcamCaptureTimeline _webcamTimeline;
   private PendingWebcamDisposition _pendingEditorWebcamRecording;
-  private bool _persistFailedWebcam;
 
   private void StartWebcamRun()
   {
@@ -41,10 +40,8 @@ public partial class RecordingFeature
 
   private void ObserveWebcamFailure()
   {
-    if (_webcamCaptureStarted && Session.Data.TerminalTimeUs.HasValue)
-      _webcamTimeline.Observe(
-        new CaptureTimelineAnchor(Stopwatch.GetTimestamp(), Session.Data.TerminalTimeUs.Value, 1d)
-      );
+    if (_webcamCaptureStarted && Session.Data.FailedTimeUs.HasValue)
+      _webcamTimeline.Observe(new CaptureTimelineAnchor(Stopwatch.GetTimestamp(), Session.Data.FailedTimeUs.Value, 1d));
   }
 
   private void EndWebcamRun(bool persist, Action<WebcamRecording> completed = null)

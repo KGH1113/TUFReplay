@@ -4,16 +4,22 @@ namespace TUFReplay.Replay.Transport;
 
 public static class ReplayClock
 {
-  public static void EnterWon(ActiveReplayContext context)
+  // After the clear or the death, replay time follows the real clock, as it was recorded.
+  public static void EnterWon(ActiveReplayContext context) => StartRealTimeClock(context, context?.Meta?.wonTimeUs);
+
+  public static void EnterFailed(ActiveReplayContext context) =>
+    StartRealTimeClock(context, context?.Meta?.failedTimeUs);
+
+  private static void StartRealTimeClock(ActiveReplayContext context, long? startTimeUs)
   {
-    if (context == null || context.WonClockStarted)
+    if (context == null || context.RealTimeClockStarted)
       return;
 
     long fallback = TryComputeReplayTimeUs(context, out long replayTimeUs, out _) ? replayTimeUs : 0L;
 
-    context.WonClockStartTimeUs = context.Meta?.wonTimeUs ?? fallback;
-    context.WonClockStartedAt = UnityEngine.Time.realtimeSinceStartupAsDouble;
-    context.WonClockStarted = true;
+    context.RealTimeClockStartTimeUs = startTimeUs ?? fallback;
+    context.RealTimeClockStartedAt = UnityEngine.Time.realtimeSinceStartupAsDouble;
+    context.RealTimeClockStarted = true;
   }
 
   public static bool TryComputeReplayTimeUs(ActiveReplayContext context, out long nowUs, out string reason)
@@ -27,10 +33,10 @@ public static class ReplayClock
       return false;
     }
 
-    if (context.WonClockStarted)
+    if (context.RealTimeClockStarted)
     {
-      double elapsed = UnityEngine.Time.realtimeSinceStartupAsDouble - context.WonClockStartedAt;
-      nowUs = context.WonClockStartTimeUs + (long)(System.Math.Max(0d, elapsed) * 1_000_000d);
+      double elapsed = UnityEngine.Time.realtimeSinceStartupAsDouble - context.RealTimeClockStartedAt;
+      nowUs = context.RealTimeClockStartTimeUs + (long)(System.Math.Max(0d, elapsed) * 1_000_000d);
       return true;
     }
 

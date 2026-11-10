@@ -20,7 +20,7 @@ public sealed class MicrophoneCaptureTimeline
 
   private readonly List<Window> _windows = new List<Window>();
   private Window _current;
-  private long? _wonTimelineUs;
+  private long? _gameplayEndTimelineUs;
 
   public bool HasAnchor => _windows.Count > 0;
 
@@ -28,7 +28,7 @@ public sealed class MicrophoneCaptureTimeline
   // input Stopwatch clock, and that update's gameplay timeline position.
   public void Observe(long captureTicks, long timelineTimeUs, double gameplayRate)
   {
-    if (_wonTimelineUs.HasValue || captureTicks <= 0 || !IsValidRate(gameplayRate))
+    if (_gameplayEndTimelineUs.HasValue || captureTicks <= 0 || !IsValidRate(gameplayRate))
       return;
     double originUs = captureTicks * MicrosecondsPerTick - timelineTimeUs / gameplayRate;
     Window current = _current;
@@ -53,11 +53,11 @@ public sealed class MicrophoneCaptureTimeline
     StartWindow(timelineTimeUs, gameplayRate, originUs, originUs, startsSection: true);
   }
 
-  // After the clear the timeline follows real time from the won position.
-  public void ObserveWon(long wonTimelineTimeUs)
+  // After a clear or a death the timeline follows real time from that position.
+  public void ObserveGameplayEnd(long timelineTimeUs)
   {
-    if (_windows.Count > 0 && !_wonTimelineUs.HasValue)
-      _wonTimelineUs = wonTimelineTimeUs;
+    if (_windows.Count > 0 && !_gameplayEndTimelineUs.HasValue)
+      _gameplayEndTimelineUs = timelineTimeUs;
   }
 
   public MicrophoneTimeline Build(long firstSampleTicks, bool frozenStart)
@@ -82,14 +82,16 @@ public sealed class MicrophoneCaptureTimeline
     }
 
     var timeline = new MicrophoneTimeline { Points = points.ToArray() };
-    if (_wonTimelineUs.HasValue && _wonTimelineUs.Value >= points[points.Count - 1].TimelineTimeUs)
+    if (_gameplayEndTimelineUs.HasValue && _gameplayEndTimelineUs.Value >= points[points.Count - 1].TimelineTimeUs)
     {
-      long wonAudioUs = checked((long)Math.Round(MicrophoneTimelineMap.ToAudioTimeUs(timeline, _wonTimelineUs.Value)));
+      long endAudioUs = checked(
+        (long)Math.Round(MicrophoneTimelineMap.ToAudioTimeUs(timeline, _gameplayEndTimelineUs.Value))
+      );
       points.Add(
         new MicrophoneTimelinePoint
         {
-          TimelineTimeUs = _wonTimelineUs.Value,
-          AudioTimeUs = wonAudioUs,
+          TimelineTimeUs = _gameplayEndTimelineUs.Value,
+          AudioTimeUs = endAudioUs,
           GameplayRate = 1d,
           StartsSection = true,
         }

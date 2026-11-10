@@ -47,6 +47,7 @@ internal sealed class RenderReplayHost
   private bool _ended;
   private bool _won;
   private bool _terminalReached;
+  private bool _deathApplied;
   private bool _deathAnimationCompleted;
   private long? _deathStartedVideoTimeUs;
   private RecordedHitEvent? _activeHit;
@@ -217,7 +218,7 @@ internal sealed class RenderReplayHost
     double initialReplayUs =
       (ADOBase.conductor.songposition_minusi - _bundle.Manifest.Replay.GameplayStartSongPosition) * 1_000_000d;
     long initialOriginUs = checked(-(long)Math.Round(initialReplayUs / GameplayRate));
-    _timeline = new RenderTimeline(initialOriginUs, GameplayRate, _bundle.Manifest.Replay.WonTimeUs);
+    _timeline = new RenderTimeline(initialOriginUs, GameplayRate, _bundle.Manifest.Replay.GameplayEndTimeUs);
 
     // Input-event effects deduplicate by the original game frame, which recordings do not store.
     if (HasInputEventEffects(ADOBase.controller))
@@ -254,7 +255,7 @@ internal sealed class RenderReplayHost
       }
       double recordingUs = (conductor.songposition_minusi - replay.GameplayStartSongPosition) * 1_000_000d;
       GameplayStartVideoTimeUs = checked(_currentVideoTimeUs - (long)Math.Round(recordingUs / GameplayRate));
-      _timeline = new RenderTimeline(GameplayStartVideoTimeUs.Value, GameplayRate, replay.WonTimeUs);
+      _timeline = new RenderTimeline(GameplayStartVideoTimeUs.Value, GameplayRate, replay.GameplayEndTimeUs);
       // Leave room for the native death callback; its completion below sets the final end.
       // A missing callback must fail instead of cutting the death or rendering forever.
       _setEndTimeSeconds(
@@ -285,6 +286,15 @@ internal sealed class RenderReplayHost
         using (SongPositionScope(replay.WonTimeUs.Value))
           controller.OnLandOnPortal(controller.chosenPlanet, Portal.EndOfLevel, null);
     }
+    ApplyRecordedDeath(replay, controller, timeUs);
+    if (
+      _deathApplied
+      && !_deathAnimationCompleted
+      && (!_deathStartedVideoTimeUs.HasValue || _currentVideoTimeUs - _deathStartedVideoTimeUs.Value > 5_000_000)
+    )
+      throw new InvalidOperationException(
+        "The game's death animation did not finish. Check the installed gameplay mods and try rendering again."
+      );
     if (timeUs < replay.TerminalTimeUs)
       return;
     if (!_terminalReached)
@@ -292,29 +302,36 @@ internal sealed class RenderReplayHost
       if (!_cursor.AllHitsConsumed)
         throw new InvalidOperationException("The render ended before all recorded judgments were applied.");
       _terminalReached = true;
-      if (replay.Result == "failed" && controller.playerOne.alive)
-      {
-        // Missed or late inputs need not have an accepted hit. The recorded result decides,
-        // including failures on safe and no-fail tiles.
-        ApplyingTerminalDeath = true;
-        try
-        {
-          using (SongPositionScope(replay.TerminalTimeUs))
-            controller.playerOne.Die(hitbox: true);
-        }
-        finally
-        {
-          ApplyingTerminalDeath = false;
-        }
-        DeathStarted();
-      }
+      // Nothing is recorded after the end, so no key stays held through the end delay.
+      ReleaseHeldKeys(ReplayToVideoTimeUs(replay.TerminalTimeUs));
     }
     if (replay.Result != "failed" || _deathAnimationCompleted)
       _requestStopAfterSeconds(_endDelaySeconds);
-    else if (!_deathStartedVideoTimeUs.HasValue || _currentVideoTimeUs - _deathStartedVideoTimeUs.Value > 5_000_000)
-      throw new InvalidOperationException(
-        "The game's death animation did not finish. Check the installed gameplay mods and try rendering again."
-      );
+  }
+
+  // A failed run dies at its recorded death. The keys after it were pressed on the fail screen.
+  private void ApplyRecordedDeath(ReplayManifest replay, scrController controller, long timeUs)
+  {
+    if (_deathApplied || !(replay.DeathTimeUs is long deathTimeUs) || timeUs < deathTimeUs)
+      return;
+    if (!_cursor.AllHitsConsumed)
+      throw new InvalidOperationException("The render ended before all recorded judgments were applied.");
+    _deathApplied = true;
+    if (!controller.playerOne.alive)
+      return;
+    // Missed or late inputs need not have an accepted hit. The recorded result decides,
+    // including failures on safe and no-fail tiles.
+    ApplyingTerminalDeath = true;
+    try
+    {
+      using (SongPositionScope(deathTimeUs))
+        controller.playerOne.Die(hitbox: true);
+    }
+    finally
+    {
+      ApplyingTerminalDeath = false;
+    }
+    DeathStarted();
   }
 
   // ---- What the video shows ----
@@ -391,15 +408,32 @@ internal sealed class RenderReplayHost
     _ended = true;
     try
     {
+      ReleaseHeldKeys(_currentVideoTimeUs);
+    }
+    finally
+    {
+      RenderReplayHooks.Deactivate(this);
+      if (Current == this)
+        Current = null;
+    }
+  }
+
+  private void ReleaseHeldKeys(long videoTimeUs)
+  {
+    if (_heldKeys.Count == 0)
+      return;
+    long frameTimeUs = _currentVideoTimeUs;
+    try
+    {
+      // Overlay clocks read the release's own time while it is delivered, as in ApplyInput.
+      _currentVideoTimeUs = videoTimeUs;
       foreach (KeyCode held in _heldKeys)
-        ReplaySessions.Key(held, null, false, _currentVideoTimeUs * 10);
+        ReplaySessions.Key(held, null, false, checked(videoTimeUs * 10));
     }
     finally
     {
       _heldKeys.Clear();
-      RenderReplayHooks.Deactivate(this);
-      if (Current == this)
-        Current = null;
+      _currentVideoTimeUs = frameTimeUs;
     }
   }
 

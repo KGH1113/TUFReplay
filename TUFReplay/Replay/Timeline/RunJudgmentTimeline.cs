@@ -17,7 +17,7 @@ internal sealed class RunJudgmentTimelineData
 internal static class RunJudgmentTimelineBuilder
 {
   /// <summary>
-  /// Uses the same length as the in-game timeline (the clear time, otherwise the recorded end) and
+  /// Uses the same length as the in-game timeline (the clear time, otherwise the replay's end) and
   /// leaves out Perfect, Perfect-, X-Perfect and Perfect+ so the remaining marks show mistakes.
   /// </summary>
   internal static RunJudgmentTimelineData Build(

@@ -264,6 +264,7 @@
     "gameInputOffsetMs": "게임 입력 오프셋",
     "terminalTimeUs": "기록 종료 시각",
     "wonTimeUs": "클리어 시각",
+    "failedTimeUs": "실패 시각",
     "judgmentSystem": "판정 체계",
     "noFailMode": "No-Fail 모드",
     "startTile": "시작 타일",

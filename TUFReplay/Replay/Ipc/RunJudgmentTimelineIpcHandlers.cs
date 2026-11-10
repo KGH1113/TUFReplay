@@ -48,7 +48,9 @@ internal static class RunJudgmentTimelineIpcHandlers
       source.Id,
       source.Result,
       meta?.wonTimeUs,
-      meta?.terminalTimeUs,
+      // A failed run's replay ends at the death, before the fail screen it recorded.
+      meta?.failedTimeUs
+        ?? meta?.terminalTimeUs,
       source.JudgmentSystem,
       hits
     );

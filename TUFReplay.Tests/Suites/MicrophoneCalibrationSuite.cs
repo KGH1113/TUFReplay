@@ -432,7 +432,7 @@ internal static class MicrophoneCalibrationSuite
       timeline.Observe(Ticks(100d + frame / 60d), frame * 1_000_000L / 60L, 1d);
     for (int frame = 0; frame <= 180; frame++)
       timeline.Observe(Ticks(108d + frame / 60d), 3_000_000L + frame * 1_000_000L / 60L, 1d);
-    timeline.ObserveWon(6_000_000L);
+    timeline.ObserveGameplayEnd(6_000_000L);
     timeline.Observe(Ticks(112d), 7_000_000L, 1d);
     MicrophoneTimeline map = timeline.Build(Ticks(99d), frozenStart: false);
 
@@ -458,7 +458,7 @@ internal static class MicrophoneCalibrationSuite
     var pitched = new MicrophoneCaptureTimeline();
     for (int frame = 0; frame <= 120; frame++)
       pitched.Observe(Ticks(50d + frame / 60d), frame * 1_500_000L / 60L, 1.5d);
-    pitched.ObserveWon(3_000_000L);
+    pitched.ObserveGameplayEnd(3_000_000L);
     MicrophoneTimeline pitchedMap = pitched.Build(Ticks(50d), frozenStart: true);
     Assert(
       Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(pitchedMap, 3_000_000L) - 2_000_000d) <= 2d,

@@ -10,14 +10,9 @@ namespace TUFReplay.Recording.Sessions;
 
 public partial class RecordingFeature
 {
-  private void EndMicrophoneRun(
-    Action<CapturedMicrophoneRecording> completed,
-    bool persistWebcam = false,
-    bool endWebcam = true
-  )
+  private void EndMicrophoneRun(Action<CapturedMicrophoneRecording> completed, bool persistWebcam = false)
   {
-    if (endWebcam)
-      EndWebcamRun(persistWebcam);
+    EndWebcamRun(persistWebcam);
     if (!_microphoneCaptureStarted)
     {
       completed?.Invoke(null);
@@ -115,7 +110,13 @@ public partial class RecordingFeature
   private void ObserveMicrophoneWon()
   {
     if (_microphoneTimeline != null && Session.Data.WonTimeUs.HasValue)
-      _microphoneTimeline.ObserveWon(Session.Data.WonTimeUs.Value);
+      _microphoneTimeline.ObserveGameplayEnd(Session.Data.WonTimeUs.Value);
+  }
+
+  private void ObserveMicrophoneFailure()
+  {
+    if (_microphoneTimeline != null && Session.Data.FailedTimeUs.HasValue)
+      _microphoneTimeline.ObserveGameplayEnd(Session.Data.FailedTimeUs.Value);
   }
 
   private void QueueEditorRecording()
