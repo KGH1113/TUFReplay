@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using TUFReplay.Activity.Models;
 using TUFReplay.Composition;
 using TUFReplay.ModApi.Models;
@@ -23,13 +22,14 @@ public partial class RecordingFeature
     _currentRun = _calibrationRun
       ? CalibrationRunDraftFactory.Create(Session.Data, startTile, levelTileCount)
       : _activity.CreateRunDraft(Session.Data, startTile, levelTileCount);
-    // Other mods save their state as the run starts, before its first recorded input.
+    // Other mods save their state as the run starts, before its first recorded input, and
+    // record values on the run's timeline until it is saved.
     if (_currentRun != null && !_calibrationRun)
-      _runStates = RunStateCapture.Begin(_currentRun.Id);
+      _runStates = RunStateCapture.Begin(_currentRun.Id, Session.CurrentModEventTimeUs);
     return _currentRun != null;
   }
 
-  private IReadOnlyList<RunStateRecord> CloseRunStates()
+  private CapturedRunStates CloseRunStates()
   {
     RunStateCapture capture = _runStates;
     _runStates = null;
@@ -73,7 +73,7 @@ public partial class RecordingFeature
     RunRecord run = _currentRun;
     var completed = Session.CompleteRunPayload(run, lastTile, result);
     _runSaved = true;
-    IReadOnlyList<RunStateRecord> runStates = CloseRunStates();
+    CapturedRunStates runStates = CloseRunStates();
 
     if (run.InputCount <= 0 && completed.GetInputFailureReason() == null)
     {

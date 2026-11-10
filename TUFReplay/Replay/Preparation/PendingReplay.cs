@@ -52,7 +52,7 @@ public static partial class ReplayPlaybackCoordinator
     public bool AllowBackground;
     public WebcamRecordingLease WebcamLease;
     public string WebcamWarning;
-    public IReadOnlyList<StoredRunState> RunStates = Array.Empty<StoredRunState>();
+    public StoredRunStates RunStates = StoredRunStates.Empty;
 
     public PendingReplay(
       string operationId,

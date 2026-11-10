@@ -19,6 +19,16 @@ public static class UnityMainThread
     _context = context?.GetType() == typeof(SynchronizationContext) ? null : context;
   }
 
+  /// <summary>True on Unity's main thread, and everywhere before <see cref="Initialize"/> runs (tests).</summary>
+  public static bool IsMainThread
+  {
+    get
+    {
+      Thread thread = _thread;
+      return thread == null || Thread.CurrentThread == thread;
+    }
+  }
+
   public static void Post(Action action)
   {
     if (action == null)

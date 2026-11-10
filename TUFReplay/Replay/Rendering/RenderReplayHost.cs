@@ -35,6 +35,7 @@ internal sealed class RenderReplayHost
   private readonly Dictionary<string, HitMargin> _margins = new Dictionary<string, HitMargin>(StringComparer.Ordinal);
   private readonly HashSet<KeyCode> _heldKeys = new HashSet<KeyCode>();
   private readonly List<Canvas> _canvases = new List<Canvas>();
+  private readonly Func<long, long> _videoTicksAt;
 
   private GameSettingsSnapshot _settings;
   private RenderTimeline _timeline;
@@ -70,6 +71,7 @@ internal sealed class RenderReplayHost
     )
       throw new ArgumentOutOfRangeException(nameof(endDelaySeconds));
     _endDelaySeconds = endDelaySeconds;
+    _videoTicksAt = replayTimeUs => checked(ReplayToVideoTimeUs(replayTimeUs) * 10);
     GameplayRate = bundle.Manifest.Replay.EffectivePitch;
     _cursor = new ReplayEventCursor(bundle.Inputs, bundle.Hits);
     foreach (RecordedKeyEvent input in bundle.Inputs)
@@ -266,6 +268,8 @@ internal sealed class RenderReplayHost
       );
     }
     long timeUs = checked((long)Math.Floor(_timeline.OutputToReplay(_currentVideoTimeUs)));
+    // Values mods recorded during the run reach them at their times, before that frame's keys.
+    ReplaySessions.AdvanceEvents(timeUs, _videoTicksAt);
     _cursor.AdvanceTo(timeUs, ApplyInput, ApplyHit);
     if (controller.state == States.PlayerControl)
     {
