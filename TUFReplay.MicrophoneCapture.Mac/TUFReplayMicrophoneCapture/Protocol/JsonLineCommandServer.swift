@@ -31,15 +31,22 @@ final class JsonLineCommandServer {
         return
       }
 
-      do {
-        guard let data = line.data(using: .utf8) else {
-          throw CaptureError.message("Invalid UTF-8 command.")
+      // This loop never returns to its dispatch block, so that block's pool never
+      // drains. Without a pool per command, every camera run's AVAssetWriter stays
+      // alive and VTEncoderXPCService keeps its encoder session (~11 MB per run).
+      let keepRunning = autoreleasepool { () -> Bool in
+        do {
+          guard let data = line.data(using: .utf8) else {
+            throw CaptureError.message("Invalid UTF-8 command.")
+          }
+          let request = try decoder.decode(CommandRequest.self, from: data)
+          return try handle(request)
+        } catch {
+          try? transport.write(ErrorResponse(error: String(describing: error)))
+          return true
         }
-        let request = try decoder.decode(CommandRequest.self, from: data)
-        if try !handle(request) { return }
-      } catch {
-        try? transport.write(ErrorResponse(error: String(describing: error)))
       }
+      if !keepRunning { return }
     }
   }
 
