@@ -615,6 +615,25 @@ internal static class ReplayNativeInputSuite
       "A cleared replay did not keep its recorded end."
     );
     Assert(
+      ReplayPlaybackCoordinator.ResolveFailScreenEndTimeUs(
+        new ReplayMetadata { failedTimeUs = 9_000_000L, terminalTimeUs = 12_000_000L },
+        "failed"
+      ) == 12_000_000L,
+      "A failed replay did not play its fail screen until the recorded retry or editor return."
+    );
+    Assert(
+      ReplayPlaybackCoordinator.ResolveFailScreenEndTimeUs(new ReplayMetadata { terminalTimeUs = 9_000_000L }, "failed")
+        == null,
+      "An older failed replay without a fail time played a fail screen."
+    );
+    Assert(
+      ReplayPlaybackCoordinator.ResolveFailScreenEndTimeUs(
+        new ReplayMetadata { wonTimeUs = 8_000_000L, terminalTimeUs = 12_000_000L },
+        "cleared"
+      ) == null,
+      "A cleared replay played a fail screen."
+    );
+    Assert(
       ReplaySessionService.ClampTimelineSeekTime(-1L, 8_000_000L) == 0L,
       "Timeline seek did not clamp to the beginning."
     );

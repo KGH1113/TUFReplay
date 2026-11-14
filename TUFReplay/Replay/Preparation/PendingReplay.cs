@@ -50,6 +50,7 @@ public static partial class ReplayPlaybackCoordinator
     public string MicrophoneWarning;
     public int? MicrophoneOffsetMs;
     public bool AllowBackground;
+    public bool FailScreenShown;
     public WebcamRecordingLease WebcamLease;
     public string WebcamWarning;
     public StoredRunStates RunStates = StoredRunStates.Empty;

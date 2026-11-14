@@ -191,13 +191,15 @@ public static partial class ReplaySessionService
       case States.Fail:
       case States.Fail2:
         // The game takes no input after the death, so the keys sent to it are let go. Mods keep
-        // getting the keys recorded on the fail screen; older recordings end their keys here.
-        // The microphone plays on: it records the fail screen too.
+        // getting the keys recorded on the fail screen, and the microphone and camera keep
+        // playing it until the recorded retry or editor return. Older recordings end here.
         ReplayClock.EnterFailed(_activeContext);
         if (_activeContext.Meta?.failedTimeUs == null)
+        {
           _activeContext.KeyFeed?.ReleaseAll(ReplaySessions.NowTicks);
+          _activeContext.WebcamPlayer?.Stop();
+        }
         _activeContext.NativeInputPlayer?.ReleaseAll();
-        _activeContext.WebcamPlayer?.Stop();
         break;
 
       case States.Start:
@@ -420,22 +422,24 @@ public static partial class ReplaySessionService
       _activeContext.WebcamPlayer.Tick(CreatePlaybackSnapshot(nowUs));
   }
 
-  // Mods keep showing the keys recorded on the fail screen during the death animation.
-  public static void TickFailScreenKeys()
+  // After the death the replay follows the real clock through the death animation and the fail
+  // screen: mods get the keys recorded there and the microphone stays in sync. The camera ticks
+  // in TickWebcamPlayback. The replay completes at the recorded retry or editor return.
+  public static void TickFailScreen()
   {
     ActiveReplayContext context = _activeContext;
     if (
-      context?.KeyFeed == null
+      context == null
       || !context.RealTimeClockStarted
       || !TryGetControllerState(out States state)
-      || state != States.Fail
+      || (state != States.Fail && state != States.Fail2)
+      || !ReplayClock.TryComputeReplayTimeUs(context, out long nowUs, out _)
     )
       return;
-    if (ReplayClock.TryComputeReplayTimeUs(context, out long nowUs, out _))
-    {
-      ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
-      context.KeyFeed.AdvanceTo(nowUs, ReplaySessions.NowTicks);
-    }
+    ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
+    context.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
+    context.MicrophonePlayer?.Tick(CreatePlaybackSnapshot(nowUs));
+    ReplayPlaybackCoordinator.OnFailScreenTimeAdvanced(nowUs);
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)
@@ -649,7 +653,8 @@ public static partial class ReplaySessionService
 
   private static double CurrentTimelineRate()
   {
-    if (_activeContext?.Phase == ReplayPlaybackPhase.Won)
+    // After the clear or the death, replay time follows the real clock.
+    if (_activeContext?.Phase == ReplayPlaybackPhase.Won || _activeContext?.RealTimeClockStarted == true)
       return 1d;
 
     float? effectivePitch = _activeContext?.Meta?.effectivePitch;

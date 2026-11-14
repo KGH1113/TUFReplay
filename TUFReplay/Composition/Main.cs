@@ -134,7 +134,7 @@ public sealed class Main
     RenderJobCoordinator.Tick();
     ReplaySessionService.TickStartup();
     ReplaySessionService.TickWebcamPlayback();
-    ReplaySessionService.TickFailScreenKeys();
+    ReplaySessionService.TickFailScreen();
     ReplaySessions.TickInGame();
     CameraFirstRunCoordinator.Tick();
     NativeInputUmmWindowInterlock.SynchronizeWithManagerWindow();
