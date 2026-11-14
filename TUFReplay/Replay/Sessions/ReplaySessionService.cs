@@ -674,8 +674,12 @@ public static partial class ReplaySessionService
 
   private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
 
+  // The countdown plays what was said during it. A frozen-start recording keeps only the
+  // sound from just before its first input (its timeline's AudibleFromUs), so its wait stays silent.
   private static bool IsMicrophoneAudible() =>
-    _activeContext?.Phase == ReplayPlaybackPhase.Running || _activeContext?.Phase == ReplayPlaybackPhase.Won;
+    _activeContext?.Phase == ReplayPlaybackPhase.Armed
+    || _activeContext?.Phase == ReplayPlaybackPhase.Running
+    || _activeContext?.Phase == ReplayPlaybackPhase.Won;
 
   private static ReplayPlaybackSnapshot CreatePlaybackSnapshot(long timelineTimeUs, bool? paused = null) =>
     new ReplayPlaybackSnapshot(
