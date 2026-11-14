@@ -412,6 +412,25 @@ public static partial class ReplaySessionService
     return emitted;
   }
 
+  // A replay from the first tile aligns its clock when PlayerControl starts, so the native
+  // input tick, which also drives the microphone, waits until then. The countdown before it
+  // still plays what was said, on the unaligned clock; the alignment moves it by a frame or so.
+  public static void TickCountdownMicrophone()
+  {
+    ActiveReplayContext context = _activeContext;
+    if (
+      context?.MicrophonePlayer == null
+      || !context.RunStarted
+      || context.Phase != ReplayPlaybackPhase.Armed
+      || !ReplayRunController.ShouldAlignPlayerControlOrigin(context)
+      || !TryGetControllerState(out States state)
+      || (state != States.Countdown && state != States.Checkpoint)
+      || !TryComputeReplayTimeUs(out long nowUs, out _)
+    )
+      return;
+    context.MicrophonePlayer.Tick(CreatePlaybackSnapshot(nowUs));
+  }
+
   public static void TickWebcamPlayback()
   {
     if (
