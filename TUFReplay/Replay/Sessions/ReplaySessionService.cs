@@ -423,8 +423,10 @@ public static partial class ReplaySessionService
   }
 
   // After the death the replay follows the real clock through the death animation and the fail
-  // screen: mods get the keys recorded there and the microphone stays in sync. The camera ticks
-  // in TickWebcamPlayback. The replay completes at the recorded retry or editor return.
+  // screen: mods get the keys recorded there and the microphone and camera stay in sync.
+  // TickWebcamPlayback stops at the death, because the fail states are not timeline playback
+  // states; a camera left without new reference times stutters. The replay completes at the
+  // recorded retry or editor return.
   public static void TickFailScreen()
   {
     ActiveReplayContext context = _activeContext;
@@ -438,7 +440,10 @@ public static partial class ReplaySessionService
       return;
     ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
     context.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
-    context.MicrophonePlayer?.Tick(CreatePlaybackSnapshot(nowUs));
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(nowUs);
+    context.MicrophonePlayer?.Tick(snapshot);
+    if (context.Meta?.failedTimeUs != null)
+      context.WebcamPlayer?.Tick(snapshot);
     ReplayPlaybackCoordinator.OnFailScreenTimeAdvanced(nowUs);
   }
 
