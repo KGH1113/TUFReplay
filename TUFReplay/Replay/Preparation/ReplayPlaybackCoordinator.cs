@@ -295,6 +295,13 @@ public static partial class ReplayPlaybackCoordinator
     if (operation == null || !IsCurrent(operation.OperationId))
       return;
 
+    // A retry key or the editor leaves the recorded fail screen early; the replay ends there.
+    if (operation.FailScreenShown && state != States.Fail && state != States.Fail2)
+    {
+      CompleteWithoutEditorReturn(operation, "Replay ended when the fail screen was left.");
+      return;
+    }
+
     switch (state)
     {
       case States.Countdown:
@@ -307,9 +314,26 @@ public static partial class ReplayPlaybackCoordinator
         break;
 
       case States.Fail2:
-        CompleteWithoutEditorReturn(operation, "Replay reached the fail screen.");
+        if (ResolveFailScreenEndTimeUs(operation.Meta, operation.Run.Result) == null)
+        {
+          CompleteWithoutEditorReturn(operation, "Replay reached the fail screen.");
+          break;
+        }
+        operation.FailScreenShown = true;
+        SetOperationState(operation, ReplayPlaybackStates.Playing, "Replay is playing the recorded fail screen.");
         break;
     }
+  }
+
+  // The fail screen plays until the recorded retry or editor return, then the replay completes.
+  public static void OnFailScreenTimeAdvanced(long nowUs)
+  {
+    PendingReplay operation = _operation;
+    if (operation == null || !IsCurrent(operation.OperationId) || !operation.FailScreenShown)
+      return;
+    if (ResolveFailScreenEndTimeUs(operation.Meta, operation.Run.Result) is long endTimeUs && nowUs < endTimeUs)
+      return;
+    CompleteWithoutEditorReturn(operation, "Replay reached the recorded retry or editor return.");
   }
 
   public static void OnReplayTimeAdvanced(long nowUs)
@@ -380,7 +404,10 @@ public static partial class ReplayPlaybackCoordinator
     if (state == ReplayPlaybackStates.Starting || state == ReplayPlaybackStates.Playing)
     {
       ReplaySessionService.ClearActiveContext();
-      SetTerminal(operation, ReplayPlaybackStates.Cancelled, "Replay cancelled with Escape.");
+      if (operation.FailScreenShown)
+        SetTerminal(operation, ReplayPlaybackStates.Completed, "Replay ended when ADOFAI returned to the editor.");
+      else
+        SetTerminal(operation, ReplayPlaybackStates.Cancelled, "Replay cancelled with Escape.");
       operation.CleanupPreparedMedia();
       _operation = null;
     }

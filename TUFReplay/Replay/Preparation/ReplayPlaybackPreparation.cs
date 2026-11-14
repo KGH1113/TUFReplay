@@ -215,6 +215,16 @@ public static partial class ReplayPlaybackCoordinator
     return Math.Max(lastInputTimeUs, meta?.terminalTimeUs ?? lastInputTimeUs);
   }
 
+  // A failed run records its fail screen until the retry or editor return. The replay keeps
+  // the camera, microphone and mod keys going there until that time; older records have none.
+  internal static long? ResolveFailScreenEndTimeUs(ReplayMetadata meta, string result) =>
+    string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase)
+    && meta?.failedTimeUs is long failedTimeUs
+    && meta.terminalTimeUs is long terminalTimeUs
+    && terminalTimeUs > failedTimeUs
+      ? terminalTimeUs
+      : null;
+
   internal static bool ValidateReplayArtifact(StoredReplayRun run, out string errorCode, out string errorMessage)
   {
     errorCode = null;
