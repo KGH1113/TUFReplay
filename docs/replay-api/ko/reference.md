@@ -10,6 +10,7 @@ namespace TUFReplay
         public const int ApiVersion = 2;
         public const int MaxStateBytes = 65536;     // 저장되는 시작 값이나 이벤트 하나의 최대 크기, UTF-8 JSON
 
+        public static bool IsRecording { get; }     // 판을 기록하는 중, AddEvent가 이벤트를 받음
         public static bool IsReplaying { get; }     // OnReplayBegin과 OnReplayEnd 사이
         public static bool IsRendering { get; }     // 리플레이를 영상으로 렌더하는 중
         public static string ReplayRunId { get; }   // 리플레이 중인 판, 없으면 null
@@ -75,7 +76,7 @@ TUFReplay는 아래 public 인스턴스 메서드를 이름으로 찾습니다. 
 ## ApiVersion 2 변경 사항
 
 - `OnReplayBegin`이 더 이상 상태를 받지 않습니다. `void OnReplayBegin(bool render)`나 `void OnReplayBegin()`입니다. `OnReplayBegin`이 상태를 받는 프로바이더는 등록되지 않습니다. 시작 값은 그 직후에 불리는 `OnReplayState(TState state, long ticks)`에서 받으세요.
-- 이벤트: `GetEventStore(id).AddEvent(e)`로 판 중에 추가하고, `OnReplayEvent(TEvent e, long ticks)` 오버로드가 각자의 시간에 돌려주고, `UpgradeRunEvent`가 예전 이벤트 타입을 읽습니다.
+- 이벤트: `GetEventStore(id).AddEvent(e)`로 판 중에 추가하고, `OnReplayEvent(TEvent e, long ticks)` 오버로드가 각자의 시간에 돌려주고, `UpgradeRunEvent`가 예전 이벤트 타입을 읽습니다. `IsRecording`으로 판을 기록하는 중인지 압니다.
 - `CaptureRunState`, `UpgradeRunState`와 나머지 메서드는 그대로입니다. `OnReplayState`나 이벤트가 필요한 모드는 `ApiVersion` 2를 요구합니다.
 
 ## 로그 메시지

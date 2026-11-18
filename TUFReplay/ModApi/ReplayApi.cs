@@ -4,6 +4,7 @@ using TUFReplay.ModApi.Diagnostics;
 using TUFReplay.ModApi.Mapping;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.ModApi.Providers;
+using TUFReplay.ModApi.Recording;
 
 namespace TUFReplay;
 
@@ -16,7 +17,8 @@ namespace TUFReplay;
 ///   TState CaptureRunState()                                   // or Task&lt;TState&gt;; the value as the run starts
 ///   TState UpgradeRunState(TOldState old)                      // any number; reads older runs
 ///   TEvent UpgradeRunEvent(TOldEvent old)                      // any number; reads older runs' events
-///   // During the run: ReplayApi.GetEventStore(id).AddEvent(e) adds an event at that time.
+///   // During the run: ReplayApi.GetEventStore(id).AddEvent(e) adds an event at that time;
+///   // ReplayApi.IsRecording says whether a run records now.
 ///
 ///   // Replay: the same calls whether a run is played in the game or rendered to video.
 ///   void   OnReplayBegin(bool render)                          // or ()
@@ -41,7 +43,8 @@ public static class ReplayApi
   /// <summary>
   /// Changes only when an existing member or provider method changes its meaning or is removed.
   /// 2: <c>OnReplayBegin</c> no longer takes the state; <c>OnReplayState</c>,
-  /// <c>OnReplayEvent</c>, <c>UpgradeRunEvent</c> and <see cref="GetEventStore"/> were added.
+  /// <c>OnReplayEvent</c>, <c>UpgradeRunEvent</c>, <see cref="GetEventStore"/> and
+  /// <see cref="IsRecording"/> were added.
   /// </summary>
   public const int ApiVersion = 2;
 
@@ -52,6 +55,14 @@ public static class ReplayApi
     string,
     ReplayEventStore
   >(StringComparer.Ordinal);
+
+  /// <summary>
+  /// True while a run records: from when TUFReplay asks for the start values
+  /// (<c>CaptureRunState</c>) until the run is saved or dropped, the fail screen included. Only
+  /// then does <see cref="ReplayEventStore.AddEvent"/> take events, so check it before building
+  /// one. False in replays and renders.
+  /// </summary>
+  public static bool IsRecording => RunStateCapture.Current != null;
 
   /// <summary>
   /// True between <c>OnReplayBegin</c> and <c>OnReplayEnd</c>: while TUFReplay plays a run in the

@@ -10,6 +10,7 @@ namespace TUFReplay
         public const int ApiVersion = 2;
         public const int MaxStateBytes = 65536;     // largest saved start value or event, UTF-8 JSON
 
+        public static bool IsRecording { get; }     // a run records; AddEvent takes events
         public static bool IsReplaying { get; }     // between OnReplayBegin and OnReplayEnd
         public static bool IsRendering { get; }     // the replay is being rendered to video
         public static string ReplayRunId { get; }   // the run being replayed, or null
@@ -75,7 +76,7 @@ Values live in TUFReplay's activity database.
 ## Changes in ApiVersion 2
 
 - `OnReplayBegin` no longer takes the state: it is `void OnReplayBegin(bool render)` or `void OnReplayBegin()`. A provider whose `OnReplayBegin` takes a state is not registered. Take the start value in `OnReplayState(TState state, long ticks)`, which runs right after it.
-- Events: `GetEventStore(id).AddEvent(e)` adds them during a run, the `OnReplayEvent(TEvent e, long ticks)` overloads hand them back at their times, and `UpgradeRunEvent` reads older event types.
+- Events: `GetEventStore(id).AddEvent(e)` adds them during a run, the `OnReplayEvent(TEvent e, long ticks)` overloads hand them back at their times, and `UpgradeRunEvent` reads older event types. `IsRecording` says when a run records.
 - `CaptureRunState`, `UpgradeRunState` and the other methods are unchanged. A mod that needs `OnReplayState` or events requires `ApiVersion` 2.
 
 ## Log messages
