@@ -48,8 +48,9 @@ internal sealed class ReplayFollower
 }
 
 // 플레이 중에, 1단계의 어댑터로:
-TUFReplayAPI.AddEvent(new LayoutChanged { Layout = Layout.Snapshot() });   // 플레이어가 설정 창을 닫았을 때
-TUFReplayAPI.AddEvent(new ChatReceived { Message = message });               // 채팅 메시지가 왔을 때
+if (TUFReplayAPI.IsRecording())   // 플레이어가 설정 창을 닫았을 때. 기록 중이 아니면 복사하지 않음
+    TUFReplayAPI.AddEvent(new LayoutChanged { Layout = Layout.Snapshot() });
+TUFReplayAPI.AddEvent(new ChatReceived { Message = message });   // 채팅 메시지가 왔을 때
 ```
 
 ## 시작 값
@@ -85,6 +86,7 @@ TUFReplayAPI.AddEvent(new ChatReceived { Message = message });               // 
 **언제 기록되나**
 - `CaptureRunState`가 불리는 시점부터 판이 저장될 때까지입니다. 클리어한 뒤까지, 죽은 뒤에는 플레이어가 다시 시작하거나 에디터로 돌아갈 때까지라서 실패 화면에서 추가한 이벤트도 들어갑니다.
 - 유니티 메인 스레드에서 호출합니다. 기록 중인 판이 없으면 false를 반환하는데, 이건 정상입니다(레벨 밖, 보정 판, 리플레이, 렌더). 프로바이더가 받지 않는 타입의 이벤트 같은 다른 실패도 false를 반환하고 로그에 한 번 남깁니다.
+- `ReplayApi.IsRecording`은 이 구간 동안만 true입니다. 레이아웃 복사본처럼 만드는 데 일이 드는 이벤트는 만들기 전에 확인하세요.
 
 ## 돌려받기
 

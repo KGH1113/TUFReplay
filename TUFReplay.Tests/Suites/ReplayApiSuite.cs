@@ -816,6 +816,8 @@ internal static class ReplayApiSuite
     var unregister = (Action<string>)Delegate.CreateDelegate(typeof(Action<string>), api.GetMethod("Unregister"));
     var replaying =
       (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), api.GetProperty("IsReplaying").GetGetMethod());
+    var recording =
+      (Func<bool>)Delegate.CreateDelegate(typeof(Func<bool>), api.GetProperty("IsRecording").GetGetMethod());
     var takesOverlayVideos =
       (Func<bool>)
         Delegate.CreateDelegate(typeof(Func<bool>), api.GetProperty("RenderTakesOverlayVideos").GetGetMethod());
@@ -828,11 +830,16 @@ internal static class ReplayApiSuite
     var addEvent =
       (Func<object, bool>)
         Delegate.CreateDelegate(typeof(Func<object, bool>), store, store.GetType().GetMethod("AddEvent"));
+    Assert(!recording(), "IsRecording was true outside a run.");
     Assert(!addEvent(new ChatSent()), "An event was added outside a run.");
     long now = 0;
     RunStateCapture capture = RunStateCapture.Begin("public-api", () => now);
+    Assert(recording(), "IsRecording was false while a run recorded.");
     Assert(addEvent(new ChatSent { Text = "bound" }), "AddEvent through a delegate failed.");
     Assert(capture.Close().Events.Single().ValueJson == "{\"Text\":\"bound\"}", "The bound event was not saved.");
+    Assert(!recording(), "IsRecording was still true after the run was saved.");
+    RunStateCapture.Begin("public-api-dropped").Discard();
+    Assert(!recording(), "IsRecording was still true after the run was dropped.");
     unregister("Test.Overlay");
     Assert(!replaying(), "IsReplaying was true outside a replay.");
     Console.WriteLine("PASS ReplayApi binds by reflection like other optional mod APIs");

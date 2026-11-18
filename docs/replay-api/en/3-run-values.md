@@ -48,8 +48,9 @@ internal sealed class ReplayFollower
 }
 
 // While playing, with the adapter from step 1:
-TUFReplayAPI.AddEvent(new LayoutChanged { Layout = Layout.Snapshot() });   // the player closed the settings window
-TUFReplayAPI.AddEvent(new ChatReceived { Message = message });               // a chat message arrived
+if (TUFReplayAPI.IsRecording())   // the player closed the settings window; no copy unless a run records
+    TUFReplayAPI.AddEvent(new LayoutChanged { Layout = Layout.Snapshot() });
+TUFReplayAPI.AddEvent(new ChatReceived { Message = message });   // a chat message arrived
 ```
 
 ## The start value
@@ -85,6 +86,7 @@ The value is written to JSON as soon as TUFReplay gets it. Changing the object a
 **When it records**
 - From when `CaptureRunState` would run until the run is saved: after a clear, and after a death once the player retries or returns to the editor, so events on the fail screen count too.
 - Call it on Unity's main thread. It returns false when no run is recording, which is normal: outside a level, in calibration runs, in replays and renders. Other failures, such as an event of a type the provider does not take, return false and are written to the log once.
+- `ReplayApi.IsRecording` is true for exactly this span. Check it before building an event that takes work to make, such as a copy of the layout.
 
 ## Getting them back
 

@@ -23,6 +23,7 @@ internal static class TUFReplayAPI
     private static Func<string, object, bool> _register;
     private static Action<string> _unregister;
     private static Func<object, bool> _addEvent;
+    private static Func<bool> _isRecording;
     private static bool _registered;
 
     public static void TryRegister()
@@ -38,6 +39,7 @@ internal static class TUFReplayAPI
     }
 
     // 3단계에서 씁니다. 기록 중인 판이 없으면 false.
+    public static bool IsRecording() => _isRecording != null && _isRecording();
     public static bool AddEvent(object e) => _addEvent != null && _addEvent(e);
 
     private static bool Resolve()
@@ -57,6 +59,8 @@ internal static class TUFReplayAPI
             object eventStore = getEventStore(Id);
             _addEvent = (Func<object, bool>)Delegate.CreateDelegate(
                 typeof(Func<object, bool>), eventStore, eventStore.GetType().GetMethod("AddEvent"));
+            _isRecording = (Func<bool>)Delegate.CreateDelegate(
+                typeof(Func<bool>), api.GetProperty("IsRecording").GetGetMethod());
             return true;
         }
         return false;
