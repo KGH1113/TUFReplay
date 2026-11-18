@@ -20,53 +20,24 @@ internal sealed class ReplayMicrophoneSchedule
 
 internal readonly struct ReplayMicrophoneRenderStats
 {
-  public ReplayMicrophoneRenderStats(long blocks, long missingFrames, long prefetchSeeks, long jumps)
+  public ReplayMicrophoneRenderStats(long missingFrames, long prefetchSeeks)
   {
-    Blocks = blocks;
     MissingFrames = missingFrames;
     PrefetchSeeks = prefetchSeeks;
-    Jumps = jumps;
   }
 
-  public long Blocks { get; }
-
-  // Frames inside the recording that were not read in time and played silent.
+  // Frames inside the recording that the file did not hold and played silent.
   public long MissingFrames { get; }
   public long PrefetchSeeks { get; }
-
-  // Blocks whose DSP time moved away from the previous block's end, such as
-  // after a paused listener, so playback continued from the new position.
-  public long Jumps { get; }
 }
 
-internal readonly struct ReplayMicrophoneFirstBlock
-{
-  public ReplayMicrophoneFirstBlock(double scheduleDspTime, double dspTime, double frame, int frames, int channels)
-  {
-    ScheduleDspTime = scheduleDspTime;
-    DspTime = dspTime;
-    Frame = frame;
-    Frames = frames;
-    Channels = channels;
-  }
-
-  public double ScheduleDspTime { get; }
-  public double DspTime { get; }
-  public double Frame { get; }
-  public int Frames { get; }
-  public int Channels { get; }
-}
-
-// Writes the recording into the audio blocks Unity mixes, on the audio thread.
-// Each block's WAV position comes from the block's own DSP time, so playback
-// starts on the scheduled sample and follows any jump of the clock without
-// asking Unity to seek. Unity's streamed clips did not reliably apply a start
-// position, and played the 800 ms of silence they had read ahead instead.
+// Decodes the recording into output chunks on the main thread. It never waits
+// for the disk: a chunk whose data the prefetch has not read yet is reported as
+// not ready, and what was already read is kept for the next try.
 internal sealed class ReplayMicrophoneRenderer : IDisposable
 {
-  private const int InitialWindowFrames = 8192;
+  private const int MinimumWindowFrames = 8192;
 
-  private readonly object _gate = new object();
   private readonly Pcm16PrefetchBuffer _prefetch;
   private readonly int _sampleRate;
   private readonly int _channels;
@@ -84,27 +55,21 @@ internal sealed class ReplayMicrophoneRenderer : IDisposable
   private int _windowFrames;
   private int _generation;
   private ReplayMicrophoneSchedule _schedule;
-  private ReplayMicrophoneSchedule _renderedSchedule;
   private double _cursor;
   private bool _cursorValid;
   private long _audibleFromFrame;
   private float _gain = 1f;
   private bool _disposed;
-  private Exception _failure;
-  private bool _firstBlockPending;
-  private bool _firstBlockReady;
-  private ReplayMicrophoneFirstBlock _firstBlock;
-  private long _blocks;
   private long _missingFrames;
   private long _prefetchSeeks;
-  private long _jumps;
 
   public ReplayMicrophoneRenderer(
     Pcm16PrefetchBuffer prefetch,
     int sampleRate,
     int channels,
     long frameCount,
-    int outputSampleRate
+    int outputSampleRate,
+    int chunkFrames
   )
   {
     _prefetch = prefetch ?? throw new ArgumentNullException(nameof(prefetch));
@@ -113,168 +78,97 @@ internal sealed class ReplayMicrophoneRenderer : IDisposable
     _frameCount = Math.Max(0L, frameCount);
     _frameBytes = _channels * 2;
     _step = _sampleRate / (double)Math.Max(1, outputSampleRate);
-    _window = new float[InitialWindowFrames * _channels];
-    _bytes = new byte[InitialWindowFrames * _frameBytes];
+
+    // Sized for a whole chunk, so rendering does not allocate.
+    int windowFrames = Math.Max(MinimumWindowFrames, (int)Math.Ceiling(Math.Max(1, chunkFrames) * _step) + 2);
+    _window = new float[windowFrames * _channels];
+    _bytes = new byte[windowFrames * _frameBytes];
     _generation = prefetch.Generation;
   }
 
   public float Gain
   {
-    set
-    {
-      lock (_gate)
-        _gain = value;
-    }
+    set => _gain = value;
   }
 
   // Frames before this hold the wait of an EnhancedCountdown frozen start.
   public long AudibleFromFrame
   {
-    set
-    {
-      lock (_gate)
-        _audibleFromFrame = Math.Max(0L, value);
-    }
+    set => _audibleFromFrame = Math.Max(0L, value);
   }
 
-  public Exception Failure
-  {
-    get
-    {
-      lock (_gate)
-      {
-        if (_failure != null || _disposed)
-          return _failure;
-      }
-      return _prefetch.Failure;
-    }
-  }
+  public Exception Failure => _prefetch.Failure;
 
-  // Null plays silence.
+  // Null renders nothing.
   public void Publish(ReplayMicrophoneSchedule schedule)
   {
-    lock (_gate)
-    {
-      _schedule = schedule;
-      if (schedule != null)
-      {
-        _firstBlockPending = true;
-        _firstBlockReady = false;
-      }
-    }
+    _schedule = schedule;
+    _cursorValid = false;
   }
 
-  // Moves the prefetch so the data from this frame on is read before a block
+  // Moves the prefetch so the data from this frame on is read before a chunk
   // needs it. A frame already read ahead keeps the buffered data.
   public void Prime(long frame)
   {
-    lock (_gate)
-    {
-      if (_disposed)
-        return;
-      frame = Math.Max(0L, Math.Min(frame, _frameCount));
-      long bufferedEnd = _windowStart + _windowFrames + _prefetch.BufferedBytes / _frameBytes;
-      if (_generation == _prefetch.Generation && frame >= _windowStart && frame < bufferedEnd)
-        return;
-      SeekTo(frame);
-    }
-  }
-
-  public void Render(float[] data, int outputChannels, double dspTime)
-  {
-    if (data == null)
+    if (_disposed)
       return;
-    lock (_gate)
-    {
-      Array.Clear(data, 0, data.Length);
-      if (_disposed || _failure != null)
-        return;
-      try
-      {
-        RenderLocked(data, outputChannels, dspTime);
-      }
-      catch (Exception exception)
-      {
-        _failure = exception;
-        _schedule = null;
-        Array.Clear(data, 0, data.Length);
-      }
-    }
+    frame = Math.Max(0L, Math.Min(frame, _frameCount));
+    long bufferedEnd = _windowStart + _windowFrames + _prefetch.BufferedBytes / _frameBytes;
+    if (_generation == _prefetch.Generation && frame >= _windowStart && frame < bufferedEnd)
+      return;
+    SeekTo(frame);
   }
 
-  public bool TryTakeFirstBlock(out ReplayMicrophoneFirstBlock block)
+  // Writes the chunk that plays from dspTime. A continuous chunk carries on
+  // exactly where the previous one ended; any other starts on the frame the
+  // schedule gives for dspTime. False leaves the position unchanged.
+  public bool TryRender(double dspTime, float[] data, int outputChannels, bool continuous)
   {
-    lock (_gate)
-    {
-      block = _firstBlock;
-      if (!_firstBlockReady)
-        return false;
-      _firstBlockReady = false;
-      return true;
-    }
+    ReplayMicrophoneSchedule schedule = _schedule;
+    if (_disposed || schedule == null || data == null || outputChannels <= 0)
+      return false;
+    int outputFrames = data.Length / outputChannels;
+    if (outputFrames == 0)
+      return false;
+
+    double first = continuous && _cursorValid ? _cursor : AlignToOutput(schedule.FrameAt(dspTime, _sampleRate));
+    double last = first + (outputFrames - 1) * _step;
+    long neededFirst = Math.Max(_audibleFromFrame, Math.Max(0L, (long)Math.Floor(first)));
+    long neededLast = Math.Min(_frameCount - 1L, (long)Math.Floor(last) + 1L);
+    bool hasAudio = neededFirst <= neededLast;
+    if (hasAudio && !Fill(neededFirst, neededLast))
+      return false;
+
+    Array.Clear(data, 0, data.Length);
+    if (hasAudio)
+      WriteChunk(data, outputFrames, outputChannels, first);
+    _cursor = first + outputFrames * _step;
+    _cursorValid = true;
+    return true;
   }
 
   public ReplayMicrophoneRenderStats TakeStats()
   {
-    lock (_gate)
-    {
-      var stats = new ReplayMicrophoneRenderStats(_blocks, _missingFrames, _prefetchSeeks, _jumps);
-      _blocks = 0L;
-      _missingFrames = 0L;
-      _prefetchSeeks = 0L;
-      _jumps = 0L;
-      return stats;
-    }
+    var stats = new ReplayMicrophoneRenderStats(_missingFrames, _prefetchSeeks);
+    _missingFrames = 0L;
+    _prefetchSeeks = 0L;
+    return stats;
   }
 
   public void Dispose()
   {
-    lock (_gate)
-    {
-      if (_disposed)
-        return;
-      _disposed = true;
-      _schedule = null;
-    }
+    if (_disposed)
+      return;
+    _disposed = true;
+    _schedule = null;
     _prefetch.Dispose();
   }
 
-  private void RenderLocked(float[] data, int outputChannels, double dspTime)
+  // At equal rates, start on a whole WAV frame so samples copy unchanged.
+  private double AlignToOutput(double frame) => _step == 1d ? Math.Round(frame) : frame;
+
+  private void WriteChunk(float[] data, int outputFrames, int outputChannels, double first)
   {
-    ReplayMicrophoneSchedule schedule = _schedule;
-    if (schedule == null || outputChannels <= 0)
-    {
-      _cursorValid = false;
-      return;
-    }
-    int outputFrames = data.Length / outputChannels;
-    if (outputFrames == 0)
-      return;
-    _blocks++;
-
-    double wanted = schedule.FrameAt(dspTime, _sampleRate);
-    if (!_cursorValid || !ReferenceEquals(schedule, _renderedSchedule))
-    {
-      _cursor = AlignToOutput(wanted);
-      _cursorValid = true;
-      _renderedSchedule = schedule;
-    }
-    else if (Math.Abs(wanted - _cursor) > ContinuityToleranceFrames(outputFrames))
-    {
-      _cursor = AlignToOutput(wanted);
-      _jumps++;
-    }
-
-    double first = _cursor;
-    _cursor = first + outputFrames * _step;
-    double last = first + (outputFrames - 1) * _step;
-    long neededFirst = Math.Max(_audibleFromFrame, (long)Math.Floor(first));
-    long neededLast = Math.Min(_frameCount - 1L, (long)Math.Floor(last) + 1L);
-    if (neededFirst > neededLast)
-      return;
-    Fill(Math.Max(0L, neededFirst), neededLast);
-
-    bool wrote = false;
     for (int i = 0; i < outputFrames; i++)
     {
       double position = first + i * _step;
@@ -289,33 +183,11 @@ internal sealed class ReplayMicrophoneRenderer : IDisposable
       }
       double fraction = offset + 1L < _windowFrames ? position - frame : 0d;
       WriteFrame(data, i * outputChannels, outputChannels, (int)offset * _channels, fraction);
-      wrote = true;
-    }
-
-    if (wrote && _firstBlockPending)
-    {
-      _firstBlockPending = false;
-      _firstBlockReady = true;
-      _firstBlock = new ReplayMicrophoneFirstBlock(
-        schedule.AnchorDspTime,
-        dspTime,
-        first,
-        outputFrames,
-        outputChannels
-      );
     }
   }
 
-  // The DSP time of consecutive blocks should continue the previous block
-  // exactly. Small disagreements keep playing continuously instead of
-  // clicking; anything larger is a real jump of the clock.
-  private double ContinuityToleranceFrames(int outputFrames) =>
-    Math.Max(_sampleRate * 0.002d, 2d * outputFrames * _step);
-
-  // At equal rates, start on a whole WAV frame so samples copy unchanged.
-  private double AlignToOutput(double frame) => _step == 1d ? Math.Round(frame) : frame;
-
-  private void Fill(long firstFrame, long lastFrame)
+  // True once the window holds these frames, or the file has no more of them.
+  private bool Fill(long firstFrame, long lastFrame)
   {
     if (firstFrame < _windowStart || _generation != _prefetch.Generation)
     {
@@ -338,13 +210,13 @@ internal sealed class ReplayMicrophoneRenderer : IDisposable
         else if (gapBytes > _prefetch.Capacity / 2)
           SeekTo(firstFrame);
         else
-          return; // Still reading; the next block skips ahead.
+          return false; // Still reading; the next try skips ahead.
       }
     }
 
     long wantedFrames = lastFrame + 1L - (_windowStart + _windowFrames);
     if (wantedFrames <= 0L)
-      return;
+      return true;
     int frames = (int)Math.Min(wantedFrames, int.MaxValue / 4 / _frameBytes);
     EnsureWindowCapacity(_windowFrames + frames);
     int bytesRead = _prefetch.Read(_bytes, 0, frames * _frameBytes, _frameBytes);
@@ -357,6 +229,7 @@ internal sealed class ReplayMicrophoneRenderer : IDisposable
       _window[target + i] = (short)(_bytes[byteIndex] | (_bytes[byteIndex + 1] << 8)) / 32768f;
     }
     _windowFrames += framesRead;
+    return framesRead == frames || _prefetch.IsAtEnd(_generation);
   }
 
   private void SeekTo(long frame)
