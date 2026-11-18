@@ -84,6 +84,13 @@ internal sealed class Pcm16PrefetchBuffer : IDisposable
     }
   }
 
+  // Everything the file holds from this generation's position was handed out.
+  public bool IsAtEnd(int generation)
+  {
+    lock (_gate)
+      return generation == _generation && !_seekPending && _endOfStream && _bufferedBytes == 0;
+  }
+
   public int Read(byte[] destination, int offset, int count, int alignment)
   {
     if (destination == null)
