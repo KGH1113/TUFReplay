@@ -23,6 +23,7 @@ import {
   type VirtualRunRange,
 } from "@/models/activity/run-list-virtualization";
 import { runEndPercent } from "@/models/activity/run-progress";
+import { runSpeedPercent } from "@/models/activity/run-speed";
 
 export type AttemptSortKey = "progress" | "time" | "pitch" | "accuracy";
 export type SortDirection = "asc" | "desc";
@@ -372,7 +373,7 @@ function sortRuns(runs: ActivityRun[], sort: AttemptSortKey, direction: SortDire
 
 function sortValue(run: ActivityRun, sort: AttemptSortKey) {
   if (sort === "progress") return runEndPercent(run);
-  if (sort === "pitch") return run.levelPitchPercent;
+  if (sort === "pitch") return runSpeedPercent(run);
   if (sort === "accuracy") return Number.isFinite(run.xAccuracy) ? run.xAccuracy : null;
   const timestamp = Date.parse(run.startedAtUtc);
   return Number.isNaN(timestamp) ? null : timestamp;
