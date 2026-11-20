@@ -22,6 +22,7 @@ using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Shared.Game;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Playback;
@@ -489,7 +490,9 @@ public static partial class ReplayPlaybackCoordinator
       _allowEditorPlay = true;
     try
     {
-      editor.Play();
+      // The recorded speed, not the keys held now: the music, the "(0.75x)" after the level
+      // name, and the microphone, camera and key timing all follow it.
+      EditorPlaySpeed.Play(editor, RecordedSpeedMultiplier.From(operation.Meta));
     }
     finally
     {

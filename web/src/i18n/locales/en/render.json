@@ -261,6 +261,7 @@
   "errorFields": {
     "gameplayStartSongPosition": "Gameplay start time",
     "effectivePitch": "Playback speed",
+    "speedMultiplier": "Speed multiplier",
     "gameInputOffsetMs": "Game input offset",
     "terminalTimeUs": "Recording end time",
     "wonTimeUs": "Clear time",

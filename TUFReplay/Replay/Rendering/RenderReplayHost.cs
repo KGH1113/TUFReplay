@@ -5,6 +5,7 @@ using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay.ModApi.Playback;
+using TUFReplay.Shared.Game;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Rendering;
@@ -172,8 +173,10 @@ internal sealed class RenderReplayHost
       conductor.song2.pitch = pitch;
     if (conductor.song3 != null)
       conductor.song3.pitch = pitch;
-    if (scnEditor.instance != null)
-      scnEditor.instance.playbackSpeed = 1f;
+    // editor.Play sets the speed from the keys held when the render starts and writes it after
+    // the level name once the music is set up. This runs then, so the name shows the recorded
+    // speed instead.
+    EditorPlaySpeed.Apply(scnEditor.instance, (float)(replay.SpeedMultiplier ?? 1d));
     ADOBase.controller.noFail = replay.NoFailMode;
     // The conductor reads the input offset when it starts, so the recorded one is set before play.
     int inputOffset = (int)Math.Round(replay.GameInputOffsetMs);
@@ -600,6 +603,7 @@ internal sealed class RenderReplayHost
     private readonly float _pitch3 = ADOBase.conductor.song3 != null ? ADOBase.conductor.song3.pitch : 1f;
     private readonly scnEditor _editor = scnEditor.instance;
     private readonly float _editorSpeed = scnEditor.instance != null ? scnEditor.instance.playbackSpeed : 1f;
+    private readonly bool _quickPitched = GCS.editorQuickPitchedPlaying;
     private readonly int _inputOffset = scrConductor.currentPreset.inputOffset;
 
     public void Restore()
@@ -623,6 +627,7 @@ internal sealed class RenderReplayHost
       }
       if (_editor != null)
         _editor.playbackSpeed = _editorSpeed;
+      GCS.editorQuickPitchedPlaying = _quickPitched;
     }
   }
 }

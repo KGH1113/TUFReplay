@@ -1,6 +1,7 @@
 using Newtonsoft.Json.Linq;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.Replay.Export;
+using TUFReplay.Replay.Models;
 using TUFReplay.Replay.Rendering;
 using UnityEngine;
 using static TestFixture;
@@ -15,6 +16,7 @@ internal static class RenderHostSuite
     TellsOrbitRenderAbsoluteMediaPaths(root);
     RefusesMediaOutsideTheBundle(root);
     FailedRunsRecordTheFailScreen(root);
+    KeepsTheRecordedSpeedMultiplier(root);
     GivesOrbitRenderOverlayVideosAsJson();
     Console.WriteLine("TUFReplay render host tests passed.");
   }
@@ -156,6 +158,42 @@ internal static class RenderHostSuite
     );
     Assert(timeline.OutputToReplay(2_400_000) == 1_600_000, "Video time did not map back past the death.");
     Console.WriteLine("PASS failed runs die at the fail time and keep the fail screen");
+  }
+
+  // The game shows the speed multiplier, like the editor's Ctrl+Space speed, after the level
+  // name. Replays and renders use the recorded one, not the one set when they start.
+  private static void KeepsTheRecordedSpeedMultiplier(string root)
+  {
+    Assert(RecordedSpeedMultiplier.From(100, 0.75f, 0.75f) == 0.75f, "A Ctrl+Space run lost its speed.");
+    Assert(
+      Math.Abs(RecordedSpeedMultiplier.From(80, 0.8f * 0.75f, 0.75f) - 0.75f) < 1e-6f,
+      "A Ctrl+Space run on a pitched level lost its speed."
+    );
+    Assert(
+      RecordedSpeedMultiplier.From(100, 0.9f, 1f) == 0.9f,
+      "A practice-mode run, recorded with multiplier 1 by older versions, lost its slower speed."
+    );
+    Assert(
+      RecordedSpeedMultiplier.From(null, 0.75f, 0.75f) == 0.75f,
+      "A run without the level's pitch did not use its recorded multiplier."
+    );
+    Assert(RecordedSpeedMultiplier.From(null, null, null) == 1f, "A run without speeds did not play at 1x.");
+    Assert(
+      RecordedSpeedMultiplier.From(new ReplayMetadata { levelPitchPercent = 100, effectivePitch = 0.95f }) == 0.95f,
+      "Replay metadata did not give the recorded multiplier."
+    );
+
+    RecordingBundle practice = RecordingBundle.Load(
+      WriteBundle(root, "speed", media: null, replay => replay["speedMultiplier"] = 0.75)
+    );
+    Assert(practice.Manifest.Replay.SpeedMultiplier == 0.75, "The render did not read the recorded multiplier.");
+    RecordingBundle older = RecordingBundle.Load(WriteBundle(root, "speed-older", media: null));
+    Assert(older.Manifest.Replay.SpeedMultiplier == null, "An older bundle got a multiplier it never had.");
+    AssertThrows<RecordingFormatException>(
+      () => RecordingBundle.Load(WriteBundle(root, "speed-zero", media: null, replay => replay["speedMultiplier"] = 0)),
+      "A zero speed multiplier was accepted."
+    );
+    Console.WriteLine("PASS replays and renders keep the recorded speed multiplier");
   }
 
   private static void Fail(JObject replay, long? failedTimeUs)
