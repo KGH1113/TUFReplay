@@ -53,4 +53,15 @@ describe("attempt filters", () => {
     });
     expect(attemptFilterOptions([runs[0]])).toEqual({ pitches: [], difficulties: [] });
   });
+
+  test("filters by the speed the run was played at", () => {
+    const practice = [
+      run({ id: "full", effectivePitch: 1 }),
+      // Ctrl+Space at 75% on the same 100% level.
+      run({ id: "ctrl-space", effectivePitch: 0.75 }),
+    ];
+    expect(attemptFilterOptions(practice).pitches).toEqual([75, 100]);
+    const filtered = applyAttemptFilters(practice, { ...noAttemptFilters, pitches: [100] });
+    expect(filtered.map((item) => item.id)).toEqual(["full"]);
+  });
 });
