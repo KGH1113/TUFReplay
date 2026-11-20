@@ -337,6 +337,7 @@ public static class RenderBundleExportService
           {
             gameplayStartSongPosition = meta.gameplayStartSongPosition.Value,
             effectivePitch = (double)meta.effectivePitch.Value,
+            speedMultiplier = (double)RecordedSpeedMultiplier.From(meta),
             gameInputOffsetMs = meta.gameInputOffsetMs.Value,
             noFailMode = meta.noFailMode ?? run.NoFailMode,
             judgmentSystem = meta.judgmentSystem,

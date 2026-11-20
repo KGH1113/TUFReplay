@@ -4,6 +4,7 @@ using AdofaiIpc;
 using TUFReplay.Composition;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Shared.Game;
 using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Unity.CameraSetup;
 using TUFReplay.Webcam.Models;
@@ -27,11 +28,13 @@ internal static class CameraFirstRunCoordinator
   {
     if (!Eligible())
       return false;
+    // Ctrl is up by the time the dialog closes, so keep the speed of the Ctrl+Space that opened it.
+    float speed = EditorPlaySpeed.FromHeldKeys();
     return Show(
       () =>
       {
         if (editor != null && editor.initialized && !editor.isLoading)
-          editor.Play();
+          EditorPlaySpeed.Play(editor, speed);
       },
       true
     );

@@ -515,7 +515,8 @@ public class RecordingSession
         return ADOBase.editor.playbackSpeed;
       }
 
-      return GCS.speedTrialMode ? GCS.currentSpeedTrial : 1f;
+      // The conductor applies it outside speed trials too: practice mode plays slower with it.
+      return ADOBase.isScnGame ? GCS.currentSpeedTrial : 1f;
     }
     catch
     {

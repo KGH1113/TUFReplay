@@ -102,6 +102,13 @@ internal sealed class ReplayManifest
   [JsonProperty("effectivePitch", Required = Required.Always)]
   public double EffectivePitch { get; set; }
 
+  /// <summary>
+  /// The speed multiplier on top of the level's pitch, like the editor's Ctrl+Space speed. The
+  /// game shows it after the level name. Older bundles leave it out and played at 1x.
+  /// </summary>
+  [JsonProperty("speedMultiplier")]
+  public double? SpeedMultiplier { get; set; }
+
   [JsonProperty("gameInputOffsetMs", Required = Required.Always)]
   public double GameInputOffsetMs { get; set; }
 
@@ -148,6 +155,8 @@ internal sealed class ReplayManifest
       throw Invalid("gameplayStartSongPosition");
     if (!IsFinite(EffectivePitch) || EffectivePitch <= 0)
       throw Invalid("effectivePitch");
+    if (SpeedMultiplier.HasValue && (!IsFinite(SpeedMultiplier.Value) || SpeedMultiplier.Value <= 0))
+      throw Invalid("speedMultiplier");
     if (!IsFinite(GameInputOffsetMs))
       throw Invalid("gameInputOffsetMs");
     if (string.IsNullOrWhiteSpace(JudgmentSystem) || JudgmentSystem.Length > 128)

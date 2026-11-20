@@ -64,7 +64,10 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 `gameplayHash`, and `gameplayHashVersion`. Replay metadata includes
 `gameplayStartSongPosition`, `effectivePitch`, `gameInputOffsetMs`, `noFailMode`,
 `judgmentSystem`, `judgmentDifficulty`, optional `hitMarginLimit`, `startTile`, `result`,
-`wonTimeUs`, and `terminalTimeUs`. New recordings capture ADOFAI's gameplay hit limit
+`wonTimeUs`, and `terminalTimeUs`. Optional `speedMultiplier` is the speed on top of the
+level's pitch (the editor's Ctrl+Space speed, a speed trial or practice mode) and is already
+part of `effectivePitch`. The host shows it after the level name the way the game does;
+bundles without it played at 1x. New recordings capture ADOFAI's gameplay hit limit
 (`None`, `PerfectsOnly`, or `PurePerfectOnly`) when gameplay starts. Older recordings omit
 the setting; consumers must preserve their legacy behavior when it is absent.
 Renderer versions that do not read `hitMarginLimit` will continue to use their existing
