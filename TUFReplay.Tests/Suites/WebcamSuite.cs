@@ -55,6 +55,7 @@ internal static class WebcamSuite
     StoreKeepsForeverAndExportsWithoutLoadingVideo(root);
     CleanupNotifiesActivityWhenVideosOrRetentionChange(root);
     StoreDeletionRejectsLateCapture(root);
+    StartupCleanupRemovesMacWriterLeftovers(root);
     StoreRejectsCorruptTimingAndDuplicateSaves(root);
     StoreReleaseNeverWaitsForRetention(root);
     FfmpegUsesLogicalFrameSize(root);
@@ -1351,6 +1352,23 @@ internal static class WebcamSuite
       !File.Exists(active.FilePath) && store.Acquire("active") == null,
       "Deleted footage was not removed after release."
     );
+  }
+
+  private static void StartupCleanupRemovesMacWriterLeftovers(string root)
+  {
+    string directory = Path.Combine(root, "webcam-writer-leftovers");
+    var store = new WebcamRecordingStore(directory);
+    WebcamRecording saved = WriteVideo(store, "saved", 64);
+    Check(store.Save(saved, 1024, 7), "Writer leftover fixture was not saved.");
+    string leftover = Path.Combine(directory, "5FC8EE8C-EFD7-412E-B334-29472E138107.mp4.partial.sb-613f4cf6-Nk7psM");
+    string interrupted = Path.Combine(directory, "0011453C-14B0-4CE1-84CD-217CD9E4DE44.mp4.partial");
+    File.WriteAllBytes(leftover, new byte[] { 0, 0, 0, 1, 109, 100, 97, 116 });
+    File.WriteAllBytes(interrupted, new byte[8]);
+    store.CleanupInterruptedCaptures();
+    Check(!File.Exists(leftover), "A macOS writer leftover survived startup cleanup.");
+    Check(!File.Exists(interrupted), "An interrupted capture survived startup cleanup.");
+    using WebcamRecordingLease lease = store.Acquire(saved.RunId);
+    Check(lease != null && File.Exists(saved.FilePath), "Startup cleanup removed a saved recording.");
   }
 
   private static void CleanupNotifiesActivityWhenVideosOrRetentionChange(string root)

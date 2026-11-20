@@ -227,6 +227,12 @@ public sealed class WebcamRecordingStore
   // Called once before any capture starts; interrupted MP4s cannot be replayed.
   public void CleanupInterruptedCaptures()
   {
+    // AVAssetWriter on macOS keeps the samples in "<output>.sb-…" beside the MP4
+    // until the writer is released. Helpers up to 1.2.2 never released their
+    // writers, so every recording left a full copy of its video here. No store
+    // operation reads these, and there can be thousands, so skip the gate.
+    foreach (string path in Directory.GetFiles(_directory, "*.mp4.partial.sb-*"))
+      DeleteFile(path);
     lock (_gate)
     {
       foreach (string path in Directory.EnumerateFiles(_directory, "*.partial"))
