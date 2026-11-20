@@ -17,6 +17,15 @@
 - You can use `ilspycmd` and `assetripper(headless)` to inspect ADOFAI's code. Use it unless you really don't need to.
 - Use `./scripts/run.sh` for building, packaging, checking, ext. instead of manually executing dotnet commands. Also maintain the scripts.
 
+# Semantic Code Navigation
+- Prefer LSP-based symbol navigation over text search when exploring code relationships.
+- Use Find References before modifying public functions, interfaces, or types.
+- Use Go to Definition and Call Hierarchy to understand dependencies.
+- After refactoring, check LSP diagnostics and run relevant tests.
+- Avoid reading entire files when symbol-level information is sufficient.
+- Use text search when LSP cannot resolve a symbol or when searching non-code content.
+- Filter large reference results before adding them to the context.
+
 # UI/UX
 - Use shadcn mcp server actively. and use shadcn components.
 - Read apple-design skill.
