@@ -6,7 +6,7 @@ import type {
   LevelSession,
   RunMarker,
 } from "@/models/activity/activity-model";
-import { runOutcome } from "@/models/activity/run-progress";
+import { runOutcome, tileProgressPercent } from "@/models/activity/run-progress";
 
 const dateKeyFormatters = new Map<string, Intl.DateTimeFormat>();
 
@@ -225,8 +225,7 @@ export function summarizeLevelRuns(runs: ActivityRun[]): LevelRunSummary {
     }
   }
   return {
-    bestFromStartPercent:
-      bestTile === null ? null : Math.round(Math.min(1, bestTile / floorCount) * 100),
+    bestFromStartPercent: bestTile === null ? null : tileProgressPercent(bestTile, floorCount),
     clearCount,
     lockedCount,
   };
