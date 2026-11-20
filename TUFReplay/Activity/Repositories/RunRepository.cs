@@ -26,14 +26,14 @@ gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judg
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
 judgment_perfect_minus,judgment_x_perfect,judgment_perfect_plus,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
-input_count,hit_context_count,replay_unavailable_reason
+input_count,hit_context_count,replay_unavailable_reason,locked
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
 @song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,@judgmentSystem,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
 @judgmentPerfectMinus,@judgmentXPerfect,@judgmentPerfectPlus,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
-@inputs,@hits,@replayUnavailableReason
+@inputs,@hits,@replayUnavailableReason,@locked
 )";
     q.Parameters.AddWithValue("@id", r.Id);
     q.Parameters.AddWithValue("@level", r.LevelSessionId);
@@ -68,6 +68,7 @@ input_count,hit_context_count,replay_unavailable_reason
     q.Parameters.AddWithValue("@inputs", r.InputCount);
     q.Parameters.AddWithValue("@hits", r.HitContextCount);
     q.Parameters.AddWithValue("@replayUnavailableReason", DbValue.From(r.ReplayUnavailableReason));
+    q.Parameters.AddWithValue("@locked", DbValue.Bool(r.Locked));
     q.ExecuteNonQuery();
 
     ReplayArtifact artifact = r.ReplayArtifact;

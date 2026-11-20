@@ -260,6 +260,7 @@ internal static class PerformanceRegressionSuite
       };
       payload.Inputs.Add(new RecordedInput(100, 32, RecordInputFlags.Down));
       RunRecord first;
+      RunRecord second;
       using (SqliteConnection locked = Database.OpenConnection())
       using (SqliteTransaction transaction = locked.BeginTransaction())
       {
@@ -272,7 +273,7 @@ internal static class PerformanceRegressionSuite
         first.LastTile = 10;
         first.Result = "cleared";
         tracker.SaveRun(first, payload.CompletedSnapshot(), null, null);
-        RunRecord second = tracker.CreateRunDraft(payload, 0, 10);
+        second = tracker.CreateRunDraft(payload, 0, 10);
         second.LastTile = 1;
         second.Result = "failed";
         tracker.SaveRun(second, payload.CompletedSnapshot(), null, null);
@@ -289,6 +290,10 @@ internal static class PerformanceRegressionSuite
       Assert(
         stored != null && Encoding.UTF8.GetString(stored.InputCsv) == "100,32,1,-1,0\n",
         "Queued replay bytes changed."
+      );
+      Assert(
+        RunRepository.IsLocked(first.Id) && !RunRepository.IsLocked(second.Id),
+        "A clear was not saved locked, or a failed run was."
       );
       using SqliteConnection verify = Database.OpenConnection();
       using SqliteCommand command = verify.CreateCommand();

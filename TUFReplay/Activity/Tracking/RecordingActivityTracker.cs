@@ -232,6 +232,9 @@ public sealed class RecordingActivityTracker
       try
       {
         Recording.Sessions.RecordingPayloadBuilder.Apply(run, completed);
+        // A clear is saved locked, so its microphone and camera recordings, which finish
+        // saving after this row, are kept instead of expiring.
+        run.Locked = run.IsClear;
         RetryLockedWrite(() =>
         {
           ensureLevel?.Invoke();

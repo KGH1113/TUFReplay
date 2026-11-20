@@ -47,6 +47,18 @@ public class RunRecord
   public bool Locked;
   public TUFReplay.Replay.Models.ReplayArtifact ReplayArtifact;
 
+  /// <summary>
+  /// A full run from tile zero; a No-Fail run counts only without a Miss or Overload.
+  /// Same rule as <c>ActivityRepository.ClearRunCondition</c> and the web's <c>runOutcome</c>.
+  /// </summary>
+  public bool IsClear =>
+    (
+      string.Equals(Result, "cleared", System.StringComparison.OrdinalIgnoreCase)
+      || string.Equals(Result, "completed", System.StringComparison.OrdinalIgnoreCase)
+    )
+    && StartTile == 0
+    && (!NoFailMode || (JudgmentCounts != null && JudgmentCounts.Miss == 0 && JudgmentCounts.Overload == 0));
+
   /// <summary>Mod states captured for this run, saved in the same transaction.</summary>
   internal TUFReplay.ModApi.Models.CapturedRunStates RunStates;
 }

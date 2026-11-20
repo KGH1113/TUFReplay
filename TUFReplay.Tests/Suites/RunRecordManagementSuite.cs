@@ -22,6 +22,7 @@ internal static class RunRecordManagementSuite
     TestHistoryHidesSessionsWithoutRuns(root);
     TestMicrophoneBatchDelete(root);
     TestNoFailRunWithoutDeathsIsAClear(root);
+    TestClearsAreSavedLocked(root);
   }
 
   // The level last played stays open until another level opens or the game quits.
@@ -61,6 +62,41 @@ internal static class RunRecordManagementSuite
       "A No-Fail run without a Miss or Overload should count as a clear, and one with either should not."
     );
     Console.WriteLine("PASS No-Fail runs without deaths count as clears");
+  }
+
+  // The recorder saves a clear locked so its recordings are kept; its rule must match the SQL one.
+  private static void TestClearsAreSavedLocked(string root)
+  {
+    Open(root, "clears-saved-locked.sqlite");
+    RunRecord[] runs =
+    {
+      NewRun("clear", "level-closed", 0, 0, "cleared"),
+      NewRun("legacy-completed", "level-closed", 1, 0, "Completed"),
+      NewRun("checkpoint", "level-closed", 2, 40, "cleared"),
+      NewRun("failed", "level-closed", 3, 0, "failed"),
+      NewRun("no-fail-clean", "level-closed", 4, 0, "cleared", noFail: true),
+      NewRun("no-fail-miss", "level-closed", 5, 0, "cleared", noFail: true, misses: 1),
+      NewRun("no-fail-overload", "level-closed", 6, 0, "cleared", noFail: true, overloads: 1),
+    };
+    foreach (RunRecord run in runs)
+    {
+      run.Locked = run.IsClear;
+      RunRepository.Save(run);
+    }
+
+    string[] clears = runs.Where(run => run.IsClear).Select(run => run.Id).ToArray();
+    Assert(
+      clears.SequenceEqual(new[] { "clear", "legacy-completed", "no-fail-clean" }),
+      "Only full runs from tile zero, and No-Fail runs without a death, should be clears."
+    );
+    LevelSessionOverview overview = ActivityRepository.GetLevelSessionOverview("level-closed");
+    Assert(
+      overview.ClearRunCount == clears.Length
+        && overview.LockedRunCount == clears.Length
+        && overview.LockedClearRunCount == clears.Length,
+      "The saved locks did not match the database's clears."
+    );
+    Console.WriteLine("PASS clears are saved locked under the database's clear rule");
   }
 
   private static void TestExistingDatabaseGainsLockColumn(string root)
@@ -233,21 +269,34 @@ VALUES('level-closed','level','app-closed','2026-10-23T00:00:00Z','2026-10-23T04
     int overloads = 0
   )
   {
-    RunRepository.Save(
-      new RunRecord
-      {
-        Id = id,
-        LevelSessionId = levelSessionId,
-        RunIndex = index,
-        StartedAtUtc = "2026-10-23T01:00:00Z",
-        EndedAtUtc = "2026-10-23T01:02:00Z",
-        StartTile = 0,
-        LastTile = clear ? 100 : 40,
-        Result = clear ? "cleared" : "failed",
-        NoFailMode = noFail,
-        JudgmentCounts = new JudgmentCounts { Miss = misses, Overload = overloads },
-      }
-    );
+    RunRepository.Save(NewRun(id, levelSessionId, index, 0, clear ? "cleared" : "failed", noFail, misses, overloads));
+  }
+
+  private static RunRecord NewRun(
+    string id,
+    string levelSessionId,
+    int index,
+    int startTile,
+    string result,
+    bool noFail = false,
+    int misses = 0,
+    int overloads = 0
+  )
+  {
+    bool reachedEnd = result != "failed";
+    return new RunRecord
+    {
+      Id = id,
+      LevelSessionId = levelSessionId,
+      RunIndex = index,
+      StartedAtUtc = "2026-10-23T01:00:00Z",
+      EndedAtUtc = "2026-10-23T01:02:00Z",
+      StartTile = startTile,
+      LastTile = reachedEnd ? 100 : 40,
+      Result = result,
+      NoFailMode = noFail,
+      JudgmentCounts = new JudgmentCounts { Miss = misses, Overload = overloads },
+    };
   }
 
   private static void SaveMicrophoneRecording(string root, string runId)
