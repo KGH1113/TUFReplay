@@ -41,7 +41,7 @@ public static string RenderFfmpegPath { get; }       // FFmpeg shared with the r
 
 ## Overlay videos
 
-A mod whose picture is slow to draw, such as a key viewer that runs in another app, can make its own video while the game renders and have OrbitRender lay it over the finished video, the way it adds the webcam. The game then never waits for that mod during the render.
+A mod whose picture is slow to draw, such as a key viewer that runs in another app, can make its own video while the game renders and have OrbitRender lay it over the finished video. The game then never waits for that mod during the render.
 
 **Whether the renderer takes them**
 - `RenderTakesOverlayVideos` is true when the renderer will call `AddReplayOverlayVideos` (OrbitRender with `OverlayVideoVersion` 1 or later). Read it from `OnReplayBegin(render: true)` on.
@@ -57,7 +57,7 @@ A mod whose picture is slow to draw, such as a key viewer that runs in another a
   - `target`: where that part goes in the rendered video, in pixels of `RenderWidth` × `RenderHeight`. A target of another size scales the part; a target partly outside the video is cut off.
   - Both rectangles count from the top left, with `y` going down.
 - The video's time 0 is the rendered video's first frame. Make it at `RenderFps`, one frame per video frame. A video that ends early holds its last frame.
-- Videos are drawn in the order added, over the game and its canvases and under the webcam.
+- Videos are drawn in the order added, over the game and its canvases. TUFReplay draws the recorded webcam with the canvases, so the videos go over it too. Only without FFmpeg does OrbitRender add the webcam afterwards, on top.
 - A video whose file is missing, whose path is not absolute, or whose rectangle is empty is left out with a log line.
 
 That is the whole API. The [reference](reference.md) has every member in one place.

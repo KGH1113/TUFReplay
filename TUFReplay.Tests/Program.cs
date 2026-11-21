@@ -39,6 +39,7 @@ internal static class Program
       MicrophoneDatabaseSuite.RunAll(root);
       ReplayApiSuite.RunAll(root);
       RenderHostSuite.RunAll(root);
+      RenderWebcamSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
       ElementAttemptsSuite.RunAll();

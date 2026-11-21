@@ -15,6 +15,7 @@ internal static class RenderHostSuite
     ReadsTheBundleItWrote(root);
     TellsOrbitRenderAbsoluteMediaPaths(root);
     RefusesMediaOutsideTheBundle(root);
+    LeavesTheCameraItDrawsOutOfTheRequest(root);
     FailedRunsRecordTheFailScreen(root);
     KeepsTheRecordedSpeedMultiplier(root);
     GivesOrbitRenderOverlayVideosAsJson();
@@ -106,6 +107,33 @@ internal static class RenderHostSuite
       "OrbitRender was sent recording data it no longer reads."
     );
     Console.WriteLine("PASS OrbitRender gets the level, timing and absolute media paths, not the recording");
+  }
+
+  // A camera the host draws during the render must not reach OrbitRender, or it would compose it
+  // again over the finished video and encode the whole picture twice.
+  private static void LeavesTheCameraItDrawsOutOfTheRequest(string root)
+  {
+    var media = new JObject
+    {
+      ["webcam"] = new JObject { ["path"] = "media/camera.mp4" },
+      ["microphone"] = new JObject { ["path"] = "media/microphone.wav" },
+    };
+    RecordingBundle bundle = RecordingBundle.Load(WriteBundle(root, "drawn camera", media));
+    JObject request = JObject.Parse(
+      RenderJobCoordinator.HostedRequestJson(bundle, new OrbitRenderOptions(), webcamDrawnByHost: true)
+    );
+    Assert(request["media"]["webcam"] == null, "OrbitRender was given the camera the host draws.");
+    Assert(request["media"]["microphone"] != null, "The microphone no longer reached OrbitRender.");
+    var cameraOnly = new JObject { ["webcam"] = new JObject { ["path"] = "media/camera.mp4" } };
+    RecordingBundle onlyCamera = RecordingBundle.Load(WriteBundle(root, "drawn camera only", cameraOnly));
+    JObject bare = JObject.Parse(
+      RenderJobCoordinator.HostedRequestJson(onlyCamera, new OrbitRenderOptions(), webcamDrawnByHost: true)
+    );
+    Assert(
+      bare["media"] == null || bare["media"].Type == JTokenType.Null,
+      "A render with only a host-drawn camera still asked OrbitRender to compose media."
+    );
+    Console.WriteLine("PASS the camera the host draws stays out of OrbitRender's request");
   }
 
   private static void RefusesMediaOutsideTheBundle(string root)
