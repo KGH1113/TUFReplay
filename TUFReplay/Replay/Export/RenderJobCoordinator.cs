@@ -10,6 +10,7 @@ using TUFReplay.ModApi.Models;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.ModApi.Repositories;
 using TUFReplay.Replay.Rendering;
+using TUFReplay.Replay.Rendering.Webcam;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Media;
@@ -347,13 +348,16 @@ public static class RenderJobCoordinator
   {
     RecordingBundle recording;
     RenderReplayHost host;
+    RenderWebcam webcam = null;
     try
     {
       recording = job.Recording.GetAwaiter().GetResult();
-      host = new RenderReplayHost(recording, job.Options.EndDelaySeconds);
+      webcam = HostDrawnWebcam(recording);
+      host = new RenderReplayHost(recording, job.Options.EndDelaySeconds, webcam);
     }
     catch (RecordingFormatException exception)
     {
+      webcam?.Dispose();
       Fail(
         job,
         exception.Code,
@@ -382,7 +386,11 @@ public static class RenderJobCoordinator
       job.RunStates.Result
     );
     var result = OrbitRenderClient.StartHostedReplay(
-      HostedRequestJson(recording, BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)),
+      HostedRequestJson(
+        recording,
+        BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps),
+        webcamDrawnByHost: webcam != null
+      ),
       host
     );
     if (!result.Ok)
@@ -397,15 +405,33 @@ public static class RenderJobCoordinator
     Publish(job);
   }
 
+  // TUFReplay draws the camera into the video when FFmpeg can decode it for the host;
+  // otherwise OrbitRender composes it over the finished video, as before.
+  private static RenderWebcam HostDrawnWebcam(RecordingBundle recording)
+  {
+    if (!(recording.Manifest.Media?["webcam"] is JObject webcam) || webcam["path"]?.Type != JTokenType.String)
+      return null;
+    return RenderWebcam.TryCreate(webcam, recording.ResolveFile((string)webcam["path"]), SharedFfmpegPath());
+  }
+
   // What OrbitRender needs besides the host: where the level is, how to name the file,
-  // when the audio starts, and the camera and microphone to compose, with absolute paths.
-  internal static string HostedRequestJson(RecordingBundle recording, OrbitRenderOptions options)
+  // when the audio starts, and the media to compose, with absolute paths. A camera the
+  // host draws stays out: composing it would encode the whole picture again.
+  internal static string HostedRequestJson(
+    RecordingBundle recording,
+    OrbitRenderOptions options,
+    bool webcamDrawnByHost = false
+  )
   {
     RecordingManifest manifest = recording.Manifest;
     var media = manifest.Media == null ? null : (JObject)manifest.Media.DeepClone();
     foreach (string name in new[] { "webcam", "microphone" })
       if (media?[name] is JObject item && item["path"]?.Type == JTokenType.String)
         item["path"] = recording.ResolveFile((string)item["path"]);
+    if (webcamDrawnByHost)
+      media?.Remove("webcam");
+    if (media != null && !media.HasValues)
+      media = null;
     var serializer = JsonSerializer.Create(new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
     var request = new JObject
     {

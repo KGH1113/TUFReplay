@@ -5,6 +5,7 @@ using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay.ModApi.Playback;
+using TUFReplay.Replay.Rendering.Webcam;
 using TUFReplay.Shared.Game;
 using UnityEngine;
 
@@ -37,6 +38,7 @@ internal sealed class RenderReplayHost
   private readonly HashSet<KeyCode> _heldKeys = new HashSet<KeyCode>();
   private readonly List<Canvas> _canvases = new List<Canvas>();
   private readonly Func<long, long> _videoTicksAt;
+  private readonly RenderWebcam _webcam;
 
   private GameSettingsSnapshot _settings;
   private RenderTimeline _timeline;
@@ -61,9 +63,12 @@ internal sealed class RenderReplayHost
   /// <summary>True while a render replays a TUFReplay recording.</summary>
   internal static bool IsActive => Current != null;
 
-  public RenderReplayHost(RecordingBundle bundle, double endDelaySeconds)
+  /// <param name="webcam">The recorded camera this host draws into the video, or null when
+  /// OrbitRender composes it or there is none.</param>
+  public RenderReplayHost(RecordingBundle bundle, double endDelaySeconds, RenderWebcam webcam = null)
   {
     _bundle = bundle ?? throw new ArgumentNullException(nameof(bundle));
+    _webcam = webcam;
     if (
       double.IsNaN(endDelaySeconds)
       || double.IsInfinity(endDelaySeconds)
@@ -219,6 +224,8 @@ internal sealed class RenderReplayHost
     _videoFps = videoFps;
     _begun = true;
     ReplaySessions.UpdateRender(new ReplayRender(width, height, videoFps));
+    // OrbitRender collects the canvases to capture right after this.
+    _webcam?.Begin(width, height);
 
     double initialReplayUs =
       (ADOBase.conductor.songposition_minusi - _bundle.Manifest.Replay.GameplayStartSongPosition) * 1_000_000d;
@@ -347,10 +354,16 @@ internal sealed class RenderReplayHost
   {
     _canvases.Clear();
     ReplaySessions.CollectCanvases(_canvases);
+    if (_webcam?.Canvas != null)
+      _canvases.Add(_webcam.Canvas);
     return _canvases;
   }
 
-  public void OnBeforeCapture() => ReplaySessions.BeforeCapture();
+  public void OnBeforeCapture()
+  {
+    _webcam?.BeforeCapture(_timeline, _currentVideoTimeUs);
+    ReplaySessions.BeforeCapture();
+  }
 
   public void OnAfterCapture() => ReplaySessions.AfterCapture();
 
@@ -419,6 +432,8 @@ internal sealed class RenderReplayHost
     }
     finally
     {
+      // Stops FFmpeg before the bundle, and the camera recording in it, is deleted.
+      _webcam?.Dispose();
       RenderReplayHooks.Deactivate(this);
       if (Current == this)
         Current = null;
