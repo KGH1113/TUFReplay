@@ -41,7 +41,7 @@ public static string RenderFfmpegPath { get; }       // 렌더러와 같이 쓰�
 
 ## 오버레이 영상
 
-다른 앱에서 돌아가는 키뷰어처럼 그리기 느린 모드는, 게임이 렌더하는 동안 자기 영상을 따로 만들 수 있습니다. 그러면 OrbitRender가 웹캠을 넣듯이 그 영상을 완성된 영상 위에 겹치고, 렌더 중에 게임은 그 모드를 기다리지 않습니다.
+다른 앱에서 돌아가는 키뷰어처럼 그리기 느린 모드는, 게임이 렌더하는 동안 자기 영상을 따로 만들 수 있습니다. 그러면 OrbitRender가 그 영상을 완성된 영상 위에 겹치고, 렌더 중에 게임은 그 모드를 기다리지 않습니다.
 
 **렌더러가 받는지**
 - 렌더러가 `AddReplayOverlayVideos`를 부를 때(`OverlayVideoVersion` 1 이상인 OrbitRender) `RenderTakesOverlayVideos`가 true입니다. `OnReplayBegin(render: true)`부터 읽을 수 있습니다.
@@ -57,7 +57,7 @@ public static string RenderFfmpegPath { get; }       // 렌더러와 같이 쓰�
   - `target`: 그 부분이 렌더된 영상에서 들어갈 위치. `RenderWidth` × `RenderHeight` 픽셀 단위입니다. 크기가 다르면 늘리거나 줄이고, 영상 밖으로 나간 부분은 잘립니다.
   - 두 사각형 모두 왼쪽 위가 기준이고, `y`는 아래로 커집니다.
 - 영상의 0초는 렌더된 영상의 첫 프레임입니다. `RenderFps`로, 영상 프레임 하나에 한 프레임씩 만드세요. 일찍 끝난 영상은 마지막 프레임을 유지합니다.
-- 영상은 추가한 순서대로, 게임과 캔버스 위, 웹캠 아래에 그려집니다.
+- 영상은 추가한 순서대로, 게임과 캔버스 위에 그려집니다. 녹화된 웹캠은 TUFReplay가 캔버스와 함께 그리므로 영상이 웹캠 위에도 올라갑니다. FFmpeg가 없을 때만 OrbitRender가 웹캠을 나중에 맨 위에 넣습니다.
 - 파일이 없거나, 경로가 절대 경로가 아니거나, 사각형이 비어 있는 영상은 로그를 남기고 빠집니다.
 
 API는 여기까지입니다. 모든 멤버는 [레퍼런스](reference.md)에 모여 있습니다.
