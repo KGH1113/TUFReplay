@@ -116,6 +116,10 @@ VITE_WEB_ADOFAI_EMBED_URL=http://127.0.0.1:5173/embed/chart ./scripts/run.sh web
 
 Production hosting must rewrite `/api/tuf/*` to `https://api.tuforums.com/*`. Vite does this during development.
 
+## License
+
+TUFReplay is released under the [MIT License](LICENSE). To contribute, read [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## Special Thanks
 
 - **Teo** — Gave his idea to me and started this project.

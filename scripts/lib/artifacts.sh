@@ -24,6 +24,7 @@ copy_launcher_payload() {
   launcher="$destination/Runtime/launchers/$version"
 
   require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json"
+  require_file "$TUFREPLAY_PROJECT_ROOT/LICENSE"
   require_file "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md"
   require_file "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.SdkLauncher.dll"
 
@@ -31,6 +32,7 @@ copy_launcher_payload() {
 
   mkdir -p "$launcher"
   cp "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" "$destination/"
+  cp "$TUFREPLAY_PROJECT_ROOT/LICENSE" "$destination/"
   cp "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md" "$destination/"
   cp "$TUFREPLAY_BOOTSTRAP_BUILD_OUTPUT/TUFReplay.SdkLauncher.dll" "$launcher/"
   copy_ipc_bundle "$destination"
@@ -40,12 +42,14 @@ copy_runtime_core() {
   local destination="$1"
 
   require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json"
+  require_file "$TUFREPLAY_PROJECT_ROOT/LICENSE"
   require_file "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md"
   require_file "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll"
   require_file "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll"
 
   mkdir -p "$destination"
   cp "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Info.json" "$destination/"
+  cp "$TUFREPLAY_PROJECT_ROOT/LICENSE" "$destination/"
   cp "$TUFREPLAY_PROJECT_ROOT/THIRD_PARTY_NOTICES.md" "$destination/"
   cp "$TUFREPLAY_BUILD_OUTPUT/TUFReplay.dll" "$destination/"
   cp "$TUFREPLAY_UPDATE_ENGINE_BUILD_OUTPUT/TUFReplay.UpdateEngine.dll" "$destination/"
