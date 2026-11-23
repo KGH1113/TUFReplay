@@ -9,6 +9,7 @@ import {
   orbitRenderSetupSteps,
   type SetupStepState,
 } from "@/models/downloads/orbit-render-setup";
+import { minimumOrbitRenderVersion } from "@/models/render/orbit-version";
 import { cn } from "@/shared/lib/cn";
 import { Button } from "@/shared/ui/button";
 import { DetailsToggle } from "@/shared/ui/details-toggle";
@@ -141,19 +142,17 @@ function InstallDetail({ state, stage }: { state: InstallState; stage: OrbitRend
   }
   if (stage === "update")
     return (
-      <p>
-        {state.Version
-          ? t("setup.install.update", { version: state.Version })
-          : t("setup.install.updateUnknown")}{" "}
-        <a
-          href={latestReleaseUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="text-primary underline underline-offset-2"
-        >
-          {t("setup.install.latestRelease")}
-        </a>
-      </p>
+      <>
+        <p>
+          {state.Version
+            ? t("setup.install.update", {
+                version: state.Version,
+                minimum: minimumOrbitRenderVersion,
+              })
+            : t("setup.install.updateUnknown", { minimum: minimumOrbitRenderVersion })}
+        </p>
+        <p className="text-muted-foreground/80">{t("setup.install.updateHow")}</p>
+      </>
     );
   if (stage === "restart" || stage === "ready")
     return <p>{[t("setup.install.done"), state.Version].filter(Boolean).join(" · ")}</p>;
@@ -210,6 +209,20 @@ function SetupActions({
       <Button size="sm" onClick={onClose}>
         {stage === "ready" ? t("done") : t("setup.gotIt")}
       </Button>
+    );
+  // TUFReplay never replaces a mod the game has loaded, so the update is one click to the release.
+  if (stage === "update")
+    return (
+      <>
+        <Button size="sm" variant="outline" onClick={onClose}>
+          {t("close")}
+        </Button>
+        <Button size="sm" asChild>
+          <a href={latestReleaseUrl} target="_blank" rel="noreferrer">
+            {t("setup.install.latestRelease")}
+          </a>
+        </Button>
+      </>
     );
   return (
     <Button size="sm" variant="outline" onClick={onClose}>

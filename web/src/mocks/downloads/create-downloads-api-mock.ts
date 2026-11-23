@@ -4,7 +4,7 @@ import type { DownloadsApi, DownloadsState, InstallState } from "@/api/downloads
 const rendererScenarios: Record<string, Partial<InstallState>> = {
   missing: { Status: "missing", Version: null },
   restart: { Status: "restart-required" },
-  outdated: { Status: "ready", Version: "2.5.0" },
+  outdated: { Status: "ready", Version: "2.7.0" },
   failed: {
     Status: "failed",
     Version: null,
@@ -25,7 +25,7 @@ export function createDownloadsApiMock(
   const state: DownloadsState = {
     Renderer: {
       Status: "ready",
-      Version: "2.6.2",
+      Version: "2.8.3",
       InstallationDirectory: "Mods/OrbitRender",
       DownloadedBytes: 0,
       TotalBytes: null,
@@ -61,7 +61,7 @@ export function createDownloadsApiMock(
           if (target.DownloadedBytes >= (target.TotalBytes ?? 0)) {
             clearInterval(tick);
             target.Status = item === "renderer" ? "restart-required" : "ready";
-            if (item === "renderer") target.Version = "2.6.2";
+            if (item === "renderer") target.Version = "2.8.3";
           }
           changed(snapshot());
         }, 500);

@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { installationBusy } from "@/api/downloads/downloads-api";
 import type { DownloadCenterControl } from "@/hooks/downloads/use-download-center";
+import { orbitRenderSetupStage } from "@/models/downloads/orbit-render-setup";
 import { ApiError } from "@/shared/errors/api-error";
 import { Button } from "@/shared/ui/button";
 import { DetailsToggle } from "@/shared/ui/details-toggle";
@@ -57,7 +58,13 @@ export function DownloadDialog({ center }: { center: DownloadCenterControl }) {
                 )}
           </DialogTitle>
           <DialogDescription>
-            {t(renderer && reason === "render" ? "setup.forRender" : `description.${item}`)}
+            {t(
+              renderer && reason === "render"
+                ? state && orbitRenderSetupStage(state) === "update"
+                  ? "setup.forRenderUpdate"
+                  : "setup.forRender"
+                : `description.${item}`,
+            )}
           </DialogDescription>
         </DialogHeader>
         {center.error ? (

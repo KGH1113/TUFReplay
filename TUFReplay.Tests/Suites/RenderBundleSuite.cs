@@ -135,22 +135,13 @@ internal static class RenderBundleSuite
         && optionsObject["height"] == null,
       "OrbitRender options did not preserve the output path or omitted defaults."
     );
-    var supportsOutput = typeof(OrbitRenderClient).GetMethod(
-      "SupportsOutputDirectory",
-      BindingFlags.NonPublic | BindingFlags.Static
-    );
-    Assert(
-      (bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectorySupported) })
-        && !(bool)supportsOutput.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) }),
-      "OrbitRender output folder capability detection failed."
-    );
     var takesOverlayVideos = typeof(OrbitRenderClient).GetMethod(
       "TakesOverlayVideos",
       BindingFlags.NonPublic | BindingFlags.Static
     );
     Assert(
       (bool)takesOverlayVideos.Invoke(null, new object[] { typeof(OverlayVideosSupported) })
-        && !(bool)takesOverlayVideos.Invoke(null, new object[] { typeof(OutputDirectoryUnsupported) })
+        && !(bool)takesOverlayVideos.Invoke(null, new object[] { typeof(NoCapabilities) })
         && !(bool)takesOverlayVideos.Invoke(null, new object[] { null }),
       "OrbitRender overlay video capability detection failed."
     );
@@ -332,12 +323,7 @@ internal static class RenderBundleSuite
     Console.WriteLine("TUFReplay neutral render bundle tests passed.");
   }
 
-  private sealed class OutputDirectorySupported
-  {
-    public const int OutputDirectoryOptionVersion = 1;
-  }
-
-  private sealed class OutputDirectoryUnsupported { }
+  private sealed class NoCapabilities { }
 
   private sealed class OverlayVideosSupported
   {
