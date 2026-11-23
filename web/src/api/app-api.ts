@@ -2,6 +2,7 @@ import type { ActivityApi } from "@/api/activity/activity-api";
 import type { AppEvents } from "@/api/app-events";
 import type { CalibrationApi } from "@/api/calibration/calibration-api";
 import type { DownloadsApi } from "@/api/downloads/downloads-api";
+import type { GameIconApi } from "@/api/game-icons/game-icon-api";
 import type { HealthApi } from "@/api/health/health-api";
 import type { MicrophoneApi } from "@/api/microphone/microphone-api";
 import type { RenderApi } from "@/api/render/render-api";
@@ -20,4 +21,6 @@ export interface AppApi {
   webcam: WebcamApi;
   render?: RenderApi;
   downloads?: DownloadsApi;
+  /** Missing in mock mode, where the run flags use TUFReplay's own icons. */
+  gameIcons?: GameIconApi;
 }

@@ -63,6 +63,9 @@ export interface FfmpegState {
     status: string;
     totalBytes: number | null;
 }
+export interface GameIcon {
+    file: ReceivedFile;
+}
 export interface Health {
     autoSubmissionProtocolVersion: number;
     buildFlavor: "auto-submission" | "standard";
@@ -397,6 +400,9 @@ export interface ReplayApiMod {
     }): Promise<CalibrationState>;
     "readDownloadsState"(): Promise<DownloadsState>;
     "readFfmpegState"(): Promise<FfmpegState>;
+    "readGameIcon"(request: {
+        icon: "lenientBullseye" | "noFail" | "normalBullseye" | "strictBullseye";
+    }): Promise<GameIcon | null>;
     "readHealth"(): Promise<Health>;
     "readLegacyReplayStatus"(): Promise<LegacyReplayStatus>;
     "readLevelSession"(request: {

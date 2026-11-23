@@ -58,6 +58,8 @@ namespace ReplayApi {
     runId: string; durationMs: int32; timesMs: int32[];
     kinds: ("Overload" | "TooEarly" | "Early" | "EarlyPerfect" | "LatePerfect" | "Late" | "TooLate" | "Miss")[];
   }
+  // A run-flag icon copied from the running game as a PNG, so the companion never hosts ADOFAI's art.
+  model GameIcon { file: ipc.File; }
   model LegacyReplayStatus { hasLegacyReplays: boolean; }
   model DeleteResult { runId: string; deleted: boolean; }
   model RetainResult { runId: string; permanent: boolean; }
@@ -157,6 +159,7 @@ namespace ReplayApi {
   op listLogicalLevelRuns(id: string, appSessionIds: string[], offset?: int32, limit?: int32): Run[];
   op readLogicalLevelChart(id: string): Chart;
   op readRunJudgmentTimelines(runIds: string[]): RunJudgmentTimeline[];
+  op readGameIcon(icon: "lenientBullseye" | "normalBullseye" | "strictBullseye" | "noFail"): GameIcon | null;
   op removeRun(runId: string): DeleteResult;
   op removeAppSessionRuns(appSessionIds: string[], keepClears: boolean): RunBatchDeleteResult;
   op changeRunLock(runId: string, locked: boolean): LockResult;
