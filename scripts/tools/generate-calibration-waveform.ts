@@ -3,11 +3,8 @@
 import { join } from "node:path";
 
 const projectRoot = join(import.meta.dir, "../..");
-const sourcePath = join(projectRoot, "TUFReplay/Assets/calibration/calibration_old.ogg");
-const destinationPath = join(
-  projectRoot,
-  "TUFReplay/Assets/calibration/calibration_old.waveform",
-);
+const sourcePath = join(projectRoot, "TUFReplay/Assets/calibration/calibration.ogg");
+const destinationPath = join(projectRoot, "TUFReplay/Assets/calibration/calibration.waveform");
 const sampleRate = 44_100;
 const framesPerPeak = 32;
 

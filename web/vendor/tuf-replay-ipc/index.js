@@ -2,7 +2,7 @@
 import { defineContract } from "adofai-ipc";
 export const ReplayApiContract = defineContract({
     "id": "tuf-replay",
-    "hash": "ccb4f39e93c084230b26b96774448e51cc472f05a8ad2b738e8a2b6ba42afbdb",
+    "hash": "739525230e630fb92416a9dcedafaec1e26bb4faa16f0bf1d39e6773c2b1032d",
     "models": {
         "ActivityChanged": {
             "object": {
@@ -133,6 +133,11 @@ export const ReplayApiContract = defineContract({
                 "totalBytes": {
                     "nullable": "safeint"
                 }
+            }
+        },
+        "GameIcon": {
+            "object": {
+                "file": "file"
             }
         },
         "Health": {
@@ -1015,6 +1020,26 @@ export const ReplayApiContract = defineContract({
             },
             "output": {
                 "model": "FfmpegState"
+            }
+        },
+        "readGameIcon": {
+            "wireName": "rpc.mod.readgameicon",
+            "input": {
+                "object": {
+                    "icon": {
+                        "enum": [
+                            "lenientBullseye",
+                            "noFail",
+                            "normalBullseye",
+                            "strictBullseye"
+                        ]
+                    }
+                }
+            },
+            "output": {
+                "nullable": {
+                    "model": "GameIcon"
+                }
             }
         },
         "readHealth": {
