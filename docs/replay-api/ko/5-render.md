@@ -49,7 +49,7 @@ public static string RenderFfmpegPath { get; }       // 렌더러와 같이 쓰�
 - 둘 중 하나라도 없으면 렌더러가 영상을 쓸 수 없습니다. 대신 캔버스를 그리거나, 그림을 빼세요.
 
 **`AddReplayOverlayVideos(add)`**
-- 마지막 프레임 뒤, OrbitRender가 영상을 합치기 전에 유니티 메인 스레드에서 한 번 불립니다. 영상을 다 쓸 때까지 붙잡고 있어도 되고, 렌더는 기다립니다.
+- 마지막 프레임 뒤, OrbitRender가 영상을 합치기 전에 한 번 불립니다. 영상을 다 쓸 때까지 붙잡고 있어도 되고, 렌더는 기다립니다. 백그라운드 스레드에서 불릴 수 있으니 이 안에서 유니티 오브젝트를 건드리지 마세요.
 - 렌더가 실패하거나 취소되면 불리지 않습니다. 정리는 영상을 합친 뒤에 불리는 `OnReplayEnd`에서 하세요.
 - 호출 중에 영상마다 `add(path, source, target)`를 한 번씩 부릅니다. 나중에 추가한 영상은 빠집니다.
   - `path`: FFmpeg가 읽을 수 있는 영상의 절대 경로. 꽉 찬 사각형이 아닌 그림은 QuickTime Animation(`-c:v qtrle -pix_fmt argb`)처럼 알파가 있는 형식을 쓰세요.

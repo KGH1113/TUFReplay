@@ -49,7 +49,7 @@ A mod whose picture is slow to draw, such as a key viewer that runs in another a
 - When either is missing, the renderer can't use your video: draw a canvas instead, or leave your picture out.
 
 **`AddReplayOverlayVideos(add)`**
-- Runs once on Unity's main thread, after the last frame, before OrbitRender composes the video. It may block until your videos are written; the render waits.
+- Runs once, after the last frame, before OrbitRender composes the video. It may block until your videos are written; the render waits. It can run on a background thread, so don't touch Unity objects in it.
 - It is not called when the render fails or is cancelled. Clean up in `OnReplayEnd`, which runs after the video is composed.
 - Call `add(path, source, target)` once per video, during the call. Videos added later are left out.
   - `path`: an absolute path to a video FFmpeg can read. Use a format with alpha, such as QuickTime Animation (`-c:v qtrle -pix_fmt argb`), for a picture that is not a full rectangle.

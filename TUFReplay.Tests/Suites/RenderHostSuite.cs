@@ -16,6 +16,7 @@ internal static class RenderHostSuite
     TellsOrbitRenderAbsoluteMediaPaths(root);
     RefusesMediaOutsideTheBundle(root);
     LeavesTheCameraItDrawsOutOfTheRequest(root);
+    FollowsOrbitRenderFinishingInTheBackground();
     FailedRunsRecordTheFailScreen(root);
     KeepsTheRecordedSpeedMultiplier(root);
     GivesOrbitRenderOverlayVideosAsJson();
@@ -134,6 +135,37 @@ internal static class RenderHostSuite
       "A render with only a host-drawn camera still asked OrbitRender to compose media."
     );
     Console.WriteLine("PASS the camera the host draws stays out of OrbitRender's request");
+  }
+
+  // OrbitRender finishes in the background and says how far it is, so the web's bar keeps moving
+  // through the minutes of waiting for key viewers and composing.
+  private static void FollowsOrbitRenderFinishingInTheBackground()
+  {
+    OrbitRenderResult composing = OrbitRenderClient.Parse(
+      "{\"ok\":true,\"job\":{\"id\":\"j\",\"state\":\"finishing\",\"progress\":1,"
+        + "\"finishingStage\":\"composing\",\"finishingProgress\":0.5}}"
+    );
+    Assert(
+      composing.Ok && composing.Job.FinishingStage == "composing" && composing.Job.FinishingProgress == 0.5,
+      "OrbitRender's finishing stage and progress were not read."
+    );
+    Assert(
+      Math.Abs(RenderJobCoordinator.FinishingShare(composing.Job) - 0.5) < 1e-9,
+      "The composition's progress did not move the bar."
+    );
+    OrbitRenderResult waiting = OrbitRenderClient.Parse(
+      "{\"ok\":true,\"job\":{\"id\":\"j\",\"state\":\"finishing\",\"finishingStage\":\"overlays\"}}"
+    );
+    Assert(
+      waiting.Job.FinishingProgress == null && RenderJobCoordinator.FinishingShare(waiting.Job) == 0,
+      "Waiting for key viewer videos moved the bar."
+    );
+    OrbitRenderResult older = OrbitRenderClient.Parse("{\"ok\":true,\"job\":{\"id\":\"j\",\"state\":\"finishing\"}}");
+    Assert(
+      older.Job.FinishingStage == null && RenderJobCoordinator.FinishingShare(older.Job) == 0,
+      "An OrbitRender that does not report its finish broke the bar."
+    );
+    Console.WriteLine("PASS the web follows OrbitRender's background finish");
   }
 
   private static void RefusesMediaOutsideTheBundle(string root)

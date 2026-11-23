@@ -370,7 +370,9 @@ internal sealed class RenderReplayHost
   /// <summary>
   /// The videos mods want laid over the finished video, as OrbitRender's JSON array. OrbitRender
   /// calls this once, after the last frame and before it composes the video, and only for a
-  /// render that completed. Blocks while mods finish writing their videos.
+  /// render that completed. Blocks while mods finish writing their videos. OrbitRender that
+  /// finishes in the background calls it from a worker thread, so nothing here touches Unity:
+  /// the session's providers are an array snapshot and the registry a volatile array.
   /// </summary>
   public string GetOverlayVideos()
   {

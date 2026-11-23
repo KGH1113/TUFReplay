@@ -33,6 +33,7 @@ public static class RenderJobCoordinator
   public const string StageWaitingForConfirmation = "waiting_for_confirmation";
   public const string StageRendering = "rendering";
   public const string StageCompositing = "compositing";
+  public const string StageWaitingForOverlays = "waiting_for_overlays";
   public const string StageCancelling = "cancelling";
 
   private const double ExportWeight = 0.1;
@@ -456,8 +457,11 @@ public static class RenderJobCoordinator
         break;
       case "finishing":
         job.State = "compositing";
-        job.Stage = job.CancelRequested ? StageCancelling : StageCompositing;
-        job.Progress = Math.Max(job.Progress, CompositingProgress);
+        job.Stage =
+          job.CancelRequested ? StageCancelling
+          : orbit.FinishingStage == "overlays" ? StageWaitingForOverlays
+          : StageCompositing;
+        job.Progress = Math.Max(job.Progress, CompositingProgress + (1 - CompositingProgress) * FinishingShare(orbit));
         break;
       case "preparing":
         job.State = "preparing";
@@ -477,6 +481,10 @@ public static class RenderJobCoordinator
     }
     Publish(job);
   }
+
+  // How far OrbitRender's finish is: only its composition reports progress.
+  internal static double FinishingShare(OrbitRenderJob orbit) =>
+    orbit.FinishingStage == "composing" ? Clamp01(orbit.FinishingProgress ?? 0) : 0;
 
   private static StoredRunStates LoadRunStates(string runId)
   {

@@ -95,7 +95,8 @@
     "exporting": "플레이를 준비하는 중…",
     "preparing": "레벨을 여는 중…",
     "rendering": "플레이를 찍는 중…",
-    "compositing": "소리와 카메라를 넣는 중…",
+    "compositing": "영상을 마무리하는 중…",
+    "waitingForOverlays": "키뷰어 영상을 기다리는 중…",
     "completed": "영상이 완성됐어요",
     "cancelled": "멈췄어요",
     "failed": "영상을 만들지 못했어요"

@@ -32,7 +32,7 @@ namespace TUFReplay;
 ///   IEnumerable&lt;Canvas&gt; GetReplayCanvases()                 // or Canvas
 ///   void   OnBeforeFrameCapture()
 ///   void   OnAfterFrameCapture()
-///   void   AddReplayOverlayVideos(Action&lt;string, RectInt, RectInt&gt; add)  // after the last frame
+///   void   AddReplayOverlayVideos(Action&lt;string, RectInt, RectInt&gt; add)  // after the last frame, often off the main thread
 /// </code>
 /// During a replay, take keys from <c>OnReplayKey</c> and time from <c>OnReplayClock</c> instead
 /// of live input and real time. Every call is on Unity's main thread. See docs/replay-api/.
