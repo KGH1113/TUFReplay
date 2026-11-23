@@ -66,6 +66,7 @@
   "setup": {
     "label": "영상 만들기 준비 순서",
     "forRender": "영상을 만들려면 OrbitRender가 필요해요. 아래 순서대로 준비해 주세요.",
+    "forRenderUpdate": "OrbitRender를 업데이트하면 영상을 만들 수 있어요.",
     "state": {
       "upcoming": "다음 단계",
       "current": "지금 할 일",
@@ -78,8 +79,9 @@
       "updateTitle": "OrbitRender 업데이트",
       "about": "GitHub에서 공식 배포 파일을 받아 설치해요.",
       "done": "설치했어요",
-      "update": "2.6.2 이상이 필요해요. 지금은 {{version}}이에요.",
-      "updateUnknown": "2.6.2 이상이 필요해요.",
+      "update": "{{minimum}} 이상이면 영상을 만들 수 있어요. 지금은 {{version}} 버전이에요.",
+      "updateUnknown": "{{minimum}} 이상이면 영상을 만들 수 있어요.",
+      "updateHow": "새 버전을 아래 설치 위치에 풀어 덮어쓰면 돼요. 설정은 그대로 남아요.",
       "latestRelease": "최신 버전 받기"
     },
     "restart": {

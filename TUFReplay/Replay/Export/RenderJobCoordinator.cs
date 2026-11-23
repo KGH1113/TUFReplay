@@ -17,9 +17,9 @@ using TUFReplay.Shared.Media;
 
 namespace TUFReplay.Replay.Export;
 
-// TUFReplay owns the render job; OrbitRender only opens the recorded level and
-// renders. The job exports a bundle, hands its manifest to OrbitRender, mirrors
-// OrbitRender's state, and deletes the bundle once the render is terminal.
+// TUFReplay owns the render job; OrbitRender only opens the recorded level,
+// captures and encodes. The job exports a bundle, replays it as OrbitRender's
+// host, mirrors OrbitRender's state, and deletes the bundle once the render is terminal.
 //
 // Tick runs on Unity's main thread. Start/Cancel are registered as main-thread
 // IPC methods so every mutation is serialized with Tick.
@@ -79,6 +79,10 @@ public static class RenderJobCoordinator
     if (string.IsNullOrWhiteSpace(runId))
       throw Domain("invalid_run_id", "Choose a play record to render.");
     ValidateOptions(options);
+    // A missing or old OrbitRender is reported now, not after the recording has been prepared.
+    OrbitRenderError renderer = OrbitRenderClient.CheckReady();
+    if (renderer != null)
+      throw Domain(renderer.Code, renderer.Message);
     lock (Gate)
     {
       if (_job != null)
@@ -274,17 +278,17 @@ public static class RenderJobCoordinator
         // The mod states load alongside the export and are nearly always ready first.
         if (!job.RunStates.IsCompleted)
           return;
-        if (OrbitRenderClient.SupportsHostedReplay)
+        string manifestPath = bundle.ManifestPath;
+        if (string.IsNullOrEmpty(manifestPath))
         {
-          // TUFReplay replays the recording itself; reading it back stays off the game thread.
-          string manifestPath = bundle.ManifestPath;
-          job.Recording ??= Task.Run(() => RecordingBundle.Load(manifestPath));
-          if (!job.Recording.IsCompleted)
-            return;
-          BeginHostedRender(job);
+          Fail(job, "render_manifest_missing", "The recording bundle is incomplete. Start rendering again.", null);
           return;
         }
-        BeginRender(job, bundle.ManifestPath);
+        // TUFReplay replays the recording itself; reading it back stays off the game thread.
+        job.Recording ??= Task.Run(() => RecordingBundle.Load(manifestPath));
+        if (!job.Recording.IsCompleted)
+          return;
+        BeginHostedRender(job);
         return;
       case "failed":
         Fail(job, bundle.ErrorCode, bundle.ErrorMessage, bundle.ErrorDetails);
@@ -301,41 +305,6 @@ public static class RenderJobCoordinator
     }
   }
 
-  private static void BeginRender(Job job, string manifestPath)
-  {
-    if (string.IsNullOrEmpty(manifestPath))
-    {
-      Fail(job, "render_manifest_missing", "The recording bundle is incomplete. Start rendering again.", null);
-      return;
-    }
-    // Mods restore the state saved with this run before OrbitRender opens the level.
-    job.RunStateSession = ReplaySessions.Begin(
-      job.RunId,
-      new ReplayRender(
-        job.Options.Width,
-        job.Options.Height,
-        job.Options.VideoFps,
-        takesOverlayVideos: false,
-        ffmpegPath: SharedFfmpegPath()
-      ),
-      job.RunStates.Result
-    );
-    var result = OrbitRenderClient.StartReplay(
-      manifestPath,
-      BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)
-    );
-    if (!result.Ok)
-    {
-      Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
-      return;
-    }
-    job.OrbitJobId = result.Job.Id;
-    job.State = "preparing";
-    job.Stage = StageOpeningLevel;
-    job.Progress = Math.Max(job.Progress, PrepareProgress);
-    Publish(job);
-  }
-
   // The FFmpeg TUFReplay shares with OrbitRender, for mods that write overlay videos; null until installed.
   private static string SharedFfmpegPath()
   {
@@ -343,7 +312,7 @@ public static class RenderJobCoordinator
     return ffmpeg.Available && !string.IsNullOrEmpty(ffmpeg.Path) ? ffmpeg.Path : null;
   }
 
-  // OrbitRender 3 and later: OrbitRender captures and encodes, TUFReplay replays as its host.
+  // OrbitRender captures and encodes; TUFReplay replays as its host.
   private static void BeginHostedRender(Job job)
   {
     RecordingBundle recording;

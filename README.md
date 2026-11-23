@@ -45,7 +45,7 @@ TUFReplay updates itself. Turn on **Receive beta updates** in the same settings 
 - **macOS**: allow A Dance of Fire and Ice in System Settings → Privacy & Security → **Input Monitoring**. For the microphone and camera, allow **TUFReplay Microphone Capture**.
 - **Windows camera**: needs FFmpeg. The web companion asks before downloading it.
 - **Linux**: camera recording is not supported.
-- **Videos**: need OrbitRender 2.6.2 or later; the web companion's **Downloads** installs it. With 2.8.1 or later, key viewers and overlays that use the API also appear in the video.
+- **Videos**: need OrbitRender 2.8.0 or later; the web companion's **Downloads** installs it. With 2.8.1 or later, key viewers and overlays that use the API also appear in the video.
 - **TUF level IDs**: install TUFHelperLite or TUFHelper, and runs of levels downloaded with them are linked to their TUF level.
 
 ## For mod developers

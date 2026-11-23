@@ -66,6 +66,7 @@
   "setup": {
     "label": "Steps to make videos",
     "forRender": "You need OrbitRender to make videos. Follow these steps.",
+    "forRenderUpdate": "Update OrbitRender and you can make videos.",
     "state": {
       "upcoming": "Later step",
       "current": "Next step",
@@ -78,9 +79,10 @@
       "updateTitle": "Update OrbitRender",
       "about": "Downloads the official release from GitHub.",
       "done": "Installed",
-      "update": "Version 2.6.2 or later is needed. This one is {{version}}.",
-      "updateUnknown": "Version 2.6.2 or later is needed.",
-      "latestRelease": "Get the latest release"
+      "update": "Version {{minimum}} or later can make videos. You have {{version}}.",
+      "updateUnknown": "Version {{minimum}} or later can make videos.",
+      "updateHow": "Unzip the new version over the install location below. Your settings stay.",
+      "latestRelease": "Get the latest version"
     },
     "restart": {
       "title": "Restart ADOFAI",
