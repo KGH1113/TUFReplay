@@ -28,6 +28,7 @@ public class RunRecord
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public byte[] GameplayHashV5;
 
   public int InputCount;
   public int HitContextCount;

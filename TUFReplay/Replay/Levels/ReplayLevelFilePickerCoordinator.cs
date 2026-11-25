@@ -289,23 +289,20 @@ public static class ReplayLevelFilePickerCoordinator
     if (canonicalPath == null)
       return Error(run.Id, "level_file_missing", LevelFileAccessValidator.MissingMessage);
 
-    if (!TryResolveReferenceHash(run, out byte[] referenceHash, out string errorCode, out string errorMessage))
+    if (!TryResolveReferenceHash(run, out string errorCode, out string errorMessage))
       return Error(run.Id, errorCode, errorMessage);
 
     if (
       !GameplayChartHash.TryLoadCustomLevel(
         canonicalPath,
-        out ADOFAI.LevelData selectedLevelData,
-        out byte[] selectedHash,
+        out ADOFAI.LevelData _,
+        out GameplayChartHashes selectedHashes,
         out string hashError
       )
     )
       return Error(run.Id, "level_file_invalid", hashError);
 
-    if (
-      !GameplayChartHash.Equals(referenceHash, selectedHash)
-      && !ReplayLevelHashValidator.MatchesVerifiedOriginalSemantics(run, referenceHash, selectedLevelData)
-    )
+    if (!ReplayLevelHashValidator.MatchesRun(run, selectedHashes, canonicalPath))
     {
       return new ReplayLevelFilePickerResult
       {
@@ -326,27 +323,24 @@ public static class ReplayLevelFilePickerCoordinator
     };
   }
 
-  private static bool TryResolveReferenceHash(
-    StoredReplayRun run,
-    out byte[] referenceHash,
-    out string errorCode,
-    out string errorMessage
-  )
+  private static bool TryResolveReferenceHash(StoredReplayRun run, out string errorCode, out string errorMessage)
   {
-    referenceHash = null;
     errorCode = null;
     errorMessage = null;
-    if (run.GameplayHash != null || run.GameplayHashVersion.HasValue)
+    if (run.GameplayHash != null || run.GameplayHashVersion.HasValue || run.GameplayHashV5 != null)
     {
-      if (!GameplayChartHash.IsSupported(run.GameplayHashVersion, run.GameplayHash))
-        return Fail(
+      bool supported =
+        (
+          run.GameplayHash == null && !run.GameplayHashVersion.HasValue
+          || GameplayChartHash.IsSupported(run.GameplayHashVersion, run.GameplayHash)
+        ) && (run.GameplayHashV5 == null || GameplayChartHash.IsV5(run.GameplayHashV5));
+      return supported
+        || Fail(
           "level_hash_unsupported",
           "This run uses an unsupported gameplay hash.",
           out errorCode,
           out errorMessage
         );
-      referenceHash = run.GameplayHash;
-      return true;
     }
 
     string originalPath = LevelPathIdentity.Canonicalize(run.LevelPath);
@@ -359,12 +353,15 @@ public static class ReplayLevelFilePickerCoordinator
         out errorMessage
       );
     }
-    if (!GameplayChartHash.TryLoadCustomLevel(originalPath, out _, out referenceHash, out string hashError))
+    if (
+      !GameplayChartHash.TryLoadCustomLevel(originalPath, out _, out GameplayChartHashes recorded, out string hashError)
+    )
       return Fail("level_file_invalid", hashError, out errorCode, out errorMessage);
 
-    run.GameplayHash = referenceHash;
+    run.GameplayHash = recorded.V4;
     run.GameplayHashVersion = GameplayChartHash.Version;
-    RunRepository.UpdateGameplayHashIfMissing(run.Id, referenceHash, GameplayChartHash.Version);
+    run.GameplayHashV5 = recorded.V5;
+    RunRepository.UpdateGameplayHashesIfMissing(run.Id, recorded);
     return true;
   }
 

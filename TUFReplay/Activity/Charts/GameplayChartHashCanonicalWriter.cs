@@ -48,14 +48,6 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
       WriteFloat(angleData[index]);
   }
 
-  public void WriteNormalizedAngles(IReadOnlyList<float> angleData)
-  {
-    int count = angleData?.Count ?? 0;
-    WriteInt(count);
-    for (int index = 0; index < count; index++)
-      WriteFloat(NormalizeAngle(angleData[index]));
-  }
-
   public void WriteSetSpeed(int floor, byte speedType, float value)
   {
     WriteEventHeader(floor, 0);
@@ -112,13 +104,11 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
 
   public void Dispose() => _payload.Dispose();
 
-  private void WriteEventHeader(int floor, byte kind)
-  {
-    WriteInt(floor);
-    _payload.WriteByte(kind);
-  }
+  public void WriteByte(byte value) => _payload.WriteByte(value);
 
-  private void WriteInt(int value)
+  public void WriteBool(bool value) => _payload.WriteByte(value ? (byte)1 : (byte)0);
+
+  public void WriteInt(int value)
   {
     _payload.WriteByte((byte)(value >> 24));
     _payload.WriteByte((byte)(value >> 16));
@@ -126,25 +116,31 @@ internal sealed class GameplayChartHashCanonicalWriter : IDisposable
     _payload.WriteByte((byte)value);
   }
 
-  private void WriteString(string value)
+  public void WriteString(string value)
   {
     byte[] bytes = Encoding.UTF8.GetBytes(value ?? string.Empty);
     WriteInt(bytes.Length);
     _payload.Write(bytes, 0, bytes.Length);
   }
 
+  /// <summary>Writes the float with -0 folded into 0 and every NaN into one value.</summary>
+  public void WriteCanonicalFloat(float value)
+  {
+    if (float.IsNaN(value))
+      value = float.NaN;
+    else if (value == 0f)
+      value = 0f;
+    WriteFloat(value);
+  }
+
+  private void WriteEventHeader(int floor, byte kind)
+  {
+    WriteInt(floor);
+    _payload.WriteByte(kind);
+  }
+
   private void WriteFloat(float value)
   {
     WriteInt(BitConverter.SingleToInt32Bits(value));
-  }
-
-  private static float NormalizeAngle(float value)
-  {
-    if (value == 999f)
-      return value;
-    float normalized = value % 360f;
-    if (normalized < 0f)
-      normalized += 360f;
-    return normalized == 0f ? 0f : normalized;
   }
 }

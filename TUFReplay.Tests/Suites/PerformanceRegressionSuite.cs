@@ -175,11 +175,12 @@ internal static class PerformanceRegressionSuite
     int verifications = 0;
     int reads = 0;
     var cache = new LevelFileVerificationCache(
-      (string file, out string source, out byte[] hash) =>
+      (string file, out string source, out GameplayChartHashes hashes) =>
       {
         verifications++;
         source = File.ReadAllText(file);
-        hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(source));
+        hashes = new GameplayChartHashes(hash, SHA256.HashData(hash));
         return true;
       },
       file =>
@@ -190,13 +191,26 @@ internal static class PerformanceRegressionSuite
       capacity: 4
     );
 
-    Assert(cache.TryRead(path, out string first, out byte[] firstHash), "The first chart read failed.");
-    Assert(cache.TryRead(path, out string second, out byte[] secondHash), "The cached chart read failed.");
+    Assert(cache.TryRead(path, out string first, out GameplayChartHashes firstHashes), "The first chart read failed.");
+    Assert(
+      cache.TryRead(path, out string second, out GameplayChartHashes secondHashes),
+      "The cached chart read failed."
+    );
     Assert(verifications == 1 && reads == 1, "An unchanged chart was fully verified again.");
-    Assert(first == second && firstHash.SequenceEqual(secondHash), "The cached chart read changed its result.");
-    secondHash[0] ^= 0xff;
-    Assert(cache.TryRead(path, out _, out byte[] thirdHash), "The cached chart read failed after hash mutation.");
-    Assert(thirdHash.SequenceEqual(firstHash), "A caller could mutate the cached hash.");
+    Assert(
+      first == second && firstHashes.V4.SequenceEqual(secondHashes.V4) && firstHashes.V5.SequenceEqual(secondHashes.V5),
+      "The cached chart read changed its result."
+    );
+    secondHashes.V4[0] ^= 0xff;
+    secondHashes.V5[0] ^= 0xff;
+    Assert(
+      cache.TryRead(path, out _, out GameplayChartHashes thirdHashes),
+      "The cached chart read failed after hash mutation."
+    );
+    Assert(
+      thirdHashes.V4.SequenceEqual(firstHashes.V4) && thirdHashes.V5.SequenceEqual(firstHashes.V5),
+      "A caller could mutate the cached hashes."
+    );
 
     File.WriteAllText(path, "{\"angleData\":[0,180]}");
     File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(1));
@@ -257,6 +271,7 @@ internal static class PerformanceRegressionSuite
         StartedAtUtc = DateTime.UtcNow.ToString("O"),
         GameplayHash = new byte[32],
         GameplayHashVersion = GameplayChartHash.Version,
+        GameplayHashV5 = new byte[32],
       };
       payload.Inputs.Add(new RecordedInput(100, 32, RecordInputFlags.Down));
       RunRecord first;
@@ -266,7 +281,7 @@ internal static class PerformanceRegressionSuite
       {
         var elapsed = Stopwatch.StartNew();
         Assert(
-          tracker.OpenLevel(chart, null, 10, payload.GameplayHash, payload.GameplayHashVersion),
+          tracker.OpenLevel(chart, null, 10, new GameplayChartHashes(payload.GameplayHash, payload.GameplayHashV5)),
           "Level draft failed."
         );
         first = tracker.CreateRunDraft(payload, 0, 10);

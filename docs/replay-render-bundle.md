@@ -62,7 +62,10 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 
 `manifest.json` contains `schemaVersion: 1`, `recordingId`, `level`, `replay`, `inputsFile`,
 `hitsFile`, and `media`. The level object includes its absolute `path`, `fileSha256`,
-`gameplayHash`, and `gameplayHashVersion`. Replay metadata includes
+`gameplayHash`, and `gameplayHashVersion`. The hash is version 5 when the run has one, which
+ignores effects, song volume and file name, so a VFX and a plain copy of a chart share it;
+runs recorded before version 5 that were never checked against their file again keep
+version 4. Replay metadata includes
 `gameplayStartSongPosition`, `effectivePitch`, `gameInputOffsetMs`, `noFailMode`,
 `judgmentSystem`, `judgmentDifficulty`, optional `hitMarginLimit`, `startTile`, `result`,
 `wonTimeUs`, and `terminalTimeUs`. Optional `speedMultiplier` is the speed on top of the

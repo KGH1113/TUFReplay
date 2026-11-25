@@ -265,7 +265,11 @@ public static partial class ReplaySessionService
   private static bool IsActiveReplayHashCurrent()
   {
     ActiveReplayContext context = _activeContext;
-    if (context == null || !GameplayChartHash.IsSupported(context.GameplayHashVersion, context.GameplayHash))
+    if (
+      context == null
+      || context.GameplayHashVersion != GameplayChartHash.V5Version
+      || !GameplayChartHash.IsV5(context.GameplayHash)
+    )
       return false;
 
     LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
@@ -283,7 +287,7 @@ public static partial class ReplaySessionService
       return true;
 
     bool current =
-      GameplayChartHash.TryCompute(levelData, out byte[] currentHash, out _)
+      GameplayChartHash.TryComputeV5(levelData, out byte[] currentHash, out _)
       && GameplayChartHash.Equals(context.GameplayHash, currentHash);
     if (current)
     {

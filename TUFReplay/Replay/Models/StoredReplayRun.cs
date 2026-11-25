@@ -20,6 +20,7 @@ public sealed class StoredReplayRun
   public string ReplayUnavailableReason;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public byte[] GameplayHashV5;
   public RunJudgmentDifficulty? JudgmentDifficulty;
   public bool NoFailMode;
 }

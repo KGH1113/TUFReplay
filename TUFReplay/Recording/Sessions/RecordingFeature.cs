@@ -37,8 +37,7 @@ public partial class RecordingFeature
   private Task<bool> _runPersistence = Task.FromResult(false);
   internal Task<bool> RunPersistence => _runPersistence;
   internal Task PendingActivityWrites => _activity.PendingWrites;
-  private byte[] _gameplayHash;
-  private int? _gameplayHashVersion;
+  private GameplayChartHashes _gameplayHashes;
   private bool _microphoneCaptureStarted;
   private MicrophoneCaptureTimeline _microphoneTimeline;
   private PendingMicrophoneDisposition _pendingEditorRecording;
@@ -232,7 +231,7 @@ public partial class RecordingFeature
       _calibrationRun = true;
       RecordingPatches.ResetHitContextState();
       CaptureGameplayHash();
-      Session.Start(null, true, _gameplayHash, _gameplayHashVersion);
+      Session.Start(null, true, _gameplayHashes);
       Main.Instance.Log("[Recording] Calibration level opened in transient recording mode.");
       return;
     }
@@ -280,7 +279,7 @@ public partial class RecordingFeature
 
     CaptureGameplayHash();
     RecordingPatches.ResetHitContextState();
-    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHash, _gameplayHashVersion);
+    Session.Start(tufLevelId, Settings == null || Settings.AutoRecord, _gameplayHashes);
     if (Session.IsRecording)
     {
       FeatureRegistry.MicrophoneRecording?.ArmForLevel();
@@ -304,12 +303,7 @@ public partial class RecordingFeature
     int? tufLevelId = Session.TufLevelId;
     ResetRunState();
     RecordingPatches.ResetHitContextState();
-    Session.Start(
-      tufLevelId,
-      _calibrationRun || Settings == null || Settings.AutoRecord,
-      _gameplayHash,
-      _gameplayHashVersion
-    );
+    Session.Start(tufLevelId, _calibrationRun || Settings == null || Settings.AutoRecord, _gameplayHashes);
 
     Main.Instance.Log("[Recording] Prepared retry run. tufLevelId=" + (tufLevelId?.ToString() ?? "null"));
     return Session.IsRecording;
@@ -322,12 +316,10 @@ public partial class RecordingFeature
 
   private void CaptureGameplayHash()
   {
-    _gameplayHash = null;
-    _gameplayHashVersion = null;
-    if (GameplayChartHash.TryComputeCurrent(out byte[] hash, out string error))
+    _gameplayHashes = null;
+    if (GameplayChartHash.TryComputeCurrent(out GameplayChartHashes hashes, out string error))
     {
-      _gameplayHash = hash;
-      _gameplayHashVersion = GameplayChartHash.Version;
+      _gameplayHashes = hashes;
       return;
     }
 

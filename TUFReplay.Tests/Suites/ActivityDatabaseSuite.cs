@@ -16,6 +16,9 @@ internal static class ActivityDatabaseSuite
   {
     TestFreshSchemaAndAtomicArtifact(root);
     TestTufFilesStaySeparate(root);
+    TestV4LevelsMoveToV5Identity(root);
+    TestV5BackfillNeedsMatchingV4(root);
+    TestV5ColumnIsAddedToExistingDatabase(root);
     TestLegacyV15Import(root);
     TestLegacyDatabaseReset(root);
     TestUnsupportedDatabasesArePreserved(root);
@@ -31,7 +34,7 @@ internal static class ActivityDatabaseSuite
     string folder = Path.Combine(root, "downloads", "tuf-8068");
     string firstPath = Path.Combine(folder, "Merry Christmas.adofai");
     string secondPath = Path.Combine(folder, "EX", "Merry Christmas EX.adofai");
-    byte[] hash = new byte[GameplayChartHash.Version4Size];
+    byte[] hash = new byte[GameplayChartHash.HashSize];
     var first = new LevelRecord
     {
       SourceKind = LevelSourceKind.Tuf,
@@ -82,6 +85,132 @@ internal static class ActivityDatabaseSuite
       "A matching TUF chart recorded before path-aware identity was duplicated."
     );
   }
+
+  // A chart saved before V5 keeps one history: its V4 row takes the V5 identity, and
+  // a VFX copy that differs only in song volume (another V4) joins the same row.
+  private static void TestV4LevelsMoveToV5Identity(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "v5-identity.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand command = connection.CreateCommand();
+      command.CommandText =
+        "INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01T00:00:00Z',0)";
+      command.ExecuteNonQuery();
+    }
+
+    string chart = Path.Combine(root, "quomo", "level.adofai");
+    byte[] quiet = Filled(1);
+    byte[] loud = Filled(2);
+    byte[] v5 = Filled(3);
+    string quietId = LevelRepository.ResolveOrCreate(Level(chart, quiet, null, "2026-01-01T00:00:00Z"));
+    string loudId = LevelRepository.ResolveOrCreate(Level(chart, loud, null, "2026-01-02T00:00:00Z"));
+    Assert(quietId != loudId, "Charts with different V4 hashes shared a row before V5.");
+    AddSession("quiet-session", quietId);
+    AddSession("loud-session", loudId);
+
+    string merged = LevelRepository.ResolveOrCreate(Level(chart, loud, v5, "2026-01-03T00:00:00Z"));
+    Assert(merged == loudId, "The V4 row of the opened chart did not take the V5 identity.");
+    Assert(
+      LevelRepository.ResolveOrCreate(Level(chart, quiet, v5, "2026-01-04T00:00:00Z")) == merged,
+      "A chart with the same V5 did not join the existing row."
+    );
+    Assert(!LevelRepository.Exists(quietId), "The merged V4 row was left behind.");
+    Assert(
+      LevelSessionRepository.Get("quiet-session")?.LevelId == merged
+        && LevelSessionRepository.Get("loud-session")?.LevelId == merged,
+      "Sessions of the merged rows were not moved to the V5 row."
+    );
+    LevelSession session = LevelSessionRepository.Get("quiet-session");
+    Assert(
+      session.GameplayHashV5 != null && session.GameplayHashV5.SequenceEqual(v5),
+      "The V5 hash was not stored on the level."
+    );
+    Assert(session.GameplayHash.SequenceEqual(loud), "The surviving row lost the V4 hash that older builds read.");
+
+    string other = LevelRepository.ResolveOrCreate(Level(chart, quiet, Filled(4), "2026-01-05T00:00:00Z"));
+    Assert(other != merged, "A chart with another V5 joined the row.");
+  }
+
+  private static void TestV5BackfillNeedsMatchingV4(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "v5-backfill.sqlite"));
+    using (SqliteConnection connection = Database.OpenConnection())
+    {
+      ActivitySchema.Ensure(connection);
+      using SqliteCommand command = connection.CreateCommand();
+      command.CommandText =
+        "INSERT INTO app_sessions(id,started_at_utc,recorder_utc_offset_minutes) VALUES('app','2026-01-01T00:00:00Z',0)";
+      command.ExecuteNonQuery();
+    }
+
+    string chart = Path.Combine(root, "backfill", "level.adofai");
+    byte[] v4 = Filled(5);
+    string levelId = LevelRepository.ResolveOrCreate(Level(chart, v4, null, "2026-01-01T00:00:00Z"));
+    AddSession("backfill-session", levelId);
+
+    string unchanged = LevelRepository.UpdateGameplayHashesIfMissing(
+      levelId,
+      new GameplayChartHashes(Filled(6), Filled(7))
+    );
+    Assert(unchanged == levelId, "Another chart's hashes moved the level.");
+    Assert(LevelSessionRepository.Get("backfill-session").GameplayHashV5 == null, "Another chart supplied V5.");
+
+    string filled = LevelRepository.UpdateGameplayHashesIfMissing(levelId, new GameplayChartHashes(v4, Filled(8)));
+    LevelSession session = LevelSessionRepository.Get("backfill-session");
+    Assert(filled == levelId && session.LevelId == levelId, "Filling V5 replaced the level row.");
+    Assert(session.GameplayHashV5?.SequenceEqual(Filled(8)) == true, "The recorded file did not supply V5.");
+
+    LevelRepository.UpdateGameplayHashesIfMissing(levelId, new GameplayChartHashes(v4, Filled(9)));
+    Assert(
+      LevelSessionRepository.Get("backfill-session").GameplayHashV5.SequenceEqual(Filled(8)),
+      "A stored V5 was replaced."
+    );
+  }
+
+  private static void TestV5ColumnIsAddedToExistingDatabase(string root)
+  {
+    SetDatabasePath(Path.Combine(root, "v5-column.sqlite"));
+    using SqliteConnection connection = Database.OpenConnection();
+    ActivitySchema.Ensure(connection);
+    using (SqliteCommand command = connection.CreateCommand())
+    {
+      command.CommandText = "ALTER TABLE levels DROP COLUMN gameplay_hash_v5";
+      command.ExecuteNonQuery();
+    }
+    ActivitySchema.Ensure(connection);
+    ActivitySchema.ReadHeader(connection, out _, out int version);
+    Assert(version == ActivitySchema.Version, "Adding the V5 column changed the schema version.");
+    using SqliteCommand check = connection.CreateCommand();
+    check.CommandText = "SELECT count(*) FROM pragma_table_info('levels') WHERE name='gameplay_hash_v5'";
+    Assert(Convert.ToInt32(check.ExecuteScalar()) == 1, "An existing database did not get the V5 column.");
+  }
+
+  private static LevelRecord Level(string path, byte[] v4, byte[] v5, string seenAt) =>
+    new LevelRecord
+    {
+      SourceKind = LevelSourceKind.Local,
+      LevelPath = path,
+      GameplayHash = v4,
+      GameplayHashVersion = GameplayChartHash.Version,
+      GameplayHashV5 = v5,
+      FirstSeenAtUtc = seenAt,
+      LastSeenAtUtc = seenAt,
+    };
+
+  private static void AddSession(string id, string levelId)
+  {
+    using SqliteConnection connection = Database.OpenConnection();
+    using SqliteCommand command = connection.CreateCommand();
+    command.CommandText =
+      "INSERT INTO level_sessions(id,level_id,app_session_id,opened_at_utc) VALUES(@id,@level,'app','2026-01-01T00:00:00Z')";
+    command.Parameters.AddWithValue("@id", id);
+    command.Parameters.AddWithValue("@level", levelId);
+    command.ExecuteNonQuery();
+  }
+
+  private static byte[] Filled(byte value) => Enumerable.Repeat(value, GameplayChartHash.HashSize).ToArray();
 
   private static void TestFreshSchemaAndAtomicArtifact(string root)
   {
