@@ -95,7 +95,8 @@
     "exporting": "Getting the play ready…",
     "preparing": "Opening the level…",
     "rendering": "Filming the play…",
-    "compositing": "Adding sound and camera…",
+    "compositing": "Finishing the video…",
+    "waitingForOverlays": "Waiting for the key viewer videos…",
     "completed": "Your video is ready",
     "cancelled": "Stopped",
     "failed": "Couldn't make the video"

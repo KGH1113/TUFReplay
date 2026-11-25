@@ -210,7 +210,7 @@ public static class OrbitRenderClient
       Message = "Install and enable OrbitRender, then restart ADOFAI.",
     };
 
-  private static OrbitRenderResult Parse(string json)
+  internal static OrbitRenderResult Parse(string json)
   {
     if (string.IsNullOrWhiteSpace(json))
       return OrbitRenderResult.Failure(
@@ -262,6 +262,8 @@ public static class OrbitRenderClient
         ErrorCode = job.Value<string>("errorCode"),
         ErrorMessage = job.Value<string>("errorMessage"),
         WaitingForGameFocus = job.Value<bool?>("waitingForGameFocus") ?? false,
+        FinishingStage = job.Value<string>("finishingStage"),
+        FinishingProgress = job.Value<double?>("finishingProgress"),
         Warnings = job["warnings"]?.ToObject<string[]>() ?? Array.Empty<string>(),
         ErrorDetails =
           details == null
@@ -375,6 +377,15 @@ public sealed class OrbitRenderJob
   public string ErrorMessage { get; set; }
   public OrbitRenderError ErrorDetails { get; set; }
   public bool WaitingForGameFocus { get; set; }
+
+  /// <summary>
+  /// While finishing, OrbitRender's stage: <c>audio</c>, <c>overlays</c> (waiting for mods' videos)
+  /// or <c>composing</c>. Null from OrbitRender versions that finish without reporting it.
+  /// </summary>
+  public string FinishingStage { get; set; }
+
+  /// <summary>That stage's progress, 0 to 1, when OrbitRender can tell.</summary>
+  public double? FinishingProgress { get; set; }
   public string[] Warnings { get; set; } = Array.Empty<string>();
 }
 
