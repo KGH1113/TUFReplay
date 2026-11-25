@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <Import Project="../TUFReplay.BuildFlavor.props" />
+  <Import Project="../TUFReplay.AdofaiPaths.props" />
 
   <PropertyGroup>
     <TargetFramework>netstandard2.1</TargetFramework>

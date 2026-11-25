@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
@@ -16,7 +17,9 @@ public class RecordingSession
   private bool _gameplayStateReached;
   private long _gameplayStateCaptureTicks;
   private bool _gameplayTimelineWasAdvancing;
-  private double? _wonUnscaledTime;
+
+  // After a clear or a death, the timeline follows real time from that point.
+  private double? _gameplayEndUnscaledTime;
   private bool _completed;
   private readonly RecordingTimeline _timeline = new RecordingTimeline();
 
@@ -49,7 +52,7 @@ public class RecordingSession
     }
   }
 
-  public void Start(int? tufLevelId, bool autoRecord, byte[] gameplayHash = null, int? gameplayHashVersion = null)
+  public void Start(int? tufLevelId, bool autoRecord, GameplayChartHashes gameplayHashes = null)
   {
     lock (_lock)
     {
@@ -64,8 +67,9 @@ public class RecordingSession
         NoFailMode = IsNoFailModeActive(),
         GameInputOffsetMs = GetCurrentGameInputOffsetMs(),
         JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
-        GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
-        GameplayHashVersion = gameplayHashVersion,
+        GameplayHash = gameplayHashes?.V4 == null ? null : (byte[])gameplayHashes.V4.Clone(),
+        GameplayHashVersion = gameplayHashes?.V4 == null ? null : GameplayChartHash.Version,
+        GameplayHashV5 = gameplayHashes?.V5 == null ? null : (byte[])gameplayHashes.V5.Clone(),
       };
       RefreshPitchLocked();
       _pendingNativeInputs.Clear();
@@ -73,7 +77,7 @@ public class RecordingSession
       _gameplayStateReached = false;
       _gameplayStateCaptureTicks = 0L;
       _gameplayTimelineWasAdvancing = false;
-      _wonUnscaledTime = null;
+      _gameplayEndUnscaledTime = null;
       _timeline.Reset();
     }
 
@@ -157,28 +161,49 @@ public class RecordingSession
   {
     lock (_lock)
     {
-      if (!IsRecording || Data.WonTimeUs.HasValue)
+      if (!IsRecording || GameplayEndTimeUsLocked().HasValue)
         return;
-
-      long wonCaptureTicks = Stopwatch.GetTimestamp();
-      double wonSongPosition = RecordingClock.CurrentSongPosition();
-      ObserveInputAnchorLocked(
-        wonCaptureTicks,
-        wonSongPosition,
-        EffectiveTimelineRateLocked(),
-        ready: true,
-        forceSegmentBreak: false
-      );
-      long wonTimeUs = _timeline.RecordBoundary(ToRecordTimeUs(wonSongPosition));
-      Data.WonTimeUs = wonTimeUs;
-      _wonUnscaledTime = RecordingClock.CurrentUnscaledTime();
-      _previousInputAnchor = new InputTimelineAnchor(wonCaptureTicks, wonTimeUs, 1d);
-      Data.InputDiscontinuities++;
-      Data.InputLastDiscontinuity = "won";
+      Data.WonTimeUs = EndGameplayTimelineLocked("won");
     }
 
     Main.Instance.Log("[Recording] Won timeline anchored. wonTimeUs=" + Data.WonTimeUs);
   }
+
+  // Input keeps recording on the fail screen until editor return or retry.
+  public void MarkFailed()
+  {
+    lock (_lock)
+    {
+      if (!IsRecording || GameplayEndTimeUsLocked().HasValue || Data.TerminalTimeUs.HasValue)
+        return;
+      Data.FailedTimeUs = EndGameplayTimelineLocked("fail");
+      // The attempt ended at the death; the fail screen after it is not play time.
+      Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
+    }
+
+    Main.Instance.Log("[Recording] Fail timeline anchored. failedTimeUs=" + Data.FailedTimeUs);
+  }
+
+  private long EndGameplayTimelineLocked(string reason)
+  {
+    long captureTicks = Stopwatch.GetTimestamp();
+    double songPosition = RecordingClock.CurrentSongPosition();
+    ObserveInputAnchorLocked(
+      captureTicks,
+      songPosition,
+      EffectiveTimelineRateLocked(),
+      ready: true,
+      forceSegmentBreak: false
+    );
+    long timeUs = _timeline.RecordBoundary(ToRecordTimeUs(songPosition));
+    _gameplayEndUnscaledTime = RecordingClock.CurrentUnscaledTime();
+    _previousInputAnchor = new InputTimelineAnchor(captureTicks, timeUs, 1d);
+    Data.InputDiscontinuities++;
+    Data.InputLastDiscontinuity = reason;
+    return timeUs;
+  }
+
+  private long? GameplayEndTimeUsLocked() => Data.WonTimeUs ?? Data.FailedTimeUs;
 
   public void MarkTerminal()
   {
@@ -290,7 +315,7 @@ public class RecordingSession
       captureTicks = anchor.CaptureTicks;
       timelineUs = anchor.TimeUs;
       rate = anchor.Rate;
-      return IsRecording && IsCapturingInput && _previousInputAnchor.HasValue && !Data.WonTimeUs.HasValue;
+      return IsRecording && IsCapturingInput && _previousInputAnchor.HasValue && !GameplayEndTimeUsLocked().HasValue;
     }
   }
 
@@ -306,6 +331,16 @@ public class RecordingSession
         Data.InputLastDiscontinuity = reason;
       }
     }
+  }
+
+  /// <summary>
+  /// The run's timeline now, for events other mods add (ReplayEventStore.AddEvent): the same
+  /// clock as hits, never before the last recorded input or hit. Call on the main thread.
+  /// </summary>
+  internal long CurrentModEventTimeUs()
+  {
+    lock (_lock)
+      return Math.Max(0L, _timeline.Clamp(CurrentTimelineTimeUsLocked()));
   }
 
   public void AddHitContext(RecordedHitContext hitContext)
@@ -482,7 +517,8 @@ public class RecordingSession
         return ADOBase.editor.playbackSpeed;
       }
 
-      return GCS.speedTrialMode ? GCS.currentSpeedTrial : 1f;
+      // The conductor applies it outside speed trials too: practice mode plays slower with it.
+      return ADOBase.isScnGame ? GCS.currentSpeedTrial : 1f;
     }
     catch
     {
@@ -631,8 +667,9 @@ public class RecordingSession
       );
     }
 
-    long timelineUs = Data.WonTimeUs.HasValue ? CurrentTimelineTimeUsLocked() : ToRecordTimeUs(songPosition);
-    double effectiveRate = Data.WonTimeUs.HasValue ? 1d : timelineRate;
+    bool realTime = GameplayEndTimeUsLocked().HasValue;
+    long timelineUs = realTime ? CurrentTimelineTimeUsLocked() : ToRecordTimeUs(songPosition);
+    double effectiveRate = realTime ? 1d : timelineRate;
     InputTimelineAnchor current = new InputTimelineAnchor(captureTicks, timelineUs, effectiveRate);
 
     bool discontinuity = forceSegmentBreak;
@@ -695,11 +732,12 @@ public class RecordingSession
   private long CurrentTimelineTimeUsLocked()
   {
     long timeUs;
-    if (Data.WonTimeUs.HasValue && _wonUnscaledTime.HasValue)
+    long? gameplayEndTimeUs = GameplayEndTimeUsLocked();
+    if (gameplayEndTimeUs.HasValue && _gameplayEndUnscaledTime.HasValue)
     {
       timeUs = RecordingClock.ContinueFromUnscaledTime(
-        Data.WonTimeUs.Value,
-        _wonUnscaledTime.Value,
+        gameplayEndTimeUs.Value,
+        _gameplayEndUnscaledTime.Value,
         RecordingClock.CurrentUnscaledTime()
       );
     }
@@ -716,11 +754,10 @@ public class RecordingSession
     if (Data.TerminalTimeUs.HasValue && !finalizing)
       return;
 
-    // Stopping capture drains native events and the final hit can finish after
-    // Fail committed its boundary. Include those actual events, without adding
-    // time spent on the death screen or waiting to return to the editor.
+    // Stopping capture drains native events, and a final hit can finish after a
+    // committed terminal. Include those actual events without adding later waiting time.
     long terminalTimeUs = _timeline.RecordTerminal(Data.TerminalTimeUs, CurrentTimelineTimeUsLocked());
-    if (Data.TerminalTimeUs != terminalTimeUs)
+    if (Data.TerminalTimeUs != terminalTimeUs && !Data.FailedTimeUs.HasValue)
       Data.EndedAtUtc = DateTime.UtcNow.ToString("O");
     Data.TerminalTimeUs = terminalTimeUs;
   }
@@ -806,7 +843,7 @@ public class RecordingSession
 
   private double EffectiveTimelineRateLocked()
   {
-    if (Data.WonTimeUs.HasValue)
+    if (GameplayEndTimeUsLocked().HasValue)
       return 1d;
     return Data.EffectivePitch.HasValue && Data.EffectivePitch.Value > 0f ? Data.EffectivePitch.Value : 1d;
   }

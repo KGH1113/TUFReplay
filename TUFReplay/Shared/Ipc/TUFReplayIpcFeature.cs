@@ -151,6 +151,8 @@ public sealed class TUFReplayIpcFeature
           .Select(Map)
           .ToArray()
     );
+    var gameIcons = new GameIconIpc();
+    Register(ReplayApiMethods.ReadGameIcon, (r, _) => gameIcons.Read(r.Icon), true);
     Register(ReplayApiMethods.RemoveRun, (r, _) => Map(ActivityIpcHandlers.DeleteRun(Required(r.RunId))));
     RegisterWhenGameplayIdle(
       ReplayApiMethods.RemoveAppSessionRuns,

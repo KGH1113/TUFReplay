@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { minimumOrbitRenderVersion } from "@/models/render/orbit-version";
 import type { RenderJob } from "@/models/render/render-model";
 import { cn } from "@/shared/lib/cn";
 import { DetailsToggle } from "@/shared/ui/details-toggle";
@@ -38,7 +39,9 @@ export function RenderFailureNotice({
 }) {
   const { t, i18n } = useTranslation("render");
   const known =
-    code && i18n.exists(`errors.${code}`, { ns: "render" }) ? t(`errors.${code}` as never) : null;
+    code && i18n.exists(`errors.${code}`, { ns: "render" })
+      ? t(`errors.${code}` as never, { minimum: minimumOrbitRenderVersion })
+      : null;
   const field = details?.field?.replace(/^replay\./, "");
   const fieldLabel =
     field && i18n.exists(`errorFields.${field}`, { ns: "render" })

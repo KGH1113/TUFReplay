@@ -330,13 +330,18 @@ public static class RenderBundleExportService
           {
             path = job.LevelPath,
             fileSha256 = fileHash,
-            gameplayHash = BitConverter.ToString(run.GameplayHash).Replace("-", "").ToLowerInvariant(),
-            gameplayHashVersion = run.GameplayHashVersion,
+            // The strongest hash the run has: V5, or V4 for runs recorded before it.
+            gameplayHash = BitConverter
+              .ToString(run.GameplayHashV5 ?? run.GameplayHash)
+              .Replace("-", "")
+              .ToLowerInvariant(),
+            gameplayHashVersion = run.GameplayHashV5 != null ? GameplayChartHash.V5Version : run.GameplayHashVersion,
           },
           replay = new
           {
             gameplayStartSongPosition = meta.gameplayStartSongPosition.Value,
             effectivePitch = (double)meta.effectivePitch.Value,
+            speedMultiplier = (double)RecordedSpeedMultiplier.From(meta),
             gameInputOffsetMs = meta.gameInputOffsetMs.Value,
             noFailMode = meta.noFailMode ?? run.NoFailMode,
             judgmentSystem = meta.judgmentSystem,
@@ -345,6 +350,7 @@ public static class RenderBundleExportService
             startTile = run.StartTile,
             result = run.Result?.ToLowerInvariant(),
             wonTimeUs = meta.wonTimeUs,
+            failedTimeUs = meta.failedTimeUs,
             terminalTimeUs,
           },
           inputsFile = "inputs.csv",

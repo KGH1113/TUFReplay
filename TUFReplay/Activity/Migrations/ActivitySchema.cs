@@ -30,10 +30,17 @@ public static partial class ActivitySchema
   // version stays 1 and older builds can still open the file (they ignore the column).
   private static void EnsureAdditiveColumns(SqliteConnection connection)
   {
-    if (HasColumn(connection, "runs", "locked"))
+    AddColumnIfMissing(connection, "runs", "locked", "INTEGER NOT NULL DEFAULT 0");
+    // V5 gameplay hash, next to the V4 hash that older builds still read.
+    AddColumnIfMissing(connection, "levels", "gameplay_hash_v5", "BLOB");
+  }
+
+  private static void AddColumnIfMissing(SqliteConnection connection, string table, string column, string definition)
+  {
+    if (HasColumn(connection, table, column))
       return;
     using SqliteCommand command = connection.CreateCommand();
-    command.CommandText = "ALTER TABLE runs ADD COLUMN locked INTEGER NOT NULL DEFAULT 0;";
+    command.CommandText = "ALTER TABLE " + table + " ADD COLUMN " + column + " " + definition + ";";
     command.ExecuteNonQuery();
   }
 

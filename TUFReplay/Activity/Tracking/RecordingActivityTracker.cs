@@ -16,8 +16,7 @@ public sealed class RecordingActivityTracker
   public string LevelSessionId { get; private set; }
   public int? TufLevelId { get; private set; }
   public string LevelPath { get; private set; }
-  private byte[] _gameplayHash;
-  private int? _gameplayHashVersion;
+  private GameplayChartHashes _gameplayHashes;
   private int _nextRunIndex;
   private Action _ensureApp;
   private Action _ensureLevel;
@@ -77,13 +76,7 @@ public sealed class RecordingActivityTracker
     _ensureApp = null;
   }
 
-  public bool OpenLevel(
-    string levelPath,
-    int? tufLevelId,
-    int levelTileCount,
-    byte[] gameplayHash,
-    int? gameplayHashVersion
-  )
+  public bool OpenLevel(string levelPath, int? tufLevelId, int levelTileCount, GameplayChartHashes gameplayHashes)
   {
     if (!StartAppSession())
       return false;
@@ -91,9 +84,8 @@ public sealed class RecordingActivityTracker
     if (
       LevelSessionId != null
       && LevelPathIdentity.Equals(LevelPath, levelPath)
-      && GameplayChartHash.IsSupported(_gameplayHashVersion, _gameplayHash)
-      && GameplayChartHash.IsSupported(gameplayHashVersion, gameplayHash)
-      && GameplayChartHash.Equals(_gameplayHash, gameplayHash)
+      && GameplayChartHash.IsV5(_gameplayHashes?.V5)
+      && GameplayChartHash.Equals(_gameplayHashes.V5, gameplayHashes?.V5)
     )
     {
       return true;
@@ -110,8 +102,9 @@ public sealed class RecordingActivityTracker
       TufLevelId = tufLevelId,
       LevelPath = levelPath,
       LevelTileCount = levelTileCount,
-      GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
-      GameplayHashVersion = gameplayHashVersion,
+      GameplayHash = gameplayHashes?.V4 == null ? null : (byte[])gameplayHashes.V4.Clone(),
+      GameplayHashVersion = gameplayHashes?.V4 == null ? null : GameplayChartHash.Version,
+      GameplayHashV5 = gameplayHashes?.V5 == null ? null : (byte[])gameplayHashes.V5.Clone(),
       FirstSeenAtUtc = openedAtUtc,
       LastSeenAtUtc = openedAtUtc,
     };
@@ -147,8 +140,7 @@ public sealed class RecordingActivityTracker
     LevelSessionId = levelSessionId;
     TufLevelId = tufLevelId;
     LevelPath = levelPath;
-    _gameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone();
-    _gameplayHashVersion = gameplayHashVersion;
+    _gameplayHashes = gameplayHashes;
     _nextRunIndex = 0;
     return true;
   }
@@ -172,8 +164,7 @@ public sealed class RecordingActivityTracker
     LevelSessionId = null;
     TufLevelId = null;
     LevelPath = null;
-    _gameplayHash = null;
-    _gameplayHashVersion = null;
+    _gameplayHashes = null;
     _ensureLevel = null;
   }
 
@@ -201,6 +192,7 @@ public sealed class RecordingActivityTracker
       HitContextCount = data.HitContexts.Count,
       GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone(),
       GameplayHashVersion = data.GameplayHashVersion,
+      GameplayHashV5 = data.GameplayHashV5 == null ? null : (byte[])data.GameplayHashV5.Clone(),
     };
   }
 
@@ -232,6 +224,9 @@ public sealed class RecordingActivityTracker
       try
       {
         Recording.Sessions.RecordingPayloadBuilder.Apply(run, completed);
+        // A clear is saved locked, so its microphone and camera recordings, which finish
+        // saving after this row, are kept instead of expiring.
+        run.Locked = run.IsClear;
         RetryLockedWrite(() =>
         {
           ensureLevel?.Invoke();

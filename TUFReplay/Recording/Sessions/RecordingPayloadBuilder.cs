@@ -17,6 +17,7 @@ public static class RecordingPayloadBuilder
     run.JudgmentCounts = data.JudgmentCounts ?? new JudgmentCounts();
     run.GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone();
     run.GameplayHashVersion = data.GameplayHashVersion;
+    run.GameplayHashV5 = data.GameplayHashV5 == null ? null : (byte[])data.GameplayHashV5.Clone();
     run.InputCount = data.Inputs.Count;
     run.HitContextCount = data.HitContexts.Count;
     run.ReplayArtifact = null;

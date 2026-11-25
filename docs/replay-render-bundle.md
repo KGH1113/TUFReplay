@@ -13,8 +13,9 @@ With OrbitRender's RenderApi 3, TUFReplay leads the render and OrbitRender only 
 
 - **TUFReplay** replays the recording as OrbitRender's host (`RenderReplayHost`):
   - it applies the recorded settings, inputs and hits, clear, death and end
-  - it hands mods the replay through `ReplayApi`: clock, keys, the canvases to capture, and capture calls. See [replay-api.md](replay-api.md).
-- **OrbitRender** opens the level and runs the offline clock and frame loop. It captures frames and audio, encodes them, composes the webcam and microphone, and writes the file.
+  - it hands mods the replay through `ReplayApi`: clock, keys, the canvases to capture, and capture calls. See [replay-api](replay-api/README.md).
+  - it draws the recorded webcam on a canvas OrbitRender captures with the HUD, decoding it with the shared FFmpeg, so the picture is encoded only once. The request then leaves `media.webcam` out. Without FFmpeg it stays in, and OrbitRender composes it as before.
+- **OrbitRender** opens the level and runs the offline clock and frame loop. It captures frames and audio, encodes them, composes the microphone (and a webcam left in the request), and writes the file.
 
 TUFReplay calls `RenderApi.StartHostedReplay(requestJson, host)`. The request carries only:
 - the level path and file hash
@@ -61,10 +62,16 @@ Mod shutdown cancels unfinished work. Export does not delete or change the origi
 
 `manifest.json` contains `schemaVersion: 1`, `recordingId`, `level`, `replay`, `inputsFile`,
 `hitsFile`, and `media`. The level object includes its absolute `path`, `fileSha256`,
-`gameplayHash`, and `gameplayHashVersion`. Replay metadata includes
+`gameplayHash`, and `gameplayHashVersion`. The hash is version 5 when the run has one, which
+ignores effects, song volume and file name, so a VFX and a plain copy of a chart share it;
+runs recorded before version 5 that were never checked against their file again keep
+version 4. Replay metadata includes
 `gameplayStartSongPosition`, `effectivePitch`, `gameInputOffsetMs`, `noFailMode`,
 `judgmentSystem`, `judgmentDifficulty`, optional `hitMarginLimit`, `startTile`, `result`,
-`wonTimeUs`, and `terminalTimeUs`. New recordings capture ADOFAI's gameplay hit limit
+`wonTimeUs`, and `terminalTimeUs`. Optional `speedMultiplier` is the speed on top of the
+level's pitch (the editor's Ctrl+Space speed, a speed trial or practice mode) and is already
+part of `effectivePitch`. The host shows it after the level name the way the game does;
+bundles without it played at 1x. New recordings capture ADOFAI's gameplay hit limit
 (`None`, `PerfectsOnly`, or `PurePerfectOnly`) when gameplay starts. Older recordings omit
 the setting; consumers must preserve their legacy behavior when it is absent.
 Renderer versions that do not read `hitMarginLimit` will continue to use their existing
@@ -73,6 +80,9 @@ Version 1 exports runs from tile 0 and recorded mid-level/checkpoint starts. The
 restores the native checkpoint state and music position. Negative start tiles are invalid;
 the renderer also checks that the tile exists in the loaded level. `result` preserves
 `cleared`, `failed` or `aborted` so failed runs without an accepted final hit still show death.
+New failed runs add `failedTimeUs`, the death, and keep recording keys on the fail screen up to
+`terminalTimeUs`. After `wonTimeUs` or `failedTimeUs`, recording time follows real time instead of
+the song. Older failed runs omit `failedTimeUs` and die at `terminalTimeUs`.
 All event times are signed integer microseconds in the recorded replay timeline. Inputs
 during countdown may be negative; export preserves those times and their stable sequence
 instead of clamping or rejecting them. Negative time alone does not imply missing timing

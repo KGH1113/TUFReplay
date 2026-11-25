@@ -14,6 +14,9 @@ public class RecordedRunPayload
   public string EndedAtUtc;
   public double? GameplayStartSongPosition;
   public long? WonTimeUs;
+
+  // The death of a failed run. Like a clear, recording continues after it until editor return or retry.
+  public long? FailedTimeUs;
   public long? TerminalTimeUs;
   public string InputTimeBase = ReplayInputTimeBases.Hybrid;
   public string InputCapture = "unsupported";
@@ -52,6 +55,7 @@ public class RecordedRunPayload
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public byte[] GameplayHashV5;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();
@@ -70,6 +74,7 @@ public class RecordedRunPayload
       endedAtUtc = EndedAtUtc,
       gameplayStartSongPosition = GameplayStartSongPosition,
       wonTimeUs = WonTimeUs,
+      failedTimeUs = FailedTimeUs,
       terminalTimeUs = TerminalTimeUs,
       noFailMode = NoFailMode,
       gameInputOffsetMs = GameInputOffsetMs,

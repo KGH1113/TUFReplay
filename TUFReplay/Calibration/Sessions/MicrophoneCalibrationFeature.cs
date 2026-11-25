@@ -312,6 +312,7 @@ public sealed class MicrophoneCalibrationFeature
       FormatVersion = run.ReplayArtifact?.FormatVersion ?? 0,
       GameplayHash = run.GameplayHash,
       GameplayHashVersion = run.GameplayHashVersion,
+      GameplayHashV5 = run.GameplayHashV5,
       JudgmentDifficulty = run.JudgmentDifficulty,
       NoFailMode = run.NoFailMode,
     };

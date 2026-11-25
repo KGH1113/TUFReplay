@@ -23,6 +23,7 @@ CREATE TABLE levels (
   adofai_path TEXT NOT NULL,
   gameplay_hash BLOB,
   gameplay_hash_version INTEGER,
+  gameplay_hash_v5 BLOB,
   level_tile_count INTEGER NOT NULL DEFAULT 0,
   song TEXT,
   author TEXT,

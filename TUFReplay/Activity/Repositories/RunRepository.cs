@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
+using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Models;
 using TUFReplay.Composition;
 using TUFReplay.Microphone.Repositories;
@@ -26,14 +27,14 @@ gameplay_start_song_position,level_pitch_percent,effective_pitch,x_accuracy,judg
 judgment_overload,judgment_too_early,judgment_early,judgment_early_perfect,judgment_perfect,
 judgment_perfect_minus,judgment_x_perfect,judgment_perfect_plus,
 judgment_late_perfect,judgment_late,judgment_too_late,judgment_miss,
-input_count,hit_context_count,replay_unavailable_reason
+input_count,hit_context_count,replay_unavailable_reason,locked
 ) VALUES(
 @id,@level,@idx,@start,@end,@startTile,@last,@result,@nf,
 @song,@pitch,@effective,@xAccuracy,@judgmentDifficulty,@judgmentSystem,
 @judgmentOverload,@judgmentTooEarly,@judgmentEarly,@judgmentEarlyPerfect,@judgmentPerfect,
 @judgmentPerfectMinus,@judgmentXPerfect,@judgmentPerfectPlus,
 @judgmentLatePerfect,@judgmentLate,@judgmentTooLate,@judgmentMiss,
-@inputs,@hits,@replayUnavailableReason
+@inputs,@hits,@replayUnavailableReason,@locked
 )";
     q.Parameters.AddWithValue("@id", r.Id);
     q.Parameters.AddWithValue("@level", r.LevelSessionId);
@@ -68,6 +69,7 @@ input_count,hit_context_count,replay_unavailable_reason
     q.Parameters.AddWithValue("@inputs", r.InputCount);
     q.Parameters.AddWithValue("@hits", r.HitContextCount);
     q.Parameters.AddWithValue("@replayUnavailableReason", DbValue.From(r.ReplayUnavailableReason));
+    q.Parameters.AddWithValue("@locked", DbValue.Bool(r.Locked));
     q.ExecuteNonQuery();
 
     ReplayArtifact artifact = r.ReplayArtifact;
@@ -450,7 +452,7 @@ WHERE id=@app
 SELECT r.id,r.level_session_id,g.tuf_level_id,g.adofai_path,g.level_tile_count,
        r.start_tile,r.last_tile,r.result,a.input_csv,a.hit_context_csv,a.metadata_json,
        g.gameplay_hash,g.gameplay_hash_version,r.judgment_difficulty,r.no_fail_mode,
-       a.engine_id,a.format_version,r.replay_unavailable_reason
+       a.engine_id,a.format_version,r.replay_unavailable_reason,g.gameplay_hash_v5
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 JOIN levels g ON g.id=l.level_id
@@ -482,6 +484,7 @@ LIMIT 1";
       EngineId = DbValue.NullableString(r, 15),
       FormatVersion = r.IsDBNull(16) ? 0 : r.GetInt32(16),
       ReplayUnavailableReason = DbValue.NullableString(r, 17),
+      GameplayHashV5 = r.IsDBNull(18) ? null : (byte[])r.GetValue(18),
     };
   }
 
@@ -520,9 +523,9 @@ LIMIT 1";
     return result;
   }
 
-  public static void UpdateGameplayHashIfMissing(string runId, byte[] hash, int version)
+  public static void UpdateGameplayHashesIfMissing(string runId, GameplayChartHashes hashes)
   {
-    if (string.IsNullOrWhiteSpace(runId) || hash == null)
+    if (string.IsNullOrWhiteSpace(runId) || hashes == null)
       return;
 
     using SqliteConnection c = DatabaseStore.OpenConnection();
@@ -530,7 +533,7 @@ LIMIT 1";
     q.CommandText = "SELECT l.level_id FROM runs r JOIN level_sessions l ON l.id=r.level_session_id WHERE r.id=@id";
     q.Parameters.AddWithValue("@id", runId);
     string levelId = q.ExecuteScalar() as string;
-    LevelRepository.UpdateGameplayHashIfMissing(levelId, hash, version);
+    LevelRepository.UpdateGameplayHashesIfMissing(levelId, hashes);
   }
 
   private const string Select =
@@ -543,7 +546,7 @@ r.judgment_perfect_minus,r.judgment_x_perfect,r.judgment_perfect_plus,
 r.judgment_late_perfect,r.judgment_late,r.judgment_too_late,r.judgment_miss,
 g.gameplay_hash,g.gameplay_hash_version,
 r.input_count,r.hit_context_count,coalesce(length(a.input_csv),0),coalesce(length(a.hit_context_csv),0),
-r.replay_unavailable_reason,a.run_id,a.engine_id,a.format_version,r.locked
+r.replay_unavailable_reason,a.run_id,a.engine_id,a.format_version,r.locked,g.gameplay_hash_v5
 FROM runs r
 JOIN level_sessions l ON l.id=r.level_session_id
 JOIN levels g ON g.id=l.level_id
@@ -604,6 +607,7 @@ LEFT JOIN replay_artifacts a ON a.run_id=r.id";
         && !r.IsDBNull(39)
         && r.GetInt32(39) == ReplayFormat.FormatVersion,
       Locked = r.GetInt32(40) != 0,
+      GameplayHashV5 = r.IsDBNull(41) ? null : (byte[])r.GetValue(41),
     };
 
   private static string ResolveReplayUnavailableReason(

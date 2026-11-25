@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnityModManagerNet;
 
 namespace TUFReplay.Replay.Export;
 
@@ -11,12 +12,22 @@ namespace TUFReplay.Replay.Export;
 // the boundary. Every call must run on Unity's main thread.
 public static class OrbitRenderClient
 {
-  public const int RequiredApiVersion = 2;
+  // RenderApi 3 (OrbitRender 2.8.0) renders with TUFReplay as the replay host: TUFReplay replays
+  // the recording and OrbitRender only captures and encodes it. Older versions replay recordings
+  // themselves through ADOFAI's input and stop on keys it cannot take, such as the ' key.
+  public const int RequiredApiVersion = 3;
+
+  // OrbitRender 2.9.0 finishes a video on a background thread, so ADOFAI no longer stands still
+  // at the end of a render. Its RenderApi is still 3, so only the mod's version tells it from 2.8.
+  // Keep in sync with the minimum in web/src/models/render/orbit-version.ts.
+  public const string MinimumVersion = "2.9.0";
   private const string ApiTypeName = "OrbitRender.RenderApi";
+  private const string ModId = "OrbitRender";
 
   private static readonly object Gate = new object();
   private static Type _apiType;
-  private static MethodInfo _startReplay;
+  private static int _apiVersion;
+  private static bool _olderThanMinimum;
   private static MethodInfo _startHostedReplay;
   private static MethodInfo _readStatus;
   private static MethodInfo _cancel;
@@ -24,45 +35,14 @@ public static class OrbitRenderClient
   private static long _nextResolve;
   private static bool _searched;
 
-  public static OrbitRenderResult StartReplay(string manifestPath, OrbitRenderOptions options)
-  {
-    var error = Resolve();
-    if (error != null)
-      return OrbitRenderResult.Failure(error);
-    if (!string.IsNullOrWhiteSpace(options?.OutputDirectory) && !SupportsOutputDirectory(_apiType))
-      return OrbitRenderResult.Failure(
-        new OrbitRenderError
-        {
-          Code = "renderer_output_directory_unsupported",
-          Message =
-            "This OrbitRender version cannot use a custom output folder. Update OrbitRender and restart ADOFAI.",
-          Field = "outputDirectory",
-        }
-      );
-    var json = JsonConvert.SerializeObject(
-      options ?? new OrbitRenderOptions(),
-      new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore }
-    );
-    return Invoke(_startReplay, manifestPath, json);
-  }
-
-  private static bool SupportsOutputDirectory(Type type)
-  {
-    var capability = type?.GetField("OutputDirectoryOptionVersion", BindingFlags.Public | BindingFlags.Static);
-    return capability?.GetValue(null) is int version && version >= 1;
-  }
-
-  /// <summary>
-  /// True when the installed OrbitRender renders with TUFReplay as the replay host (RenderApi 3):
-  /// TUFReplay replays the recording and OrbitRender only captures and encodes it.
-  /// </summary>
-  public static bool SupportsHostedReplay => Resolve() == null && _startHostedReplay != null;
+  /// <summary>Why the installed OrbitRender cannot make a video now, or null when it can.</summary>
+  public static OrbitRenderError CheckReady() => Resolve();
 
   /// <summary>
   /// True when the installed OrbitRender asks the replay host for overlay videos after the last
   /// frame and lays them over the finished video (<c>OverlayVideoVersion</c> 1).
   /// </summary>
-  public static bool SupportsOverlayVideos => SupportsHostedReplay && TakesOverlayVideos(_apiType);
+  public static bool SupportsOverlayVideos => Resolve() == null && TakesOverlayVideos(_apiType);
 
   private static bool TakesOverlayVideos(Type type)
   {
@@ -86,18 +66,7 @@ public static class OrbitRenderClient
   public static OrbitRenderResult StartHostedReplay(string requestJson, object host)
   {
     var error = Resolve();
-    if (error != null)
-      return OrbitRenderResult.Failure(error);
-    if (_startHostedReplay == null)
-      return OrbitRenderResult.Failure(
-        new OrbitRenderError
-        {
-          Code = "renderer_hosted_replay_unsupported",
-          Message =
-            "This OrbitRender version can't render with TUFReplay's replay engine. Update OrbitRender and restart ADOFAI.",
-        }
-      );
-    return Invoke(_startHostedReplay, requestJson, host);
+    return error != null ? OrbitRenderResult.Failure(error) : Invoke(_startHostedReplay, requestJson, host);
   }
 
   public static OrbitRenderResult ReadStatus(string jobId)
@@ -130,11 +99,21 @@ public static class OrbitRenderClient
         }
         Bind(_apiType);
       }
-      if (ReadApiVersion(_apiType) < RequiredApiVersion)
+      // A loaded OrbitRender without the calls TUFReplay needs is an older version, not a missing one.
+      if (
+        _apiVersion < RequiredApiVersion
+        || _olderThanMinimum
+        || _startHostedReplay == null
+        || _readStatus == null
+        || _cancel == null
+      )
         return new OrbitRenderError
         {
           Code = "renderer_version_unsupported",
-          Message = "OrbitRender 2.6.2 or later is required. Update it in UnityModManager and restart ADOFAI.",
+          Message =
+            "Videos can be made with OrbitRender "
+            + MinimumVersion
+            + " or later. Update OrbitRender, then restart ADOFAI.",
         };
       if (_isAvailable != null && !(bool)(_isAvailable.GetValue(null) ?? false))
         return new OrbitRenderError
@@ -168,7 +147,8 @@ public static class OrbitRenderClient
   private static void Bind(Type type)
   {
     const BindingFlags staticFlags = BindingFlags.Public | BindingFlags.Static;
-    _startReplay = type.GetMethod("StartReplay", staticFlags, null, new[] { typeof(string), typeof(string) }, null);
+    _apiVersion = ReadApiVersion(type);
+    _olderThanMinimum = IsOlderThanMinimum(UnityModManager.FindMod(ModId)?.Version);
     _startHostedReplay = type.GetMethod(
       "StartHostedReplay",
       staticFlags,
@@ -179,9 +159,13 @@ public static class OrbitRenderClient
     _readStatus = type.GetMethod("ReadStatus", staticFlags, null, new[] { typeof(string) }, null);
     _cancel = type.GetMethod("Cancel", staticFlags, null, new[] { typeof(string) }, null);
     _isAvailable = type.GetProperty("IsAvailable", staticFlags);
-    if ((_startReplay == null && _startHostedReplay == null) || _readStatus == null || _cancel == null)
-      _apiType = null;
   }
+
+  /// <summary>
+  /// True when OrbitRender's mod version is known and below <see cref="MinimumVersion"/>. An unknown
+  /// version is left to the RenderApi check.
+  /// </summary>
+  internal static bool IsOlderThanMinimum(Version version) => version != null && version < new Version(MinimumVersion);
 
   private static int ReadApiVersion(Type type)
   {
@@ -230,7 +214,8 @@ public static class OrbitRenderClient
     lock (Gate)
     {
       _apiType = null;
-      _startReplay = null;
+      _apiVersion = 0;
+      _olderThanMinimum = false;
       _startHostedReplay = null;
       _readStatus = null;
       _cancel = null;
@@ -246,7 +231,7 @@ public static class OrbitRenderClient
       Message = "Install and enable OrbitRender, then restart ADOFAI.",
     };
 
-  private static OrbitRenderResult Parse(string json)
+  internal static OrbitRenderResult Parse(string json)
   {
     if (string.IsNullOrWhiteSpace(json))
       return OrbitRenderResult.Failure(
@@ -298,6 +283,8 @@ public static class OrbitRenderClient
         ErrorCode = job.Value<string>("errorCode"),
         ErrorMessage = job.Value<string>("errorMessage"),
         WaitingForGameFocus = job.Value<bool?>("waitingForGameFocus") ?? false,
+        FinishingStage = job.Value<string>("finishingStage"),
+        FinishingProgress = job.Value<double?>("finishingProgress"),
         Warnings = job["warnings"]?.ToObject<string[]>() ?? Array.Empty<string>(),
         ErrorDetails =
           details == null
@@ -411,6 +398,15 @@ public sealed class OrbitRenderJob
   public string ErrorMessage { get; set; }
   public OrbitRenderError ErrorDetails { get; set; }
   public bool WaitingForGameFocus { get; set; }
+
+  /// <summary>
+  /// While finishing, OrbitRender's stage: <c>audio</c>, <c>overlays</c> (waiting for mods' videos)
+  /// or <c>composing</c>. Null from OrbitRender versions that finish without reporting it.
+  /// </summary>
+  public string FinishingStage { get; set; }
+
+  /// <summary>That stage's progress, 0 to 1, when OrbitRender can tell.</summary>
+  public double? FinishingProgress { get; set; }
   public string[] Warnings { get; set; } = Array.Empty<string>();
 }
 

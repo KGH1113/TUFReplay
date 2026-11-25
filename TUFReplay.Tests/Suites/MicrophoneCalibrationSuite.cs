@@ -52,6 +52,7 @@ internal static class MicrophoneCalibrationSuite
     TestPcm16PrefetchUnderrunRecovery();
     TestMicrophonePlaybackDecisions();
     TestReplayMicrophoneRenderer();
+    TestReplayMicrophoneChunkQueue();
     TestMicrophoneTimelineAnchor();
     TestReplayMicrophoneClock();
     TestMicrophoneTimelineTrack(root);
@@ -432,7 +433,7 @@ internal static class MicrophoneCalibrationSuite
       timeline.Observe(Ticks(100d + frame / 60d), frame * 1_000_000L / 60L, 1d);
     for (int frame = 0; frame <= 180; frame++)
       timeline.Observe(Ticks(108d + frame / 60d), 3_000_000L + frame * 1_000_000L / 60L, 1d);
-    timeline.ObserveWon(6_000_000L);
+    timeline.ObserveGameplayEnd(6_000_000L);
     timeline.Observe(Ticks(112d), 7_000_000L, 1d);
     MicrophoneTimeline map = timeline.Build(Ticks(99d), frozenStart: false);
 
@@ -458,7 +459,7 @@ internal static class MicrophoneCalibrationSuite
     var pitched = new MicrophoneCaptureTimeline();
     for (int frame = 0; frame <= 120; frame++)
       pitched.Observe(Ticks(50d + frame / 60d), frame * 1_500_000L / 60L, 1.5d);
-    pitched.ObserveWon(3_000_000L);
+    pitched.ObserveGameplayEnd(3_000_000L);
     MicrophoneTimeline pitchedMap = pitched.Build(Ticks(50d), frozenStart: true);
     Assert(
       Math.Abs(MicrophoneTimelineMap.ToAudioTimeUs(pitchedMap, 3_000_000L) - 2_000_000d) <= 2d,
@@ -730,12 +731,7 @@ internal static class MicrophoneCalibrationSuite
   // rendered sample tells which WAV frame was played.
   private static float RampSample(double frame) => (float)(frame % 30_000d) / 32768f;
 
-  private static ReplayMicrophoneRenderer CreateRampRenderer(
-    int frames,
-    int channels,
-    int outputSampleRate,
-    out Pcm16PrefetchBuffer prefetch
-  )
+  private static byte[] CreateRampPcm(int frames, int channels)
   {
     byte[] pcm = new byte[frames * channels * 2];
     for (int frame = 0; frame < frames; frame++)
@@ -748,8 +744,20 @@ internal static class MicrophoneCalibrationSuite
         pcm[index + 1] = (byte)(value >> 8);
       }
     }
-    prefetch = new Pcm16PrefetchBuffer(new MemoryStream(pcm), 0, pcm.Length, 48_000 * channels * 2);
-    return new ReplayMicrophoneRenderer(prefetch, 48_000, channels, frames, outputSampleRate);
+    return pcm;
+  }
+
+  private static ReplayMicrophoneRenderer CreateRampRenderer(
+    int frames,
+    int channels,
+    int outputSampleRate,
+    out Pcm16PrefetchBuffer prefetch,
+    Stream stream = null
+  )
+  {
+    stream ??= new MemoryStream(CreateRampPcm(frames, channels));
+    prefetch = new Pcm16PrefetchBuffer(stream, 0, stream.Length, 48_000 * channels * 2);
+    return new ReplayMicrophoneRenderer(prefetch, 48_000, channels, frames, outputSampleRate, 4_800);
   }
 
   // The prefetch reads in 64 KB chunks; wait until its ring is full so a test
@@ -760,52 +768,61 @@ internal static class MicrophoneCalibrationSuite
     Assert(WaitUntilReady(prefetch, prefetch.Generation, prefetch.Capacity), "The microphone prefetch never filled.");
   }
 
+  private static bool RenderWhenReady(
+    ReplayMicrophoneRenderer renderer,
+    double dspTime,
+    float[] data,
+    int channels,
+    bool continuous
+  )
+  {
+    for (int attempt = 0; attempt < 2_000; attempt++)
+    {
+      if (renderer.TryRender(dspTime, data, channels, continuous))
+        return true;
+      System.Threading.Thread.Sleep(1);
+    }
+    return false;
+  }
+
   private static void TestReplayMicrophoneRenderer()
   {
     const int block = 256;
     const double blockSeconds = block / 48_000d;
 
     // A middle-of-level start (Windows 2026-11-07: frame 35490) plays that
-    // exact frame on the scheduled DSP time, then continues block by block.
+    // exact frame at the chunk's DSP time, then continues chunk by chunk.
     using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(600_000, 1, 48_000, out var prefetch))
     {
-      var schedule = new ReplayMicrophoneSchedule(10d, 35_490d);
       PrimeAndWait(renderer, prefetch, 35_490 - 960);
-      renderer.Publish(schedule);
+      renderer.Publish(new ReplayMicrophoneSchedule(10d, 35_490d));
       float[] data = new float[block];
-      renderer.Render(data, 1, 10d);
+      Assert(RenderWhenReady(renderer, 10d, data, 1, continuous: false), "The first chunk was never ready.");
       Assert(
         data[0] == RampSample(35_490) && data[block - 1] == RampSample(35_490 + block - 1),
         "A middle-of-level start did not play its scheduled frame on its DSP time."
       );
+      Assert(RenderWhenReady(renderer, 10d + blockSeconds, data, 1, continuous: true), "The next chunk was not ready.");
+      Assert(data[0] == RampSample(35_490 + block), "The next chunk did not continue where the previous one ended.");
+
+      // A continuous chunk follows the previous sample, not the clock's rounding.
       Assert(
-        renderer.TryTakeFirstBlock(out ReplayMicrophoneFirstBlock first)
-          && first.Frame == 35_490d
-          && first.DspTime == 10d,
-        "The first block with recorded audio was not reported."
+        RenderWhenReady(renderer, 10d + 2 * blockSeconds + 0.0005d, data, 1, continuous: true),
+        "Chunk not ready."
       );
-      renderer.Render(data, 1, 10d + blockSeconds);
-      Assert(data[0] == RampSample(35_490 + block), "The next block did not continue where the previous one ended.");
+      Assert(data[0] == RampSample(35_490 + 2 * block), "DSP time rounding made a continuous chunk jump.");
 
-      // A little disagreement in a block's DSP time keeps playing continuously.
-      renderer.Render(data, 1, 10d + 2 * blockSeconds + 0.0005d);
-      Assert(data[0] == RampSample(35_490 + 2 * block), "DSP time jitter made playback jump.");
-
-      // A paused listener skips blocks; playback continues at the new time.
-      double resumed = 20d;
-      renderer.Render(data, 1, resumed);
-      Assert(WaitUntilReady(prefetch, prefetch.Generation, 4_096), "The prefetch did not refill after a jump.");
-      renderer.Render(data, 1, resumed + blockSeconds);
-      double expected = 35_490d + (resumed + blockSeconds - 10d) * 48_000d;
+      // A new run starts on the frame for its own time.
+      Assert(RenderWhenReady(renderer, 20d, data, 1, continuous: false), "The chunk after a jump was never ready.");
+      double expected = 35_490d + 10d * 48_000d;
       Assert(
         data[0] == RampSample(expected) && data[block - 1] == RampSample(expected + block - 1),
-        "Playback did not continue at the frame for the clock after a jump."
+        "A new run did not start at the frame for its time."
       );
-      Assert(renderer.TakeStats().Jumps == 1, "A jump of the clock was not counted once.");
+      Assert(renderer.TakeStats().PrefetchSeeks >= 1, "The jump did not move the prefetch.");
 
       renderer.Publish(null);
-      renderer.Render(data, 1, resumed + 2 * blockSeconds);
-      Assert(Array.TrueForAll(data, sample => sample == 0f), "An unpublished schedule did not play silence.");
+      Assert(!renderer.TryRender(21d, data, 1, continuous: false), "A chunk was rendered without a schedule.");
     }
 
     // A mono recording fills both speakers, and the volume scales it.
@@ -815,7 +832,7 @@ internal static class MicrophoneCalibrationSuite
       renderer.Gain = 2f;
       renderer.Publish(new ReplayMicrophoneSchedule(5d, 1_000d));
       float[] stereo = new float[block * 2];
-      renderer.Render(stereo, 2, 5d);
+      Assert(RenderWhenReady(renderer, 5d, stereo, 2, continuous: false), "The mono chunk was never ready.");
       Assert(
         stereo[0] == RampSample(1_000) * 2f && stereo[1] == stereo[0] && stereo[2] == RampSample(1_001) * 2f,
         "A mono recording was not played on both speakers at its volume."
@@ -829,7 +846,7 @@ internal static class MicrophoneCalibrationSuite
       renderer.AudibleFromFrame = 1_100;
       renderer.Publish(new ReplayMicrophoneSchedule(5d, 1_000d));
       float[] data = new float[block];
-      renderer.Render(data, 1, 5d);
+      Assert(RenderWhenReady(renderer, 5d, data, 1, continuous: false), "The frozen-start chunk was never ready.");
       Assert(
         data[99] == 0f && data[100] == RampSample(1_100),
         "The frozen-start wait was played, or the first audible frame was not."
@@ -842,7 +859,7 @@ internal static class MicrophoneCalibrationSuite
       PrimeAndWait(renderer, prefetch, 0);
       renderer.Publish(new ReplayMicrophoneSchedule(5d, 2_000d));
       float[] stereo = new float[block * 2];
-      renderer.Render(stereo, 2, 5d);
+      Assert(RenderWhenReady(renderer, 5d, stereo, 2, continuous: false), "The stereo chunk was never ready.");
       Assert(
         stereo[0] == RampSample(2_000) && stereo[1] == RampSample(2_000) && stereo[2] == RampSample(2_001),
         "A stereo recording was not played frame by frame."
@@ -855,12 +872,245 @@ internal static class MicrophoneCalibrationSuite
       PrimeAndWait(renderer, prefetch, 0);
       renderer.Publish(new ReplayMicrophoneSchedule(5d, 3_000d));
       float[] data = new float[block];
-      renderer.Render(data, 1, 5d);
+      Assert(RenderWhenReady(renderer, 5d, data, 1, continuous: false), "The resampled chunk was never ready.");
       double step = 48_000d / 44_100d;
       Assert(
         Math.Abs(data[0] - RampSample(3_000)) < 1e-5f && Math.Abs(data[100] - RampSample(3_000 + 100 * step)) < 1e-5f,
         "A different output rate did not resample the recording on the schedule."
       );
+    }
+
+    // A file shorter than its header says still plays what it holds.
+    var truncated = new MemoryStream(CreateRampPcm(1_000, 1));
+    using (ReplayMicrophoneRenderer renderer = CreateRampRenderer(2_000, 1, 48_000, out var prefetch, truncated))
+    {
+      renderer.Prime(0);
+      renderer.Publish(new ReplayMicrophoneSchedule(5d, 900d));
+      float[] data = new float[block];
+      Assert(RenderWhenReady(renderer, 5d, data, 1, continuous: false), "A truncated file stalled the queue.");
+      Assert(data[99] == RampSample(999) && data[100] == 0f, "A truncated file did not end in silence.");
+      Assert(renderer.TakeStats().MissingFrames == block - 100, "The missing frames were not counted.");
+    }
+  }
+
+  private sealed class FakeMicrophoneVoice : IReplayMicrophoneVoice
+  {
+    public readonly List<(double Start, float First, float Last)> Plays = new();
+    public bool Playing;
+    public double? EndTime;
+    public int Stops;
+
+    public bool IsPlaying => Playing;
+    public int PositionFrames { get; set; }
+
+    public void Play(float[] samples, double startDspTime)
+    {
+      Plays.Add((startDspTime, samples[0], samples[samples.Length - 2]));
+      Playing = true;
+      EndTime = null;
+    }
+
+    public void EndAt(double dspTime) => EndTime = dspTime;
+
+    public void Stop()
+    {
+      Stops++;
+      Playing = false;
+    }
+  }
+
+  // Holds the prefetch's reads back, so a test can see a chunk that is not ready.
+  private sealed class GatedStream : MemoryStream
+  {
+    public readonly ManualResetEventSlim Gate = new ManualResetEventSlim(true);
+
+    public GatedStream(byte[] data)
+      : base(data) { }
+
+    public override int Read(byte[] buffer, int offset, int count)
+    {
+      Gate.Wait(5_000);
+      return base.Read(buffer, offset, count);
+    }
+  }
+
+  private sealed class ChunkQueueFixture : IDisposable
+  {
+    public const int ChunkFrames = 9_600;
+    public const double ChunkSeconds = 0.2d;
+    public const double Lead = 0.06d;
+
+    public readonly ReplayMicrophoneRenderer Renderer;
+    public readonly Pcm16PrefetchBuffer Prefetch;
+    public readonly FakeMicrophoneVoice[] Voices =
+    {
+      new FakeMicrophoneVoice(),
+      new FakeMicrophoneVoice(),
+      new FakeMicrophoneVoice(),
+      new FakeMicrophoneVoice(),
+    };
+    public readonly ReplayMicrophoneChunkQueue Queue;
+    public readonly double Start;
+
+    public ChunkQueueFixture(Stream stream = null)
+    {
+      Renderer = CreateRampRenderer(400_000, 1, 48_000, out Prefetch, stream);
+      Renderer.Prime(0);
+      Renderer.Publish(new ReplayMicrophoneSchedule(10d, 1_000d));
+      Queue = new ReplayMicrophoneChunkQueue(
+        Renderer,
+        Array.ConvertAll(Voices, voice => (IReplayMicrophoneVoice)voice),
+        ChunkFrames,
+        2,
+        48_000,
+        Lead
+      );
+      Queue.WatchNextStart();
+      PumpUntilPlayed(10d, 4);
+      Start = Voices[0].Plays[0].Start;
+    }
+
+    public int PlayCount => Voices.Sum(voice => voice.Plays.Count);
+
+    public void PumpUntilPlayed(double now, int plays)
+    {
+      for (int attempt = 0; attempt < 2_000 && PlayCount < plays; attempt++)
+      {
+        Queue.Pump(now);
+        if (PlayCount < plays)
+          System.Threading.Thread.Sleep(1);
+      }
+      Assert(PlayCount >= plays, "The microphone queue did not schedule its chunk.");
+    }
+
+    public void Dispose() => Renderer.Dispose();
+  }
+
+  private static void TestReplayMicrophoneChunkQueue()
+  {
+    const double chunk = ChunkQueueFixture.ChunkSeconds;
+    const int chunkFrames = ChunkQueueFixture.ChunkFrames;
+    const double lead = ChunkQueueFixture.Lead;
+
+    using (var fixture = new ChunkQueueFixture())
+    {
+      double start = fixture.Start;
+      Assert(
+        start >= 10d + lead && start < 10d + lead + 2d / 48_000d,
+        "A new run did not start one lead after the clock."
+      );
+      double startSample = start * 48_000d;
+      Assert(
+        Math.Abs(startSample - Math.Floor(startSample) - 0.25d) < 1e-3d,
+        "A run start can round to different samples."
+      );
+
+      // Chunks follow each other exactly, in time and in recorded samples.
+      double firstFrame = Math.Round(1_000d + (start - 10d) * 48_000d);
+      for (int i = 0; i < 4; i++)
+      {
+        var play = fixture.Voices[i].Plays[0];
+        Assert(Math.Abs(play.Start - (start + i * chunk)) < 1e-9d, "Queued chunks do not join on the audio clock.");
+        Assert(play.First == RampSample(firstFrame + i * chunkFrames), "A queued chunk skipped recorded samples.");
+        Assert(
+          play.Last == RampSample(firstFrame + i * chunkFrames + chunkFrames - 1),
+          "A queued chunk ended on the wrong sample."
+        );
+      }
+
+      // A full queue waits for a voice instead of cutting one off.
+      fixture.Queue.Pump(start + 0.01d);
+      Assert(fixture.PlayCount == 4, "A full queue scheduled another chunk.");
+      Assert(fixture.Voices[0].Stops == 0, "A full queue stopped a playing chunk.");
+
+      // The finished voice carries the next chunk, after its stop has settled.
+      fixture.Queue.Pump(start + chunk + 0.04d);
+      Assert(fixture.PlayCount == 4, "A voice was rewritten right after it finished.");
+      fixture.PumpUntilPlayed(start + chunk + 0.06d, 5);
+      var fifth = fixture.Voices[0].Plays[1];
+      Assert(Math.Abs(fifth.Start - (start + 4 * chunk)) < 1e-9d, "The refilled voice left a gap.");
+      Assert(fifth.First == RampSample(firstFrame + 4 * chunkFrames), "The refilled voice skipped recorded samples.");
+
+      fixture.Voices[0].PositionFrames = 0;
+      Assert(!fixture.Queue.TryMeasureStart(start + 0.01d, out _), "The start was measured too early.");
+    }
+
+    // The start check compares the voice's position with the clock.
+    using (var fixture = new ChunkQueueFixture())
+    {
+      double now = fixture.Start + 0.03d;
+      fixture.Voices[0].PositionFrames = (int)Math.Round(0.03d * 48_000d) + 48;
+      Assert(
+        fixture.Queue.TryMeasureStart(now, out double error) && Math.Abs(error - 0.001d) < 1e-4d,
+        "The start error was not measured."
+      );
+      Assert(!fixture.Queue.TryMeasureStart(now, out _), "The start error was measured twice.");
+    }
+
+    // A moved schedule replaces later chunks, and the playing audio runs up to it.
+    using (var fixture = new ChunkQueueFixture())
+    {
+      double now = fixture.Start + 0.15d;
+      fixture.Renderer.Publish(new ReplayMicrophoneSchedule(now, 9_000d));
+      fixture.Queue.Restart();
+      fixture.PumpUntilPlayed(now, 5);
+      double newStart = fixture.Voices[2].Plays[1].Start;
+      Assert(Math.Abs(newStart - (now + lead)) < 2d / 48_000d, "A restarted run did not start one lead ahead.");
+      Assert(fixture.Voices[1].EndTime == newStart, "The playing chunk did not run up to the new run.");
+      Assert(fixture.Voices[0].EndTime == null && fixture.Voices[0].Stops == 0, "A finishing chunk was cut.");
+      Assert(!fixture.Voices[3].Playing, "A chunk of the old run stayed queued.");
+      Assert(
+        fixture.Voices[2].Plays[1].First == RampSample(Math.Round(9_000d + (newStart - now) * 48_000d)),
+        "The new run did not start at its scheduled frame."
+      );
+    }
+
+    // Until the new position is read, the queued audio is left alone.
+    var gated = new GatedStream(CreateRampPcm(400_000, 1));
+    using (var fixture = new ChunkQueueFixture(gated))
+    {
+      gated.Gate.Reset();
+      double now = fixture.Start + 0.05d;
+      fixture.Renderer.Publish(new ReplayMicrophoneSchedule(now, 300_000d));
+      fixture.Queue.Restart();
+      for (int i = 0; i < 5; i++)
+        fixture.Queue.Pump(now);
+      Assert(fixture.PlayCount == 4, "A chunk was scheduled before its data was read.");
+      Assert(fixture.Voices.All(voice => voice.Stops == 0 && voice.EndTime == null), "Waiting cut the queued audio.");
+      gated.Gate.Set();
+      fixture.PumpUntilPlayed(now, 5);
+    }
+
+    // Stopping is immediate. Only a voice that was heard waits before reuse.
+    using (var fixture = new ChunkQueueFixture())
+    {
+      double now = fixture.Start + 0.01d;
+      fixture.Queue.Stop(now);
+      Assert(fixture.Voices.All(voice => !voice.Playing), "Stopping left a chunk playing.");
+      fixture.Renderer.Publish(new ReplayMicrophoneSchedule(now, 1_000d));
+      fixture.PumpUntilPlayed(now, 5);
+      Assert(fixture.Voices[0].Plays.Count == 1, "The voice that was just playing was rewritten.");
+    }
+
+    // A long stall runs the queue out; playback restarts at the current time.
+    using (var fixture = new ChunkQueueFixture())
+    {
+      double now = fixture.Start + 10d;
+      fixture.PumpUntilPlayed(now, 5);
+      double restart = fixture.Voices[0].Plays[1].Start;
+      Assert(restart >= now + lead && restart < now + lead + 2d / 48_000d, "An underrun scheduled in the past.");
+      Assert(fixture.Queue.TakeStats().Underruns == 1, "The underrun was not counted once.");
+    }
+
+    // A voice that stops on its own, as after a device change, restarts the queue.
+    using (var fixture = new ChunkQueueFixture())
+    {
+      double now = fixture.Start + chunk + 0.06d;
+      fixture.Voices[1].Playing = false;
+      fixture.PumpUntilPlayed(now, 5);
+      Assert(fixture.Voices.All(voice => voice.Stops >= 1), "A lost voice did not clear the queue.");
+      ReplayMicrophoneQueueStats stats = fixture.Queue.TakeStats();
+      Assert(stats.LostVoices == 1 && stats.Chunks == 5, "The lost voice was not counted.");
     }
   }
 

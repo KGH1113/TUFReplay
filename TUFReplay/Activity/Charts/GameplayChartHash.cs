@@ -1,40 +1,50 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using ADOFAI;
 using GDMiniJSON;
-using TUFReplay.Activity.Charts;
 
 namespace TUFReplay.Activity.Charts;
 
 public static class GameplayChartHash
 {
+  /// <summary>Version of the hash in the gameplay_hash column (V4).</summary>
   public const int Version = 4;
-  public const int Version4Size = 32;
-  private const int SemanticVersion = 1;
+  public const int HashSize = 32;
+  public const int V5Version = GameplayChartV5Hasher.Version;
 
-  public static bool TryComputeCurrent(out byte[] hash, out string error)
+  public static bool TryComputeCurrent(out GameplayChartHashes hashes, out string error)
   {
     LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
-    return TryCompute(levelData, out hash, out error);
+    return TryCompute(levelData, out hashes, out error);
   }
 
-  public static bool TryLoadCustomLevel(string levelPath, out LevelData levelData, out byte[] hash, out string error)
+  public static bool TryComputeCurrentV5(out byte[] hash, out string error)
   {
-    return TryLoadCustomLevel(levelPath, out _, out levelData, out hash, out error);
+    LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
+    return TryComputeV5(levelData, out hash, out error);
+  }
+
+  public static bool TryLoadCustomLevel(
+    string levelPath,
+    out LevelData levelData,
+    out GameplayChartHashes hashes,
+    out string error
+  )
+  {
+    return TryLoadCustomLevel(levelPath, out _, out levelData, out hashes, out error);
   }
 
   public static bool TryLoadCustomLevel(
     string levelPath,
     out string source,
     out LevelData levelData,
-    out byte[] hash,
+    out GameplayChartHashes hashes,
     out string error
   )
   {
     source = null;
     levelData = null;
-    hash = null;
+    hashes = null;
     error = null;
 
     string canonicalPath = LevelPathIdentity.Canonicalize(levelPath);
@@ -85,7 +95,7 @@ public static class GameplayChartHash
         }
       }
 
-      if (!TryCompute(loaded, out hash, out error))
+      if (!TryCompute(loaded, out hashes, out error))
         return false;
 
       levelData = loaded;
@@ -98,7 +108,40 @@ public static class GameplayChartHash
     }
   }
 
-  public static bool TryCompute(LevelData levelData, out byte[] hash, out string error)
+  /// <summary>Computes the V4 and V5 hashes of one chart.</summary>
+  public static bool TryCompute(LevelData levelData, out GameplayChartHashes hashes, out string error)
+  {
+    hashes = null;
+    if (!TryComputeV4(levelData, out byte[] v4, out error) || !TryComputeV5(levelData, out byte[] v5, out error))
+      return false;
+    hashes = new GameplayChartHashes(v4, v5);
+    return true;
+  }
+
+  public static bool TryComputeV5(LevelData levelData, out byte[] hash, out string error)
+  {
+    hash = null;
+    error = null;
+    if (levelData == null)
+    {
+      error = "Level data is unavailable.";
+      return false;
+    }
+
+    try
+    {
+      hash = GameplayChartV5Hasher.Compute(GameplayChartSnapshotReader.Read(levelData));
+      return true;
+    }
+    catch (Exception exception)
+    {
+      error = "Level hash failed: " + exception.GetType().Name;
+      return false;
+    }
+  }
+
+  // V4 stays byte-for-byte as shipped: runs recorded before V5 only carry this hash.
+  private static bool TryComputeV4(LevelData levelData, out byte[] hash, out string error)
   {
     hash = null;
     error = null;
@@ -142,67 +185,6 @@ public static class GameplayChartHash
     }
   }
 
-  public static bool TryComputeSemantic(LevelData levelData, out byte[] hash, out string error)
-  {
-    hash = null;
-    error = null;
-    if (levelData == null)
-    {
-      error = "Level data is unavailable.";
-      return false;
-    }
-
-    try
-    {
-      using var writer = new GameplayChartHashCanonicalWriter();
-      writer.WriteFormatVersion(SemanticVersion);
-      writer.WriteGameplaySettingsV4(
-        levelData.songFilename,
-        levelData.bpm,
-        levelData.volume,
-        levelData.offset,
-        levelData.separateCountdownTime,
-        levelData.countdownTicks,
-        Convert.ToSingle(levelData.levelSettings["speedTrialAim"]),
-        levelData.levelSettings.GetBool("legacySpriteTiles")
-      );
-      writer.WriteChartKind(levelData.isOldLevel);
-      if (levelData.isOldLevel)
-        writer.WriteLegacyPath(levelData.pathData);
-      else
-        writer.WriteNormalizedAngles(levelData.angleData);
-
-      foreach (
-        LevelEvent levelEvent in levelData
-          .levelEvents.Where(levelEvent => GameplayEventKind(levelEvent) >= 0)
-          .Select(
-            (levelEvent, index) =>
-              new
-              {
-                levelEvent,
-                index,
-                kind = GameplayEventKind(levelEvent),
-              }
-          )
-          .OrderBy(entry => entry.levelEvent.floor)
-          .ThenBy(entry => entry.kind)
-          .ThenBy(entry => entry.index)
-          .Select(entry => entry.levelEvent)
-      )
-      {
-        WriteSemanticGameplayEvent(writer, levelEvent, levelData.bpm);
-      }
-
-      hash = writer.ComputeSha256Hash();
-      return true;
-    }
-    catch (Exception exception)
-    {
-      error = "Semantic level hash failed: " + exception.GetType().Name;
-      return false;
-    }
-  }
-
   private static void PrepareCustomAngleData(LevelData levelData, Dictionary<string, object> decoded)
   {
     if (decoded.ContainsKey("pathData"))
@@ -231,8 +213,10 @@ public static class GameplayChartHash
 
   public static bool IsSupported(int? version, byte[] hash)
   {
-    return version == Version && hash?.Length == Version4Size;
+    return version == Version && hash?.Length == HashSize;
   }
+
+  public static bool IsV5(byte[] hash) => hash?.Length == HashSize;
 
   private static void WriteGameplayEvent(GameplayChartHashCanonicalWriter writer, LevelEvent levelEvent)
   {
@@ -278,51 +262,6 @@ public static class GameplayChartHash
       case LevelEventType.KillPlayer:
         writer.WriteKillPlayer(levelEvent.floor);
         break;
-    }
-  }
-
-  private static void WriteSemanticGameplayEvent(
-    GameplayChartHashCanonicalWriter writer,
-    LevelEvent levelEvent,
-    float baseBpm
-  )
-  {
-    if (levelEvent.eventType == LevelEventType.SetSpeed)
-    {
-      var speedType = (SpeedType)levelEvent["speedType"];
-      float bpm =
-        speedType == SpeedType.Bpm ? (float)levelEvent["beatsPerMinute"] : baseBpm * (float)levelEvent["bpmMultiplier"];
-      writer.WriteSetSpeed(levelEvent.floor, 0, bpm);
-      return;
-    }
-
-    WriteGameplayEvent(writer, levelEvent);
-  }
-
-  private static int GameplayEventKind(LevelEvent levelEvent)
-  {
-    switch (levelEvent.eventType)
-    {
-      case LevelEventType.SetSpeed:
-        return 0;
-      case LevelEventType.Twirl:
-        return 1;
-      case LevelEventType.Hold:
-        return 2;
-      case LevelEventType.MultiPlanet:
-        return 3;
-      case LevelEventType.Pause:
-        return 4;
-      case LevelEventType.AutoPlayTiles:
-        return 5;
-      case LevelEventType.ScaleMargin:
-        return 6;
-      case LevelEventType.Multitap:
-        return 7;
-      case LevelEventType.KillPlayer:
-        return 8;
-      default:
-        return -1;
     }
   }
 }

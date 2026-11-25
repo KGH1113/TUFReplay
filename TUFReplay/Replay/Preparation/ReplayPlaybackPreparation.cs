@@ -22,6 +22,7 @@ using TUFReplay.Replay.NativeInput;
 using TUFReplay.Replay.Playback;
 using TUFReplay.Replay.Sessions;
 using TUFReplay.Replay.Timeline;
+using TUFReplay.Shared.Game;
 using TUFReplay.Shared.NativeInput;
 using TUFReplay.Shared.Unity;
 using TUFReplay.Webcam.Playback;
@@ -202,10 +203,28 @@ public static partial class ReplayPlaybackCoordinator
     // input-versus-hit timing measures frame processing delay, not calibration.
 
     long fallbackTerminal = inputs.Count == 0 ? 0L : Math.Max(0L, inputs.Max(input => input.TimeUs));
-    long terminalTimeUs = Math.Max(fallbackTerminal, meta.terminalTimeUs ?? fallbackTerminal);
+    long terminalTimeUs = ResolveReplayEndTimeUs(meta, run.Result, fallbackTerminal);
     pending = new PendingReplay(operationId, run, playbackLevelPath, meta, inputs, hitContexts, terminalTimeUs);
     return true;
   }
+
+  // A failed run's replay ends at the death; its later keys were pressed on the fail screen.
+  internal static long ResolveReplayEndTimeUs(ReplayMetadata meta, string result, long lastInputTimeUs)
+  {
+    if (string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase) && meta?.failedTimeUs is long failedTimeUs)
+      return Math.Max(0L, failedTimeUs);
+    return Math.Max(lastInputTimeUs, meta?.terminalTimeUs ?? lastInputTimeUs);
+  }
+
+  // A failed run records its fail screen until the retry or editor return. The replay keeps
+  // the camera, microphone and mod keys going there until that time; older records have none.
+  internal static long? ResolveFailScreenEndTimeUs(ReplayMetadata meta, string result) =>
+    string.Equals(result, "failed", StringComparison.OrdinalIgnoreCase)
+    && meta?.failedTimeUs is long failedTimeUs
+    && meta.terminalTimeUs is long terminalTimeUs
+    && terminalTimeUs > failedTimeUs
+      ? terminalTimeUs
+      : null;
 
   internal static bool ValidateReplayArtifact(StoredReplayRun run, out string errorCode, out string errorMessage)
   {
@@ -471,7 +490,9 @@ public static partial class ReplayPlaybackCoordinator
       _allowEditorPlay = true;
     try
     {
-      editor.Play();
+      // The recorded speed, not the keys held now: the music, the "(0.75x)" after the level
+      // name, and the microphone, camera and key timing all follow it.
+      EditorPlaySpeed.Play(editor, RecordedSpeedMultiplier.From(operation.Meta));
     }
     finally
     {

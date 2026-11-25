@@ -1,5 +1,11 @@
 # Third-Party Notices
 
+TUFReplay's [MIT License](LICENSE) covers TUFReplay's own code and assets. The items below belong to others and keep their own terms.
+
+## Calibration song
+
+`TUFReplay/Assets/calibration/calibration.ogg` is the TUF Helper main theme. It is not covered by TUFReplay's MIT License.
+
 ## MapleStory Typeface
 
 TUFReplay includes the MapleStory typeface provided by NEXON Korea Corporation.

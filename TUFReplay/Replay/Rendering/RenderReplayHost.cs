@@ -5,6 +5,8 @@ using HarmonyLib;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using TUFReplay.ModApi.Playback;
+using TUFReplay.Replay.Rendering.Webcam;
+using TUFReplay.Shared.Game;
 using UnityEngine;
 
 namespace TUFReplay.Replay.Rendering;
@@ -35,6 +37,8 @@ internal sealed class RenderReplayHost
   private readonly Dictionary<string, HitMargin> _margins = new Dictionary<string, HitMargin>(StringComparer.Ordinal);
   private readonly HashSet<KeyCode> _heldKeys = new HashSet<KeyCode>();
   private readonly List<Canvas> _canvases = new List<Canvas>();
+  private readonly Func<long, long> _videoTicksAt;
+  private readonly RenderWebcam _webcam;
 
   private GameSettingsSnapshot _settings;
   private RenderTimeline _timeline;
@@ -47,6 +51,7 @@ internal sealed class RenderReplayHost
   private bool _ended;
   private bool _won;
   private bool _terminalReached;
+  private bool _deathApplied;
   private bool _deathAnimationCompleted;
   private long? _deathStartedVideoTimeUs;
   private RecordedHitEvent? _activeHit;
@@ -58,9 +63,12 @@ internal sealed class RenderReplayHost
   /// <summary>True while a render replays a TUFReplay recording.</summary>
   internal static bool IsActive => Current != null;
 
-  public RenderReplayHost(RecordingBundle bundle, double endDelaySeconds)
+  /// <param name="webcam">The recorded camera this host draws into the video, or null when
+  /// OrbitRender composes it or there is none.</param>
+  public RenderReplayHost(RecordingBundle bundle, double endDelaySeconds, RenderWebcam webcam = null)
   {
     _bundle = bundle ?? throw new ArgumentNullException(nameof(bundle));
+    _webcam = webcam;
     if (
       double.IsNaN(endDelaySeconds)
       || double.IsInfinity(endDelaySeconds)
@@ -69,6 +77,7 @@ internal sealed class RenderReplayHost
     )
       throw new ArgumentOutOfRangeException(nameof(endDelaySeconds));
     _endDelaySeconds = endDelaySeconds;
+    _videoTicksAt = replayTimeUs => checked(ReplayToVideoTimeUs(replayTimeUs) * 10);
     GameplayRate = bundle.Manifest.Replay.EffectivePitch;
     _cursor = new ReplayEventCursor(bundle.Inputs, bundle.Hits);
     foreach (RecordedKeyEvent input in bundle.Inputs)
@@ -169,8 +178,10 @@ internal sealed class RenderReplayHost
       conductor.song2.pitch = pitch;
     if (conductor.song3 != null)
       conductor.song3.pitch = pitch;
-    if (scnEditor.instance != null)
-      scnEditor.instance.playbackSpeed = 1f;
+    // editor.Play sets the speed from the keys held when the render starts and writes it after
+    // the level name once the music is set up. This runs then, so the name shows the recorded
+    // speed instead.
+    EditorPlaySpeed.Apply(scnEditor.instance, (float)(replay.SpeedMultiplier ?? 1d));
     ADOBase.controller.noFail = replay.NoFailMode;
     // The conductor reads the input offset when it starts, so the recorded one is set before play.
     int inputOffset = (int)Math.Round(replay.GameInputOffsetMs);
@@ -213,11 +224,13 @@ internal sealed class RenderReplayHost
     _videoFps = videoFps;
     _begun = true;
     ReplaySessions.UpdateRender(new ReplayRender(width, height, videoFps));
+    // OrbitRender collects the canvases to capture right after this.
+    _webcam?.Begin(width, height);
 
     double initialReplayUs =
       (ADOBase.conductor.songposition_minusi - _bundle.Manifest.Replay.GameplayStartSongPosition) * 1_000_000d;
     long initialOriginUs = checked(-(long)Math.Round(initialReplayUs / GameplayRate));
-    _timeline = new RenderTimeline(initialOriginUs, GameplayRate, _bundle.Manifest.Replay.WonTimeUs);
+    _timeline = new RenderTimeline(initialOriginUs, GameplayRate, _bundle.Manifest.Replay.GameplayEndTimeUs);
 
     // Input-event effects deduplicate by the original game frame, which recordings do not store.
     if (HasInputEventEffects(ADOBase.controller))
@@ -254,7 +267,7 @@ internal sealed class RenderReplayHost
       }
       double recordingUs = (conductor.songposition_minusi - replay.GameplayStartSongPosition) * 1_000_000d;
       GameplayStartVideoTimeUs = checked(_currentVideoTimeUs - (long)Math.Round(recordingUs / GameplayRate));
-      _timeline = new RenderTimeline(GameplayStartVideoTimeUs.Value, GameplayRate, replay.WonTimeUs);
+      _timeline = new RenderTimeline(GameplayStartVideoTimeUs.Value, GameplayRate, replay.GameplayEndTimeUs);
       // Leave room for the native death callback; its completion below sets the final end.
       // A missing callback must fail instead of cutting the death or rendering forever.
       _setEndTimeSeconds(
@@ -265,6 +278,8 @@ internal sealed class RenderReplayHost
       );
     }
     long timeUs = checked((long)Math.Floor(_timeline.OutputToReplay(_currentVideoTimeUs)));
+    // Values mods recorded during the run reach them at their times, before that frame's keys.
+    ReplaySessions.AdvanceEvents(timeUs, _videoTicksAt);
     _cursor.AdvanceTo(timeUs, ApplyInput, ApplyHit);
     if (controller.state == States.PlayerControl)
     {
@@ -285,6 +300,15 @@ internal sealed class RenderReplayHost
         using (SongPositionScope(replay.WonTimeUs.Value))
           controller.OnLandOnPortal(controller.chosenPlanet, Portal.EndOfLevel, null);
     }
+    ApplyRecordedDeath(replay, controller, timeUs);
+    if (
+      _deathApplied
+      && !_deathAnimationCompleted
+      && (!_deathStartedVideoTimeUs.HasValue || _currentVideoTimeUs - _deathStartedVideoTimeUs.Value > 5_000_000)
+    )
+      throw new InvalidOperationException(
+        "The game's death animation did not finish. Check the installed gameplay mods and try rendering again."
+      );
     if (timeUs < replay.TerminalTimeUs)
       return;
     if (!_terminalReached)
@@ -292,29 +316,36 @@ internal sealed class RenderReplayHost
       if (!_cursor.AllHitsConsumed)
         throw new InvalidOperationException("The render ended before all recorded judgments were applied.");
       _terminalReached = true;
-      if (replay.Result == "failed" && controller.playerOne.alive)
-      {
-        // Missed or late inputs need not have an accepted hit. The recorded result decides,
-        // including failures on safe and no-fail tiles.
-        ApplyingTerminalDeath = true;
-        try
-        {
-          using (SongPositionScope(replay.TerminalTimeUs))
-            controller.playerOne.Die(hitbox: true);
-        }
-        finally
-        {
-          ApplyingTerminalDeath = false;
-        }
-        DeathStarted();
-      }
+      // Nothing is recorded after the end, so no key stays held through the end delay.
+      ReleaseHeldKeys(ReplayToVideoTimeUs(replay.TerminalTimeUs));
     }
     if (replay.Result != "failed" || _deathAnimationCompleted)
       _requestStopAfterSeconds(_endDelaySeconds);
-    else if (!_deathStartedVideoTimeUs.HasValue || _currentVideoTimeUs - _deathStartedVideoTimeUs.Value > 5_000_000)
-      throw new InvalidOperationException(
-        "The game's death animation did not finish. Check the installed gameplay mods and try rendering again."
-      );
+  }
+
+  // A failed run dies at its recorded death. The keys after it were pressed on the fail screen.
+  private void ApplyRecordedDeath(ReplayManifest replay, scrController controller, long timeUs)
+  {
+    if (_deathApplied || !(replay.DeathTimeUs is long deathTimeUs) || timeUs < deathTimeUs)
+      return;
+    if (!_cursor.AllHitsConsumed)
+      throw new InvalidOperationException("The render ended before all recorded judgments were applied.");
+    _deathApplied = true;
+    if (!controller.playerOne.alive)
+      return;
+    // Missed or late inputs need not have an accepted hit. The recorded result decides,
+    // including failures on safe and no-fail tiles.
+    ApplyingTerminalDeath = true;
+    try
+    {
+      using (SongPositionScope(deathTimeUs))
+        controller.playerOne.Die(hitbox: true);
+    }
+    finally
+    {
+      ApplyingTerminalDeath = false;
+    }
+    DeathStarted();
   }
 
   // ---- What the video shows ----
@@ -323,17 +354,25 @@ internal sealed class RenderReplayHost
   {
     _canvases.Clear();
     ReplaySessions.CollectCanvases(_canvases);
+    if (_webcam?.Canvas != null)
+      _canvases.Add(_webcam.Canvas);
     return _canvases;
   }
 
-  public void OnBeforeCapture() => ReplaySessions.BeforeCapture();
+  public void OnBeforeCapture()
+  {
+    _webcam?.BeforeCapture(_timeline, _currentVideoTimeUs);
+    ReplaySessions.BeforeCapture();
+  }
 
   public void OnAfterCapture() => ReplaySessions.AfterCapture();
 
   /// <summary>
   /// The videos mods want laid over the finished video, as OrbitRender's JSON array. OrbitRender
   /// calls this once, after the last frame and before it composes the video, and only for a
-  /// render that completed. Blocks while mods finish writing their videos.
+  /// render that completed. Blocks while mods finish writing their videos. OrbitRender that
+  /// finishes in the background calls it from a worker thread, so nothing here touches Unity:
+  /// the session's providers are an array snapshot and the registry a volatile array.
   /// </summary>
   public string GetOverlayVideos()
   {
@@ -391,15 +430,34 @@ internal sealed class RenderReplayHost
     _ended = true;
     try
     {
+      ReleaseHeldKeys(_currentVideoTimeUs);
+    }
+    finally
+    {
+      // Stops FFmpeg before the bundle, and the camera recording in it, is deleted.
+      _webcam?.Dispose();
+      RenderReplayHooks.Deactivate(this);
+      if (Current == this)
+        Current = null;
+    }
+  }
+
+  private void ReleaseHeldKeys(long videoTimeUs)
+  {
+    if (_heldKeys.Count == 0)
+      return;
+    long frameTimeUs = _currentVideoTimeUs;
+    try
+    {
+      // Overlay clocks read the release's own time while it is delivered, as in ApplyInput.
+      _currentVideoTimeUs = videoTimeUs;
       foreach (KeyCode held in _heldKeys)
-        ReplaySessions.Key(held, null, false, _currentVideoTimeUs * 10);
+        ReplaySessions.Key(held, null, false, checked(videoTimeUs * 10));
     }
     finally
     {
       _heldKeys.Clear();
-      RenderReplayHooks.Deactivate(this);
-      if (Current == this)
-        Current = null;
+      _currentVideoTimeUs = frameTimeUs;
     }
   }
 
@@ -562,6 +620,7 @@ internal sealed class RenderReplayHost
     private readonly float _pitch3 = ADOBase.conductor.song3 != null ? ADOBase.conductor.song3.pitch : 1f;
     private readonly scnEditor _editor = scnEditor.instance;
     private readonly float _editorSpeed = scnEditor.instance != null ? scnEditor.instance.playbackSpeed : 1f;
+    private readonly bool _quickPitched = GCS.editorQuickPitchedPlaying;
     private readonly int _inputOffset = scrConductor.currentPreset.inputOffset;
 
     public void Restore()
@@ -585,6 +644,7 @@ internal sealed class RenderReplayHost
       }
       if (_editor != null)
         _editor.playbackSpeed = _editorSpeed;
+      GCS.editorQuickPitchedPlaying = _quickPitched;
     }
   }
 }

@@ -10,15 +10,16 @@ using TUFReplay.ModApi.Models;
 using TUFReplay.ModApi.Playback;
 using TUFReplay.ModApi.Repositories;
 using TUFReplay.Replay.Rendering;
+using TUFReplay.Replay.Rendering.Webcam;
 using TUFReplay.Shared.Ipc;
 using TUFReplay.Shared.Ipc.Generated;
 using TUFReplay.Shared.Media;
 
 namespace TUFReplay.Replay.Export;
 
-// TUFReplay owns the render job; OrbitRender only opens the recorded level and
-// renders. The job exports a bundle, hands its manifest to OrbitRender, mirrors
-// OrbitRender's state, and deletes the bundle once the render is terminal.
+// TUFReplay owns the render job; OrbitRender only opens the recorded level,
+// captures and encodes. The job exports a bundle, replays it as OrbitRender's
+// host, mirrors OrbitRender's state, and deletes the bundle once the render is terminal.
 //
 // Tick runs on Unity's main thread. Start/Cancel are registered as main-thread
 // IPC methods so every mutation is serialized with Tick.
@@ -32,6 +33,7 @@ public static class RenderJobCoordinator
   public const string StageWaitingForConfirmation = "waiting_for_confirmation";
   public const string StageRendering = "rendering";
   public const string StageCompositing = "compositing";
+  public const string StageWaitingForOverlays = "waiting_for_overlays";
   public const string StageCancelling = "cancelling";
 
   private const double ExportWeight = 0.1;
@@ -78,6 +80,10 @@ public static class RenderJobCoordinator
     if (string.IsNullOrWhiteSpace(runId))
       throw Domain("invalid_run_id", "Choose a play record to render.");
     ValidateOptions(options);
+    // A missing or old OrbitRender is reported now, not after the recording has been prepared.
+    OrbitRenderError renderer = OrbitRenderClient.CheckReady();
+    if (renderer != null)
+      throw Domain(renderer.Code, renderer.Message);
     lock (Gate)
     {
       if (_job != null)
@@ -273,17 +279,17 @@ public static class RenderJobCoordinator
         // The mod states load alongside the export and are nearly always ready first.
         if (!job.RunStates.IsCompleted)
           return;
-        if (OrbitRenderClient.SupportsHostedReplay)
+        string manifestPath = bundle.ManifestPath;
+        if (string.IsNullOrEmpty(manifestPath))
         {
-          // TUFReplay replays the recording itself; reading it back stays off the game thread.
-          string manifestPath = bundle.ManifestPath;
-          job.Recording ??= Task.Run(() => RecordingBundle.Load(manifestPath));
-          if (!job.Recording.IsCompleted)
-            return;
-          BeginHostedRender(job);
+          Fail(job, "render_manifest_missing", "The recording bundle is incomplete. Start rendering again.", null);
           return;
         }
-        BeginRender(job, bundle.ManifestPath);
+        // TUFReplay replays the recording itself; reading it back stays off the game thread.
+        job.Recording ??= Task.Run(() => RecordingBundle.Load(manifestPath));
+        if (!job.Recording.IsCompleted)
+          return;
+        BeginHostedRender(job);
         return;
       case "failed":
         Fail(job, bundle.ErrorCode, bundle.ErrorMessage, bundle.ErrorDetails);
@@ -300,41 +306,6 @@ public static class RenderJobCoordinator
     }
   }
 
-  private static void BeginRender(Job job, string manifestPath)
-  {
-    if (string.IsNullOrEmpty(manifestPath))
-    {
-      Fail(job, "render_manifest_missing", "The recording bundle is incomplete. Start rendering again.", null);
-      return;
-    }
-    // Mods restore the state saved with this run before OrbitRender opens the level.
-    job.RunStateSession = ReplaySessions.Begin(
-      job.RunId,
-      new ReplayRender(
-        job.Options.Width,
-        job.Options.Height,
-        job.Options.VideoFps,
-        takesOverlayVideos: false,
-        ffmpegPath: SharedFfmpegPath()
-      ),
-      job.RunStates.Result
-    );
-    var result = OrbitRenderClient.StartReplay(
-      manifestPath,
-      BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)
-    );
-    if (!result.Ok)
-    {
-      Fail(job, result.ErrorCode, result.ErrorMessage, ToDetails(result.Error));
-      return;
-    }
-    job.OrbitJobId = result.Job.Id;
-    job.State = "preparing";
-    job.Stage = StageOpeningLevel;
-    job.Progress = Math.Max(job.Progress, PrepareProgress);
-    Publish(job);
-  }
-
   // The FFmpeg TUFReplay shares with OrbitRender, for mods that write overlay videos; null until installed.
   private static string SharedFfmpegPath()
   {
@@ -342,18 +313,21 @@ public static class RenderJobCoordinator
     return ffmpeg.Available && !string.IsNullOrEmpty(ffmpeg.Path) ? ffmpeg.Path : null;
   }
 
-  // OrbitRender 3 and later: OrbitRender captures and encodes, TUFReplay replays as its host.
+  // OrbitRender captures and encodes; TUFReplay replays as its host.
   private static void BeginHostedRender(Job job)
   {
     RecordingBundle recording;
     RenderReplayHost host;
+    RenderWebcam webcam = null;
     try
     {
       recording = job.Recording.GetAwaiter().GetResult();
-      host = new RenderReplayHost(recording, job.Options.EndDelaySeconds);
+      webcam = HostDrawnWebcam(recording);
+      host = new RenderReplayHost(recording, job.Options.EndDelaySeconds, webcam);
     }
     catch (RecordingFormatException exception)
     {
+      webcam?.Dispose();
       Fail(
         job,
         exception.Code,
@@ -382,7 +356,11 @@ public static class RenderJobCoordinator
       job.RunStates.Result
     );
     var result = OrbitRenderClient.StartHostedReplay(
-      HostedRequestJson(recording, BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps)),
+      HostedRequestJson(
+        recording,
+        BuildOptions(job.Options, OrbitRenderClient.SupportsBitrateKbps),
+        webcamDrawnByHost: webcam != null
+      ),
       host
     );
     if (!result.Ok)
@@ -397,15 +375,33 @@ public static class RenderJobCoordinator
     Publish(job);
   }
 
+  // TUFReplay draws the camera into the video when FFmpeg can decode it for the host;
+  // otherwise OrbitRender composes it over the finished video, as before.
+  private static RenderWebcam HostDrawnWebcam(RecordingBundle recording)
+  {
+    if (!(recording.Manifest.Media?["webcam"] is JObject webcam) || webcam["path"]?.Type != JTokenType.String)
+      return null;
+    return RenderWebcam.TryCreate(webcam, recording.ResolveFile((string)webcam["path"]), SharedFfmpegPath());
+  }
+
   // What OrbitRender needs besides the host: where the level is, how to name the file,
-  // when the audio starts, and the camera and microphone to compose, with absolute paths.
-  internal static string HostedRequestJson(RecordingBundle recording, OrbitRenderOptions options)
+  // when the audio starts, and the media to compose, with absolute paths. A camera the
+  // host draws stays out: composing it would encode the whole picture again.
+  internal static string HostedRequestJson(
+    RecordingBundle recording,
+    OrbitRenderOptions options,
+    bool webcamDrawnByHost = false
+  )
   {
     RecordingManifest manifest = recording.Manifest;
     var media = manifest.Media == null ? null : (JObject)manifest.Media.DeepClone();
     foreach (string name in new[] { "webcam", "microphone" })
       if (media?[name] is JObject item && item["path"]?.Type == JTokenType.String)
         item["path"] = recording.ResolveFile((string)item["path"]);
+    if (webcamDrawnByHost)
+      media?.Remove("webcam");
+    if (media != null && !media.HasValues)
+      media = null;
     var serializer = JsonSerializer.Create(new JsonSerializerSettings { NullValueHandling = NullValueHandling.Ignore });
     var request = new JObject
     {
@@ -413,7 +409,8 @@ public static class RenderJobCoordinator
       ["levelFileSha256"] = manifest.Level.FileSha256,
       ["startTile"] = manifest.Replay.StartTile,
       ["gameInputOffsetMs"] = manifest.Replay.GameInputOffsetMs,
-      ["wonTimeUs"] = manifest.Replay.WonTimeUs,
+      // OrbitRender follows real time after this point. A death starts the same real-time tail as a clear.
+      ["wonTimeUs"] = manifest.Replay.GameplayEndTimeUs,
       ["media"] = media,
       ["warnings"] = JArray.FromObject(manifest.Warnings ?? Array.Empty<string>()),
       ["options"] = JObject.FromObject(options ?? new OrbitRenderOptions(), serializer),
@@ -460,8 +457,11 @@ public static class RenderJobCoordinator
         break;
       case "finishing":
         job.State = "compositing";
-        job.Stage = job.CancelRequested ? StageCancelling : StageCompositing;
-        job.Progress = Math.Max(job.Progress, CompositingProgress);
+        job.Stage =
+          job.CancelRequested ? StageCancelling
+          : orbit.FinishingStage == "overlays" ? StageWaitingForOverlays
+          : StageCompositing;
+        job.Progress = Math.Max(job.Progress, CompositingProgress + (1 - CompositingProgress) * FinishingShare(orbit));
         break;
       case "preparing":
         job.State = "preparing";
@@ -482,7 +482,11 @@ public static class RenderJobCoordinator
     Publish(job);
   }
 
-  private static IReadOnlyList<StoredRunState> LoadRunStates(string runId)
+  // How far OrbitRender's finish is: only its composition reports progress.
+  internal static double FinishingShare(OrbitRenderJob orbit) =>
+    orbit.FinishingStage == "composing" ? Clamp01(orbit.FinishingProgress ?? 0) : 0;
+
+  private static StoredRunStates LoadRunStates(string runId)
   {
     try
     {
@@ -492,7 +496,7 @@ public static class RenderJobCoordinator
     {
       // Mods then see the run as one without saved state; the render itself goes on.
       Main.Instance?.Log("[Render/RunState] Saved mod states unavailable. error=" + exception.Message);
-      return Array.Empty<StoredRunState>();
+      return StoredRunStates.Empty;
     }
   }
 
@@ -679,7 +683,7 @@ public static class RenderJobCoordinator
     public RenderErrorDetails ErrorDetails;
     public bool CancelRequested;
     public DateTime FinishedAtUtc;
-    public Task<IReadOnlyList<StoredRunState>> RunStates;
+    public Task<StoredRunStates> RunStates;
     public ReplaySession RunStateSession;
     public Task<RecordingBundle> Recording;
     public RenderReplayHost Host;

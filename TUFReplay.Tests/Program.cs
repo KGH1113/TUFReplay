@@ -33,11 +33,14 @@ internal static class Program
       WebcamOverlayInteractionSuite.RunAll();
       RenderBundleSuite.RunAll();
       RunJudgmentTimelineSuite.RunAll();
+      GameplayChartHashSuite.RunAll();
       ActivityDatabaseSuite.RunAll(root);
+      TufLevelIdSuite.RunAll(root);
       RunRecordManagementSuite.RunAll(root);
       MicrophoneDatabaseSuite.RunAll(root);
       ReplayApiSuite.RunAll(root);
       RenderHostSuite.RunAll(root);
+      RenderWebcamSuite.RunAll(root);
       ActivityChartDownloadSuite.RunAll();
       ReplayNativeInputSuite.RunAll();
       ElementAttemptsSuite.RunAll();

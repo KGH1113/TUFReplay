@@ -21,6 +21,7 @@ import {
   runOutcome,
   runStartPercent,
 } from "@/models/activity/run-progress";
+import { runSpeedPercent } from "@/models/activity/run-speed";
 import { formatXAccuracy } from "@/models/activity/x-accuracy";
 import {
   type RunReplayContext,
@@ -156,7 +157,7 @@ export const AttemptRow = memo(function AttemptRow({
           </div>
           <div data-area="pitch" className="text-right tabular-nums text-muted-foreground">
             <span className="sr-only">{t("sort.pitch")} </span>
-            {run.levelPitchPercent ?? "?"}%
+            {runSpeedPercent(run) ?? "?"}%
           </div>
           <div data-area="judg" className="min-w-0">
             <JudgmentStrip run={run} competitiveLayout={competitiveLayout} />

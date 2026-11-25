@@ -1,12 +1,13 @@
 import type { ActivityRun, JudgmentDifficulty } from "@/models/activity/activity-model";
 import { runOutcome } from "@/models/activity/run-progress";
+import { runSpeedPercent } from "@/models/activity/run-speed";
 
 export interface AttemptFilters {
   clearsOnly: boolean;
   lockedOnly: boolean;
   withRecordings: boolean;
   hideNoFail: boolean;
-  /** Pitch percentages to keep; empty keeps every pitch. */
+  /** Played speeds in percent to keep (see runSpeedPercent); empty keeps every speed. */
   pitches: number[];
   /** Judgment difficulties to keep; empty keeps every difficulty. */
   difficulties: JudgmentDifficulty[];
@@ -28,8 +29,8 @@ export function attemptFilterOptions(runs: ActivityRun[]) {
   const pitches = new Set<number>();
   const difficulties = new Set<JudgmentDifficulty>();
   for (const run of runs) {
-    if (run.levelPitchPercent !== null && run.levelPitchPercent !== undefined)
-      pitches.add(run.levelPitchPercent);
+    const speed = runSpeedPercent(run);
+    if (speed !== null) pitches.add(speed);
     if (run.judgmentDifficulty) difficulties.add(run.judgmentDifficulty);
   }
   return {
@@ -60,13 +61,15 @@ export function applyAttemptFilters(runs: ActivityRun[], filters: AttemptFilters
       (!filters.lockedOnly || run.locked) &&
       (!filters.withRecordings || run.hasMicrophoneRecording || run.hasCameraRecording) &&
       (!filters.hideNoFail || !run.noFailMode) &&
-      (filters.pitches.length === 0 ||
-        (run.levelPitchPercent !== null &&
-          run.levelPitchPercent !== undefined &&
-          filters.pitches.includes(run.levelPitchPercent))) &&
+      (filters.pitches.length === 0 || keepsSpeed(filters.pitches, run)) &&
       (filters.difficulties.length === 0 ||
         (run.judgmentDifficulty !== null &&
           run.judgmentDifficulty !== undefined &&
           filters.difficulties.includes(run.judgmentDifficulty))),
   );
+}
+
+function keepsSpeed(speeds: number[], run: ActivityRun) {
+  const speed = runSpeedPercent(run);
+  return speed !== null && speeds.includes(speed);
 }

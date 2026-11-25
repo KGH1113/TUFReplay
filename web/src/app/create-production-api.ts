@@ -1,11 +1,13 @@
 import { createCameraPreviewDownloads } from "@/adapters/adofai-ipc/camera-preview-download";
 import { createLazyAppChannels } from "@/adapters/adofai-ipc/connection";
+import { createImageDownloads } from "@/adapters/adofai-ipc/image-download";
 import { createLocalTextDownloads } from "@/adapters/adofai-ipc/text-download";
 import { createActivityApi } from "@/api/activity/create-activity-api";
 import type { AppApi } from "@/api/app-api";
 import { createCalibrationApi } from "@/api/calibration/create-calibration-api";
 import { createAppEvents } from "@/api/create-app-events";
 import { createDownloadsApi } from "@/api/downloads/create-downloads-api";
+import { createGameIconApi } from "@/api/game-icons/create-game-icon-api";
 import { createHealthApi } from "@/api/health/create-health-api";
 import { createMicrophoneApi } from "@/api/microphone/create-microphone-api";
 import { createRenderApi } from "@/api/render/create-render-api";
@@ -29,6 +31,7 @@ export function getProductionApi(): Promise<AppApi> {
       webcam: createWebcamApi(clients, createCameraPreviewDownloads()),
       render: createRenderApi(clients),
       downloads: createDownloadsApi(clients),
+      gameIcons: createGameIconApi(clients, createImageDownloads()),
     });
   }
   return apiPromise;

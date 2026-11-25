@@ -65,7 +65,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  particleTexture: {fileID: 2800000, guid: 02b0ad7f961104f169b36bf4bce0200c, type: 3}
+  particleTexture: {fileID: 0}
   maxParticles: 256
   emissionRate: 501.2
   lifetime: 0.474

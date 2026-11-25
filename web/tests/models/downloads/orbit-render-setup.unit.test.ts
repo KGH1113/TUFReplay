@@ -18,10 +18,14 @@ describe("OrbitRender setup steps", () => {
     ["extracting", null, "installing"],
     ["validating", null, "installing"],
     ["failed", null, "install-failed"],
-    ["restart-required", "2.6.2", "restart"],
-    ["ready", "2.6.2", "ready"],
-    ["ready", "2.7.0", "ready"],
-    ["ready", "2.6.1", "update"],
+    ["restart-required", "2.9.0", "restart"],
+    ["ready", "2.9.0", "ready"],
+    ["ready", "2.10.0", "ready"],
+    ["ready", "3.0.0", "ready"],
+    ["ready", "2.8.3", "update"],
+    ["ready", "2.7.0", "update"],
+    ["ready", "2.6.2", "update"],
+    ["ready", "1.9.9", "update"],
     ["ready", "0.1.0-beta.1", "update"],
     ["ready", null, "update"],
   ] as const)("%s with version %s is the %s stage", (status, version, stage) => {
@@ -29,9 +33,9 @@ describe("OrbitRender setup steps", () => {
   });
 
   test("only a loaded, supported OrbitRender can render", () => {
-    expect(orbitRenderReady({ Status: "ready", Version: "2.6.2" })).toBe(true);
-    expect(orbitRenderReady({ Status: "ready", Version: "2.6.1" })).toBe(false);
-    expect(orbitRenderReady({ Status: "restart-required", Version: "2.6.2" })).toBe(false);
+    expect(orbitRenderReady({ Status: "ready", Version: "2.9.0" })).toBe(true);
+    expect(orbitRenderReady({ Status: "ready", Version: "2.8.3" })).toBe(false);
+    expect(orbitRenderReady({ Status: "restart-required", Version: "2.9.0" })).toBe(false);
     expect(orbitRenderReady({ Status: "missing" })).toBe(false);
   });
 

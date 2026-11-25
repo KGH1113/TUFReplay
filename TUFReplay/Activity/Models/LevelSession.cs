@@ -13,6 +13,7 @@ public class LevelSession
   public int LevelTileCount;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public byte[] GameplayHashV5;
   public string Song;
   public string Author;
   public string Artist;
@@ -29,6 +30,7 @@ public sealed class LevelRecord
   public int LevelTileCount;
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public byte[] GameplayHashV5;
   public string Song;
   public string Author;
   public string Artist;

@@ -11,7 +11,7 @@ public static class LevelSessionRepository
   private const string Select =
     @"SELECT s.id,s.level_id,s.app_session_id,s.opened_at_utc,s.closed_at_utc,
 l.source_kind,l.tuf_level_id,l.adofai_path,l.level_tile_count,l.gameplay_hash,l.gameplay_hash_version,
-l.song,l.author,l.artist,l.metadata_state
+l.song,l.author,l.artist,l.metadata_state,l.gameplay_hash_v5
 FROM level_sessions s JOIN levels l ON l.id=s.level_id";
 
   public static void Save(LevelSession session)
@@ -131,5 +131,6 @@ WHERE id=@id AND NOT EXISTS (SELECT 1 FROM runs WHERE level_session_id=@id)";
       Author = DbValue.NullableString(reader, 12),
       Artist = DbValue.NullableString(reader, 13),
       MetadataState = (LevelMetadataState)reader.GetInt32(14),
+      GameplayHashV5 = reader.IsDBNull(15) ? null : (byte[])reader.GetValue(15),
     };
 }

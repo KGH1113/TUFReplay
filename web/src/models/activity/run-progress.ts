@@ -4,9 +4,13 @@ export type RunOutcome = "clear" | "finished" | "failed" | "quit" | "unknown";
 
 type ProgressRun = Pick<ActivityRun, "startTile" | "lastTile" | "floorCount">;
 
-/** Percent of the level reached at a tile, rounded the same way everywhere in the UI. */
+/**
+ * Percent of the level reached at a tile, rounded down like ADOFAI's fail screen, so only a run
+ * that reached the end shows 100%. Used everywhere in the UI.
+ */
 export function tileProgressPercent(tile: number, floorCount: number) {
-  return Math.round(Math.min(1, Math.max(0, tile) / Math.max(1, floorCount)) * 100);
+  // Multiply first: integer tiles keep the quotient exact, so 29 of 100 tiles stays 29, not 28.
+  return Math.min(100, Math.floor((Math.max(0, tile) * 100) / Math.max(1, floorCount)));
 }
 
 export function runEndTile(run: ProgressRun) {

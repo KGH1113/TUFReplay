@@ -190,8 +190,16 @@ public static partial class ReplaySessionService
 
       case States.Fail:
       case States.Fail2:
-        _activeContext.MicrophonePlayer?.Stop();
-        _activeContext.WebcamPlayer?.Stop();
+        // The game takes no input after the death, so the keys sent to it are let go. Mods keep
+        // getting the keys recorded on the fail screen, and the microphone and camera keep
+        // playing it until the recorded retry or editor return. Older recordings end here.
+        ReplayClock.EnterFailed(_activeContext);
+        if (_activeContext.Meta?.failedTimeUs == null)
+        {
+          _activeContext.KeyFeed?.ReleaseAll(ReplaySessions.NowTicks);
+          _activeContext.WebcamPlayer?.Stop();
+        }
+        _activeContext.NativeInputPlayer?.ReleaseAll();
         break;
 
       case States.Start:
@@ -257,7 +265,11 @@ public static partial class ReplaySessionService
   private static bool IsActiveReplayHashCurrent()
   {
     ActiveReplayContext context = _activeContext;
-    if (context == null || !GameplayChartHash.IsSupported(context.GameplayHashVersion, context.GameplayHash))
+    if (
+      context == null
+      || context.GameplayHashVersion != GameplayChartHash.V5Version
+      || !GameplayChartHash.IsV5(context.GameplayHash)
+    )
       return false;
 
     LevelData levelData = ADOBase.editor?.levelData ?? ADOBase.customLevel?.levelData;
@@ -275,7 +287,7 @@ public static partial class ReplaySessionService
       return true;
 
     bool current =
-      GameplayChartHash.TryCompute(levelData, out byte[] currentHash, out _)
+      GameplayChartHash.TryComputeV5(levelData, out byte[] currentHash, out _)
       && GameplayChartHash.Equals(context.GameplayHash, currentHash);
     if (current)
     {
@@ -404,6 +416,25 @@ public static partial class ReplaySessionService
     return emitted;
   }
 
+  // A replay from the first tile aligns its clock when PlayerControl starts, so the native
+  // input tick, which also drives the microphone, waits until then. The countdown before it
+  // still plays what was said, on the unaligned clock; the alignment moves it by a frame or so.
+  public static void TickCountdownMicrophone()
+  {
+    ActiveReplayContext context = _activeContext;
+    if (
+      context?.MicrophonePlayer == null
+      || !context.RunStarted
+      || context.Phase != ReplayPlaybackPhase.Armed
+      || !ReplayRunController.ShouldAlignPlayerControlOrigin(context)
+      || !TryGetControllerState(out States state)
+      || (state != States.Countdown && state != States.Checkpoint)
+      || !TryComputeReplayTimeUs(out long nowUs, out _)
+    )
+      return;
+    context.MicrophonePlayer.Tick(CreatePlaybackSnapshot(nowUs));
+  }
+
   public static void TickWebcamPlayback()
   {
     if (
@@ -412,6 +443,31 @@ public static partial class ReplaySessionService
       && TryComputeReplayTimeUs(out long nowUs, out _)
     )
       _activeContext.WebcamPlayer.Tick(CreatePlaybackSnapshot(nowUs));
+  }
+
+  // After the death the replay follows the real clock through the death animation and the fail
+  // screen: mods get the keys recorded there and the microphone and camera stay in sync.
+  // TickWebcamPlayback stops at the death, because the fail states are not timeline playback
+  // states; a camera left without new reference times stutters. The replay completes at the
+  // recorded retry or editor return.
+  public static void TickFailScreen()
+  {
+    ActiveReplayContext context = _activeContext;
+    if (
+      context == null
+      || !context.RealTimeClockStarted
+      || !TryGetControllerState(out States state)
+      || (state != States.Fail && state != States.Fail2)
+      || !ReplayClock.TryComputeReplayTimeUs(context, out long nowUs, out _)
+    )
+      return;
+    ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
+    context.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
+    ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(nowUs);
+    context.MicrophonePlayer?.Tick(snapshot);
+    if (context.Meta?.failedTimeUs != null)
+      context.WebcamPlayer?.Tick(snapshot);
+    ReplayPlaybackCoordinator.OnFailScreenTimeAdvanced(nowUs);
   }
 
   private static bool TryComputeReplayTimeUs(out long nowUs, out string reason)
@@ -453,7 +509,8 @@ public static partial class ReplaySessionService
     if (!TryComputeReplayTimeUs(out nowUs, out _))
       return false;
 
-    // Before the pause and focus checks: mods show every recorded key, focused or not.
+    // Before the pause and focus checks: mods get every recorded value and key, focused or not.
+    ReplaySessions.AdvanceEvents(nowUs, ReplaySessions.NowTicks);
     _activeContext.KeyFeed?.AdvanceTo(nowUs, ReplaySessions.NowTicks);
 
     if (ADOBase.controller.paused)
@@ -624,7 +681,8 @@ public static partial class ReplaySessionService
 
   private static double CurrentTimelineRate()
   {
-    if (_activeContext?.Phase == ReplayPlaybackPhase.Won)
+    // After the clear or the death, replay time follows the real clock.
+    if (_activeContext?.Phase == ReplayPlaybackPhase.Won || _activeContext?.RealTimeClockStarted == true)
       return 1d;
 
     float? effectivePitch = _activeContext?.Meta?.effectivePitch;
@@ -639,8 +697,12 @@ public static partial class ReplaySessionService
 
   private static long? CurrentWonTimeUs() => _activeContext?.Meta?.wonTimeUs;
 
+  // The countdown plays what was said during it. A frozen-start recording keeps only the
+  // sound from just before its first input (its timeline's AudibleFromUs), so its wait stays silent.
   private static bool IsMicrophoneAudible() =>
-    _activeContext?.Phase == ReplayPlaybackPhase.Running || _activeContext?.Phase == ReplayPlaybackPhase.Won;
+    _activeContext?.Phase == ReplayPlaybackPhase.Armed
+    || _activeContext?.Phase == ReplayPlaybackPhase.Running
+    || _activeContext?.Phase == ReplayPlaybackPhase.Won;
 
   private static ReplayPlaybackSnapshot CreatePlaybackSnapshot(long timelineTimeUs, bool? paused = null) =>
     new ReplayPlaybackSnapshot(
@@ -660,7 +722,7 @@ public static partial class ReplaySessionService
   private static double CurrentTimelineDspTime()
   {
     scrConductor conductor = ADOBase.conductor;
-    if (_activeContext == null || _activeContext.WonClockStarted || conductor == null || conductor.song == null)
+    if (_activeContext == null || _activeContext.RealTimeClockStarted || conductor == null || conductor.song == null)
       return double.NaN;
     if (GCS.d_oldConductor || GCS.d_webglConductor)
       return double.NaN;

@@ -1,5 +1,3 @@
-using System;
-using System.Globalization;
 using System.IO;
 
 namespace TUFReplay.Activity.Charts;
@@ -23,13 +21,7 @@ public static class LevelDisplayPath
     )
     {
       if (
-        !directory.Name.StartsWith("tuf-", StringComparison.OrdinalIgnoreCase)
-        || !int.TryParse(
-          directory.Name.Substring(4),
-          NumberStyles.None,
-          CultureInfo.InvariantCulture,
-          out int folderLevelId
-        )
+        !TufLevelFolderName.TryParseLevelId(directory.Name, out int folderLevelId)
         || folderLevelId != tufLevelId.Value
       )
         continue;

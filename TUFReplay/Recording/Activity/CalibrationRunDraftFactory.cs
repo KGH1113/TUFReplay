@@ -22,6 +22,7 @@ internal static class CalibrationRunDraftFactory
       EffectivePitch = data.EffectivePitch,
       GameplayHash = data.GameplayHash == null ? null : (byte[])data.GameplayHash.Clone(),
       GameplayHashVersion = data.GameplayHashVersion,
+      GameplayHashV5 = data.GameplayHashV5 == null ? null : (byte[])data.GameplayHashV5.Clone(),
     };
   }
 }

@@ -3,9 +3,11 @@ import {
   aggregateRunMarkers,
   groupSessionsByDay,
   isClearRun,
+  summarizeLevelRuns,
 } from "@/models/activity/activity-data";
 import type { ActivityRun, AppSession, LevelSession } from "@/models/activity/activity-model";
 import { dayDeleteBlocker, summarizeDayDeletion } from "@/models/activity/day-deletion";
+import { runEndPercent, tileProgressPercent } from "@/models/activity/run-progress";
 import { adjustLockedRunCounts } from "@/state/activity/activity-queries";
 
 const session = (id: string, started: string): AppSession => ({
@@ -122,6 +124,17 @@ describe("activity data", () => {
     expect(aggregateRunMarkers([run("a", 12, 20), run("b", 12, 30, "cleared")])).toEqual([
       { id: "floor-12", floorIndex: 12, count: 2, clearCount: 0, bestLastFloorIndex: 30 },
     ]);
+  });
+
+  test("rounds progress down so only a run that reached the end shows 100%", () => {
+    // A real fail: tile 4880 of 4896 is 99.67%, which rounding used to show as 100%.
+    const nearEnd = { ...run("near-end", 0, 4880, "failed"), floorCount: 4896 };
+    expect(runEndPercent(nearEnd)).toBe(99);
+    expect(summarizeLevelRuns([nearEnd]).bestFromStartPercent).toBe(99);
+    expect(tileProgressPercent(4896, 4896)).toBe(100);
+    expect(tileProgressPercent(29, 100)).toBe(29);
+    expect(tileProgressPercent(5000, 4896)).toBe(100);
+    expect(tileProgressPercent(-1, 4896)).toBe(0);
   });
 
   test("counts a full run from tile zero, including No-Fail runs without a death", () => {

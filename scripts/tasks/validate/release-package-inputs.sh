@@ -25,7 +25,7 @@ require_file "$UNITY_MOD_MANAGER_DLL"
 verify_ipc_bundle
 
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/level.adofai"
-require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration_old.ogg"
+require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/calibration/calibration.ogg"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/mac/tufreplay_ui.bundle"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/win/tufreplay_ui.bundle"
 require_file "$TUFREPLAY_PROJECT_ROOT/TUFReplay/Assets/linux/tufreplay_ui.bundle"

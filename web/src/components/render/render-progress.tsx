@@ -16,10 +16,15 @@ export function RenderProgress({
 }) {
   const { t } = useTranslation("render");
   const percent = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  // At the end OrbitRender may wait minutes for the key viewers' videos before adding them.
+  const status =
+    phase === "compositing" && job?.stage === "waiting_for_overlays"
+      ? t("status.waitingForOverlays")
+      : t(`status.${phase}`);
   return (
     <div className="space-y-3 py-2">
       <div aria-live="polite" className="flex items-baseline justify-between gap-4">
-        <p className="text-base font-semibold">{t(`status.${phase}`)}</p>
+        <p className="text-base font-semibold">{status}</p>
         <span className="text-sm tabular-nums text-muted-foreground">
           {t("progress.percent", { percent })}
         </span>

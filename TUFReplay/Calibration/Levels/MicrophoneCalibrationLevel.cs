@@ -19,7 +19,7 @@ internal sealed class MicrophoneCalibrationLevel
   {
     string levelPath = System.IO.Path.Combine(payloadPath, "Assets", "calibration", "level.adofai");
     string assetDirectory = System.IO.Path.GetDirectoryName(levelPath) ?? string.Empty;
-    if (!File.Exists(levelPath) || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration_old.ogg")))
+    if (!File.Exists(levelPath) || !File.Exists(System.IO.Path.Combine(assetDirectory, "calibration.ogg")))
       return false;
     Path = LevelPathIdentity.Canonicalize(levelPath);
     return true;
@@ -41,7 +41,7 @@ internal sealed class MicrophoneCalibrationLevel
       || !editor.initialized
       || editor.isLoading
       || !LevelPathIdentity.Equals(Path, LevelPathIdentity.Current())
-      || !GameplayChartHash.TryCompute(editor.levelData, out byte[] currentHash, out _)
+      || !GameplayChartHash.TryComputeV5(editor.levelData, out byte[] currentHash, out _)
     )
       return false;
     _gameplayHash = currentHash;
@@ -49,8 +49,8 @@ internal sealed class MicrophoneCalibrationLevel
   }
 
   public bool IsCurrent() =>
-    GameplayChartHash.IsSupported(GameplayChartHash.Version, _gameplayHash)
-    && GameplayChartHash.TryComputeCurrent(out byte[] currentHash, out _)
+    GameplayChartHash.IsV5(_gameplayHash)
+    && GameplayChartHash.TryComputeCurrentV5(out byte[] currentHash, out _)
     && GameplayChartHash.Equals(_gameplayHash, currentHash);
 
   public void Reset()

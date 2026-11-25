@@ -102,6 +102,13 @@ internal sealed class ReplayManifest
   [JsonProperty("effectivePitch", Required = Required.Always)]
   public double EffectivePitch { get; set; }
 
+  /// <summary>
+  /// The speed multiplier on top of the level's pitch, like the editor's Ctrl+Space speed. The
+  /// game shows it after the level name. Older bundles leave it out and played at 1x.
+  /// </summary>
+  [JsonProperty("speedMultiplier")]
+  public double? SpeedMultiplier { get; set; }
+
   [JsonProperty("gameInputOffsetMs", Required = Required.Always)]
   public double GameInputOffsetMs { get; set; }
 
@@ -123,6 +130,10 @@ internal sealed class ReplayManifest
   [JsonProperty("wonTimeUs")]
   public long? WonTimeUs { get; set; }
 
+  /// <summary>When a failed run died. Older recordings end at the death and leave this out.</summary>
+  [JsonProperty("failedTimeUs")]
+  public long? FailedTimeUs { get; set; }
+
   [JsonProperty("terminalTimeUs", Required = Required.Always)]
   public long TerminalTimeUs { get; set; }
 
@@ -138,10 +149,14 @@ internal sealed class ReplayManifest
       throw Invalid("result");
     if (Result == "failed" && WonTimeUs.HasValue)
       throw Invalid("result");
+    if (Result != "failed" && FailedTimeUs.HasValue)
+      throw Invalid("failedTimeUs");
     if (!IsFinite(GameplayStartSongPosition))
       throw Invalid("gameplayStartSongPosition");
     if (!IsFinite(EffectivePitch) || EffectivePitch <= 0)
       throw Invalid("effectivePitch");
+    if (SpeedMultiplier.HasValue && (!IsFinite(SpeedMultiplier.Value) || SpeedMultiplier.Value <= 0))
+      throw Invalid("speedMultiplier");
     if (!IsFinite(GameInputOffsetMs))
       throw Invalid("gameInputOffsetMs");
     if (string.IsNullOrWhiteSpace(JudgmentSystem) || JudgmentSystem.Length > 128)
@@ -158,7 +173,15 @@ internal sealed class ReplayManifest
       );
     if (TerminalTimeUs < 0 || (WonTimeUs.HasValue && (WonTimeUs.Value < 0 || WonTimeUs.Value > TerminalTimeUs)))
       throw Invalid(TerminalTimeUs < 0 ? "terminalTimeUs" : "wonTimeUs");
+    if (FailedTimeUs.HasValue && (FailedTimeUs.Value < 0 || FailedTimeUs.Value > TerminalTimeUs))
+      throw Invalid("failedTimeUs");
   }
+
+  /// <summary>The death of a failed run: its recorded time, or the end of an older recording.</summary>
+  public long? DeathTimeUs => Result == "failed" ? FailedTimeUs ?? TerminalTimeUs : null;
+
+  /// <summary>After the clear or the death, the recording follows real time instead of the song.</summary>
+  public long? GameplayEndTimeUs => WonTimeUs ?? FailedTimeUs;
 
   private static bool IsFinite(double value) => !double.IsNaN(value) && !double.IsInfinity(value);
 

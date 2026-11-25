@@ -11,8 +11,8 @@ public static class LevelFileAccessValidator
   public const string ModifiedMessage = "The level file's gameplay no longer matches this replay.";
 
   private static readonly LevelFileVerificationCache VerifiedFiles = new LevelFileVerificationCache(
-    (string path, out string source, out byte[] hash) =>
-      GameplayChartHash.TryLoadCustomLevel(path, out source, out _, out hash, out _),
+    (string path, out string source, out GameplayChartHashes hashes) =>
+      GameplayChartHash.TryLoadCustomLevel(path, out source, out _, out hashes, out _),
     path => RDFile.ReadAllText(path),
     capacity: 64
   );
@@ -36,26 +36,35 @@ public static class LevelFileAccessValidator
       return Error("level_file_missing", MissingMessage, out errorCode, out errorMessage);
     }
 
-    if (!VerifiedFiles.TryRead(canonicalPath, out levelText, out byte[] actualHash))
+    if (!VerifiedFiles.TryRead(canonicalPath, out levelText, out GameplayChartHashes actual))
     {
       return Error("level_file_invalid", InvalidMessage, out errorCode, out errorMessage);
     }
 
-    if (session.GameplayHash == null)
+    // This is the session's own file, so it may supply hashes the record lacks.
+    if (
+      session.GameplayHash == null
+      || GameplayChartHashMatch.CanTakeV5(
+        session.GameplayHash,
+        session.GameplayHashVersion,
+        session.GameplayHashV5,
+        actual
+      )
+    )
     {
-      session.GameplayHash = actualHash;
-      session.GameplayHashVersion = GameplayChartHash.Version;
-      session.LevelId = LevelRepository.UpdateGameplayHashIfMissing(
-        session.LevelId,
-        actualHash,
-        GameplayChartHash.Version
-      );
+      session.GameplayHash ??= actual.V4;
+      session.GameplayHashVersion ??= GameplayChartHash.Version;
+      session.GameplayHashV5 = actual.V5;
+      session.LevelId = LevelRepository.UpdateGameplayHashesIfMissing(session.LevelId, actual);
       return true;
     }
 
-    return GameplayChartHash.IsSupported(session.GameplayHashVersion, session.GameplayHash)
-        && GameplayChartHash.Equals(session.GameplayHash, actualHash)
-      || Error("level_gameplay_modified", ModifiedMessage, out errorCode, out errorMessage);
+    return GameplayChartHashMatch.Matches(
+        session.GameplayHash,
+        session.GameplayHashVersion,
+        session.GameplayHashV5,
+        actual
+      ) || Error("level_gameplay_modified", ModifiedMessage, out errorCode, out errorMessage);
   }
 
   private static bool Error(string code, string message, out string errorCode, out string errorMessage)
