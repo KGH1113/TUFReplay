@@ -1,7 +1,8 @@
-// OrbitRender 2.8.0 is the first that renders with TUFReplay replaying the recording.
-// Older versions replay it themselves and stop on keys the game's input cannot take.
+// OrbitRender 2.9.0 is the first that finishes a video without ADOFAI standing still.
+// Versions before 2.8.0 also replay the recording themselves and stop on keys the game's
+// input cannot take.
 // Keep in sync with OrbitRenderClient.MinimumVersion in the mod.
-const minimum = [2, 8, 0] as const;
+const minimum = [2, 9, 0] as const;
 
 /** The oldest OrbitRender that can make videos, for messages. */
 export const minimumOrbitRenderVersion = minimum.join(".");

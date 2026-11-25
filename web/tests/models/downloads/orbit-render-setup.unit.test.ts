@@ -18,10 +18,11 @@ describe("OrbitRender setup steps", () => {
     ["extracting", null, "installing"],
     ["validating", null, "installing"],
     ["failed", null, "install-failed"],
-    ["restart-required", "2.8.0", "restart"],
-    ["ready", "2.8.0", "ready"],
+    ["restart-required", "2.9.0", "restart"],
+    ["ready", "2.9.0", "ready"],
     ["ready", "2.10.0", "ready"],
     ["ready", "3.0.0", "ready"],
+    ["ready", "2.8.3", "update"],
     ["ready", "2.7.0", "update"],
     ["ready", "2.6.2", "update"],
     ["ready", "1.9.9", "update"],
@@ -32,9 +33,9 @@ describe("OrbitRender setup steps", () => {
   });
 
   test("only a loaded, supported OrbitRender can render", () => {
-    expect(orbitRenderReady({ Status: "ready", Version: "2.8.0" })).toBe(true);
-    expect(orbitRenderReady({ Status: "ready", Version: "2.7.0" })).toBe(false);
-    expect(orbitRenderReady({ Status: "restart-required", Version: "2.8.0" })).toBe(false);
+    expect(orbitRenderReady({ Status: "ready", Version: "2.9.0" })).toBe(true);
+    expect(orbitRenderReady({ Status: "ready", Version: "2.8.3" })).toBe(false);
+    expect(orbitRenderReady({ Status: "restart-required", Version: "2.9.0" })).toBe(false);
     expect(orbitRenderReady({ Status: "missing" })).toBe(false);
   });
 

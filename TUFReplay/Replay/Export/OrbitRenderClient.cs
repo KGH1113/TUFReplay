@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Reflection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using UnityModManagerNet;
 
 namespace TUFReplay.Replay.Export;
 
@@ -15,12 +16,18 @@ public static class OrbitRenderClient
   // the recording and OrbitRender only captures and encodes it. Older versions replay recordings
   // themselves through ADOFAI's input and stop on keys it cannot take, such as the ' key.
   public const int RequiredApiVersion = 3;
-  public const string MinimumVersion = "2.8.0";
+
+  // OrbitRender 2.9.0 finishes a video on a background thread, so ADOFAI no longer stands still
+  // at the end of a render. Its RenderApi is still 3, so only the mod's version tells it from 2.8.
+  // Keep in sync with the minimum in web/src/models/render/orbit-version.ts.
+  public const string MinimumVersion = "2.9.0";
   private const string ApiTypeName = "OrbitRender.RenderApi";
+  private const string ModId = "OrbitRender";
 
   private static readonly object Gate = new object();
   private static Type _apiType;
   private static int _apiVersion;
+  private static bool _olderThanMinimum;
   private static MethodInfo _startHostedReplay;
   private static MethodInfo _readStatus;
   private static MethodInfo _cancel;
@@ -93,7 +100,13 @@ public static class OrbitRenderClient
         Bind(_apiType);
       }
       // A loaded OrbitRender without the calls TUFReplay needs is an older version, not a missing one.
-      if (_apiVersion < RequiredApiVersion || _startHostedReplay == null || _readStatus == null || _cancel == null)
+      if (
+        _apiVersion < RequiredApiVersion
+        || _olderThanMinimum
+        || _startHostedReplay == null
+        || _readStatus == null
+        || _cancel == null
+      )
         return new OrbitRenderError
         {
           Code = "renderer_version_unsupported",
@@ -135,6 +148,7 @@ public static class OrbitRenderClient
   {
     const BindingFlags staticFlags = BindingFlags.Public | BindingFlags.Static;
     _apiVersion = ReadApiVersion(type);
+    _olderThanMinimum = IsOlderThanMinimum(UnityModManager.FindMod(ModId)?.Version);
     _startHostedReplay = type.GetMethod(
       "StartHostedReplay",
       staticFlags,
@@ -146,6 +160,12 @@ public static class OrbitRenderClient
     _cancel = type.GetMethod("Cancel", staticFlags, null, new[] { typeof(string) }, null);
     _isAvailable = type.GetProperty("IsAvailable", staticFlags);
   }
+
+  /// <summary>
+  /// True when OrbitRender's mod version is known and below <see cref="MinimumVersion"/>. An unknown
+  /// version is left to the RenderApi check.
+  /// </summary>
+  internal static bool IsOlderThanMinimum(Version version) => version != null && version < new Version(MinimumVersion);
 
   private static int ReadApiVersion(Type type)
   {
@@ -195,6 +215,7 @@ public static class OrbitRenderClient
     {
       _apiType = null;
       _apiVersion = 0;
+      _olderThanMinimum = false;
       _startHostedReplay = null;
       _readStatus = null;
       _cancel = null;

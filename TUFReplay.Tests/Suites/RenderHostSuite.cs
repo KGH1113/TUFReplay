@@ -17,6 +17,7 @@ internal static class RenderHostSuite
     RefusesMediaOutsideTheBundle(root);
     LeavesTheCameraItDrawsOutOfTheRequest(root);
     FollowsOrbitRenderFinishingInTheBackground();
+    RefusesAnOrbitRenderOlderThanTheMinimum();
     FailedRunsRecordTheFailScreen(root);
     KeepsTheRecordedSpeedMultiplier(root);
     GivesOrbitRenderOverlayVideosAsJson();
@@ -166,6 +167,25 @@ internal static class RenderHostSuite
       "An OrbitRender that does not report its finish broke the bar."
     );
     Console.WriteLine("PASS the web follows OrbitRender's background finish");
+  }
+
+  // OrbitRender 2.8 and 2.9 both have RenderApi 3, so the mod's version decides.
+  private static void RefusesAnOrbitRenderOlderThanTheMinimum()
+  {
+    Assert(
+      OrbitRenderClient.IsOlderThanMinimum(new Version("2.8.3"))
+        && OrbitRenderClient.IsOlderThanMinimum(new Version("2.8.3.0")),
+      "OrbitRender 2.8.3 was taken as new enough."
+    );
+    Assert(
+      !OrbitRenderClient.IsOlderThanMinimum(new Version(OrbitRenderClient.MinimumVersion))
+        && !OrbitRenderClient.IsOlderThanMinimum(new Version("2.9.1"))
+        && !OrbitRenderClient.IsOlderThanMinimum(new Version("2.10.0"))
+        && !OrbitRenderClient.IsOlderThanMinimum(new Version("3.0.0")),
+      "A new enough OrbitRender was taken as too old."
+    );
+    Assert(!OrbitRenderClient.IsOlderThanMinimum(null), "An unknown OrbitRender version was taken as too old.");
+    Console.WriteLine("PASS an OrbitRender older than the minimum is refused");
   }
 
   private static void RefusesMediaOutsideTheBundle(string root)
