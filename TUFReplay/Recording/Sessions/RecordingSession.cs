@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using TUFReplay.Activity.Charts;
 using TUFReplay.Activity.Models;
 using TUFReplay.Recording.Input;
 using TUFReplay.Replay.Models;
@@ -51,7 +52,7 @@ public class RecordingSession
     }
   }
 
-  public void Start(int? tufLevelId, bool autoRecord, byte[] gameplayHash = null, int? gameplayHashVersion = null)
+  public void Start(int? tufLevelId, bool autoRecord, GameplayChartHashes gameplayHashes = null)
   {
     lock (_lock)
     {
@@ -66,8 +67,9 @@ public class RecordingSession
         NoFailMode = IsNoFailModeActive(),
         GameInputOffsetMs = GetCurrentGameInputOffsetMs(),
         JudgmentSystem = AdofaiRuntimeCompatibility.CaptureJudgmentSystem(),
-        GameplayHash = gameplayHash == null ? null : (byte[])gameplayHash.Clone(),
-        GameplayHashVersion = gameplayHashVersion,
+        GameplayHash = gameplayHashes?.V4 == null ? null : (byte[])gameplayHashes.V4.Clone(),
+        GameplayHashVersion = gameplayHashes?.V4 == null ? null : GameplayChartHash.Version,
+        GameplayHashV5 = gameplayHashes?.V5 == null ? null : (byte[])gameplayHashes.V5.Clone(),
       };
       RefreshPitchLocked();
       _pendingNativeInputs.Clear();

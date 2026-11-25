@@ -4,13 +4,13 @@ using System.IO;
 
 namespace TUFReplay.Activity.Charts;
 
-// Reuses a level file's gameplay hash while its size and write time stay the same.
+// Reuses a level file's gameplay hashes while its size and write time stay the same.
 // Verifying a chart builds ADOFAI's whole level object graph (many times the file
 // size in managed garbage), and Boehm GC pauses delay the game's async-input thread.
-// Only the 32-byte hash is kept; chart text is read again for every request.
+// Only the two 32-byte hashes are kept; chart text is read again for every request.
 internal sealed class LevelFileVerificationCache
 {
-  internal delegate bool Verifier(string path, out string source, out byte[] hash);
+  internal delegate bool Verifier(string path, out string source, out GameplayChartHashes hashes);
 
   private readonly object _gate = new object();
   private readonly Dictionary<string, Entry> _entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
@@ -25,23 +25,23 @@ internal sealed class LevelFileVerificationCache
     _capacity = Math.Max(1, capacity);
   }
 
-  public bool TryRead(string path, out string source, out byte[] hash)
+  public bool TryRead(string path, out string source, out GameplayChartHashes hashes)
   {
     source = null;
-    hash = null;
+    hashes = null;
     if (string.IsNullOrEmpty(path) || !TryGetStamp(path, out FileStamp before))
     {
       Forget(path);
       return false;
     }
 
-    if (TryGetCachedHash(path, before, out byte[] cachedHash) && TryReadUnchanged(path, before, out source))
+    if (TryGetCachedHashes(path, before, out GameplayChartHashes cached) && TryReadUnchanged(path, before, out source))
     {
-      hash = (byte[])cachedHash.Clone();
+      hashes = Clone(cached);
       return true;
     }
 
-    if (!_verify(path, out source, out hash) || hash == null)
+    if (!_verify(path, out source, out hashes) || hashes?.V4 == null || hashes.V5 == null)
     {
       Forget(path);
       return false;
@@ -49,7 +49,7 @@ internal sealed class LevelFileVerificationCache
 
     // Cache only when the verified text was read from the stamp observed before it.
     if (TryGetStamp(path, out FileStamp after) && after.Equals(before))
-      Store(path, before, hash);
+      Store(path, before, hashes);
     else
       Forget(path);
     return true;
@@ -72,29 +72,32 @@ internal sealed class LevelFileVerificationCache
     }
   }
 
-  private bool TryGetCachedHash(string path, FileStamp stamp, out byte[] hash)
+  private bool TryGetCachedHashes(string path, FileStamp stamp, out GameplayChartHashes hashes)
   {
     lock (_gate)
     {
       if (_entries.TryGetValue(path, out Entry entry) && entry.Stamp.Equals(stamp))
       {
-        hash = entry.Hash;
+        hashes = entry.Hashes;
         return true;
       }
     }
-    hash = null;
+    hashes = null;
     return false;
   }
 
-  private void Store(string path, FileStamp stamp, byte[] hash)
+  private void Store(string path, FileStamp stamp, GameplayChartHashes hashes)
   {
     lock (_gate)
     {
       if (_entries.Count >= _capacity && !_entries.ContainsKey(path))
         _entries.Clear();
-      _entries[path] = new Entry(stamp, (byte[])hash.Clone());
+      _entries[path] = new Entry(stamp, Clone(hashes));
     }
   }
+
+  private static GameplayChartHashes Clone(GameplayChartHashes hashes) =>
+    new GameplayChartHashes((byte[])hashes.V4.Clone(), (byte[])hashes.V5.Clone());
 
   private void Forget(string path)
   {
@@ -148,12 +151,12 @@ internal sealed class LevelFileVerificationCache
   private readonly struct Entry
   {
     public readonly FileStamp Stamp;
-    public readonly byte[] Hash;
+    public readonly GameplayChartHashes Hashes;
 
-    public Entry(FileStamp stamp, byte[] hash)
+    public Entry(FileStamp stamp, GameplayChartHashes hashes)
     {
       Stamp = stamp;
-      Hash = hash;
+      Hashes = hashes;
     }
   }
 }

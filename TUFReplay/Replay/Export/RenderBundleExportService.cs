@@ -330,8 +330,12 @@ public static class RenderBundleExportService
           {
             path = job.LevelPath,
             fileSha256 = fileHash,
-            gameplayHash = BitConverter.ToString(run.GameplayHash).Replace("-", "").ToLowerInvariant(),
-            gameplayHashVersion = run.GameplayHashVersion,
+            // The strongest hash the run has: V5, or V4 for runs recorded before it.
+            gameplayHash = BitConverter
+              .ToString(run.GameplayHashV5 ?? run.GameplayHash)
+              .Replace("-", "")
+              .ToLowerInvariant(),
+            gameplayHashVersion = run.GameplayHashV5 != null ? GameplayChartHash.V5Version : run.GameplayHashVersion,
           },
           replay = new
           {

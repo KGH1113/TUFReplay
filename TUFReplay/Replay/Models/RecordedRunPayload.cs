@@ -55,6 +55,7 @@ public class RecordedRunPayload
   public JudgmentCounts JudgmentCounts = new JudgmentCounts();
   public byte[] GameplayHash;
   public int? GameplayHashVersion;
+  public byte[] GameplayHashV5;
   public string PitchSource;
   public List<RecordedInput> Inputs = new List<RecordedInput>();
   public List<RecordedHitContext> HitContexts = new List<RecordedHitContext>();

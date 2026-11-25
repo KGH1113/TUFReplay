@@ -47,16 +47,17 @@ public static partial class ReplayPlaybackCoordinator
       currentPath,
       out operation.LoadedLevelValidationCode,
       out operation.LoadedLevelValidationMessage,
-      out byte[] loadedGameplayHash
+      out GameplayChartHashes loadedHashes
     );
     operation.HasLoadedLevelValidation = true;
     operation.ValidatedLevelData = editor.levelData;
     operation.ValidatedLevelPath = currentPath;
     operation.LoadedLevelValidationPassed = passed;
-    if (passed && loadedGameplayHash != null)
+    if (passed && loadedHashes?.V5 != null)
     {
-      operation.ValidatedLoadedGameplayHash = loadedGameplayHash;
-      operation.ValidatedLoadedGameplayHashVersion = operation.Run.GameplayHashVersion.Value;
+      // The replay later checks the open level against its own V5 hash.
+      operation.ValidatedLoadedGameplayHash = loadedHashes.V5;
+      operation.ValidatedLoadedGameplayHashVersion = GameplayChartHash.V5Version;
     }
     else if (passed)
     {

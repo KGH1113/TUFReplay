@@ -15,10 +15,12 @@ public static class ReplayLevelHashValidator
     if (run == null)
       return Error("run_not_found", "The recorded run was not found.", out errorCode, out errorMessage);
 
-    if (run.GameplayHash == null && !run.GameplayHashVersion.HasValue)
+    bool hasV4 = run.GameplayHash != null || run.GameplayHashVersion.HasValue;
+    if (!hasV4 && run.GameplayHashV5 == null)
       return true;
 
-    return GameplayChartHash.IsSupported(run.GameplayHashVersion, run.GameplayHash)
+    return (!hasV4 || GameplayChartHash.IsSupported(run.GameplayHashVersion, run.GameplayHash))
+        && (run.GameplayHashV5 == null || GameplayChartHash.IsV5(run.GameplayHashV5))
       || Error(
         "level_hash_unsupported",
         "This run uses an unsupported gameplay hash.",
@@ -52,30 +54,28 @@ public static class ReplayLevelHashValidator
     out string errorMessage
   ) => ValidateLoaded(run, levelData, loadedPath, out errorCode, out errorMessage, out _);
 
-  // loadedHash is the loaded level's own gameplay hash, so callers need not hash it again.
+  // loadedHashes are the loaded level's own hashes, so callers need not hash it again.
   public static bool ValidateLoaded(
     StoredReplayRun run,
     LevelData levelData,
     string loadedPath,
     out string errorCode,
     out string errorMessage,
-    out byte[] loadedHash
+    out GameplayChartHashes loadedHashes
   )
   {
     errorCode = null;
     errorMessage = null;
-    loadedHash = null;
+    loadedHashes = null;
     if (!ValidateStoredHash(run, out errorCode, out errorMessage))
       return false;
-    if (!GameplayChartHash.TryCompute(levelData, out byte[] actualHash, out string hashError))
+    if (!GameplayChartHash.TryCompute(levelData, out GameplayChartHashes actual, out string hashError))
       return Error("level_file_invalid", hashError, out errorCode, out errorMessage);
-    loadedHash = actualHash;
+    loadedHashes = actual;
 
-    if (run.GameplayHash == null)
+    if (run.GameplayHash == null && run.GameplayHashV5 == null)
     {
-      string canonicalLoadedPath = LevelPathIdentity.Canonicalize(loadedPath);
-      string canonicalRecordedPath = LevelPathIdentity.Canonicalize(run.LevelPath);
-      if (canonicalRecordedPath == null || !LevelPathIdentity.Equals(canonicalLoadedPath, canonicalRecordedPath))
+      if (!IsRecordedFile(run, loadedPath))
       {
         return Error(
           "level_hash_unavailable",
@@ -85,41 +85,61 @@ public static class ReplayLevelHashValidator
         );
       }
 
-      run.GameplayHash = actualHash;
+      run.GameplayHash = actual.V4;
       run.GameplayHashVersion = GameplayChartHash.Version;
-      RunRepository.UpdateGameplayHashIfMissing(run.Id, actualHash, GameplayChartHash.Version);
+      run.GameplayHashV5 = actual.V5;
+      RunRepository.UpdateGameplayHashesIfMissing(run.Id, actual);
       return true;
     }
 
-    return GameplayChartHash.Equals(run.GameplayHash, actualHash)
-      || MatchesVerifiedOriginalSemantics(run, run.GameplayHash, levelData)
+    return MatchesRun(run, actual, loadedPath)
       || Error("level_gameplay_modified", LevelFileAccessValidator.ModifiedMessage, out errorCode, out errorMessage);
   }
 
-  public static bool MatchesVerifiedOriginalSemantics(
-    StoredReplayRun run,
-    byte[] referenceHash,
-    LevelData candidateLevelData
-  )
+  /// <summary>
+  /// Whether a chart plays the same as the recorded one. A run recorded before V5 has
+  /// only V4, which rejects charts that differ in effects-only settings such as song
+  /// volume; the recorded file, when it still matches, supplies V5 once for good.
+  /// </summary>
+  public static bool MatchesRun(StoredReplayRun run, GameplayChartHashes candidate, string candidatePath)
   {
-    string originalPath = LevelPathIdentity.Canonicalize(run?.LevelPath);
-    if (originalPath == null || referenceHash == null || candidateLevelData == null)
+    if (run == null || candidate == null)
       return false;
+    if (GameplayChartHashMatch.Matches(run.GameplayHash, run.GameplayHashVersion, run.GameplayHashV5, candidate))
+    {
+      if (IsRecordedFile(run, candidatePath))
+        TakeV5(run, candidate);
+      return true;
+    }
+    if (run.GameplayHashV5 != null)
+      return false;
+    return TryTakeV5FromRecordedFile(run) && GameplayChartHash.Equals(run.GameplayHashV5, candidate.V5);
+  }
 
+  private static bool TryTakeV5FromRecordedFile(StoredReplayRun run)
+  {
+    string recordedPath = LevelPathIdentity.Canonicalize(run.LevelPath);
     if (
-      !GameplayChartHash.TryLoadCustomLevel(
-        originalPath,
-        out LevelData originalLevelData,
-        out byte[] originalHash,
-        out _
-      )
-      || !GameplayChartHash.Equals(referenceHash, originalHash)
-      || !GameplayChartHash.TryComputeSemantic(originalLevelData, out byte[] originalSemanticHash, out _)
-      || !GameplayChartHash.TryComputeSemantic(candidateLevelData, out byte[] candidateSemanticHash, out _)
+      recordedPath == null
+      || !GameplayChartHash.TryLoadCustomLevel(recordedPath, out _, out GameplayChartHashes recorded, out _)
     )
       return false;
+    TakeV5(run, recorded);
+    return run.GameplayHashV5 != null;
+  }
 
-    return GameplayChartHash.Equals(originalSemanticHash, candidateSemanticHash);
+  private static void TakeV5(StoredReplayRun run, GameplayChartHashes recorded)
+  {
+    if (!GameplayChartHashMatch.CanTakeV5(run.GameplayHash, run.GameplayHashVersion, run.GameplayHashV5, recorded))
+      return;
+    run.GameplayHashV5 = recorded.V5;
+    RunRepository.UpdateGameplayHashesIfMissing(run.Id, recorded);
+  }
+
+  private static bool IsRecordedFile(StoredReplayRun run, string path)
+  {
+    string recordedPath = LevelPathIdentity.Canonicalize(run.LevelPath);
+    return recordedPath != null && LevelPathIdentity.Equals(LevelPathIdentity.Canonicalize(path), recordedPath);
   }
 
   private static bool Error(string code, string message, out string errorCode, out string errorMessage)
