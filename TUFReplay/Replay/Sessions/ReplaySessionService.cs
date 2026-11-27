@@ -334,6 +334,13 @@ public static partial class ReplaySessionService
       return false;
     }
 
+    // A checkpoint start calls Scrub, which moves dspTimeSong, and enters Checkpoint in the same
+    // call, before the conductor's Update recomputes songposition_minusi. That value still points
+    // near the song start, so after a timeline seek the native input would replay every key from
+    // there at once. Read the position from dspTimeSong itself.
+    if (!_activeContext.RealTimeClockStarted)
+      nowUs = CurrentReplayTimeOrFallback(nowUs);
+
     ReplayPlaybackSnapshot snapshot = CreatePlaybackSnapshot(nowUs);
     ResetReplayHeldInputState();
     _activeContext.NativeInputPlayer?.ResetTo(snapshot);
